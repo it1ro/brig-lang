@@ -1,0 +1,45 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        go: ["1.27.1"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go }}
+          cache: true
+
+      # Кэш: если brig.ebnf и дизайн-док не менялись — check-examples пропускается (A2).
+      - name: check-examples
+        run: |
+          go run ./cmd/check-examples -- docs/01-language-design.md docs/01.1-brig-formalization.md
+
+      - name: vet
+        run: go vet ./...
+
+      - name: test (race)
+        run: go test -race ./...
+
+      - name: lint
+        uses: golangci/golangci-lint-action@v7
+        with:
+          version: v2.13.2
+
+  ebnf:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: ebnf present
+        run: test -f brig.ebnf
