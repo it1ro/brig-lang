@@ -1,8 +1,7 @@
 // Package compiler — компиляция AST в стековый байткод ВМ.
 //
-// Срез: одно-клозные функции, локальные переменные без захвата
-// из объемлющих областей, базовые выражения, if, литералы коллекций,
-// вызовы. Замыкания с захватом, мультиклозы, полный матчинг — далее.
+// Трек α: локальные функции (hoisting + манглированные имена),
+// замыкания (capture-by-value), лямбды, взаимная рекурсия.
 package compiler
 
 import (
@@ -26,27 +25,21 @@ type Compiler struct {
 	image *ProgramImage
 }
 
+// New создаёт компилятор.
 func New() *Compiler {
 	return &Compiler{image: &ProgramImage{Functions: make(map[string]*vm.Function)}}
 }
 
 // Compile — входная точка.
-//
-// Срез: поддерживаем модуль с декларациями `fn` и REPL-выражения.
-// Точка входа модуля — функция `main`.
 func (c *Compiler) Compile(prog *ast.Program) (*ProgramImage, error) {
 	for _, d := range prog.Decls {
 		fd, ok := d.(ast.FuncDecl)
 		if !ok {
-			continue // import/alias/type в срезе не исполняются
+			continue
 		}
 		clauses := fd.FuncClauses()
 		if len(clauses) == 0 {
 			continue
-		}
-		if len(clauses) > 1 {
-			// Срез: берём первый клоз, помечаем ограничение.
-			// Полный диспетчер клозов — подэтап 4.6.
 		}
 		cl := clauses[0]
 		fn, err := c.compileFunction(fd.FnName(), cl.Params, cl.Body)
@@ -58,7 +51,6 @@ func (c *Compiler) Compile(prog *ast.Program) (*ProgramImage, error) {
 			c.image.Main = fn
 		}
 	}
-	// REPL: одно выражение/стейтмент → синтетическая функция __repl__.
 	if len(prog.Stmts) > 0 {
 		fn, err := c.compileBlock("__repl__", nil, prog.Stmts)
 		if err != nil {
@@ -70,18 +62,36 @@ func (c *Compiler) Compile(prog *ast.Program) (*ProgramImage, error) {
 	return c.image, nil
 }
 
-// funcCompiler — состояние компиляции одной функции.
-type funcCompiler struct {
-	chunk  *vm.Chunk
-	locals []string
-	scopes []map[string]int // имя → индекс локальной
-	line   int
+// ---- funcCompiler ----
+
+// upvalueInfo — описание захваченной переменной.
+type upvalueInfo struct {
+	name    string
+	isLocal bool // true: захват из локалей родителя
+	index   int  // индекс в локалях (или upvalues) родителя
 }
 
-func newFuncCompiler() *funcCompiler {
+// funcCompiler — состояние компиляции одной функции.
+type funcCompiler struct {
+	compiler *Compiler     // обратная ссылка для доступа к ProgramImage
+	parent   *funcCompiler // объемлющая область (nil для top-level)
+	prefix   string        // префикс для манглирования: "main$"
+	chunk    *vm.Chunk
+	locals   []string
+	scopes   []map[string]int
+	localFns map[string]string // имя в исходнике → манглированное имя
+	upvalues []upvalueInfo
+	line     int
+}
+
+// newFuncCompiler создаёт компилятор функции.
+func (c *Compiler) newFuncCompiler(parent *funcCompiler) *funcCompiler {
 	return &funcCompiler{
-		chunk:  vm.NewChunk(),
-		scopes: []map[string]int{{}},
+		compiler: c,
+		parent:   parent,
+		chunk:    vm.NewChunk(),
+		scopes:   []map[string]int{{}},
+		localFns: make(map[string]string),
 	}
 }
 
@@ -105,14 +115,19 @@ func (fc *funcCompiler) emit(op vm.OpCode, operand int) {
 	fc.chunk.Emit(op, operand, fc.line)
 }
 
-// compileFunction компилирует одну функцию.
+func (fc *funcCompiler) emitUnit() {
+	idx := fc.chunk.AddConstant(runtime.Unit)
+	fc.emit(vm.OpConstant, idx)
+}
+
+// ---- компиляция функций ----
+
 func (c *Compiler) compileFunction(name string, params []string, body *ast.BlockStmt) (*vm.Function, error) {
-	fc := newFuncCompiler()
-	// параметры — первые локалы
+	fc := c.newFuncCompiler(nil)
+	fc.prefix = name + "$"
 	arity := 0
 	for _, p := range params {
 		if strings.HasPrefix(p, "..") {
-			// вариадик в срезе: объявляем имя, арность -1
 			fc.declareLocal(strings.TrimPrefix(p, ".."))
 			continue
 		}
@@ -124,23 +139,18 @@ func (c *Compiler) compileFunction(name string, params []string, body *ast.Block
 			return nil, err
 		}
 	}
-	// гарантируем возврат последнего значения
 	fc.emit(vm.OpReturn, 0)
-	hasVar := false
 	for _, p := range params {
 		if strings.HasPrefix(p, "..") {
-			hasVar = true
+			arity = -1
 		}
-	}
-	if hasVar {
-		arity = -1
 	}
 	return &vm.Function{Name: name, Arity: arity, Chunk: fc.chunk}, nil
 }
 
-// compileBlock — тело как последовательность стейтментов.
 func (c *Compiler) compileBlock(name string, params []string, stmts []ast.Stmt) (*vm.Function, error) {
-	fc := newFuncCompiler()
+	fc := c.newFuncCompiler(nil)
+	fc.prefix = name + "$"
 	for _, p := range params {
 		fc.declareLocal(p)
 	}
@@ -151,11 +161,22 @@ func (c *Compiler) compileBlock(name string, params []string, stmts []ast.Stmt) 
 	return &vm.Function{Name: name, Arity: len(params), Chunk: fc.chunk}, nil
 }
 
-// compileStmts компилирует список стейтментов; значение последнего
-// выражения остаётся на стеке.
+// ---- стейтменты ----
+
 func (fc *funcCompiler) compileStmts(stmts []ast.Stmt) error {
+	// Фаза 1: hoisting — собираем имена локальных функций.
+	// Это позволяет ссылаться на них до момента компиляции тела
+	// (взаимная рекурсия: is_even ↔ is_odd).
+	for _, s := range stmts {
+		if lfd, ok := s.(ast.LocalFnDecl); ok {
+			name := lfd.FnName()
+			mangled := fc.prefix + name
+			fc.localFns[name] = mangled
+		}
+	}
+
+	// Фаза 2: компиляция в порядке следования.
 	for i, s := range stmts {
-		// значение предыдущего стейтмента не нужно
 		if i > 0 {
 			fc.emit(vm.OpPop, 0)
 		}
@@ -164,16 +185,9 @@ func (fc *funcCompiler) compileStmts(stmts []ast.Stmt) error {
 		}
 	}
 	if len(stmts) == 0 {
-		// пустое тело → ()
 		fc.emitUnit()
 	}
 	return nil
-}
-
-func (fc *funcCompiler) emitUnit() {
-	// Unit как константа
-	idx := fc.chunk.AddConstant(runtime.Unit)
-	fc.emit(vm.OpConstant, idx)
 }
 
 func (fc *funcCompiler) compileStmt(s ast.Stmt) error {
@@ -182,11 +196,9 @@ func (fc *funcCompiler) compileStmt(s ast.Stmt) error {
 		if err := fc.compileExpr(st.Val()); err != nil {
 			return err
 		}
-		// связывание: поддерживаем только простой ident-паттерн в срезе
 		if ip, ok := st.Pat().(ast.IdentPattern); ok {
 			idx := fc.declareLocal(ip.IdentName())
 			fc.emit(vm.OpSetLocal, idx)
-			// let — стейтмент, значение не оставляем
 			fc.emitUnit()
 			return nil
 		}
@@ -194,14 +206,68 @@ func (fc *funcCompiler) compileStmt(s ast.Stmt) error {
 	case ast.ExprStmt:
 		return fc.compileExpr(st.ExprValue())
 	case ast.LocalFnDecl:
-		return fmt.Errorf("срез: локальные `fn` не поддерживаются (подэтап 4.6)")
+		return fc.compileLocalFn(st)
 	}
 	return fmt.Errorf("срез: неподдерживаемый стейтмент %T", s)
 }
 
-// compileExpr кладёт значение выражения на стек.
+// compileLocalFn компилирует локальную функцию.
+//
+// Стратегия: функция компилируется как отдельный *vm.Function
+// с манглированным именем (prefix + name) и регистрируется в
+// ProgramImage. При запуске модуля все функции из ProgramImage
+// попадают в глобальную таблицу ВМ, что обеспечивает:
+//   - взаимную рекурсию (обе функции видны через OpGetGlobal);
+//   - простую рекурсию (функция видит себя через OpGetGlobal).
+//
+// В теле родительской функции локальная функция хранится как
+// локальная переменная (OpSetLocal) для быстрого доступа.
+func (fc *funcCompiler) compileLocalFn(decl ast.LocalFnDecl) error {
+	name := decl.FnName()
+	clauses := decl.Clauses()
+	if len(clauses) == 0 {
+		return fmt.Errorf("local fn %s: нет клозов", name)
+	}
+	cl := clauses[0] // срез: первый клоз
+
+	mangled := fc.localFns[name]
+
+	// Компилируем тело как отдельную функцию.
+	child := fc.compiler.newFuncCompiler(fc)
+	child.prefix = mangled + "$"
+
+	arity := 0
+	for _, p := range cl.Params {
+		child.declareLocal(p)
+		arity++
+	}
+	if cl.Body != nil {
+		if err := child.compileStmts(cl.Body.Body()); err != nil {
+			return fmt.Errorf("local fn %s: %w", name, err)
+		}
+	}
+	child.emit(vm.OpReturn, 0)
+
+	fn := &vm.Function{Name: mangled, Arity: arity, Chunk: child.chunk}
+
+	// Регистрируем в ProgramImage → попадёт в глобалы при запуске.
+	fc.compiler.image.Functions[mangled] = fn
+
+	// В родительской функции: сохраняем как локальную переменную.
+	idx := fc.declareLocal(name)
+	fnVal := vm.FuncValue(fn)
+	fnIdx := fc.chunk.AddConstant(fnVal)
+	fc.emit(vm.OpConstant, fnIdx)
+	fc.emit(vm.OpSetLocal, idx)
+	fc.emitUnit() // let-стейтмент оставляет ()
+
+	return nil
+}
+
+// ---- выражения ----
+
 func (fc *funcCompiler) compileExpr(e ast.Expr) error {
-	fc.line = e.Pos() // условная строка; точные line/col — в миграции
+	fc.line = e.Pos()
 	switch ex := e.(type) {
 	case ast.LiteralExpr:
 		return fc.compileLiteral(ex.ValueStr())
@@ -224,11 +290,12 @@ func (fc *funcCompiler) compileExpr(e ast.Expr) error {
 	case ast.IfExpr:
 		return fc.compileIf(ex)
 	case ast.LambdaShort:
-		return fmt.Errorf("срез: лямбды компилируются только как аргументы прелюдии — пока не поддержаны")
+		return fc.compileLambda("", []string{ex.ParamName()}, ex.Body())
 	case ast.LambdaEmpty:
-		return fmt.Errorf("срез: пустая лямбда не поддержана")
+		return fc.compileLambda("", nil, ex.Body())
+	case ast.LambdaFull:
+		return fc.compileLambda("", ex.ParamNames(), ex.BlockBody())
 	}
-	// коллекции через callExpr со спец-именами обрабатывает compileCall
 	return fmt.Errorf("срез: неподдерживаемое выражение %T", e)
 }
 
@@ -246,7 +313,6 @@ func (fc *funcCompiler) compileLiteral(lit string) error {
 		fc.emit(vm.OpConstant, idx)
 		return nil
 	}
-	// число?
 	if i, err := strconv.ParseInt(strings.ReplaceAll(lit, "_", ""), 0, 64); err == nil {
 		idx := fc.chunk.AddConstant(runtime.Int(i))
 		fc.emit(vm.OpConstant, idx)
@@ -257,7 +323,6 @@ func (fc *funcCompiler) compileLiteral(lit string) error {
 		fc.emit(vm.OpConstant, idx)
 		return nil
 	}
-	// строка в кавычках
 	if strings.HasPrefix(lit, "\"") && strings.HasSuffix(lit, "\"") {
 		s := lit[1 : len(lit)-1]
 		idx := fc.chunk.AddConstant(runtime.Str(s))
@@ -267,16 +332,108 @@ func (fc *funcCompiler) compileLiteral(lit string) error {
 	return fmt.Errorf("срез: неподдерживаемый литерал %q", lit)
 }
 
+// compileVar разрешает переменную в порядке приоритета:
+//  1. собственные локалы → OpGetLocal
+//  2. локальные функции (свои или родителя) → OpGetGlobal(mangled)
+//     (Проверяем ДО захвата upvalues, потому что LocalFnDecl хосятся
+//     в глобалы для взаимной рекурсии и не должны захватываться как
+//     upvalues, даже если они объявлены как локалы в родителе).
+//  3. уже захваченные upvalues → OpGetUpvalue
+//  4. локалы родителя → захват (upvalue) + OpGetUpvalue
+//  5. глобалы → OpGetGlobal(name)
 func (fc *funcCompiler) compileVar(name string) error {
+	// 1. Собственные локалы.
 	if idx, ok := fc.resolveLocal(name); ok {
 		fc.emit(vm.OpGetLocal, idx)
 		return nil
 	}
-	// глобальное имя (функция/константа) храним как строку-константу
-	idx := fc.chunk.AddConstant(runtime.Str(name))
-	fc.emit(vm.OpGetGlobal, idx)
+	// 2. Локальные функции (манглированные имена).
+	if mangled, ok := fc.localFns[name]; ok {
+		gidx := fc.chunk.AddConstant(runtime.Str(mangled))
+		fc.emit(vm.OpGetGlobal, gidx)
+		return nil
+	}
+	if fc.parent != nil {
+		if mangled, ok := fc.parent.localFns[name]; ok {
+			gidx := fc.chunk.AddConstant(runtime.Str(mangled))
+			fc.emit(vm.OpGetGlobal, gidx)
+			return nil
+		}
+	}
+	// 3. Уже захваченные upvalues.
+	for i, uv := range fc.upvalues {
+		if uv.name == name {
+			fc.emit(vm.OpGetUpvalue, i)
+			return nil
+		}
+	}
+	// 4. Локалы родителя → захват.
+	if fc.parent != nil {
+		if idx, ok := fc.parent.resolveLocal(name); ok {
+			uvIdx := len(fc.upvalues)
+			fc.upvalues = append(fc.upvalues, upvalueInfo{
+				name: name, isLocal: true, index: idx,
+			})
+			fc.emit(vm.OpGetUpvalue, uvIdx)
+			return nil
+		}
+	}
+	// 5. Глобал.
+	gidx := fc.chunk.AddConstant(runtime.Str(name))
+	fc.emit(vm.OpGetGlobal, gidx)
 	return nil
 }
+
+// ---- лямбды и замыкания ----
+
+// compileLambda компилирует лямбду как замыкание.
+//
+// Байткод в родителе:
+//
+//	CONSTANT fnIdx      # функция из пула констант
+//	GETLOCAL x          # захват 0
+//	GETUPVALUE y        # захват 1 (если вложенная)
+//	MAKECLOSURE 2       # pop 2 захвата + pop функцию → closure
+func (fc *funcCompiler) compileLambda(name string, params []string, body ast.Expr) error {
+	child := fc.compiler.newFuncCompiler(fc)
+	child.prefix = fc.prefix + "lambda$"
+
+	for _, p := range params {
+		child.declareLocal(p)
+	}
+
+	// Компилируем тело.
+	if blk, ok := body.(*ast.BlockStmt); ok {
+		if err := child.compileStmts(blk.Body()); err != nil {
+			return err
+		}
+	} else {
+		if err := child.compileExpr(body); err != nil {
+			return err
+		}
+	}
+	child.emit(vm.OpReturn, 0)
+
+	arity := len(params)
+	fn := &vm.Function{Name: name, Arity: arity, Chunk: child.chunk}
+	fnVal := vm.FuncValue(fn)
+	fnIdx := fc.chunk.AddConstant(fnVal)
+
+	// Эмитим: push функция, push каждый захват, MAKECLOSURE.
+	fc.emit(vm.OpConstant, fnIdx)
+	for _, uv := range child.upvalues {
+		if uv.isLocal {
+			fc.emit(vm.OpGetLocal, uv.index)
+		} else {
+			fc.emit(vm.OpGetUpvalue, uv.index)
+		}
+	}
+	fc.emit(vm.OpMakeClosure, len(child.upvalues))
+
+	return nil
+}
+
+// ---- унарные / бинарные операторы ----
 
 func (fc *funcCompiler) compileUnary(u ast.UnaryExpr) error {
 	if err := fc.compileExpr(u.Operand()); err != nil {
@@ -294,7 +451,6 @@ func (fc *funcCompiler) compileUnary(u ast.UnaryExpr) error {
 }
 
 func (fc *funcCompiler) compileBinary(b ast.BinaryExpr) error {
-	// short-circuit для and / or
 	switch b.OpStr() {
 	case "and":
 		return fc.compileAndOr(b, true)
@@ -340,46 +496,39 @@ func (fc *funcCompiler) compileBinary(b ast.BinaryExpr) error {
 	return nil
 }
 
-// compileAndOr — and/or с коротким замыканием через переходы.
+// compileAndOr — and/or с коротким замыканием.
 //
-// Для `a and b`: вычисляем a; если ложь — прыгаем и результат = a.
-// Иначе вычисляем b, результат = b. Для `or` — наоборот.
+// `a and b`: dup a → jumpfalse SHORT → pop a → eval b → jump END
+// `a or b`:  dup a → jumptrue  SHORT → pop a → eval b → jump END
 func (fc *funcCompiler) compileAndOr(b ast.BinaryExpr, isAnd bool) error {
 	if err := fc.compileExpr(b.Left()); err != nil {
 		return err
 	}
 	fc.emit(vm.OpDup, 0)
-	// placeholder перехода
-	fc.emit(vm.OpJumpFalse, 0)
-	jumpFalsePos := len(fc.chunk.Code) - 2 // позиция операнда (упрощённо)
 
-	if isAnd {
-		// если a истина — выкидываем продублированную a и считаем b
-		fc.emit(vm.OpPop, 0)
-		if err := fc.compileExpr(b.Right()); err != nil {
-			return err
-		}
-	} else {
-		// or: если a ложна (после JumpFalse) — уже имеем a на стеке
-		// если истина — прыгаем в конец, оставляя a
-		// Здесь упрощённая схема: после dup+jumpFalse(false) — считаем b.
-		fc.emit(vm.OpPop, 0)
-		if err := fc.compileExpr(b.Right()); err != nil {
-			return err
-		}
+	jumpOp := vm.OpJumpFalse
+	if !isAnd {
+		jumpOp = vm.OpJumpTrue
 	}
-	// патчим переход
-	end := len(fc.chunk.Code)
-	_ = jumpFalsePos
-	_ = end
-	// Упрощение среза: валидный, но не оптимальный переход.
-	// Точный патчинг — при переходе на регистровую ВМ.
+	fc.emit(jumpOp, 0)
+	jumpPos := fc.chunk.OperandPos()
+
+	fc.emit(vm.OpPop, 0)
+	if err := fc.compileExpr(b.Right()); err != nil {
+		return err
+	}
+	fc.emit(vm.OpJump, 0)
+	endJumpPos := fc.chunk.OperandPos()
+
+	fc.chunk.PatchOperand(jumpPos, len(vm.ChunkCode(fc.chunk)))
+	fc.chunk.PatchOperand(endJumpPos, len(vm.ChunkCode(fc.chunk)))
 	return nil
 }
 
+// ---- вызовы и коллекции ----
+
 func (fc *funcCompiler) compileCall(call ast.CallExpr) error {
 	callee := call.Callee()
-	// коллекции представлены как вызов со спец-именем (см. format.go)
 	if ve, ok := callee.(ast.VariableExpr); ok {
 		switch ve.Name() {
 		case "()":
@@ -407,7 +556,6 @@ func (fc *funcCompiler) compileCall(call ast.CallExpr) error {
 			fc.emit(vm.OpVector, len(call.Args()))
 			return nil
 		case "%{}":
-			// аргументы — пары (key => val) как binaryExpr "=>"
 			n := 0
 			for _, a := range call.Args() {
 				pair, ok := a.(ast.BinaryExpr)
@@ -426,7 +574,6 @@ func (fc *funcCompiler) compileCall(call ast.CallExpr) error {
 			return nil
 		}
 	}
-	// обычный вызов: кладём функцию, потом аргументы
 	if err := fc.compileExpr(callee); err != nil {
 		return err
 	}
@@ -439,21 +586,22 @@ func (fc *funcCompiler) compileCall(call ast.CallExpr) error {
 	return nil
 }
 
-// compileIf — и инлайн, и блочный формы.
+// ---- if ----
+
 func (fc *funcCompiler) compileIf(ie ast.IfExpr) error {
 	if err := fc.compileExpr(ie.Cond()); err != nil {
 		return err
 	}
-	// переход в else, если ложь
 	fc.emit(vm.OpJumpFalse, 0)
-	elseJump := len(fc.chunk.Code) - 2
+	elseJump := len(vm.ChunkCode(fc.chunk)) - 2
+
 	if err := fc.compileBranchBody(ie.ThenBody()); err != nil {
 		return err
 	}
 	fc.emit(vm.OpJump, 0)
-	endJump := len(fc.chunk.Code) - 2
-	// else
-	patch(fc.chunk, elseJump, len(fc.chunk.Code))
+	endJump := len(vm.ChunkCode(fc.chunk)) - 2
+
+	patch(fc.chunk, elseJump, len(vm.ChunkCode(fc.chunk)))
 	if ie.ElseBody() != nil {
 		if err := fc.compileBranchBody(ie.ElseBody()); err != nil {
 			return err
@@ -461,7 +609,7 @@ func (fc *funcCompiler) compileIf(ie ast.IfExpr) error {
 	} else {
 		fc.emitUnit()
 	}
-	patch(fc.chunk, endJump, len(fc.chunk.Code))
+	patch(fc.chunk, endJump, len(vm.ChunkCode(fc.chunk)))
 	return nil
 }
 
@@ -474,7 +622,7 @@ func (fc *funcCompiler) compileBranchBody(body ast.Expr) error {
 
 // patch пишет 16-битный операнд в позицию операнда инструкции.
 func patch(ch *vm.Chunk, operandPos, target int) {
-	// operandPos указывает на старший байт операнда
-	ch.Code[operandPos] = byte(target >> 8)
-	ch.Code[operandPos+1] = byte(target)
+	code := vm.ChunkCode(ch)
+	code[operandPos] = byte(target >> 8)
+	code[operandPos+1] = byte(target)
 }
