@@ -1,5 +1,4 @@
 // Package runtime — модель значений Brig (§3, §4, таблица равенства §4.8).
-// Этап 4.1: примитивы + коллекции + варианты. Иммутабельность (#13).
 package runtime
 
 import (
@@ -23,6 +22,7 @@ const (
 	KindVector
 	KindMap
 	KindFunction
+	KindClosure
 	KindVariant
 	KindPid
 	KindRef
@@ -52,6 +52,8 @@ func (k Kind) String() string {
 		return "Map"
 	case KindFunction:
 		return "Function"
+	case KindClosure:
+		return "Closure"
 	case KindVariant:
 		return "Variant"
 	case KindPid:
@@ -63,8 +65,6 @@ func (k Kind) String() string {
 }
 
 // Caller — способность вызвать значение-функцию. Реализуется *vm.VM.
-// Разрывает цикл импорта: прелюдия в этом пакете может вызывать функции,
-// не зная о конкретной машине.
 type Caller interface {
 	Call(fn Value, args []Value) (Value, error)
 }
@@ -73,10 +73,6 @@ type Caller interface {
 type NativeFunc func(c Caller, args []Value) (Value, error)
 
 // FuncValue — значение-функция: либо нативная, либо скомпилированная.
-//
-// Для скомпилированных функций компилятор кладёт в Body *vm.Chunk
-// (через any, чтобы runtime не импортировал vm и не было цикла).
-// Арность: >=0 фиксированная; -1 — вариадическая (..args).
 type FuncValue struct {
 	Name     string
 	Arity    int
@@ -85,7 +81,19 @@ type FuncValue struct {
 	Body     any // *vm.Chunk для байткод-функций
 }
 
-// VariantValue — конструктор варианта: Ok/Error/Some/None и пользовательские.
+// ClosureValue — замыкание: функция + захваченные переменные.
+//
+// Func хранит *vm.Chunk через any (runtime не импортирует vm).
+// Captures — значения, скопированные из объемлющей области
+// на момент создания замыкания (capture-by-value).
+type ClosureValue struct {
+	Name     string
+	Arity    int
+	Func     any     // *vm.Chunk
+	Captures []Value // захваченные переменные
+}
+
+// VariantValue — конструктор варианта.
 type VariantValue struct {
 	Tag  string
 	Args []Value
@@ -95,45 +103,72 @@ type VariantValue struct {
 type MapEntry struct{ Key, Val Value }
 
 // Value — любое значение Брига.
-//
-// Храним всё в одной структуре для простоты MVP. Оптимизация
-// (small-int fast path, union-теги) — позже (§15, наблюдаемая
-// семантика не меняется).
 type Value struct {
-	Kind    Kind
-	Bool    bool
-	Int     *big.Int
-	Float   float64
-	Str     string
-	Atom    string
-	Tuple   []Value
-	List    []Value
-	Vector  []Value
-	Map     []MapEntry
-	Func    *FuncValue
-	Variant *VariantValue
-	Pid     int
-	Ref     int
+	Kind       Kind
+	Bool       bool
+	Int        *big.Int
+	Float      float64
+	Str        string
+	Atom       string
+	Tuple      []Value
+	List       []Value
+	Vector     []Value
+	Map        []MapEntry
+	Func       *FuncValue
+	ClosureVal *ClosureValue
+	Variant    *VariantValue
+	Pid        int
+	Ref        int
 }
 
 // ---- конструкторы ----
 
+// Unit — единственное значение типа Unit.
 var Unit = Value{Kind: KindUnit}
 
-func Bool(b bool) Value        { return Value{Kind: KindBool, Bool: b} }
-func Int(v int64) Value        { return Value{Kind: KindInt, Int: big.NewInt(v)} }
-func IntBig(v *big.Int) Value  { return Value{Kind: KindInt, Int: v} }
-func Float(f float64) Value    { return Value{Kind: KindFloat, Float: f} }
-func Str(s string) Value       { return Value{Kind: KindStr, Str: s} }
-func Atom(a string) Value      { return Value{Kind: KindAtom, Atom: a} }
-func Tuple(vs ...Value) Value  { return Value{Kind: KindTuple, Tuple: vs} }
-func List(vs ...Value) Value   { return Value{Kind: KindList, List: vs} }
+// Bool создаёт булево значение.
+func Bool(b bool) Value { return Value{Kind: KindBool, Bool: b} }
+
+// Int создаёт целое из int64.
+func Int(v int64) Value { return Value{Kind: KindInt, Int: big.NewInt(v)} }
+
+// IntBig создаёт целое из big.Int.
+func IntBig(v *big.Int) Value { return Value{Kind: KindInt, Int: v} }
+
+// Float создаёт число с плавающей точкой.
+func Float(f float64) Value { return Value{Kind: KindFloat, Float: f} }
+
+// Str создаёт строку.
+func Str(s string) Value { return Value{Kind: KindStr, Str: s} }
+
+// Atom создаёт атом.
+func Atom(a string) Value { return Value{Kind: KindAtom, Atom: a} }
+
+// Tuple создаёт кортеж.
+func Tuple(vs ...Value) Value { return Value{Kind: KindTuple, Tuple: vs} }
+
+// List создаёт список.
+func List(vs ...Value) Value { return Value{Kind: KindList, List: vs} }
+
+// Vector создаёт вектор.
 func Vector(vs ...Value) Value { return Value{Kind: KindVector, Vector: vs} }
-func Func(f *FuncValue) Value  { return Value{Kind: KindFunction, Func: f} }
+
+// Func создаёт значение-функцию.
+func Func(f *FuncValue) Value { return Value{Kind: KindFunction, Func: f} }
+
+// MakeClosure создаёт замыкание.
+func MakeClosure(name string, arity int, fn any, captures []Value) Value {
+	return Value{Kind: KindClosure, ClosureVal: &ClosureValue{
+		Name: name, Arity: arity, Func: fn, Captures: captures,
+	}}
+}
+
+// Variant создаёт значение-вариант.
 func Variant(tag string, args ...Value) Value {
 	return Value{Kind: KindVariant, Variant: &VariantValue{Tag: tag, Args: args}}
 }
 
+// Map создаёт мапу.
 func Map(entries []MapEntry) Value { return Value{Kind: KindMap, Map: entries} }
 
 // ---- печать ----
@@ -153,7 +188,7 @@ func (v Value) Inspect() string {
 	case KindFloat:
 		return fmt.Sprintf("%v", v.Float)
 	case KindStr:
-		return v.Str // print печатает без кавычек
+		return v.Str
 	case KindAtom:
 		return ":" + v.Atom
 	case KindTuple:
@@ -174,6 +209,8 @@ func (v Value) Inspect() string {
 		return "%{" + strings.Join(parts, ", ") + "}"
 	case KindFunction:
 		return fmt.Sprintf("#<function %s/%d>", v.Func.Name, v.Func.Arity)
+	case KindClosure:
+		return fmt.Sprintf("#<closure %s/%d>", v.ClosureVal.Name, v.ClosureVal.Arity)
 	case KindVariant:
 		if len(v.Variant.Args) == 0 {
 			return v.Variant.Tag
@@ -205,12 +242,8 @@ func inspectJoin(vs []Value) string {
 // ---- равенство (§4.8) ----
 
 // Equal — структурное равенство.
-//
-// Упрощение среза: смешанное сравнение чисел и полный структурный
-// проход по коллекциям; Decimal пока нет.
 func Equal(a, b Value) bool {
 	if a.Kind != b.Kind {
-		// числа: Int == Float по значению (§4.8)
 		if isNum(a) && isNum(b) {
 			return numToFloat(a) == numToFloat(b)
 		}
@@ -267,8 +300,9 @@ func Equal(a, b Value) bool {
 		}
 		return equalSlice(a.Variant.Args, b.Variant.Args)
 	case KindFunction:
-		// identity (§4.8): сравниваем указатели на FuncValue.
 		return a.Func == b.Func
+	case KindClosure:
+		return a.ClosureVal == b.ClosureVal
 	case KindPid:
 		return a.Pid == b.Pid
 	case KindRef:
@@ -299,11 +333,9 @@ func numToFloat(v Value) float64 {
 	return f
 }
 
-// ---- сравнение для < > <= >= (§7.4 терм-порядок, упрощённо) ----
+// ---- сравнение (§7.4, упрощённо) ----
 
-// Compare возвращает -1/0/+1. Смешанные числа сравниваются по значению.
-// Не-числа в этом срезе сравниваются только внутри своего вида;
-// полная терм-сортировка — подэтап 4.4+.
+// Compare возвращает -1/0/+1.
 func Compare(a, b Value) (int, error) {
 	if isNum(a) && isNum(b) {
 		af, bf := numToFloat(a), numToFloat(b)
