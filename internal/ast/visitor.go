@@ -15,6 +15,19 @@ func walkNode(v Visitor, node Node) error {
 	}
 
 	switch n := node.(type) {
+	case *Program:
+		for _, d := range n.Decls {
+			if err := walkNode(v, d); err != nil {
+				return err
+			}
+		}
+		for _, s := range n.Stmts {
+			if err := walkNode(v, s); err != nil {
+				return err
+			}
+		}
+		return nil
+
 	case Expr:
 		return walkExpr(v, n)
 	case Stmt:
@@ -128,6 +141,11 @@ func walkExpr(v Visitor, e Expr) error {
 				return err
 			}
 		}
+		if n.afterTime != nil {
+			if err := walkNode(v, n.afterTime); err != nil {
+				return err
+			}
+		}
 		if n.afterBody != nil {
 			return walkNode(v, n.afterBody)
 		}
@@ -143,8 +161,19 @@ func walkExpr(v Visitor, e Expr) error {
 				return err
 			}
 		}
-		if n.elseBody != nil {
-			return walkNode(v, n.elseBody)
+		if n.body != nil {
+			if err := walkNode(v, n.body); err != nil {
+				return err
+			}
+		}
+		for i := range n.elseBranches {
+			eb := &n.elseBranches[i]
+			if err := walkNode(v, eb.pattern); err != nil {
+				return err
+			}
+			if err := walkNode(v, eb.body); err != nil {
+				return err
+			}
 		}
 		return nil
 

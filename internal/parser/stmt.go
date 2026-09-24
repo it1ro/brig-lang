@@ -67,9 +67,9 @@ func (p *parser) parseLocalFnDecl() (ast.Stmt, error) {
 			return nil, err
 		}
 		clauses = append(clauses, c)
-		if !p.at(lexer.NEWLINE) {
-			break
-		}
+		// После inline-тела парсер стоит на NEWLINE; после блочного —
+		// на KW_FN (лексер не эмитит NEWLINE после DEDENT, если следующий
+		// токен не клауза). Пробуем продолжить в обоих случаях.
 		save := p.pos
 		p.skipNewlines()
 		if p.at(lexer.KW_FN) && p.peek(1).Type == lexer.LOWER_IDENT && p.peek(1).Lit == name {
@@ -78,7 +78,7 @@ func (p *parser) parseLocalFnDecl() (ast.Stmt, error) {
 		p.pos = save
 		break
 	}
-	return ast.NewLocalFnDecl(clauses, start.Line, start.Col), nil
+	return ast.NewLocalFnDecl(name, clauses, start.Line, start.Col), nil
 }
 
 // fn_clause ::= "fn" LOWER_IDENT "(" [ params ] ")" [ "when" expr ] "->" fn_body
@@ -208,9 +208,6 @@ func (p *parser) parseFnDecl() (ast.Decl, error) {
 			return nil, err
 		}
 		clauses = append(clauses, ast.FnClauseArg{Guard: guard, Params: params, Body: body})
-		if !p.at(lexer.NEWLINE) {
-			break
-		}
 		save := p.pos
 		p.skipNewlines()
 		if p.at(lexer.KW_FN) && p.peek(1).Type == lexer.LOWER_IDENT && p.peek(1).Lit == name {

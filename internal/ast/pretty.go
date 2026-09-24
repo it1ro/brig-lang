@@ -18,6 +18,20 @@ func prettyNode(buf *bytes.Buffer, node Node, indent int) {
 		return
 	}
 	switch n := node.(type) {
+	case *Program:
+		buf.WriteString("(program")
+		if n.Module != "" {
+			buf.WriteString(" (module " + n.Module + ")")
+		}
+		for _, d := range n.Decls {
+			buf.WriteString(" ")
+			prettyNode(buf, d, indent)
+		}
+		for _, s := range n.Stmts {
+			buf.WriteString(" ")
+			prettyNode(buf, s, indent)
+		}
+		buf.WriteString(")")
 	case Expr:
 		prettyExpr(buf, n, indent)
 	case Stmt:
@@ -131,13 +145,15 @@ func prettyExpr(buf *bytes.Buffer, e Expr, indent int) {
 			prettyNode(buf, br.expr, indent)
 			buf.WriteString(")")
 		}
-		if n.elseBody != nil {
-			buf.WriteString(" (else ")
+		if n.elseName != "" {
+			buf.WriteString(" (else " + n.elseName + " ")
 			prettyNode(buf, n.elseBody, indent)
 			buf.WriteString(")")
 		}
 		if n.afterBody != nil {
 			buf.WriteString(" (after ")
+			prettyNode(buf, n.afterTime, indent)
+			buf.WriteString(" ")
 			prettyNode(buf, n.afterBody, indent)
 			buf.WriteString(")")
 		}
@@ -152,9 +168,17 @@ func prettyExpr(buf *bytes.Buffer, e Expr, indent int) {
 			prettyNode(buf, it.expr, indent)
 			buf.WriteString(")")
 		}
-		if n.elseBody != nil {
+		if n.body != nil {
+			buf.WriteString(" (body ")
+			prettyNode(buf, n.body, indent)
+			buf.WriteString(")")
+		}
+		for i := range n.elseBranches {
+			eb := &n.elseBranches[i]
 			buf.WriteString(" (else ")
-			prettyNode(buf, n.elseBody, indent)
+			prettyNode(buf, eb.pattern, indent)
+			buf.WriteString(" ")
+			prettyNode(buf, eb.body, indent)
 			buf.WriteString(")")
 		}
 		buf.WriteString(")")
@@ -231,7 +255,7 @@ func prettyStmt(buf *bytes.Buffer, s Stmt, indent int) {
 	case *exprStmt:
 		prettyNode(buf, n.expr, indent)
 	case *localFnDecl:
-		buf.WriteString("(local-fn")
+		buf.WriteString("(local-fn " + n.name)
 		for i := range n.clauses {
 			cl := &n.clauses[i]
 			buf.WriteString(" (clause")

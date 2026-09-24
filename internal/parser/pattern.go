@@ -36,9 +36,22 @@ func (p *parser) parsePatternAtom() (ast.Pattern, error) {
 	case lexer.LOWER_IDENT:
 		p.advance()
 		return ast.NewIdentPat(t.Lit, t.Line, t.Col), nil
-	case lexer.INT, lexer.FLOAT, lexer.STRING, lexer.BYTES, lexer.REGEX, lexer.DECIMAL, lexer.ATOM:
+	case lexer.INT, lexer.FLOAT, lexer.ATOM:
+		// ATOM уже содержит ведущий ':' — храним как есть.
 		p.advance()
 		return ast.NewLiteralPat(t.Lit, t.Line, t.Col), nil
+	case lexer.STRING:
+		p.advance()
+		return ast.NewLiteralPat("\""+t.Lit+"\"", t.Line, t.Col), nil
+	case lexer.BYTES:
+		p.advance()
+		return ast.NewLiteralPat("b\""+t.Lit+"\"", t.Line, t.Col), nil
+	case lexer.REGEX:
+		p.advance()
+		return ast.NewLiteralPat("rx\""+t.Lit+"\"", t.Line, t.Col), nil
+	case lexer.DECIMAL:
+		p.advance()
+		return ast.NewLiteralPat("dec\""+t.Lit+"\"", t.Line, t.Col), nil
 	case lexer.KW_TRUE, lexer.KW_FALSE:
 		p.advance()
 		return ast.NewLiteralPat(t.Lit, t.Line, t.Col), nil

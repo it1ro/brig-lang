@@ -26,13 +26,13 @@ func (e *exprStmt) IsExpression() bool { return false }
 func (e *exprStmt) IsStatement() bool  { return true }
 func (e *exprStmt) String() string     { return e.expr.String() }
 
-// localFnDecl — локальная функция (одна или несколько клауз).
+// localFnDecl — локальная функция (одна или несколько клауз одного имени).
 type localFnDecl struct {
 	posEnd
+	name    string
 	clauses []localFnClause
 }
 
-// localFnClause — один клоз локальной fn.
 type localFnClause struct {
 	posEnd
 	guard  string
@@ -43,12 +43,10 @@ type localFnClause struct {
 func (e *localFnDecl) IsExpression() bool { return false }
 func (e *localFnDecl) IsStatement() bool  { return true }
 func (e *localFnDecl) String() string {
-	return fmt.Sprintf("local fn with %d clauses", len(e.clauses))
+	return fmt.Sprintf("local fn %s with %d clauses", e.name, len(e.clauses))
 }
 
-// BlockStmt — блок стейтментов (INDENT ... DEDENT).
-// Реализует и Expr, и Stmt: используется как тело if/match/fn/recv/trap
-// и как RHS в let_bind (где грамматика допускает expr).
+// BlockStmt — блок стейтментов.
 type BlockStmt struct {
 	posEnd
 	stmts []Stmt
@@ -60,10 +58,8 @@ func (e *BlockStmt) String() string {
 	return fmt.Sprintf("block(%d stmts)", len(e.stmts))
 }
 
-// Stmts — доступ к содержимому блока.
 func (e *BlockStmt) Stmts() []Stmt { return e.stmts }
 
-// join — склейка строк через разделитель.
 func join(ss []string, sep string) string {
 	if len(ss) == 0 {
 		return ""

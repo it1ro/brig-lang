@@ -1,11 +1,9 @@
 package ast
 
 // Equal — структурное равенство двух узлов AST.
-// Используется в golden-тестах и round-trip проверках.
 //
-// Реализация сравнивает конкретные типы и известные поля напрямую,
-// не рекурсируя через интерфейс Node. Для узлов, не покрытых явно,
-// используется запасная проверка Pos/End/String.
+// Pos/End сознательно НЕ сравниваются: они отражают исходный текст и
+// меняются при форматировании. Round-trip проверяет структуру, а не позиции.
 func Equal(a, b Node) bool {
 	if a == nil || b == nil {
 		return a == b
@@ -17,14 +15,26 @@ func equalNodes(a, b Node) bool {
 	if a == nil || b == nil {
 		return a == b
 	}
-	if a.Pos() != b.Pos() || a.End() != b.End() {
-		return false
-	}
-	if a.String() != b.String() {
-		return false
-	}
-
 	switch x := a.(type) {
+	case *Program:
+		y, ok := b.(*Program)
+		if !ok || x.Module != y.Module ||
+			len(x.Decls) != len(y.Decls) ||
+			len(x.Stmts) != len(y.Stmts) {
+			return false
+		}
+		for i := range x.Decls {
+			if !equalNodes(x.Decls[i], y.Decls[i]) {
+				return false
+			}
+		}
+		for i := range x.Stmts {
+			if !equalNodes(x.Stmts[i], y.Stmts[i]) {
+				return false
+			}
+		}
+		return true
+
 	// ---- Expressions ----
 
 	case *binaryExpr:
@@ -32,56 +42,35 @@ func equalNodes(a, b Node) bool {
 		if !ok || x.op != y.op {
 			return false
 		}
-		if x.left.Pos() != y.left.Pos() || x.left.End() != y.left.End() {
-			return false
-		}
-		return x.right.Pos() == y.right.Pos() && x.right.End() == y.right.End()
+		return equalNodes(x.left, y.left) && equalNodes(x.right, y.right)
 
 	case *unaryExpr:
 		y, ok := b.(*unaryExpr)
-		if !ok || x.op != y.op {
-			return false
-		}
-		return x.expr.Pos() == y.expr.Pos() && x.expr.End() == y.expr.End()
+		return ok && x.op == y.op && equalNodes(x.expr, y.expr)
 
 	case *groupingExpr:
 		y, ok := b.(*groupingExpr)
-		if !ok {
-			return false
-		}
-		return x.expr.Pos() == y.expr.Pos() && x.expr.End() == y.expr.End()
+		return ok && equalNodes(x.expr, y.expr)
 
 	case *literalExpr:
 		y, ok := b.(*literalExpr)
-		if !ok {
-			return false
-		}
-		return x.value == y.value
+		return ok && x.value == y.value
 
 	case *variableExpr:
 		y, ok := b.(*variableExpr)
-		if !ok {
-			return false
-		}
-		return x.name == y.name
+		return ok && x.name == y.name
 
 	case *assignExpr:
 		y, ok := b.(*assignExpr)
-		if !ok || x.name != y.name {
-			return false
-		}
-		return x.value.Pos() == y.value.Pos() && x.value.End() == y.value.End()
+		return ok && x.name == y.name && equalNodes(x.value, y.value)
 
 	case *callExpr:
 		y, ok := b.(*callExpr)
-		if !ok || len(x.args) != len(y.args) {
-			return false
-		}
-		if x.callee.Pos() != y.callee.Pos() || x.callee.End() != y.callee.End() {
+		if !ok || !equalNodes(x.callee, y.callee) || len(x.args) != len(y.args) {
 			return false
 		}
 		for i := range x.args {
-			if x.args[i].Pos() != y.args[i].Pos() || x.args[i].End() != y.args[i].End() {
+			if !equalNodes(x.args[i], y.args[i]) {
 				return false
 			}
 		}
@@ -89,17 +78,13 @@ func equalNodes(a, b Node) bool {
 
 	case *pipeExpr:
 		y, ok := b.(*pipeExpr)
-		if !ok || len(x.args) != len(y.args) {
-			return false
-		}
-		if x.expr.Pos() != y.expr.Pos() || x.expr.End() != y.expr.End() {
-			return false
-		}
-		if x.callee.Pos() != y.callee.Pos() || x.callee.End() != y.callee.End() {
+		if !ok || !equalNodes(x.expr, y.expr) ||
+			!equalNodes(x.callee, y.callee) ||
+			len(x.args) != len(y.args) {
 			return false
 		}
 		for i := range x.args {
-			if x.args[i].Pos() != y.args[i].Pos() || x.args[i].End() != y.args[i].End() {
+			if !equalNodes(x.args[i], y.args[i]) {
 				return false
 			}
 		}
@@ -107,70 +92,38 @@ func equalNodes(a, b Node) bool {
 
 	case *memberExpr:
 		y, ok := b.(*memberExpr)
-		if !ok || x.name != y.name {
-			return false
-		}
-		return x.obj.Pos() == y.obj.Pos() && x.obj.End() == y.obj.End()
+		return ok && x.name == y.name && equalNodes(x.obj, y.obj)
 
 	case *indexExpr:
 		y, ok := b.(*indexExpr)
-		if !ok {
-			return false
-		}
-		if x.obj.Pos() != y.obj.Pos() || x.obj.End() != y.obj.End() {
-			return false
-		}
-		return x.index.Pos() == y.index.Pos() && x.index.End() == y.index.End()
+		return ok && equalNodes(x.obj, y.obj) && equalNodes(x.index, y.index)
 
 	case *ifExpr:
 		y, ok := b.(*ifExpr)
 		if !ok || len(x.elseIf) != len(y.elseIf) {
 			return false
 		}
-		if x.cond.Pos() != y.cond.Pos() || x.cond.End() != y.cond.End() {
-			return false
-		}
-		if x.thenBody.Pos() != y.thenBody.Pos() || x.thenBody.End() != y.thenBody.End() {
+		if !equalNodes(x.cond, y.cond) || !equalNodes(x.thenBody, y.thenBody) {
 			return false
 		}
 		for i := range x.elseIf {
-			xe := &x.elseIf[i]
-			ye := &y.elseIf[i]
-			if xe.cond.Pos() != ye.cond.Pos() || xe.cond.End() != ye.cond.End() {
-				return false
-			}
-			if xe.thenBody.Pos() != ye.thenBody.Pos() || xe.thenBody.End() != ye.thenBody.End() {
-				return false
-			}
-			if xe.elseBody.Pos() != ye.elseBody.Pos() || xe.elseBody.End() != ye.elseBody.End() {
+			if !equalNodes(&x.elseIf[i], &y.elseIf[i]) {
 				return false
 			}
 		}
-		switch {
-		case x.elseBody == nil && y.elseBody == nil:
-			return true
-		case x.elseBody == nil || y.elseBody == nil:
-			return false
-		default:
-			return x.elseBody.Pos() == y.elseBody.Pos() &&
-				x.elseBody.End() == y.elseBody.End()
-		}
+		return equalOptionalExpr(x.elseBody, y.elseBody)
 
 	case *matchExpr:
 		y, ok := b.(*matchExpr)
 		if !ok || len(x.branches) != len(y.branches) {
 			return false
 		}
-		if x.expr.Pos() != y.expr.Pos() || x.expr.End() != y.expr.End() {
+		if !equalNodes(x.expr, y.expr) {
 			return false
 		}
 		for i := range x.branches {
-			xb := &x.branches[i]
-			yb := &y.branches[i]
-			if xb.pattern.Pos() != yb.pattern.Pos() || xb.pattern.End() != yb.pattern.End() {
-				return false
-			}
-			if xb.expr.Pos() != yb.expr.Pos() || xb.expr.End() != yb.expr.End() {
+			if !equalNodes(x.branches[i].pattern, y.branches[i].pattern) ||
+				!equalNodes(x.branches[i].expr, y.branches[i].expr) {
 				return false
 			}
 		}
@@ -182,36 +135,51 @@ func equalNodes(a, b Node) bool {
 			return false
 		}
 		for i := range x.branches {
-			xb := &x.branches[i]
-			yb := &y.branches[i]
-			if xb.pattern.Pos() != yb.pattern.Pos() || xb.pattern.End() != yb.pattern.End() {
-				return false
-			}
-			if xb.expr.Pos() != yb.expr.Pos() || xb.expr.End() != yb.expr.End() {
+			if !equalNodes(x.branches[i].pattern, y.branches[i].pattern) ||
+				!equalNodes(x.branches[i].expr, y.branches[i].expr) {
 				return false
 			}
 		}
+		if x.elseName != y.elseName {
+			return false
+		}
 		if !equalOptionalExpr(x.elseBody, y.elseBody) {
+			return false
+		}
+		if !equalOptionalExpr(x.afterTime, y.afterTime) {
 			return false
 		}
 		return equalOptionalExpr(x.afterBody, y.afterBody)
 
 	case *withExpr:
 		y, ok := b.(*withExpr)
-		if !ok || len(x.items) != len(y.items) {
+		if !ok || len(x.items) != len(y.items) ||
+			len(x.elseBranches) != len(y.elseBranches) {
 			return false
 		}
 		for i := range x.items {
-			xi := &x.items[i]
-			yi := &y.items[i]
-			if xi.pattern.Pos() != yi.pattern.Pos() || xi.pattern.End() != yi.pattern.End() {
-				return false
-			}
-			if xi.expr.Pos() != yi.expr.Pos() || xi.expr.End() != yi.expr.End() {
+			if !equalNodes(x.items[i].pattern, y.items[i].pattern) ||
+				!equalNodes(x.items[i].expr, y.items[i].expr) {
 				return false
 			}
 		}
-		return equalOptionalExpr(x.elseBody, y.elseBody)
+		switch {
+		case x.body == nil && y.body == nil:
+			// ok
+		case x.body == nil || y.body == nil:
+			return false
+		default:
+			if !equalNodes(x.body, y.body) {
+				return false
+			}
+		}
+		for i := range x.elseBranches {
+			if !equalNodes(x.elseBranches[i].pattern, y.elseBranches[i].pattern) ||
+				!equalNodes(x.elseBranches[i].body, y.elseBranches[i].body) {
+				return false
+			}
+		}
+		return true
 
 	case *trapExpr:
 		y, ok := b.(*trapExpr)
@@ -227,15 +195,12 @@ func equalNodes(a, b Node) bool {
 		case x.body == nil || y.body == nil:
 			return false
 		default:
-			if x.body.stmt.Pos() != y.body.stmt.Pos() ||
-				x.body.stmt.End() != y.body.stmt.End() {
+			if !equalNodes(x.body.stmt, y.body.stmt) {
 				return false
 			}
 		}
 		for i := range x.ensures {
-			xe := &x.ensures[i]
-			ye := &y.ensures[i]
-			if xe.expr.Pos() != ye.expr.Pos() || xe.expr.End() != ye.expr.End() {
+			if !equalNodes(x.ensures[i].expr, y.ensures[i].expr) {
 				return false
 			}
 		}
@@ -243,10 +208,7 @@ func equalNodes(a, b Node) bool {
 
 	case *lambdaShortExpr:
 		y, ok := b.(*lambdaShortExpr)
-		if !ok || x.param != y.param {
-			return false
-		}
-		return x.body.Pos() == y.body.Pos() && x.body.End() == y.body.End()
+		return ok && x.param == y.param && equalNodes(x.body, y.body)
 
 	case *lambdaFullExpr:
 		y, ok := b.(*lambdaFullExpr)
@@ -264,76 +226,46 @@ func equalNodes(a, b Node) bool {
 		case x.body == nil || y.body == nil:
 			return false
 		default:
-			return x.body.Pos() == y.body.Pos() && x.body.End() == y.body.End()
+			return equalNodes(x.body, y.body)
 		}
 
 	case *lambdaEmptyExpr:
 		y, ok := b.(*lambdaEmptyExpr)
-		if !ok {
-			return false
-		}
-		return x.body.Pos() == y.body.Pos() && x.body.End() == y.body.End()
+		return ok && equalNodes(x.body, y.body)
 
 	case *rangeExpr:
 		y, ok := b.(*rangeExpr)
-		if !ok {
-			return false
-		}
-		if x.start.Pos() != y.start.Pos() || x.start.End() != y.start.End() {
-			return false
-		}
-		return x.end.Pos() == y.end.Pos() && x.end.End() == y.end.End()
+		return ok && equalNodes(x.start, y.start) && equalNodes(x.end, y.end)
 
 	case *decimalExpr:
 		y, ok := b.(*decimalExpr)
-		if !ok {
-			return false
-		}
-		return x.value == y.value
+		return ok && x.value == y.value
 
 	case *bytesExpr:
 		y, ok := b.(*bytesExpr)
-		if !ok {
-			return false
-		}
-		return x.value == y.value
+		return ok && x.value == y.value
 
 	case *regexExpr:
 		y, ok := b.(*regexExpr)
-		if !ok {
-			return false
-		}
-		return x.value == y.value
+		return ok && x.value == y.value
 
 	case *atomExpr:
 		y, ok := b.(*atomExpr)
-		if !ok {
-			return false
-		}
-		return x.ident == y.ident
+		return ok && x.ident == y.ident
 
 	// ---- Statements ----
 
 	case *letBind:
 		y, ok := b.(*letBind)
-		if !ok {
-			return false
-		}
-		if x.pattern.Pos() != y.pattern.Pos() || x.pattern.End() != y.pattern.End() {
-			return false
-		}
-		return x.value.Pos() == y.value.Pos() && x.value.End() == y.value.End()
+		return ok && equalNodes(x.pattern, y.pattern) && equalNodes(x.value, y.value)
 
 	case *exprStmt:
 		y, ok := b.(*exprStmt)
-		if !ok {
-			return false
-		}
-		return x.expr.Pos() == y.expr.Pos() && x.expr.End() == y.expr.End()
+		return ok && equalNodes(x.expr, y.expr)
 
 	case *localFnDecl:
 		y, ok := b.(*localFnDecl)
-		if !ok || len(x.clauses) != len(y.clauses) {
+		if !ok || x.name != y.name || len(x.clauses) != len(y.clauses) {
 			return false
 		}
 		for i := range x.clauses {
@@ -342,13 +274,21 @@ func equalNodes(a, b Node) bool {
 			if xc.guard != yc.guard {
 				return false
 			}
+			if len(xc.params) != len(yc.params) {
+				return false
+			}
+			for j := range xc.params {
+				if xc.params[j] != yc.params[j] {
+					return false
+				}
+			}
 			switch {
 			case xc.body == nil && yc.body == nil:
 				// ok
 			case xc.body == nil || yc.body == nil:
 				return false
 			default:
-				if xc.body.Pos() != yc.body.Pos() || xc.body.End() != yc.body.End() {
+				if !equalNodes(xc.body, yc.body) {
 					return false
 				}
 			}
@@ -361,8 +301,7 @@ func equalNodes(a, b Node) bool {
 			return false
 		}
 		for i := range x.stmts {
-			if x.stmts[i].Pos() != y.stmts[i].Pos() ||
-				x.stmts[i].End() != y.stmts[i].End() {
+			if !equalNodes(x.stmts[i], y.stmts[i]) {
 				return false
 			}
 		}
@@ -388,8 +327,7 @@ func equalNodes(a, b Node) bool {
 			return false
 		}
 		for i := range x.fields {
-			if x.fields[i].pattern.Pos() != y.fields[i].pattern.Pos() ||
-				x.fields[i].pattern.End() != y.fields[i].pattern.End() {
+			if !equalNodes(x.fields[i].pattern, y.fields[i].pattern) {
 				return false
 			}
 		}
@@ -397,10 +335,7 @@ func equalNodes(a, b Node) bool {
 
 	case *asPat:
 		y, ok := b.(*asPat)
-		if !ok || x.ident != y.ident {
-			return false
-		}
-		return x.pattern.Pos() == y.pattern.Pos() && x.pattern.End() == y.pattern.End()
+		return ok && x.ident == y.ident && equalNodes(x.pattern, y.pattern)
 
 	case *tuplePattern:
 		y, ok := b.(*tuplePattern)
@@ -408,8 +343,7 @@ func equalNodes(a, b Node) bool {
 			return false
 		}
 		for i := range x.patterns {
-			if x.patterns[i].Pos() != y.patterns[i].Pos() ||
-				x.patterns[i].End() != y.patterns[i].End() {
+			if !equalNodes(x.patterns[i], y.patterns[i]) {
 				return false
 			}
 		}
@@ -422,8 +356,7 @@ func equalNodes(a, b Node) bool {
 			return false
 		}
 		for i := range x.patterns {
-			if x.patterns[i].Pos() != y.patterns[i].Pos() ||
-				x.patterns[i].End() != y.patterns[i].End() {
+			if !equalNodes(x.patterns[i], y.patterns[i]) {
 				return false
 			}
 		}
@@ -435,12 +368,8 @@ func equalNodes(a, b Node) bool {
 			return false
 		}
 		for i := range x.pairs {
-			if x.pairs[i].key.Pos() != y.pairs[i].key.Pos() ||
-				x.pairs[i].key.End() != y.pairs[i].key.End() {
-				return false
-			}
-			if x.pairs[i].pat.Pos() != y.pairs[i].pat.Pos() ||
-				x.pairs[i].pat.End() != y.pairs[i].pat.End() {
+			if !equalNodes(x.pairs[i].key, y.pairs[i].key) ||
+				!equalNodes(x.pairs[i].pat, y.pairs[i].pat) {
 				return false
 			}
 		}
@@ -452,24 +381,195 @@ func equalNodes(a, b Node) bool {
 			return false
 		}
 		for i := range x.fields {
-			if x.fields[i].name != y.fields[i].name {
-				return false
-			}
-			if x.fields[i].pat.Pos() != y.fields[i].pat.Pos() ||
-				x.fields[i].pat.End() != y.fields[i].pat.End() {
+			if x.fields[i].name != y.fields[i].name ||
+				!equalNodes(x.fields[i].pat, y.fields[i].pat) {
 				return false
 			}
 		}
 		return true
-	}
 
-	// Запасная проверка для типов и деклараций, у которых Pos/End/String
-	// уже совпали выше: считаем равными (детальный разбор полей — на уровне
-	// конкретных кейсов при необходимости).
-	return true
+	// ---- Types ----
+
+	case *intType:
+		_, ok := b.(*intType)
+		return ok
+	case *floatType:
+		_, ok := b.(*floatType)
+		return ok
+	case *decimalType:
+		_, ok := b.(*decimalType)
+		return ok
+	case *boolType:
+		_, ok := b.(*boolType)
+		return ok
+	case *strType:
+		_, ok := b.(*strType)
+		return ok
+	case *atomType:
+		_, ok := b.(*atomType)
+		return ok
+	case *unitType:
+		_, ok := b.(*unitType)
+		return ok
+	case *rangeType:
+		_, ok := b.(*rangeType)
+		return ok
+	case *pidType:
+		_, ok := b.(*pidType)
+		return ok
+	case *refType:
+		_, ok := b.(*refType)
+		return ok
+
+	case *functionType:
+		y, ok := b.(*functionType)
+		if !ok || len(x.params) != len(y.params) {
+			return false
+		}
+		for i := range x.params {
+			if !equalNodes(x.params[i], y.params[i]) {
+				return false
+			}
+		}
+		return equalNodes(x.result, y.result)
+
+	case *listType:
+		y, ok := b.(*listType)
+		return ok && equalNodes(x.element, y.element)
+	case *vectorType:
+		y, ok := b.(*vectorType)
+		return ok && equalNodes(x.element, y.element)
+	case *setType:
+		y, ok := b.(*setType)
+		return ok && equalNodes(x.element, y.element)
+	case *mapType:
+		y, ok := b.(*mapType)
+		return ok && equalNodes(x.key, y.key) && equalNodes(x.value, y.value)
+	case *tupleType:
+		y, ok := b.(*tupleType)
+		if !ok || len(x.fields) != len(y.fields) {
+			return false
+		}
+		for i := range x.fields {
+			if !equalNodes(x.fields[i], y.fields[i]) {
+				return false
+			}
+		}
+		return true
+	case *optionType:
+		y, ok := b.(*optionType)
+		return ok && equalNodes(x.element, y.element)
+	case *resultType:
+		y, ok := b.(*resultType)
+		return ok && equalNodes(x.ok, y.ok) && equalNodes(x.err, y.err)
+
+	case *nominalType:
+		y, ok := b.(*nominalType)
+		if !ok || x.name != y.name || len(x.fields) != len(y.fields) {
+			return false
+		}
+		for i := range x.fields {
+			if x.fields[i].name != y.fields[i].name ||
+				!equalNodes(x.fields[i].type_, y.fields[i].type_) {
+				return false
+			}
+		}
+		return true
+
+	case *anonymousType:
+		y, ok := b.(*anonymousType)
+		if !ok || len(x.fields) != len(y.fields) {
+			return false
+		}
+		for i := range x.fields {
+			if x.fields[i].name != y.fields[i].name ||
+				!equalNodes(x.fields[i].type_, y.fields[i].type_) {
+				return false
+			}
+		}
+		return true
+
+	// ---- Declarations ----
+
+	case *importDecl:
+		y, ok := b.(*importDecl)
+		return ok && x.module == y.module
+	case *aliasDecl:
+		y, ok := b.(*aliasDecl)
+		return ok && x.original == y.original && x.alias == y.alias
+	case *typeDecl:
+		y, ok := b.(*typeDecl)
+		if !ok || x.name != y.name || len(x.generic) != len(y.generic) ||
+			len(x.variants) != len(y.variants) {
+			return false
+		}
+		for i := range x.generic {
+			if x.generic[i] != y.generic[i] {
+				return false
+			}
+		}
+		for i := range x.variants {
+			xv := &x.variants[i]
+			yv := &y.variants[i]
+			if xv.name != yv.name || len(xv.fields) != len(yv.fields) {
+				return false
+			}
+			for j := range xv.fields {
+				if !equalNodes(xv.fields[j].type_, yv.fields[j].type_) {
+					return false
+				}
+			}
+		}
+		switch {
+		case x.record == nil && y.record == nil:
+			// ok
+		case x.record == nil || y.record == nil:
+			return false
+		default:
+			if len(x.record.fields) != len(y.record.fields) {
+				return false
+			}
+			for i := range x.record.fields {
+				if x.record.fields[i].name != y.record.fields[i].name ||
+					!equalNodes(x.record.fields[i].type_, y.record.fields[i].type_) {
+					return false
+				}
+			}
+		}
+		return equalOptionalType(x.alias, y.alias)
+
+	case *funcDecl:
+		y, ok := b.(*funcDecl)
+		if !ok || x.name != y.name || len(x.clauses) != len(y.clauses) {
+			return false
+		}
+		for i := range x.clauses {
+			xc := &x.clauses[i]
+			yc := &y.clauses[i]
+			if xc.guard != yc.guard || len(xc.params) != len(yc.params) {
+				return false
+			}
+			for j := range xc.params {
+				if xc.params[j] != yc.params[j] {
+					return false
+				}
+			}
+			switch {
+			case xc.body == nil && yc.body == nil:
+				// ok
+			case xc.body == nil || yc.body == nil:
+				return false
+			default:
+				if !equalNodes(xc.body, yc.body) {
+					return false
+				}
+			}
+		}
+		return true
+	}
+	return false
 }
 
-// equalOptionalExpr — равенство двух Expr с учётом nil.
 func equalOptionalExpr(a, b Expr) bool {
 	switch {
 	case a == nil && b == nil:
@@ -477,6 +577,17 @@ func equalOptionalExpr(a, b Expr) bool {
 	case a == nil || b == nil:
 		return false
 	default:
-		return a.Pos() == b.Pos() && a.End() == b.End()
+		return equalNodes(a, b)
+	}
+}
+
+func equalOptionalType(a, b Type) bool {
+	switch {
+	case a == nil && b == nil:
+		return true
+	case a == nil || b == nil:
+		return false
+	default:
+		return equalNodes(a, b)
 	}
 }

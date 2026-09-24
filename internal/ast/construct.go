@@ -1,8 +1,5 @@
 package ast
 
-// Публичные конструкторы AST. Парсер (package parser) использует их,
-// потому что конкретные типы узлов неэкспортированы.
-
 // ---- Expressions ----
 
 func NewBinaryExpr(op string, left, right Expr, pos, end int) Expr {
@@ -79,12 +76,31 @@ type RecvBranchArg struct {
 	Body    Expr
 }
 
-func NewRecvExpr(branches []RecvBranchArg, elseBody, afterBody Expr, pos, end int) Expr {
+// RecvClauseArg — публичное представление клауз else/after у recv.
+//
+// Соответствует обновлённой структуре recvExpr: elseName + elseBody —
+// клауза else; afterTime + afterBody — клауза after. Поля с нулевым
+// значением означают отсутствие клаузы.
+type RecvClauseArg struct {
+	ElseName  string
+	ElseBody  Expr
+	AfterTime Expr
+	AfterBody Expr
+}
+
+func NewRecvExpr(branches []RecvBranchArg, clauses RecvClauseArg, pos, end int) Expr {
 	brs := make([]recvBranch, 0, len(branches))
 	for _, b := range branches {
 		brs = append(brs, recvBranch{pattern: b.Pattern, expr: b.Body})
 	}
-	return &recvExpr{posEnd{pos, end}, brs, elseBody, afterBody}
+	return &recvExpr{
+		posEnd{pos, end},
+		brs,
+		clauses.ElseName,
+		clauses.ElseBody,
+		clauses.AfterTime,
+		clauses.AfterBody,
+	}
 }
 
 // WithItemArg — публичное представление привязки with.
@@ -93,12 +109,26 @@ type WithItemArg struct {
 	Expr    Expr
 }
 
-func NewWithExpr(items []WithItemArg, elseBody Expr, pos, end int) Expr {
+// WithElseArg — публичное представление ветки with-else.
+type WithElseArg struct {
+	Pattern Pattern
+	Body    Expr
+}
+
+// NewWithExpr принимает тело with отдельным BlockStmt (может быть nil)
+// и список веток else.
+func NewWithExpr(items []WithItemArg, body *BlockStmt,
+	elseBranches []WithElseArg, pos, end int,
+) Expr {
 	its := make([]withItem, 0, len(items))
 	for _, it := range items {
 		its = append(its, withItem{pattern: it.Pattern, expr: it.Expr})
 	}
-	return &withExpr{posEnd{pos, end}, its, elseBody}
+	ebs := make([]withElseBranch, 0, len(elseBranches))
+	for _, eb := range elseBranches {
+		ebs = append(ebs, withElseBranch{pattern: eb.Pattern, body: eb.Body})
+	}
+	return &withExpr{posEnd{pos, end}, its, body, ebs}
 }
 
 // EnsureArg — публичное представление ensure-клаузы.
@@ -167,7 +197,8 @@ type LocalFnClauseArg struct {
 	Body   *BlockStmt
 }
 
-func NewLocalFnDecl(clauses []LocalFnClauseArg, pos, end int) Stmt {
+// NewLocalFnDecl принимает имя (используется форматтером) и клозы.
+func NewLocalFnDecl(name string, clauses []LocalFnClauseArg, pos, end int) Stmt {
 	cs := make([]localFnClause, 0, len(clauses))
 	for _, c := range clauses {
 		cs = append(cs, localFnClause{
@@ -176,7 +207,7 @@ func NewLocalFnDecl(clauses []LocalFnClauseArg, pos, end int) Stmt {
 			body:   c.Body,
 		})
 	}
-	return &localFnDecl{posEnd{pos, end}, cs}
+	return &localFnDecl{posEnd{pos, end}, name, cs}
 }
 
 func NewBlockStmt(stmts []Stmt, pos, end int) *BlockStmt {
@@ -197,7 +228,6 @@ func NewLiteralPat(value string, pos, end int) Pattern {
 	return &literalPat{posEnd{pos, end}, value}
 }
 
-// ConstructorPatArg — публичное представление аргумента конструктора.
 type ConstructorPatArg struct {
 	Pattern Pattern
 }
@@ -222,7 +252,6 @@ func NewListPattern(patterns []Pattern, hasRest bool, restName string, pos, end 
 	return &listPattern{posEnd{pos, end}, patterns, hasRest, restName}
 }
 
-// MapPairArg — публичное представление пары в map-паттерне.
 type MapPairArg struct {
 	Key Expr
 	Pat Pattern
@@ -236,7 +265,6 @@ func NewMapPattern(pairs []MapPairArg, pos, end int) Pattern {
 	return &mapPattern{posEnd{pos, end}, ps}
 }
 
-// FieldPatArg — публичное представление поля record-паттерна.
 type FieldPatArg struct {
 	Name string
 	Pat  Pattern
@@ -295,7 +323,6 @@ func NewResultType(ok, err Type, pos, end int) Type {
 	return &resultType{posEnd{pos, end}, ok, err}
 }
 
-// FieldTypeArg — публичное представление поля типа.
 type FieldTypeArg struct {
 	Name  string
 	Field Type
@@ -327,7 +354,6 @@ func NewAliasDecl(original, alias string, pos, end int) Decl {
 	return &aliasDecl{posEnd{pos, end}, original, alias}
 }
 
-// VariantArg — публичное представление варианта type-декларации.
 type VariantArg struct {
 	Name   string
 	Fields []Type
@@ -357,7 +383,6 @@ func NewAliasTypeDecl(name string, generic []string, target Type, pos, end int) 
 	return &typeDecl{posEnd{pos, end}, name, generic, nil, nil, target}
 }
 
-// FnClauseArg — публичное представление клоза fn.
 type FnClauseArg struct {
 	Guard  string
 	Params []string
@@ -372,7 +397,6 @@ func NewFuncDecl(name string, clauses []FnClauseArg, pos, end int) Decl {
 	return &funcDecl{posEnd{pos, end}, name, cs}
 }
 
-// itoa — маленький локализованный аналог strconv.Itoa.
 func itoa(i int) string {
 	if i == 0 {
 		return "0"

@@ -9,8 +9,7 @@ import (
 	"github.com/it1ro/brig-lang/internal/lexer"
 )
 
-// Mode выбирает диалект разбора: модуль (top-level только декларации)
-// или REPL (top-level let/expr, §9.3).
+// Mode выбирает диалект разбора: модуль или REPL (§9.3).
 type Mode int
 
 const (
@@ -18,14 +17,24 @@ const (
 	ModeRepl
 )
 
-// Parse — публичная точка входа: лексинг + парсинг.
+// Parse — совместимая обёртка: только проверка без возврата AST.
+// Для golden-тестов и round-trip используйте ParseProgram.
 func Parse(mode Mode, src string) error {
+	_, err := ParseProgram(mode, src)
+	return err
+}
+
+// ParseProgram — основной вход: лексинг + парсинг, возвращает AST.
+func ParseProgram(mode Mode, src string) (*ast.Program, error) {
 	toks, err := lexer.Lex(src)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	p := &parser{toks: toks, mode: mode}
-	return p.parse()
+	if mode == ModeRepl {
+		return p.parseRepl()
+	}
+	return p.parseModule()
 }
 
 // Error — ошибка парсинга с позицией (формат E.1).
@@ -91,7 +100,6 @@ func (p *parser) errf(format string, args ...any) error {
 	return &Error{Line: t.Line, Col: t.Col, Msg: fmt.Sprintf(format, args...)}
 }
 
-// skipNewlines пропускает подряд идущие NEWLINE.
 func (p *parser) skipNewlines() {
 	for p.at(lexer.NEWLINE) {
 		p.advance()
@@ -100,111 +108,90 @@ func (p *parser) skipNewlines() {
 
 // ---- entry ----
 
-func (p *parser) parse() error {
-	if p.mode == ModeRepl {
-		return p.parseRepl()
-	}
-	return p.parseModule()
-}
-
 // program ::= [ module_decl NEWLINE ] { NEWLINE decl } [ NEWLINE ] EOF
-func (p *parser) parseModule() error {
+func (p *parser) parseModule() (*ast.Program, error) {
+	prog := &ast.Program{}
 	p.skipNewlines()
 
-	// module_decl?
 	if p.at(lexer.KW_MODULE) {
-		if err := p.parseModuleDecl(); err != nil {
-			return err
+		p.advance()
+		name, err := p.scanModuleName()
+		if err != nil {
+			return nil, err
 		}
+		prog.Module = name
 		if _, err := p.expect(lexer.NEWLINE, "NEWLINE after module declaration"); err != nil {
-			return err
+			return nil, err
 		}
 	}
 
 	p.skipNewlines()
-
 	for !p.at(lexer.EOF) {
-		if err := p.parseTopDecl(); err != nil {
-			return err
+		d, err := p.parseTopDecl()
+		if err != nil {
+			return nil, err
 		}
+		prog.Decls = append(prog.Decls, d)
 		p.skipNewlines()
 	}
-	return nil
+	return prog, nil
 }
 
 // repl_line ::= import_decl | alias_decl | stmt
-func (p *parser) parseRepl() error {
+func (p *parser) parseRepl() (*ast.Program, error) {
+	prog := &ast.Program{}
 	p.skipNewlines()
 	if p.at(lexer.EOF) {
-		return nil
+		return prog, nil
 	}
 	if p.at(lexer.KW_IMPORT) {
-		_, err := p.parseImportDecl()
-		return err
+		d, err := p.parseImportDecl()
+		if err != nil {
+			return nil, err
+		}
+		prog.Decls = append(prog.Decls, d)
+		return prog, nil
 	}
 	if p.at(lexer.KW_ALIAS) {
-		_, err := p.parseAliasDecl()
-		return err
-	}
-	_, err := p.parseStmt()
-	return err
-}
-
-// module_decl ::= "module" ModuleName
-func (p *parser) parseModuleDecl() error {
-	if _, err := p.expect(lexer.KW_MODULE, "'module'"); err != nil {
-		return err
-	}
-	return p.parseModuleName()
-}
-
-// ModuleName ::= UPPER_IDENT { "." UPPER_IDENT }
-func (p *parser) parseModuleName() error {
-	if _, err := p.expect(lexer.UPPER_IDENT, "module name"); err != nil {
-		return err
-	}
-	for p.at(lexer.OP_DOT) {
-		p.advance()
-		if _, err := p.expect(lexer.UPPER_IDENT, "module segment"); err != nil {
-			return err
+		d, err := p.parseAliasDecl()
+		if err != nil {
+			return nil, err
 		}
+		prog.Decls = append(prog.Decls, d)
+		return prog, nil
 	}
-	return nil
+	s, err := p.parseStmt()
+	if err != nil {
+		return nil, err
+	}
+	prog.Stmts = append(prog.Stmts, s)
+	return prog, nil
 }
 
 // decl ::= import_decl | alias_decl | type_decl | fn_decl
-func (p *parser) parseTopDecl() error {
+func (p *parser) parseTopDecl() (ast.Decl, error) {
 	switch p.cur().Type {
 	case lexer.KW_IMPORT:
-		_, err := p.parseImportDecl()
-		return err
+		return p.parseImportDecl()
 	case lexer.KW_ALIAS:
-		_, err := p.parseAliasDecl()
-		return err
+		return p.parseAliasDecl()
 	case lexer.KW_TYPE:
-		_, err := p.parseTypeDecl()
-		return err
+		return p.parseTypeDecl()
 	case lexer.KW_FN:
-		_, err := p.parseFnDecl()
-		return err
+		return p.parseFnDecl()
 	}
-	return p.errf("module top-level allows only module/import/alias/type/fn, got %s", p.cur().Type)
+	return nil, p.errf("module top-level allows only module/import/alias/type/fn, got %s",
+		p.cur().Type)
 }
 
 // import_decl ::= "import" ModuleName
 func (p *parser) parseImportDecl() (ast.Decl, error) {
-	start := p.pos
 	kw, _ := p.expect(lexer.KW_IMPORT, "'import'")
-	if err := p.parseModuleName(); err != nil {
+	name, err := p.scanModuleName()
+	if err != nil {
 		return nil, err
 	}
-	// Собираем имя модуля из токенов.
-	parts := []string{}
-	for i := start + 1; i < p.pos; i++ {
-		parts = append(parts, p.toks[i].Lit)
-	}
-	name := joinDots(parts)
-	return ast.NewImportDecl(name, kw.Line, p.toks[p.pos-1].Col), nil
+	return ast.NewImportDecl(name, kw.Line, kw.Col), nil
 }
 
 // alias_decl ::= "alias" ModuleName "as" ModuleName

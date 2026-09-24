@@ -353,9 +353,14 @@ func (p *parser) parseArgs() ([]ast.Expr, error) {
 func (p *parser) parsePrimary() (ast.Expr, error) {
 	t := p.cur()
 	switch t.Type {
-	case lexer.INT, lexer.FLOAT, lexer.STRING:
+	case lexer.INT, lexer.FLOAT:
 		p.advance()
 		return ast.NewLiteralExpr(t.Lit, t.Line, t.Col), nil
+	case lexer.STRING:
+		p.advance()
+		// scanString возвращает тело без кавычек (A4.1); AST хранит
+		// канонический текст — с кавычками.
+		return ast.NewLiteralExpr("\""+t.Lit+"\"", t.Line, t.Col), nil
 	case lexer.BYTES:
 		p.advance()
 		return ast.NewBytesExpr(t.Lit, t.Line, t.Col), nil
@@ -367,7 +372,7 @@ func (p *parser) parsePrimary() (ast.Expr, error) {
 		return ast.NewDecimalExpr(t.Lit, t.Line, t.Col), nil
 	case lexer.ATOM:
 		p.advance()
-		return ast.NewAtomExpr(t.Lit, t.Line, t.Col), nil
+		return ast.NewAtomExpr(t.Lit[1:], t.Line, t.Col), nil
 	case lexer.KW_TRUE, lexer.KW_FALSE:
 		p.advance()
 		return ast.NewLiteralExpr(t.Lit, t.Line, t.Col), nil
@@ -770,12 +775,15 @@ func (p *parser) parseRecv() (ast.Expr, error) {
 	if _, err := p.expect(lexer.DEDENT, "DEDENT"); err != nil {
 		return nil, err
 	}
-	var elseBody, afterBody ast.Expr
+
+	var clauses ast.RecvClauseArg
 	if p.at(lexer.KW_ELSE) {
 		p.advance()
-		if _, err := p.expect(lexer.LOWER_IDENT, "binding after 'else'"); err != nil {
+		name, err := p.expect(lexer.LOWER_IDENT, "binding after 'else'")
+		if err != nil {
 			return nil, err
 		}
+		clauses.ElseName = name.Lit
 		if _, err := p.expect(lexer.NEWLINE, "NEWLINE"); err != nil {
 			return nil, err
 		}
@@ -789,13 +797,15 @@ func (p *parser) parseRecv() (ast.Expr, error) {
 		if _, err := p.expect(lexer.DEDENT, "DEDENT"); err != nil {
 			return nil, err
 		}
-		elseBody = ast.NewBlockStmt(stmts, p.cur().Line, p.cur().Col)
+		clauses.ElseBody = ast.NewBlockStmt(stmts, p.cur().Line, p.cur().Col)
 	}
 	if p.at(lexer.KW_AFTER) {
 		p.advance()
-		if _, err := p.parseExpr(); err != nil {
+		t, err := p.parseExpr()
+		if err != nil {
 			return nil, err
 		}
+		clauses.AfterTime = t
 		if _, err := p.expect(lexer.OP_ARROW, "'->'"); err != nil {
 			return nil, err
 		}
@@ -803,12 +813,12 @@ func (p *parser) parseRecv() (ast.Expr, error) {
 		if err != nil {
 			return nil, err
 		}
-		afterBody = b
+		clauses.AfterBody = b
 	}
-	return ast.NewRecvExpr(branches, elseBody, afterBody, start.Line, start.Col), nil
+	return ast.NewRecvExpr(branches, clauses, start.Line, start.Col), nil
 }
 
-// with_expr ::= "with" NEWLINE INDENT bind_stmt+ body_stmt+ DEDENT [ else ]
+// with_expr ::= "with" NEWLINE INDENT (bind_stmt | stmt)+ DEDENT [ with_else ]
 func (p *parser) parseWith() (ast.Expr, error) {
 	start := p.advance() // with
 	if _, err := p.expect(lexer.NEWLINE, "NEWLINE after with"); err != nil {
@@ -835,15 +845,17 @@ func (p *parser) parseWith() (ast.Expr, error) {
 		items = append(items, ast.WithItemArg{Pattern: pat, Expr: e})
 		p.skipNewlines()
 	}
-	// body_stmt+ — как единый блок (собираем оставшиеся стейтменты).
-	body, err := p.parseStmtList(lexer.DEDENT)
+	// body_stmt+ — оставшиеся стейтменты до DEDENT.
+	stmts, err := p.parseStmtList(lexer.DEDENT)
 	if err != nil {
 		return nil, err
 	}
 	if _, err := p.expect(lexer.DEDENT, "DEDENT"); err != nil {
 		return nil, err
 	}
-	var elseBlk ast.Expr
+	body := ast.NewBlockStmt(stmts, start.Line, start.Col)
+
+	var elseBranches []ast.WithElseArg
 	if p.at(lexer.KW_ELSE) {
 		p.advance()
 		if _, err := p.expect(lexer.NEWLINE, "NEWLINE"); err != nil {
@@ -852,17 +864,27 @@ func (p *parser) parseWith() (ast.Expr, error) {
 		if _, err := p.expect(lexer.INDENT, "INDENT"); err != nil {
 			return nil, err
 		}
-		stmts, err := p.parseStmtList(lexer.DEDENT)
-		if err != nil {
-			return nil, err
+		p.skipNewlines()
+		for !p.at(lexer.DEDENT) && !p.at(lexer.EOF) {
+			pat, err := p.parsePattern()
+			if err != nil {
+				return nil, err
+			}
+			if _, err := p.expect(lexer.OP_ARROW, "'->'"); err != nil {
+				return nil, err
+			}
+			b, err := p.parseBranchBody()
+			if err != nil {
+				return nil, err
+			}
+			elseBranches = append(elseBranches, ast.WithElseArg{Pattern: pat, Body: b})
+			p.skipNewlines()
 		}
 		if _, err := p.expect(lexer.DEDENT, "DEDENT"); err != nil {
 			return nil, err
 		}
-		elseBlk = ast.NewBlockStmt(stmts, p.cur().Line, p.cur().Col)
 	}
-	_ = body
-	return ast.NewWithExpr(items, elseBlk, start.Line, start.Col), nil
+	return ast.NewWithExpr(items, body, elseBranches, start.Line, start.Col), nil
 }
 
 // trap_expr ::= "trap" "(" expr ")"

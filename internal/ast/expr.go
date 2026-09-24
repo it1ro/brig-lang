@@ -6,9 +6,6 @@ import (
 )
 
 // binaryExpr — бинарное выражение (a op b).
-// op ∈ { "+", "-", "*", "/", "**", "to", "|>", "and", "or",
-//
-//	"==", "!=", "<", ">", "<=", ">=", "=>", ":" }
 type binaryExpr struct {
 	posEnd
 	op    string
@@ -22,10 +19,10 @@ func (e *binaryExpr) String() string {
 	return fmt.Sprintf("(%s %s %s)", e.left, e.op, e.right)
 }
 
-// unaryExpr — унарное выражение: -a, not a, ..xs (спред-как-унарный).
+// unaryExpr — унарное выражение: -a, not a, ..xs.
 type unaryExpr struct {
 	posEnd
-	op   string // "-", "not", ".."
+	op   string
 	expr Expr
 }
 
@@ -55,11 +52,9 @@ type literalExpr struct {
 
 func (e *literalExpr) IsExpression() bool { return true }
 func (e *literalExpr) IsStatement() bool  { return false }
-func (e *literalExpr) String() string {
-	return e.value
-}
+func (e *literalExpr) String() string     { return e.value }
 
-// variableExpr — переменная или имя конструктора (lower/Upper).
+// variableExpr — переменная или имя конструктора.
 type variableExpr struct {
 	posEnd
 	name string
@@ -67,13 +62,9 @@ type variableExpr struct {
 
 func (e *variableExpr) IsExpression() bool { return true }
 func (e *variableExpr) IsStatement() bool  { return false }
-func (e *variableExpr) String() string {
-	return e.name
-}
+func (e *variableExpr) String() string     { return e.name }
 
-// assignExpr — привязка (x = expr). Используется только внутри обёрток;
-// грамматически let_bind — стейтмент, но парсер может строить assignExpr
-// для REPL-строк и диагностики.
+// assignExpr — привязка (x = expr).
 type assignExpr struct {
 	posEnd
 	name  string
@@ -86,7 +77,7 @@ func (e *assignExpr) String() string {
 	return fmt.Sprintf("%s = %s", e.name, e.value)
 }
 
-// callExpr — вызов функции/конструктора: f(args).
+// callExpr — вызов функции/конструктора.
 type callExpr struct {
 	posEnd
 	callee Expr
@@ -132,7 +123,7 @@ func (e *pipeExpr) String() string {
 	return fmt.Sprintf("%s |> %s(%s)", e.expr, e.callee, argsToString(e.args))
 }
 
-// memberExpr — доступ к члену: obj.name (постфиксная форма .name).
+// memberExpr — доступ к члену: obj.name.
 type memberExpr struct {
 	posEnd
 	obj  Expr
@@ -141,11 +132,9 @@ type memberExpr struct {
 
 func (e *memberExpr) IsExpression() bool { return true }
 func (e *memberExpr) IsStatement() bool  { return false }
-func (e *memberExpr) String() string {
-	return fmt.Sprintf("%s.%s", e.obj, e.name)
-}
+func (e *memberExpr) String() string     { return fmt.Sprintf("%s.%s", e.obj, e.name) }
 
-// indexExpr — индексация: obj[idx] (постфиксная форма [expr]).
+// indexExpr — индексация: obj[idx].
 type indexExpr struct {
 	posEnd
 	obj   Expr
@@ -154,17 +143,15 @@ type indexExpr struct {
 
 func (e *indexExpr) IsExpression() bool { return true }
 func (e *indexExpr) IsStatement() bool  { return false }
-func (e *indexExpr) String() string {
-	return fmt.Sprintf("%s[%s]", e.obj, e.index)
-}
+func (e *indexExpr) String() string     { return fmt.Sprintf("%s[%s]", e.obj, e.index) }
 
-// ifExpr — if-выражение: блочная и однострочная формы (сводимы к одной структуре).
+// ifExpr — if-выражение.
 type ifExpr struct {
 	posEnd
 	cond     Expr
 	thenBody Expr
-	elseIf   []ifExpr // цепочка else-if (в грамматике не порождается, но оставлена)
-	elseBody Expr     // nil, если ветки else нет
+	elseIf   []ifExpr
+	elseBody Expr
 }
 
 func (e *ifExpr) IsExpression() bool { return true }
@@ -183,7 +170,6 @@ type matchExpr struct {
 	branches []matchBranch
 }
 
-// matchBranch — ветка match.
 type matchBranch struct {
 	pattern Pattern
 	expr    Expr
@@ -191,19 +177,25 @@ type matchBranch struct {
 
 func (e *matchExpr) IsExpression() bool { return true }
 func (e *matchExpr) IsStatement() bool  { return false }
-func (e *matchExpr) String() string {
-	return fmt.Sprintf("(match %s ...)", e.expr)
-}
+func (e *matchExpr) String() string     { return fmt.Sprintf("(match %s ...)", e.expr) }
 
 // recvExpr — recv-выражение.
+//
+// Поля после рефакторинга:
+//
+//	elseName  — имя из "else <name>"; "" если клаузы нет;
+//	elseBody  — тело else (BlockStmt);
+//	afterTime — выражение таймаута в "after N ->"; nil если клаузы нет;
+//	afterBody — тело after.
 type recvExpr struct {
 	posEnd
 	branches  []recvBranch
-	elseBody  Expr // nil, если else отсутствует
-	afterBody Expr // nil, если after отсутствует
+	elseName  string
+	elseBody  Expr
+	afterTime Expr
+	afterBody Expr
 }
 
-// recvBranch — ветка recv.
 type recvBranch struct {
 	pattern Pattern
 	expr    Expr
@@ -212,42 +204,52 @@ type recvBranch struct {
 func (e *recvExpr) IsExpression() bool { return true }
 func (e *recvExpr) IsStatement() bool  { return false }
 func (e *recvExpr) String() string {
-	return "(recv ...)"
+	return fmt.Sprintf("(recv %d branches, else=%q, after=%v)",
+		len(e.branches), e.elseName, e.afterBody != nil)
 }
 
 // withExpr — with-выражение.
+//
+// Поля после рефакторинга:
+//
+//	items        — bind_stmt (pattern <- expr);
+//	body         — оставшиеся стейтменты тела (может быть nil);
+//	elseBranches — ветки with-else.
 type withExpr struct {
 	posEnd
-	items    []withItem
-	elseBody Expr // nil, если else отсутствует
+	items        []withItem
+	body         *BlockStmt
+	elseBranches []withElseBranch
 }
 
-// withItem — привязка with: pattern <- expr.
 type withItem struct {
 	pattern Pattern
 	expr    Expr
 }
 
+type withElseBranch struct {
+	pattern Pattern
+	body    Expr
+}
+
 func (e *withExpr) IsExpression() bool { return true }
 func (e *withExpr) IsStatement() bool  { return false }
 func (e *withExpr) String() string {
-	return "(with ...)"
+	return fmt.Sprintf("(with %d binds, else=%d)", len(e.items), len(e.elseBranches))
 }
 
 // trapExpr — trap-выражение: инлайн trap(expr) или блочная форма с ensure.
 type trapExpr struct {
 	posEnd
-	expr    Expr        // для trap(expr); nil для блочной формы
-	body    *bodyClause // для блочной формы; nil для trap(expr)
+	expr    Expr
+	body    *bodyClause
 	ensures []ensureClause
 }
 
-// bodyClause — тело блочного trap (единственный стейтмент).
 type bodyClause struct {
 	stmt Stmt
 }
 
-// ensureClause — клауза ensure (выражение).
 type ensureClause struct {
 	expr Expr
 }
@@ -324,9 +326,7 @@ type decimalExpr struct {
 
 func (e *decimalExpr) IsExpression() bool { return true }
 func (e *decimalExpr) IsStatement() bool  { return false }
-func (e *decimalExpr) String() string {
-	return fmt.Sprintf("dec\"%s\"", e.value)
-}
+func (e *decimalExpr) String() string     { return fmt.Sprintf("dec\"%s\"", e.value) }
 
 // bytesExpr — b"...".
 type bytesExpr struct {
@@ -336,9 +336,7 @@ type bytesExpr struct {
 
 func (e *bytesExpr) IsExpression() bool { return true }
 func (e *bytesExpr) IsStatement() bool  { return false }
-func (e *bytesExpr) String() string {
-	return fmt.Sprintf("b\"%s\"", e.value)
-}
+func (e *bytesExpr) String() string     { return fmt.Sprintf("b\"%s\"", e.value) }
 
 // regexExpr — rx"...".
 type regexExpr struct {
@@ -348,18 +346,14 @@ type regexExpr struct {
 
 func (e *regexExpr) IsExpression() bool { return true }
 func (e *regexExpr) IsStatement() bool  { return false }
-func (e *regexExpr) String() string {
-	return fmt.Sprintf("rx\"%s\"", e.value)
-}
+func (e *regexExpr) String() string     { return fmt.Sprintf("rx\"%s\"", e.value) }
 
 // atomExpr — :name, :ready?.
 type atomExpr struct {
 	posEnd
-	ident string // без ':' — "ok", "ready?"
+	ident string
 }
 
 func (e *atomExpr) IsExpression() bool { return true }
 func (e *atomExpr) IsStatement() bool  { return false }
-func (e *atomExpr) String() string {
-	return ":" + e.ident
-}
+func (e *atomExpr) String() string     { return ":" + e.ident }
