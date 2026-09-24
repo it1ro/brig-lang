@@ -3,9 +3,11 @@
 // ОСОЗНАННОЕ отступление от §15.1: первая машина стековая, не регистровая.
 // Трек α: добавлена поддержка замыканий (KindClosure, OpMakeClosure,
 // OpGetUpvalue, OpSetUpvalue). Capture-by-value на момент создания.
+// v0.4.7: поддержка trap / ensure (§10.2, §10.3).
 package vm
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"math/big"
@@ -25,6 +27,16 @@ type frame struct {
 	fn   *Function
 	ip   int
 	base int
+}
+
+// trapHandler — активный обработчик исключений одного trap.
+//
+// ip — адрес перехода при исключении; stackLen — длина операндного
+// стека, восстанавливаемая перед переходом (всё, что накопилось
+// внутри тела trap, отбрасывается).
+type trapHandler struct {
+	ip       int
+	stackLen int
 }
 
 // VM — стековый интерпретатор байткода.
@@ -126,7 +138,29 @@ func (vm *VM) run(fn Function, args, captures []runtime.Value) (runtime.Value, e
 		return int(code[ip+1])<<8 | int(code[ip+2])
 	}
 
+	// Стек активных trap-обработчиков этого кадра.
+	var handlers []trapHandler
+
 	ip := 0
+
+	// handleRaise — маршрутизация ErrRaise в ближайший активный handler.
+	// Возвращает true, если исключение поглощено (ip и stack обновлены).
+	handleRaise := func(err error) bool {
+		var rerr *ErrRaise
+		if !errors.As(err, &rerr) {
+			return false
+		}
+		if len(handlers) == 0 {
+			return false
+		}
+		h := handlers[len(handlers)-1]
+		handlers = handlers[:len(handlers)-1]
+		stack = stack[:h.stackLen]
+		push(rerr.Val)
+		ip = h.ip
+		return true
+	}
+
 	for ip < len(code) {
 		op := OpCode(code[ip])
 		switch op {
@@ -184,6 +218,9 @@ func (vm *VM) run(fn Function, args, captures []runtime.Value) (runtime.Value, e
 			a, _ := pop()
 			r, err := div(a, b)
 			if err != nil {
+				if handleRaise(err) {
+					continue
+				}
 				return runtime.Unit, err
 			}
 			push(r)
@@ -194,6 +231,9 @@ func (vm *VM) run(fn Function, args, captures []runtime.Value) (runtime.Value, e
 			a, _ := pop()
 			r, err := intDiv(a, b)
 			if err != nil {
+				if handleRaise(err) {
+					continue
+				}
 				return runtime.Unit, err
 			}
 			push(r)
@@ -204,6 +244,9 @@ func (vm *VM) run(fn Function, args, captures []runtime.Value) (runtime.Value, e
 			a, _ := pop()
 			r, err := rem(a, b)
 			if err != nil {
+				if handleRaise(err) {
+					continue
+				}
 				return runtime.Unit, err
 			}
 			push(r)
@@ -214,6 +257,9 @@ func (vm *VM) run(fn Function, args, captures []runtime.Value) (runtime.Value, e
 			a, _ := pop()
 			r, err := pow(a, b)
 			if err != nil {
+				if handleRaise(err) {
+					continue
+				}
 				return runtime.Unit, err
 			}
 			push(r)
@@ -355,6 +401,9 @@ func (vm *VM) run(fn Function, args, captures []runtime.Value) (runtime.Value, e
 			}
 			r, err := vm.Call(callee, callArgs)
 			if err != nil {
+				if handleRaise(err) {
+					continue
+				}
 				return runtime.Unit, err
 			}
 			push(r)
@@ -409,6 +458,9 @@ func (vm *VM) run(fn Function, args, captures []runtime.Value) (runtime.Value, e
 			if err != nil {
 				return runtime.Unit, err
 			}
+			if handleRaise(&ErrRaise{Val: v}) {
+				continue
+			}
 			return runtime.Unit, &ErrRaise{Val: v}
 
 		// ---- Трек α: замыкания ----
@@ -460,6 +512,39 @@ func (vm *VM) run(fn Function, args, captures []runtime.Value) (runtime.Value, e
 		case OpCloseUpvalue, OpDefineLocalFn:
 			return runtime.Unit,
 				fmt.Errorf("internal: opcode %s not yet implemented", op)
+
+		// ---- v0.4.7: trap / ensure (§10.2, §10.3) ----
+
+		case OpTrapBegin:
+			handlers = append(handlers, trapHandler{
+				ip:       operand(ip),
+				stackLen: len(stack),
+			})
+			ip += 3
+
+		case OpTrapEnd:
+			if len(handlers) == 0 {
+				return runtime.Unit,
+					fmt.Errorf("internal: TRAPEND without active handler in %s", fn.Name)
+			}
+			handlers = handlers[:len(handlers)-1]
+			ip++
+
+		case OpMakeOk:
+			v, err := pop()
+			if err != nil {
+				return runtime.Unit, err
+			}
+			push(runtime.Variant("Ok", v))
+			ip++
+
+		case OpMakeError:
+			v, err := pop()
+			if err != nil {
+				return runtime.Unit, err
+			}
+			push(runtime.Variant("Error", v))
+			ip++
 
 		default:
 			return runtime.Unit,
