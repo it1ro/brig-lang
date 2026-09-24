@@ -7,26 +7,32 @@
 ## Слои
 
 ```
-
 .brig source
 │
 ▼
-internal/lexer токены + offside NEWLINE/INDENT/DEDENT (A3, A5) ✅ этап 1
+internal/lexer    токены + offside NEWLINE/INDENT/DEDENT (A3, A5)  ✅ этап 1
 │
 ▼
-internal/parser recursive descent по brig.ebnf (A1, §16) ✅ этап 2
+internal/parser   recursive descent по brig.ebnf (A1, §16)         ✅ этап 2
 │
 ▼
-internal/ast узлы, visitor, равенство, pretty (A1) ✅ этап 3
+internal/ast      узлы, visitor, равенство, pretty (A1)            ✅ этап 3
 │
 ▼
-internal/... компилятор bytecode + VM (регистровая) (§13) ⏳
+internal/compiler AST → стековый байткод                           ✅ этап 4
 │
-├── internal/vm интерпретатор, TCO, ensure-кадры (§8.4)
-├── internal/runtime значения: Vec/Map/Set, term order (§2, §5.3)
-└── internal/prelude встроенные функции (§9.1)
-
+▼
+internal/vm       стековая ВМ, замыкания, локальные fn             ✅ этап 4
+│
+├── internal/runtime   значения: Vec/Map/Set, term order (§2, §5.3)
+├── internal/prelude   встроенные функции (§9.1)
+└── (регистровая VM — миграция после акторов, §15.1)
 ```
+
+> **Осознанное отступление от §15.1:** текущая ВМ стековая, не регистровая.
+> Это вертикальный срез для быстрого получения исполняемого пайплайна.
+> Миграция на регистровую (с дизассемблером `--dump-bytecode`) — отдельный
+> подэтап после стабилизации семантики.
 
 ## Поток сборки
 
@@ -34,7 +40,7 @@ internal/... компилятор bytecode + VM (регистровая) (§13) 
 | -------- | ----------------------------- | --------------------------------- |
 | lexer    | текст `.brig`                 | `[]Token` (NEWLINE/INDENT/DEDENT) |
 | parser   | `[]Token` + режим module/repl | AST (§9: top-level ограничения)   |
-| compiler | AST                           | bytecode (регистровый)            |
+| compiler | AST                           | стековый байткод (`vm.Chunk`)     |
 | vm       | bytecode                      | значение / raise                  |
 
 ## Режимы парсинга (§9)
@@ -44,29 +50,54 @@ internal/... компилятор bytecode + VM (регистровая) (§13) 
 - **repl**: top-level `let` и выражения (скилл `brig-cli`, §10.7: каждая
   строка — новая top-level область, замыкания — лексический снимок N12).
 
+## Граница сериализации (§14.8, §13.1)
+
+`runtime.Code` — маркерный интерфейс байткода. Объявлен в `runtime`,
+реализуется `*vm.Chunk`. Это даёт типобезопасность `FuncValue.Body`
+без циклического импорта `runtime → vm`.
+
+| Значение             | Сериализация | Альтернатива                     |
+| -------------------- | ------------ | -------------------------------- |
+| `Function`           | ❌           | MFA `{ module, function, args }` |
+| `Closure`            | ❌           | MFA `{ module, function, args }` |
+| `Pid`, `Ref`         | ❌           | —                                |
+| Примитивы, коллекции | ✅           | —                                |
+
+В shared-heap модели (§15.1) функции передаются по ссылке без
+сериализации. `Serialize()` вызывается при выходе за пределы общего хипа.
+
 ## Зависимость слоёв (снизу вверх)
 
 ```mermaid
 graph TD
     L[internal/lexer] --> P[internal/parser]
     P --> A[internal/ast]
+    A --> C[internal/compiler]
     A --> R[internal/runtime]
-    A --> V[internal/vm]
+    C --> V[internal/vm]
+    C --> R
+    V --> R
     V --> Pr[internal/prelude]
-    P --> CE[cmd/check-examples + tools/check-examples]
-    V --> C[cmd/brig]
+    P --> CE[cmd/check-examples]
+    V --> CMD[cmd/brig]
+
+    style R fill:#e1f5fe
+    style V fill:#fff3e0
+    style C fill:#fff3e0
 ```
 
 Пакеты ниже по списку никогда не импортируют вышестоящие (нет циклических
-зависимостей; `parser` не видит `vm`, `vm` не видит `cmd/*`).
+зависимостей; `parser` не видит `vm`, `vm` не видит `cmd/*`,
+`runtime` не видит `vm` — связь через `runtime.Code`).
 
 ## Тестовая инфраструктура
 
 - `make check-examples` — A2: все ` ```brig `-блоки дизайн-доков парсятся.
 - `testdata/{positive,negative,golden}` — позитивные/негативные кейсы и goldens
   (обновление — `make update-golden`, осознанное действие).
-- Фаззинг: `FuzzLex`, `FuzzParse` (вне CI, `make fuzz`, скилл `brig-test`).
-- Property-based: иммутабельность коллекций, offside round-trip, term order.
+- Фаззинг: `FuzzLex`, `FuzzParse`, `FuzzRoundTrip` (вне CI, `make fuzz`).
+- Regression-примеры: `examples/closure.brig`, `examples/mutual.brig`
+  (замыкания и взаимная рекурсия через `make run-examples`).
 
 ## Статус Трека B
 
@@ -74,4 +105,6 @@ graph TD
 - [x] этап 1: check-examples (A2, парсер-заглушка: offside + инварианты)
 - [x] этап 2: recursive descent парсер по `brig.ebnf`
 - [x] этап 3: AST + round-trip форматтер
-- [ ] этап 4: компилятор + VM, акторы, прелюдия
+- [x] этап 4: компилятор + стековая VM (вертикальный срез: замыкания,
+      локальные fn, взаимная рекурсия, лямбды)
+- [ ] этап 4: акторы, полная прелюдия, регистровая VM
