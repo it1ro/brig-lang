@@ -1,7 +1,7 @@
 // Package lexer implements the Brig tokenizer and offside (indent-based)
 // NEWLINE/INDENT/DEDENT generation.
 //
-// Spec: 01.1-brig-formalization.md — A3 (tokens), A5 (offside).
+// Spec: 01-language-design.md Part II F (Validation Stages) — A3 (tokens), A5 (offside).
 package lexer
 
 import "fmt"

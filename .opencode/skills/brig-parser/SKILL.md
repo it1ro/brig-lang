@@ -1,12 +1,12 @@
 ---
 name: brig-parser
-description: Use when working on the Brig parser: recursive descent from brig.ebnf, context checks (trap position, feature flags), or parse-time diagnostics. Spec: A1, A6 in 01.1-brig-formalization.md.
+description: Use when working on the Brig parser: recursive descent from brig.ebnf, context checks (trap position, feature flags), or parse-time diagnostics. Spec: Part II A.1, A6 in 01-language-design.md.
 ---
 
 # Парсер Brig
 
 Пакет `internal/parser/`. Исполнительная грамматика — `brig.ebnf` (**A1**);
-нормативный источник — §16 `01-language-design.md`. При расхождении правится
+нормативный источник — §16 Part II `01-language-design.md`. При расхождении правится
 §16, затем регенерируется `brig.ebnf` и парсер.
 
 ## Устройство

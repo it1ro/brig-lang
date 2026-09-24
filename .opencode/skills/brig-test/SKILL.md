@@ -56,8 +56,8 @@ AST, VM — свои скиллы). Разметка fenced-блоков в docs
 
 ## tools/check-examples (A2)
 
-**Цель:** прогнать fenced-блоки ` ```brig ` из `01-language-design.md` и
-`01.1-brig-formalization.md` через парсер; exit 0 — все распарсились.
+**Цель:** прогнать fenced-блоки ` ```brig ` из `01-language-design.md` (Part II G) и
+`01-language-design.md` через парсер; exit 0 — все распарсились.
 
 **Метки блока:**
 
@@ -216,9 +216,9 @@ go test ./internal/parser/ -run=^$ -fuzz=FuzzParse -fuzztime=60s
 
 ## Ссылки
 
-- `01.1-brig-formalization.md`:
+- `01-language-design.md` Part II:
     - **A2** — `check-examples`: метки блоков, эвристика, семантические проверки.
-- `01-language-design.md`: принципы #10 (примеры — валидный код),
+- `01-language-design.md`: принципы #10 (примеры — валидный код), Part II G:
   #13 (иммутабельность).
 - **B2** — удаление `fn -> expr`.
 - **B4** — запрет `Result[...]` в позиции типа.

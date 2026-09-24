@@ -1,5 +1,5 @@
 # Brig — референсный интерпретатор (Go)
-# Дизайн: docs/01-language-design.md; формализация: docs/01.1-brig-formalization.md.
+# Дизайн: docs/01-language-design.md
 
 GO      ?= go
 BIN     ?= bin
@@ -40,7 +40,7 @@ fmt:
 
 # Прогон всех brig-примеров из дизайн-доков через парсер-заглушку (A2).
 check-examples:
-	$(GO) run ./cmd/check-examples -- docs/01-language-design.md docs/01.1-brig-formalization.md
+	$(GO) run ./cmd/check-examples -- docs/01-language-design.md
 
 # Проверка соответствия brig.ebnf и §16 (A6): на данном этапе — дифф-предупреждение.
 ebnf-check:

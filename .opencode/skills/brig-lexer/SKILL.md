@@ -1,12 +1,12 @@
 ---
 name: brig-lexer
-description: Use when working on the Brig lexer — tokenization, offside NEWLINE/INDENT/DEDENT, escape validation, or lexer-level errors. Spec: A3 (tokens), A4 (escapes), A5 (offside) in 01.1-brig-formalization.md.
+description: Use when working on the Brig lexer — tokenization, offside NEWLINE/INDENT/DEDENT, escape validation, or lexer-level errors. Spec: Part II F (A3 tokens), A5 (offside) in 01-language-design.md.
 ---
 
 # Лексер Brig
 
 Пакет `internal/lexer/`. **Исполнительная спецификация — A3/A4/A5** в
-`01.1-brig-formalization.md`. Нормативные источники дизайна: §1 (синтаксис),
+`01-language-design.md`. Нормативные источники дизайна: §1 (синтаксис),
 §2.1–2.2 (литералы), §5.0 (приоритеты), §16 (грамматика). Этот скилл
 описывает инварианты и грабли пакета, а не дублирует A3/A4/A5.
 
@@ -174,11 +174,11 @@ surrogate в `\u{}`, `f(..)` без операнда.
 
 ## Ссылки
 
-- `01.1-brig-formalization.md`:
+- `01-language-design.md` Part II:
     - **A3** — токены (A3.1 список, A3.2 порядок, A3.3 особые случаи).
     - **A4** — escape (A4.1–A4.4, A4.5 UTF-8).
     - **A5** — offside (A5.2 стек, A5.4 бракетные модули).
-- `01-language-design.md`: §1, §2.1–2.2, §5.0, §16.
+- `01-language-design.md`: §1, §2.1–2.2, §5.0, §16, Part II F.
 - **КР-004** — зарезервированные слова и `?`-суффикс.
 - **КР-005** — одиночный `%` — ошибка.
 - **П-002** — валидация escape в лексере.

@@ -24,7 +24,7 @@ jobs:
       # Кэш: если brig.ebnf и дизайн-док не менялись — check-examples пропускается (A2).
       - name: check-examples
         run: |
-          go run ./cmd/check-examples -- docs/01-language-design.md docs/01.1-brig-formalization.md
+          go run ./cmd/check-examples -- docs/01-language-design.md
 
       - name: vet
         run: go vet ./...

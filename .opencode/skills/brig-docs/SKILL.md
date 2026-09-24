@@ -6,16 +6,16 @@ description: Use when editing Brig design documents, brig.ebnf, or keeping docs 
 # Документация Brig
 
 Источники истины: `01-language-design.md` (дизайн, §1–§16) и
-`01.1-brig-formalization.md` (Трек A: A1–A6). **§16 — нормативный источник
+Part II: A1–A6. **§16 — нормативный источник
 грамматики; `brig.ebnf` — исполнительный** (A1). Этот скилл описывает
 порядок правок, инварианты версионирования и грабли синхронизации — не
 дублирует содержание §16.
 
 ## Когда применять / не применять
 
-**Применять:** правки `01-language-design.md`, `01.1-brig-formalization.md`,
-`brig.ebnf`, любые fenced-блоки ` ```brig ` в документации, версионирование
-дизайна, `make check-examples` / `make ebnf-check`.
+**Применять:** правки `01-language-design.md`, `brig.ebnf`, любые fenced-блоки
+` ```brig ` в документации, версионирование дизайна, `make check-examples`
+/ `make ebnf-check`.
 
 **Не применять:** правки самого парсера, `tools/check-examples` (код), AST —
 для этого свои скиллы (`brig-ast`, `brig-cli`, ...). Здесь docs — только
@@ -118,7 +118,7 @@ make test             # парсер/VM не сломались
 | Файл                              | Роль                                                        |
 | --------------------------------- | ----------------------------------------------------------- |
 | `docs/01-language-design.md`      | Дизайн языка, §1–§16; §16 — нормативный источник грамматики |
-| `docs/01.1-brig-formalization.md` | Трек A: A1–A6 (EBNF, регенерация, check-examples)           |
+| `docs/01-language-design.md`      | Дизайн языка, §1–§16; §16 — нормативный источник грамматики |
 | `brig.ebnf`                       | Исполнительная грамматика; генерируется из §16              |
 | `tools/check-examples`            | Гейт A2: все примеры в docs парсятся                        |
 | `internal/parser/`                | Потребитель `brig.ebnf`; обновляется по A6                  |
@@ -147,7 +147,7 @@ make test             # парсер/VM не сломались
 ## Ссылки
 
 - `01-language-design.md` §16 — нормативный источник грамматики.
-- `01.1-brig-formalization.md` — Трек A:
+- `01-language-design.md` Part II: A1–A6.
   - **A1** — `brig.ebnf` как исполнительная грамматика.
   - **A2** — `check-examples`: режимы блоков, метки, эвристика.
   - **A6** — порядок правок при грамматических изменениях.

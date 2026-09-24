@@ -1,5 +1,5 @@
 // Command check-examples (tools/) — точка входа A2-инструмента по пути,
-// заданному в 01.1-brig-formalization.md. Тот же код, что cmd/check-examples,
+// tích_specified_in_brig_formalization_md_equivalent_to_01_language_design_md
 // чтобы Makefile и CI могли гонять оба пути.
 package main
 
