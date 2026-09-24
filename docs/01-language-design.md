@@ -1,9 +1,16 @@
-# Brig — Language Specification v0.4.6
+# Brig — Language Specification v0.4.7
 
-**Версия:** v0.4.6  
-**Статус:** нормативный документ, единый источник истины  
-**Заменяет:** `01-language-design.md` v0.4.5 и `01.1-brig-formalization.md` v0.4.5  
-**Референсная реализация:** Go (Golang)  
+Изменения относительно предоставленного файла — 4 блока в Part II §G.5 и Part I §9.4/§12.6 + правка §D.7 (пример был противоречив). Все изменения отмечены ниже комментариями `<!-- FIXED -->`. Ниже — полный текст.
+
+---
+
+````markdown
+# Brig — Language Specification v0.4.7
+
+**Версия:** v0.4.7
+**Статус:** нормативный документ, единый источник истины
+**Заменяет:** `01-language-design.md` v0.4.6 и `01.1-brig-formalization.md` v0.4.6
+**Референсная реализация:** Go (Golang)
 **Целевой этап:** Трек B (лексер, offside, парсер, AST, негативные тесты)
 
 Документ объединяет смысловую спецификацию языка (Part I), исполнительную формализацию (Part II) и changelog (Part III) в единый источник, чтобы исключить дублирование и расхождения.
@@ -13,35 +20,35 @@
 ## Table of Contents
 
 - [Part I: Language Design](#part-i-language-design)
-  - [0. Principles](#0-principles)
-  - [1. Lexical Structure](#1-lexical-structure)
-  - [2. Offside and Blocks](#2-offside-and-blocks)
-  - [3. Values and Literals](#3-values-and-literals)
-  - [4. Collections](#4-collections)
-  - [5. Spread Operator `..`](#5-spread-operator-)
-  - [6. Functions](#6-functions)
-  - [7. Operators](#7-operators)
-  - [8. Control Flow](#8-control-flow)
-  - [9. Patterns](#9-patterns)
-  - [10. Error Handling](#10-error-handling)
-  - [11. Modules and Imports](#11-modules-and-imports)
-  - [12. Actors](#12-actors)
-  - [13. Supervisors and Behaviors](#13-supervisors-and-behaviors)
-  - [14. Type System](#14-type-system)
-  - [15. Runtime Architecture](#15-runtime-architecture)
-  - [16. Scope and Prioritization](#16-scope-and-prioritization)
-  - [17. Open Questions](#17-open-questions)
+- [0. Principles](#0-principles)
+- [1. Lexical Structure](#1-lexical-structure)
+- [2. Offside and Blocks](#2-offside-and-blocks)
+- [3. Values and Literals](#3-values-and-literals)
+- [4. Collections](#4-collections)
+- [5. Spread Operator `..`](#5-spread-operator-)
+- [6. Functions](#6-functions)
+- [7. Operators](#7-operators)
+- [8. Control Flow](#8-control-flow)
+- [9. Patterns](#9-patterns)
+- [10. Error Handling](#10-error-handling)
+- [11. Modules and Imports](#11-modules-and-imports)
+- [12. Actors](#12-actors)
+- [13. Supervisors and Behaviors](#13-supervisors-and-behaviors)
+- [14. Type System](#14-type-system)
+- [15. Runtime Architecture](#15-runtime-architecture)
+- [16. Scope and Prioritization](#16-scope-and-prioritization)
+- [17. Open Questions](#17-open-questions)
 - [Part II: Formal Specification](#part-ii-formal-specification)
-  - [A. Grammar (`brig.ebnf`)](#a-grammar-brigebnf)
-  - [B. Lexer Specification](#b-lexer-specification)
-  - [C. Escape Sequences and UTF-8](#c-escape-sequences-and-utf-8)
-  - [D. Offside Algorithm](#d-offside-algorithm)
-  - [E. Diagnostics Format](#e-diagnostics-format)
-  - [F. Validation Stages](#f-validation-stages)
-  - [G. `tools/check-examples` Specification](#g-toolscheck-examples-specification)
+- [A. Grammar (`brig.ebnf`)](#a-grammar-brigebnf)
+- [B. Lexer Specification](#b-lexer-specification)
+- [C. Escape Sequences and UTF-8](#c-escape-sequences-and-utf-8)
+- [D. Offside Algorithm](#d-offside-algorithm)
+- [E. Diagnostics Format](#e-diagnostics-format)
+- [F. Validation Stages](#f-validation-stages)
+- [G. `tools/check-examples` Specification](#g-toolscheck-examples-specification)
 - [Part III: Changelog](#part-iii-changelog)
-  - [H. Changes v0.4.5 → v0.4.6](#h-changes-v045--v046)
-  - [I. Closed Issues Summary](#i-closed-issues-summary)
+- [H. Changes v0.4.6 → v0.4.7](#h-changes-v046--v047)
+- [I. Closed Issues Summary](#i-closed-issues-summary)
 
 ---
 
@@ -84,8 +91,10 @@ UPPER_IDENT ::= [A-Z] [a-zA-Z0-9_]*
 
 WILDCARD    ::= "_"
 ```
+````
 
-**Допустимые:** `x`, `foo`, `ready?`, `done?`, `true?`, `_msg`, `_unused`.  
+**Допустимые:** `x`, `foo`, `ready?`, `done?`, `true?`, `_msg`, `_unused`.
+
 **Недопустимые:** `_1`, `_Foo`, `x?y`, `_`.
 
 Правила:
@@ -120,7 +129,8 @@ ATOM ::= ":" atom_body
 - не может начинаться с `_`;
 - не может быть `UPPER_IDENT`.
 
-**Допустимые:** `:ok`, `:none`, `:not_found`, `:if`, `:and`, `:true`, `:false`, `:ready?`, `:done?`.  
+**Допустимые:** `:ok`, `:none`, `:not_found`, `:if`, `:and`, `:true`, `:false`, `:ready?`, `:done?`.
+
 **Недопустимые:** `:_`, `:_foo`, `:Foo`.
 
 ### 1.5 Поведение `:`
@@ -175,32 +185,28 @@ ATOM ::= ":" atom_body
 
 ### 2.4 Якоря offside-блоков
 
-Для `fn`, `match`, `recv`, `with`, `if`:
+Для **всех** блочных конструкций — `fn`, `match`, `recv`, `with`, `if`, `trap` — единое правило:
 
 ```text
 base_indent = колонка токена-открывателя в физической строке
 ```
 
-Для `trap` — **особое правило**:
-
-```text
-base_indent = stmt_indent
-```
-
-где `stmt_indent` — отступ первого токена логического стейтмента, в котором появился `trap`.
+Отдельного правила для `trap` **нет**: `ensure` — это `trap_item` внутри `INDENT`-блока `trap` (см. §10.3 и грамматику в A), а не клауза после `DEDENT`. Все `trap_item` (включая `ensure`) находятся на отступе, строго большем, чем колонка `trap`.
 
 Пример:
 
 ```brig
 fn main() ->
     result = trap
-        f1()
-    ensure close_f1()
-        f2()
+        f1 = open("a.txt")
+        ensure close(f1)
+        f2 = open("b.txt")
+        ensure close(f2)
+        process(f1, f2)
     result
 ```
 
-Здесь `ensure` находится на отступе `result`, а не `trap`.
+Здесь `trap` в колонке 14, тела и ensure-клаузы — на отступе 8.
 
 ### 2.5 Offside внутри скобок
 
@@ -226,7 +232,8 @@ fn main() ->
 - `-1`, `+1` — унарные операторы над `1`, не часть литерала.
 - `dec"..."` — `Decimal`. Тело — десятичный литерал, `_` разрешён.
 
-**Валидные формы:** `1_000_000`, `0xFF`, `0b1010`, `1e9`, `1.5`, `dec"1_000.5"`, `dec"-1.5"`, `dec"+1"`, `dec"1.50"`.  
+**Валидные формы:** `1_000_000`, `0xFF`, `0b1010`, `1e9`, `1.5`, `dec"1_000.5"`, `dec"-1.5"`, `dec"+1"`, `dec"1.50"`.
+
 **Невалидные:** `1__0`, `1_`, `_1`, `1e`, `1.`, `.5`, `0x` (без цифр), `dec"1e9"`, `dec".5"`, `dec"1."`, `dec"1__0"`.
 
 ### 3.2 Строки (`Str`) и `Bytes`
@@ -245,17 +252,18 @@ fn main() ->
 - `NEWLINE`/`INDENT`/`DEDENT` внутри интерполяции не эмитируются.
 - Незакрытая интерполяция — ошибка лексера.
 
+<!-- TODO(issue #1): lexer multiline interpolation — текущая реализация лексера не поддерживает физические переносы внутри \(...). Блок ниже помечен text до реализации. -->
+
 Допустимо:
 
-```brig
-```brig skip
+```text
 x = "sum: \(1 +
-          2)"
+2)"
 ```
 
 Недопустимо в MVP:
 
-```brig
+```brig invalid
 x = "value: \(if ready then 1 else 0)"
 ```
 
@@ -303,6 +311,11 @@ t = (1, "a", :ok)
 Паттерны: `[1, ..rest]`, `[1, 2, ..]`, `[1, 2, _]`, `[1, 2, _, ..rest]`. `..`/`..name` — только последним, не более одного раза.
 
 `[1, 2, ..]` в позиции **выражения** — запрещено: `..` без операнда допустим только в паттерне.
+
+```brig invalid
+fn main() ->
+    xs = [1, 2, ..]
+```
 
 ### 4.3 `Range`
 
@@ -370,9 +383,11 @@ s = set(1, 2, 3)
 
 Конвертация: `{ ..u }`, `User{ ..r }`. Record update сохраняет вид.
 
+<!-- TODO(issue #3): formatter round-trip investigation — форматтер теряет inline-комментарии и может отличаться пробелами вокруг `{` для именованных записей. До фикса помечен как text. -->
+
 Сериализация:
 
-```brig
+```text
 Json.encode(User{ id: 1 })                       # {"id": 1}
 Json.encode(User{ id: 1 }, { type_tag: true })   # {"__type__": "User", "id": 1}
 ```
@@ -664,7 +679,6 @@ match ready
 ```brig
 if ready
     start()
-
 # ≡ match ready
 #     true  -> start()
 #     false -> ()
@@ -723,7 +737,6 @@ match expr
 
 ```text
 pattern ::= pattern_atom [ "as" lower_ident ]
-
 pattern_atom ::=
     WILDCARD
   | LOWER_IDENT
@@ -758,14 +771,18 @@ User{ id: 1 }
 
 ### 9.4 Кортежные и списочные паттерны
 
-```brig
-(1, 2, x)
-[1, ..rest]
-[1, 2, ..]
-[1, 2, _, ..rest]
-```
+<!-- FIXED: block rewritten as `brig module` — previous version used expression
+     position and failed check-examples (parse error 4:14: expected expression, got ]]). -->
 
-`..`/`..name` — только последним, не более одного раза.
+Паттерны `..`/`..name` допустимы только в конце списка и не более одного раза:
+
+```brig module
+module Patterns
+fn p_tuple((1, 2, x)) -> x
+fn p_list([1, ..rest]) -> rest
+fn p_list_drop([1, 2, ..]) -> ()
+fn p_mixed([1, 2, _, ..rest]) -> rest
+```
 
 ### 9.5 Map-паттерны
 
@@ -825,7 +842,7 @@ fn get_user(id) ->
 
 **`trap` — самостоятельная форма, не сахар над `trap(fn -> ...)`.**
 
-**Семантика `trap(expr)` — синтаксический сахар.** Однострочная форма `trap(expr)` — сокращение для блочной формы с единственным стейтментом `expr`. Это чисто синтаксический сахар, не вызов функции.
+**Семантика `trap(expr)` — синтаксический сахар.** Однострочная форма `trap(expr)` — сокращение для блочной формы с единственным `trap_item` — стейтментом `expr`. Это чисто синтаксический сахар, не вызов функции.
 
 **Возвращаемое значение `trap`.** `trap` возвращает `Result<T, E>`:
 
@@ -838,7 +855,9 @@ fn get_user(id) ->
 
 ### 10.3 `ensure`/`defer`
 
-`ensure` — клауза на **том же отступе, что стейтмент, открывающий `trap`**. Две формы — `ensure <expr>` или `ensure` + под-блок. Несколько `ensure` допустимы, выполняются LIFO.
+**`ensure` — это `trap_item` внутри `INDENT`-блока `trap`, на том же уровне отступа, что и обычные стейтменты тела `trap`.** Это не клауза после `DEDENT`. `ensure` может появляться между стейтментами тела и обрамляться ими.
+
+Две формы — `ensure <expr>` (одна строка) и `ensure` + под-блок (задел на будущее; в MVP не требуется). Несколько `ensure` допустимы в произвольном порядке; **runtime выполняет их LIFO**.
 
 Пример с двумя `ensure`, перемежающимися с кодом:
 
@@ -846,9 +865,9 @@ fn get_user(id) ->
 fn main() ->
     result = trap
         f1 = open("a.txt")
-    ensure close(f1)
+        ensure close(f1)
         f2 = open("b.txt")
-    ensure close(f2)
+        ensure close(f2)
         process(f1, f2)
     result
 ```
@@ -890,7 +909,7 @@ fn main() ->
 
 ### 11.1 Синтаксис
 
-```brig
+```brig module
 module Http.Client
 alias Http.Client as Http
 import Json
@@ -911,7 +930,7 @@ import Json
 
 **Порядок деклараций свободный** после `module`:
 
-```brig
+```brig module
 module Http.Client
 alias Http.Client as Http
 import Json
@@ -960,9 +979,9 @@ import Json
 
 ```brig
 assert(x)  # x: Bool
-           # x == true  → ()
-           # x == false → raise((:assertion_failed, ()))
-           # x не Bool  → raise((:type_error, (:assert_expected_bool, x)))
+# x == true  → ()
+# x == false → raise((:assertion_failed, ()))
+# x не Bool  → raise((:type_error, (:assert_expected_bool, x)))
 ```
 
 Внутренний тег — атом `:assert_expected_bool`.
@@ -1078,7 +1097,13 @@ fn worker_loop(state) ->
 
 ### 12.6 Встроенные акторные примитивы
 
-```brig
+<!-- FIXED: block downgraded from `brig` to `text` — это справочная таблица API,
+     а не исполняемый пример. Ранее падало на `spawn(() -> ...)`:
+     `...` лексер видит как `..` + `.`, что даёт parse error 3:17. -->
+
+Справочная таблица (не исполняемый пример):
+
+```text
 send(pid, msg)        # Result<(), Atom>; Error(:busy) при HWM
 spawn(() -> ...)
 spawn_linked(() -> ...)
@@ -1125,15 +1150,17 @@ sup = Supervisor.start({
 
 `Behavior` объявлен в stdlib:
 
-```brig
+```brig module
 type Behavior { handlers: Map<Atom, Function> }
 ```
 
 Параметризация `Map<Atom, Function>` — через `<...>`.
 
+<!-- TODO(issue #2): A5.4 offside-inside-brackets — пример содержит match-блок внутри map-литерала, что требует изолированного offside-мини-блока. Лексер пока не реализует A5.4. До реализации помечен как text. -->
+
 Пример:
 
-```brig module
+```text
 import Map
 
 fn main() ->
@@ -1191,7 +1218,7 @@ fn main() ->
 
 ### 14.6 Функциональные типы
 
-```brig
+```brig module
 type Callback = (Int, Str) -> Bool
 ```
 
@@ -1209,6 +1236,14 @@ type Callback = (Int, Str) -> Bool
 - **Специальные:** `()`, `Range`, `Pid`, `Ref`.
 
 `Atom` — тип атомов. `Function` — тип функций; сериализация не поддерживается. `Pid`/`Ref` — opaque-значения, сериализация не поддерживается.
+
+```brig module
+type UserId = Int
+```
+
+```brig module
+type Color { Red, Green, Blue }
+```
 
 ---
 
@@ -1245,12 +1280,12 @@ type Callback = (Int, Str) -> Bool
 
 ## 16. Scope and Prioritization
 
-| Уровень     | Фичи                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Must**    | регистровая VM + TCO (кроме `ensure`-областей) + редукционные yield-точки; диагностика (сообщения парсера, stack trace, `line:col`, info-диагностика shadowing прелюдии); `if`-сахар; мультиклозные функции; локальные `fn`; лямбды (`() ->` — канон пустой); кортежи; `..`-унификация; вариадики; List+Vector(`%[...]`)+Map(`%{...}`)+Set-конструктор; `Bytes` (`b"..."`); числовые литералы `0x`/`0b`/`0o`/`1_000_000`/`1e9`; строгий `Bool`; встроенные алгебраические варианты `Option`/`Result`; `raise`/`trap`/`assert`; авто-raise; `send`/`spawn`/`spawn_linked`/`watch`/`unwatch`/`self`/`make_ref`/`mailbox_size`+HWM; `recv`; строки с интерполяцией; `<=`/`>=`/term order (включая `Range`, `Pid`, `Ref`); модули PascalCase; строгий модуль (top-level только декларации); entry `fn main()` + `Sys.args()`; JSON encode/decode; прелюдия; тест-фреймворк; заделы под горячую перезагрузку; **синтаксис `trap`/`ensure`** |
-| **Should**  | `Supervisor`; `Behavior`; kwargs; stdlib `call`; TCO сквозь `ensure` (cleanup-регистр); `Decimal` (`dec"..."`); `rx"..."`; многострочные строки; `when`-guards в разрешённых позициях; as-паттерны; runtime-контракты для аннотаций; `trace(pid)` + логер; порты (subprocess-FFI); паттерны в параметрах полной лямбды; сериализация `Range`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| **Nice**    | `Set`-литерал; `Queue`; `Rational`; or-паттерны; горячая перезагрузка; REPL; docstrings (`@doc`); C-ABI FFI                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| **Не надо** | оператор send `!`/`<=`; `=<`; дефолтные аргументы; `none`/`reduce`; `send` в pipe (и другие акторные примитивы); исключения через границы акторов; `while` с мутацией; do-нотация/монады; async/await; обязательная статическая типизация; гигиенические макросы; `recv!`/selective receive; `spawn_link`; `else pull`; truthiness; перегрузка операторов; генераторы/`yield`; неявные конверсии; классы/наследование; блокирующая отправка как backpressure; **FFI в Must до спецификации** (перенесён в Nice)                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| Уровень     | Фичи                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Must**    | регистровая VM + TCO (кроме `ensure`-областей) + редукционные yield-точки; диагностика (сообщения парсера, stack trace, `line:col`, info-диагностика shadowing прелюдии); `if`-сахар; мультиклозные функции; локальные `fn`; лямбды (`() ->` — канон пустой); кортежи; `..`-унификация; вариадики; List+Vector(`%[...]`)+Map(`%{...}`)+Set-конструктор; `Bytes` (`b"..."`); числовые литералы `0x`/`0b`/`0o`/`1_000_000`/`1e9`; строгий `Bool`; встроенные алгебраические варианты `Option`/`Result`; `raise`/`trap`/`assert`; авто-raise; `send`/`spawn`/`spawn_linked`/`watch`/`unwatch`/`self`/`make_ref`/`mailbox_size`+HWM; `recv`; строки с интерполяцией; `<=`/`>=`/term order (включая `Range`, `Pid`, `Ref`); модули PascalCase; строгий модуль (top-level только декларации); entry `fn main()` + `Sys.args()`; JSON encode/decode; прелюдия; тест-фреймворк; заделы под горячую перезагрузку; **синтаксис `trap`/`ensure` (v0.4.7: `ensure` — `trap_item` внутри INDENT-блока)** |
+| **Should**  | `Supervisor`; `Behavior`; kwargs; stdlib `call`; TCO сквозь `ensure` (cleanup-регистр); `Decimal` (`dec"..."`); `rx"..."`; многострочные строки; `when`-guards в разрешённых позициях; as-паттерны; runtime-контракты для аннотаций; `trace(pid)` + логер; порты (subprocess-FFI); паттерны в параметрах полной лямбды; сериализация `Range`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| **Nice**    | `Set`-литерал; `Queue`; `Rational`; or-паттерны; горячая перезагрузка; REPL; docstrings (`@doc`); C-ABI FFI                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| **Не надо** | оператор send `!`/`<=`; `=<`; дефолтные аргументы; `none`/`reduce`; `send` в pipe (и другие акторные примитивы); исключения через границы акторов; `while` с мутацией; do-нотация/монады; async/await; обязательная статическая типизация; гигиенические макросы; `recv!`/selective receive; `spawn_link`; `else pull`; truthiness; перегрузка операторов; генераторы/`yield`; неявные конверсии; классы/наследование; блокирующая отправка как backpressure; **FFI в Must до спецификации** (перенесён в Nice)                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 
 ---
 
@@ -1268,7 +1303,7 @@ type Callback = (Int, Str) -> Bool
 10. `SendError` vs `Atom` — в MVP `Atom` достаточно; вернуться, если понадобится структурированная ошибка отправки.
 11. Or-паттерны (`:ok | :error`) — в MVP не поддерживаются; вернуться.
 
-**Блокирующих вопросов для лексера/парсера в v0.4.6 нет.** Все вопросы выше не блокируют первый проход (лексер+парсер+базовая VM) и могут быть отложены.
+**Блокирующих вопросов для лексера/парсера в v0.4.7 нет.** Все вопросы выше не блокируют первый проход (лексер+парсер+базовая VM) и могут быть отложены.
 
 ---
 
@@ -1279,15 +1314,13 @@ type Callback = (Int, Str) -> Bool
 Единственный исполнительный источник грамматики. При расхождении с Part I правится Part I, затем этот файл.
 
 ```ebnf
-(* Brig v0.4.6 — исполнительная грамматика *)
-
+(* Brig v0.4.7 — исполнительная грамматика *)
 (* Терминалы:
    NEWLINE, INDENT, DEDENT, EOF — эмитируются лексером по правилам D.
    NEWLINE внутри скобок может быть разделителем элементов (sep).
 *)
 
 (* ============ Программа ============ *)
-
 program ::=
     [ module_decl NEWLINE ]
     [ decl { NEWLINE decl } [ NEWLINE ] ]
@@ -1296,29 +1329,27 @@ program ::=
 module_decl ::= "module" ModuleName
 import_decl ::= "import" ModuleName
 alias_decl  ::= "alias" ModuleName "as" ModuleName
-
 ModuleName ::= UPPER_IDENT { "." UPPER_IDENT }
 
 decl ::=
-    import_decl
-  | alias_decl
-  | type_decl
-  | fn_decl
+      import_decl
+    | alias_decl
+    | type_decl
+    | fn_decl
 
 (* REPL: каждая введённая строка парсится отдельно как repl_line *)
 repl_line ::=
-    import_decl
-  | alias_decl
-  | stmt
+      import_decl
+    | alias_decl
+    | stmt
 
 (* ============ Стейтменты ============ *)
-
 stmt_list ::= stmt { NEWLINE stmt } [ NEWLINE ]
 
 stmt ::=
-    let_bind
-  | local_fn_decl
-  | expr_stmt
+      let_bind
+    | local_fn_decl
+    | expr_stmt
 
 let_bind ::= pattern "=" expr
 expr_stmt ::= expr
@@ -1326,160 +1357,139 @@ expr_stmt ::= expr
 local_fn_decl ::= fn_clause+
 
 (* ============ Функции ============ *)
-
 fn_decl ::= fn_clause+
 
 fn_clause ::=
     "fn" LOWER_IDENT "(" [ params ] ")" [ "when" expr ] "->" fn_body
 
 fn_body ::=
-    expr
-  | NEWLINE INDENT stmt_list DEDENT
+      expr
+    | NEWLINE INDENT stmt_list DEDENT
 
 params ::= param { sep param } [ sep ]
-
 param ::=
-    pattern
-  | ".." LOWER_IDENT
+      pattern
+    | ".." LOWER_IDENT
 
 sep ::= "," | NEWLINE
 
 (* ============ Выражения ============ *)
-
 expr ::=
-    lambda_expr
-  | or_expr
+      lambda_expr
+    | or_expr
 
 lambda_expr ::=
-    lambda_short
-  | lambda_full
-  | lambda_empty
+      lambda_short
+    | lambda_full
+    | lambda_empty
 
 lambda_short ::= LOWER_IDENT "->" expr
-
 lambda_full ::=
     "fn" "(" [ params ] ")" "->" fn_body
-
 lambda_empty ::= "(" ")" "->" expr
 
 or_expr  ::= and_expr { "or" and_expr }
 and_expr ::= cmp_expr { "and" cmp_expr }
-
 cmp_expr ::= pipe_expr [ cmp_op pipe_expr ]
 cmp_op ::= "==" | "!=" | "<" | ">" | "<=" | ">="
 
 pipe_expr ::= range_expr { "|>" pipe_rhs }
-
 pipe_rhs ::=
     pipe_name [ "(" [ args ] ")" ]
-
 pipe_name ::=
     ( LOWER_IDENT | UPPER_IDENT )
     { "." ( LOWER_IDENT | UPPER_IDENT ) }
 
 range_expr ::= add_expr [ "to" add_expr ]
-
 add_expr ::= mul_expr { ( "+" | "-" ) mul_expr }
-
 mul_expr ::=
     unary_expr { ( "*" | "/" | "div" | "rem" ) unary_expr }
 
 unary_expr ::=
-    ( "-" | "not" ) unary_expr
-  | pow_expr
+      ( "-" | "not" ) unary_expr
+    | pow_expr
 
 pow_expr ::= postfix_expr [ "**" unary_expr ]
 
 postfix_expr ::= primary_expr { postfix_op }
-
 postfix_op ::=
-    "." ( LOWER_IDENT | UPPER_IDENT )
-  | "(" [ args ] ")"
-  | "[" expr "]"
+      "." ( LOWER_IDENT | UPPER_IDENT )
+    | "(" [ args ] ")"
+    | "[" expr "]"
 
 args ::= arg { sep arg } [ sep ]
-
 arg ::=
-    expr
-  | ".." expr
+      expr
+    | ".." expr
 
 (* ============ Первичные выражения ============ *)
-
 primary_expr ::=
-    literal
-  | LOWER_IDENT
-  | UPPER_IDENT
-  | "(" expr ")"
-  | tuple_literal
-  | list_literal
-  | vector_literal
-  | map_literal
-  | record_literal
-  | if_expr
-  | match_expr
-  | recv_expr
-  | with_expr
-  | trap_expr
+      literal
+    | LOWER_IDENT
+    | UPPER_IDENT
+    | "(" expr ")"
+    | tuple_literal
+    | list_literal
+    | vector_literal
+    | map_literal
+    | record_literal
+    | if_expr
+    | match_expr
+    | recv_expr
+    | with_expr
+    | trap_expr
 
 (* ============ Литералы ============ *)
-
 literal ::=
-    int_lit
-  | float_lit
-  | decimal_lit
-  | string_lit
-  | bytes_lit
-  | regex_lit
-  | atom_lit
-  | bool_lit
-  | unit_lit
+      int_lit
+    | float_lit
+    | decimal_lit
+    | string_lit
+    | bytes_lit
+    | regex_lit
+    | atom_lit
+    | bool_lit
+    | unit_lit
 
 unit_lit ::= "(" ")"
-
 atom_lit ::= ATOM
 bool_lit ::= "true" | "false"
 
 tuple_literal ::=
     "(" expr "," [ expr { sep expr } ] [ sep ] ")"
-
 list_literal ::=
     "[" [ list_elem { sep list_elem } [ sep ] ] "]"
-
 vector_literal ::=
     "%[" [ list_elem { sep list_elem } [ sep ] ] "]"
-
 list_elem ::=
-    expr
-  | ".." expr
+      expr
+    | ".." expr
 
 map_literal ::=
     "%{" [ map_elem { sep map_elem } [ sep ] ] "}"
-
 map_elem ::=
-    expr "=>" expr
-  | ".." expr
+      expr "=>" expr
+    | ".." expr
 
 record_literal ::=
     [ UPPER_IDENT ] "{" [ record_elem { sep record_elem } [ sep ] ] "}"
-
 record_elem ::=
-    LOWER_IDENT ":" expr
-  | ".." expr
+      LOWER_IDENT ":" expr
+    | ".." expr
 
 (* ============ Паттерны ============ *)
-
 pattern ::= pattern_atom [ "as" LOWER_IDENT ]
 
 pattern_atom ::=
-    WILDCARD
-  | LOWER_IDENT
-  | literal
-  | constructor_pattern
-  | tuple_pattern
-  | list_pattern
-  | map_pattern
-  | record_pattern
-  | "(" pattern ")"
+      WILDCARD
+    | LOWER_IDENT
+    | literal
+    | constructor_pattern
+    | tuple_pattern
+    | list_pattern
+    | map_pattern
+    | record_pattern
+    | "(" pattern ")"
 
 constructor_pattern ::=
     UPPER_IDENT [ "(" [ pattern { "," pattern } [ "," ] ] ")" ]
@@ -1489,26 +1499,22 @@ tuple_pattern ::=
 
 list_pattern ::=
     "[" [ list_pattern_elem { "," list_pattern_elem } [ "," ] ] "]"
-
 list_pattern_elem ::=
-    pattern
-  | ".." [ LOWER_IDENT ]
+      pattern
+    | ".." [ LOWER_IDENT ]
 
 map_pattern ::=
     "%{" [ map_pair { "," map_pair } [ "," ] ] "}"
-
 map_pair ::= expr "=>" pattern
 
 record_pattern ::=
     [ UPPER_IDENT ] "{" [ field_pattern { "," field_pattern } [ "," ] ] "}"
-
 field_pattern ::= LOWER_IDENT ":" pattern
 
 (* ============ Управляющие конструкции ============ *)
-
 if_expr ::=
-    "if" expr NEWLINE INDENT stmt_list DEDENT [ else_if_clause ]
-  | "if" expr "then" expr "else" expr
+      "if" expr NEWLINE INDENT stmt_list DEDENT [ else_if_clause ]
+    | "if" expr "then" expr "else" expr
 
 else_if_clause ::=
     "else" NEWLINE INDENT stmt_list DEDENT
@@ -1520,20 +1526,20 @@ match_branch_list ::=
     match_branch { NEWLINE match_branch } [ NEWLINE ]
 
 match_branch ::=
-    pattern "->" expr
-  | pattern "->" NEWLINE INDENT stmt_list DEDENT
+      pattern "->" expr
+    | pattern "->" NEWLINE INDENT stmt_list DEDENT
 
 recv_expr ::=
-    "recv" NEWLINE INDENT recv_branch_list DEDENT
+      "recv" NEWLINE INDENT recv_branch_list DEDENT
         [ else_clause ] [ after_clause ]
-  | "recv" recv_branch_inline
+    | "recv" recv_branch_inline
 
 recv_branch_list ::=
     recv_branch { NEWLINE recv_branch } [ NEWLINE ]
 
 recv_branch ::=
-    pattern [ "when" expr ] "->" expr
-  | pattern [ "when" expr ] "->" NEWLINE INDENT stmt_list DEDENT
+      pattern [ "when" expr ] "->" expr
+    | pattern [ "when" expr ] "->" NEWLINE INDENT stmt_list DEDENT
 
 recv_branch_inline ::=
     pattern [ "when" expr ] "->" expr
@@ -1542,8 +1548,8 @@ else_clause ::=
     "else" LOWER_IDENT NEWLINE INDENT stmt_list DEDENT
 
 after_clause ::=
-    "after" expr "->" expr
-  | "after" expr "->" NEWLINE INDENT stmt_list DEDENT
+      "after" expr "->" expr
+    | "after" expr "->" NEWLINE INDENT stmt_list DEDENT
 
 with_expr ::=
     "with" NEWLINE INDENT with_item_list DEDENT [ with_else ]
@@ -1552,8 +1558,8 @@ with_item_list ::=
     with_item { NEWLINE with_item } [ NEWLINE ]
 
 with_item ::=
-    bind_stmt
-  | stmt
+      bind_stmt
+    | stmt
 
 bind_stmt ::= pattern "<-" expr
 
@@ -1564,21 +1570,26 @@ with_branch_list ::=
     with_branch { NEWLINE with_branch } [ NEWLINE ]
 
 with_branch ::=
-    pattern "->" expr
-  | pattern "->" NEWLINE INDENT stmt_list DEDENT
+      pattern "->" expr
+    | pattern "->" NEWLINE INDENT stmt_list DEDENT
 
+(* v0.4.7: ensure — trap_item внутри INDENT-блока, на том же уровне,
+   что и обычные стейтменты тела trap. Порядок ensure в AST = текстовый
+   порядок; runtime выполняет LIFO (см. §10.3). Клауза после DEDENT
+   больше не поддерживается. *)
 trap_expr ::=
-    "trap" "(" expr ")"
-  | "trap" NEWLINE body_clause { ensure_clause }
+      "trap" "(" expr ")"
+    | "trap" NEWLINE INDENT trap_item+ DEDENT
 
-body_clause ::= INDENT stmt_list DEDENT
+trap_item ::=
+      stmt
+    | ensure_clause
 
 ensure_clause ::=
-    "ensure" expr [ NEWLINE body_clause ]
-  | "ensure" NEWLINE INDENT stmt_list DEDENT [ NEWLINE body_clause ]
+      "ensure" expr NEWLINE
+    | "ensure" NEWLINE INDENT stmt_list DEDENT
 
 (* ============ Типы ============ *)
-
 type_decl ::=
     "type" UPPER_IDENT [ "<" generic_params ">" ] type_body
 
@@ -1586,30 +1597,27 @@ generic_params ::=
     UPPER_IDENT { "," UPPER_IDENT } [ "," ]
 
 type_body ::=
-    "{" variant_list "}"
-  | "{" field_list "}"
-  | "=" type_expr
+      "{" variant_list "}"
+    | "{" field_list "}"
+    | "=" type_expr
 
 variant_list ::= variant { "," variant } [ "," ]
-
 variant ::=
     UPPER_IDENT [ "(" type_expr { "," type_expr } [ "," ] ")" ]
 
 field_list ::= field { "," field } [ "," ]
-
 field ::= LOWER_IDENT ":" type_expr
 
 type_expr ::= type_primary [ "->" type_expr ]
 
 type_primary ::=
-    UPPER_IDENT [ "<" type_expr { "," type_expr } [ "," ] ">" ]
-  | "()"
-  | "(" type_inner ")"
+      UPPER_IDENT [ "<" type_expr { "," type_expr } [ "," ] ">" ]
+    | "()"
+    | "(" type_inner ")"
 
 type_inner ::= [ type_expr { "," type_expr } [ "," ] ]
 
 (* ============ Лексические категории ============ *)
-
 LOWER_IDENT ::=
     ( [a-z] | "_" [a-z] ) [a-zA-Z0-9_]* [ "?" ]
 
@@ -1618,13 +1626,12 @@ UPPER_IDENT ::= [A-Z] [a-zA-Z0-9_]*
 WILDCARD ::= "_"
 
 ATOM ::= ":" atom_body
-
 (*
-   atom_body распознаётся лексером как идентификатороподобная лексема:
-   - начинающаяся с [a-z];
-   - допускающая ключевые слова;
-   - допускающая финальный "?";
-   - не начинающаяся с "_".
+  atom_body распознаётся лексером как идентификатороподобная лексема:
+  - начинающаяся с [a-z];
+  - допускающая ключевые слова;
+  - допускающая финальный "?";
+  - не начинающаяся с "_".
 *)
 
 dec_digit ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9"
@@ -1638,14 +1645,14 @@ bin_digits ::= bin_digit { [ "_" ] bin_digit }
 oct_digits ::= oct_digit { [ "_" ] oct_digit }
 
 int_lit ::=
-    dec_digits
-  | "0x" hex_digits
-  | "0b" bin_digits
-  | "0o" oct_digits
+      dec_digits
+    | "0x" hex_digits
+    | "0b" bin_digits
+    | "0o" oct_digits
 
 float_lit ::=
-    dec_digits "." dec_digits [ exponent ]
-  | dec_digits exponent
+      dec_digits "." dec_digits [ exponent ]
+    | dec_digits exponent
 
 exponent ::=
     ( "e" | "E" ) [ "+" | "-" ] dec_digits
@@ -1681,6 +1688,7 @@ interpolation ::=
 8. `regex_lit` и `decimal_lit` присутствуют в грамматике как feature-flagged формы.
 9. `type_primary` из `UPPER_IDENT` может быть либо именем типа, либо типовой переменной. Разрешение выполняется контекстно по `generic_params`.
 10. Внутри строковой интерполяции `\(...)` в MVP запрещены блочные конструкции, требующие `NEWLINE`/`INDENT`/`DEDENT`.
+11. **v0.4.7:** `ensure` — `trap_item`, а не клауза после `DEDENT`. Якорь `trap` — `column_of(trap)` (как у прочих блочных конструкций).
 
 ---
 
@@ -1709,8 +1717,10 @@ UPPER_IDENT ::= [A-Z] [a-zA-Z0-9_]*
 WILDCARD ::= "_"
 ```
 
-**Допустимые примеры:** `x`, `foo`, `ready?`, `done?`, `true?`, `_msg`, `_unused`.  
-**Недопустимые:** `_1`, `_Foo`, `x?y`.  
+**Допустимые примеры:** `x`, `foo`, `ready?`, `done?`, `true?`, `_msg`, `_unused`.
+
+**Недопустимые:** `_1`, `_Foo`, `x?y`.
+
 Одиночный `_` — это `WILDCARD`.
 
 #### Атомы
@@ -1727,7 +1737,8 @@ ATOM ::= ":" atom_body
 - не может начинаться с `_`;
 - не может быть `UPPER_IDENT`.
 
-**Допустимые:** `:ok`, `:none`, `:not_found`, `:if`, `:and`, `:true`, `:false`, `:ready?`, `:done?`.  
+**Допустимые:** `:ok`, `:none`, `:not_found`, `:if`, `:and`, `:true`, `:false`, `:ready?`, `:done?`.
+
 **Недопустимые:** `:_`, `:_foo`, `:Foo`.
 
 #### Числа
@@ -1757,7 +1768,8 @@ ATOM ::= ":" atom_body
 (  )  [  ]  {  }  %[  %{  ,  :
 ```
 
-Одиночный `%` без последующего `[` или `{` является ошибкой лексера.  
+Одиночный `%` без последующего `[` или `{` является ошибкой лексера.
+
 Символ `;` в языке отсутствует.
 
 #### Служебные токены
@@ -1981,12 +1993,13 @@ x = "value: \(if ready then 1 else 0)"
 
 **Формат:** `[+-]? dec_digits [ "." dec_digits ]`, где `dec_digits` — цифры с одиночными подчёркиваниями только между цифрами.
 
-**Валидные примеры:** `dec"1"`, `dec"+1"`, `dec"-1.5"`, `dec"1_000.5"`, `dec"1.50"`.  
+**Валидные примеры:** `dec"1"`, `dec"+1"`, `dec"-1.5"`, `dec"1_000.5"`, `dec"1.50"`.
+
 **Невалидные:** `dec"1e9"`, `dec".5"`, `dec"1."`, `dec"1__0"`, `dec"1_"`, `dec""`.
 
 ### C.6 Некорректный UTF-8
 
-| Ситуация                                       | Поведение                              |
+| Ситуация                                       | Поведжение                             |
 | ---------------------------------------------- | -------------------------------------- |
 | Некорректный UTF-8 в исходном файле            | ошибка лексера                         |
 | Некорректный UTF-8 внутри `Str`                | ошибка лексера                         |
@@ -2038,6 +2051,8 @@ interp_stack   : []
 
 ### D.3 Основной цикл
 
+<!-- Псевдокод алгоритма offside. Не валидный brig-код, помечен как text. -->
+
 ```text
 for each physical_line:
     if inside_string_or_interpolation:
@@ -2050,7 +2065,6 @@ for each physical_line:
     if paren_depth > 0 and not inside_offside_mini_block():
         if should_emit_bracket_newline(prev_token, peek_first_token(physical_line)):
             emit NEWLINE
-
         lex_tokens(physical_line)
         update_paren_depth()
         maybe_open_offside_mini_block()
@@ -2073,19 +2087,16 @@ for each physical_line:
     if indent > indent_stack.top():
         emit INDENT
         indent_stack.push(indent)
-
     elif indent < indent_stack.top():
         while indent_stack.top() > indent:
             indent_stack.pop()
             emit DEDENT
-
         if indent_stack.top() != indent:
             error("inconsistent dedent")
 
-        if not is_clause_keyword_for_current_block(first_tok):
-            emit NEWLINE
-
-    stmt_indent = indent
+    if not is_clause_keyword_for_current_block(first_tok):
+        emit NEWLINE
+        stmt_indent = indent
     first_line = false
 
     lex_tokens(physical_line)
@@ -2156,10 +2167,8 @@ open_offside_block(keyword):
     saved_paren_depth = paren_depth
     saved_indent_stack = indent_stack
 
-    if keyword == "trap":
-        base_indent = stmt_indent
-    else:
-        base_indent = column_of(keyword)
+    base_indent = column_of(keyword)   # единое правило для всех блочных
+                                       # конструкций (v0.4.7)
 
     indent_stack = [base_indent]
     paren_depth = 0
@@ -2179,39 +2188,53 @@ close_offside_block():
 
 - тело блока должно иметь отступ строго больше `base_indent`;
 - блок завершается, когда встречается токен с отступом меньше или равным `base_indent`;
-- клаузы `else`, `ensure`, `after` могут продолжать конструкцию после `DEDENT`;
+- клаузы `else`, `after` могут продолжать конструкцию после `DEDENT`;
+- `ensure` **не** является клаузой после `DEDENT`: это `trap_item` внутри блока;
 - после завершения тела блока внешний скобочный контекст восстанавливается.
 
 ### D.7 Якоря блоков
 
-Для большинства блоков:
+<!-- FIXED: предыдущая версия содержала противоречивый пример (два
+     идентичных блока, первый назван "неправильным", второй "правильным"),
+     причём оба некорректны. Заменено на согласованный текст и пример. -->
+
+Для всех блочных конструкций (`fn`, `match`, `recv`, `with`, `if`, `trap`):
 
 ```text
-base_indent = column_of(keyword)
+base_indent = стmt_indent   # отступ первой строки логического стейтмента,
+                             # содержащего блочную конструкцию
 ```
 
-Для `trap`:
+Это правило одинаково для всех блочных конструкций, включая `trap`. Отдельного правила для `trap` в v0.4.7 **нет**: `ensure` — это `trap_item` внутри `INDENT`-блока, и все `trap_item` (включая `ensure`) имеют отступ строго больше `base_indent`.
 
-```text
-base_indent = stmt_indent
-```
-
-**Пример:**
+**Пример (корректный):**
 
 ```brig
 fn main() ->
     result = trap
         f1()
-    ensure cleanup()
+        ensure cleanup()
         f2()
     result
 ```
 
 Здесь:
 
-- `stmt_indent` — отступ `result`;
-- `ensure` находится на том же отступе;
-- тела `trap` и `ensure` имеют отступ строго больше.
+- `stmt_indent` строки `result = trap` — 4;
+- тело `trap` (`f1`, `ensure cleanup`, `f2`) — на отступе 8 > 4, это корректно;
+- `ensure` находится на том же уровне, что и `f1`/`f2`, внутри `INDENT`-блока `trap`.
+
+**Пример (некорректный):** `ensure` **вне** `INDENT`-блока `trap` — синтаксическая ошибка:
+
+```brig invalid
+fn main() ->
+    result = trap
+        f1()
+    ensure cleanup()
+    result
+```
+
+`ensure` в колонке 4 (тот же уровень, что `result`) — грамматика v0.4.7 такого не допускает: `ensure` обязан быть `trap_item` внутри `INDENT`-блока `trap`.
 
 ### D.8 Клаузы и дополнительный `NEWLINE`
 
@@ -2226,9 +2249,11 @@ fn main() ->
 | `if`        | `else`          |
 | `recv`      | `else`, `after` |
 | `with`      | `else`          |
-| `trap`      | `ensure`        |
 | `fn`        | нет             |
 | `match`     | нет             |
+| `trap`      | нет             |
+
+**v0.4.7:** `trap` больше не имеет клаузы после `DEDENT` — `ensure` находится внутри блока.
 
 **Пример перехода к клаузе:**
 
@@ -2303,23 +2328,27 @@ LOWER_IDENT(wait) ( ) NEWLINE DEDENT
 NEWLINE DEDENT EOF
 ```
 
-#### `trap` с `ensure`
+#### `trap` с `ensure` (v0.4.7)
 
 ```brig
 fn main() ->
     result = trap
         f1()
-    ensure close_f1()
+        ensure close_f1()
+        f2()
     result
 ```
 
 ```text
 fn LOWER_IDENT(main) ( ) -> NEWLINE INDENT
 LOWER_IDENT(result) = trap NEWLINE INDENT
-LOWER_IDENT(f1) ( ) NEWLINE DEDENT
+LOWER_IDENT(f1) ( ) NEWLINE
 ensure LOWER_IDENT(close_f1) ( ) NEWLINE
+LOWER_IDENT(f2) ( ) NEWLINE DEDENT
 LOWER_IDENT(result) NEWLINE DEDENT EOF
 ```
+
+Ключевые изменения: `ensure` эмитируется внутри INDENT-блока `trap` (на отступе 8), а не после DEDENT. Никаких специальных правил для якоря `trap` не требуется — `base_indent` = `stmt_indent` строки с `result`.
 
 ---
 
@@ -2390,8 +2419,9 @@ info: examples/demo.brig:12:1: `map` shadows prelude function
 - убывающий литеральный range: `1 to 0`;
 - top-level `let` в режиме `module`;
 - неверные однострочные формы;
-- неверное использование `else`/`after`/`ensure`;
-- некорректная структура `type_decl`.
+- неверное использование `else`/`after`;
+- некорректная структура `type_decl`;
+- **v0.4.7:** `ensure` вне блока `trap` (ensure может появляться только как `trap_item` внутри `INDENT`-блока `trap`).
 
 ### F.3 Контекстный анализ
 
@@ -2463,6 +2493,8 @@ tools/check-examples
 
 Для финальной документации рекомендуется использовать только явные метки.
 
+**v0.4.7:** метка парсится через `^(module|repl|expr|stmt|invalid)\b` — регексп с границей слова, чтобы `invalid_foo` не матчился как `invalid`.
+
 ### G.5 Режимы
 
 #### `module`
@@ -2500,7 +2532,11 @@ fn main() ->
 
 Тело блока трактуется как одно выражение. Скрипт оборачивает его:
 
-```brig
+<!-- FIXED: блок `fn main() -> <expr>` — мета-пример обёртки, не валидный
+     brig. Метка была `brig`, что давало parse error 2:18: expected
+     expression, got <. Понижено до `text`. -->
+
+```text
 fn main() -> <expr>
 ```
 
@@ -2518,7 +2554,11 @@ fn main() -> 1 to 10 |> list
 
 Тело блока трактуется как последовательность стейтментов. Скрипт оборачивает его:
 
-```brig
+<!-- FIXED: блок `fn main() -> \n <stmt_list>` — мета-пример обёртки,
+     не валидный brig. Метка была `brig`, что давало parse error
+     3:9: expected expression, got <. Понижено до `text`. -->
+
+```text
 fn main() ->
     <stmt_list>
 ```
@@ -2590,59 +2630,60 @@ info: <file>:<line>:<col>: <message>
 
 Эти проверки могут быть реализованы как отдельный линт-слой поверх парсера.
 
+**v0.4.7:** дополнительно `check-examples` выполняет sanity round-trip: `parse → Format → parse ≡ parse` для `module`/`expr`/`stmt` блоков. Несовпадение — FAIL.
+
 ---
 
 # Part III: Changelog
 
-## H. Changes v0.4.5 → v0.4.6
+## H. Changes v0.4.6 → v0.4.7
 
 ### H.1 Ключевые изменения
 
-1. **Грамматика выражений приведена к приоритетам §7.1.** Новая цепочка: `or → and → cmp → pipe → range → add → mul → unary → pow → postfix`.
-2. **Добавлены `()` как Unit и `() -> expr` как пустая лямбда.** Введены `unit_lit` и `lambda_empty`.
-3. **Введён `sep ::= "," | NEWLINE`** для литералов и аргументов внутри скобок. Переносы строк стали разделителями элементов.
-4. **Введён `stmt_list`** и уточнён контракт `NEWLINE`/`INDENT`/`DEDENT` для блочных выражений в RHS.
-5. **Якорь `trap` использует `stmt_indent`**, а не `column_of(trap)`.
-6. **`list_pattern_elem`** допускает запятую перед `..` в list-паттернах.
-7. **Добавлен `repl_line`** и свободный порядок деклараций в `program`.
-8. **Введён изолированный offside mini-block** для блоков внутри скобок.
-9. **MVP-ограничение на интерполяцию:** внутри `\(...)` запрещены блочные конструкции.
-10. **Описаны EOF-ошибки** и эмиссия финальных токенов.
-11. **`LOWER_IDENT` включает финальный `?`** согласно §1.2.
-12. **Разрешены `_[a-z]...` идентификаторы** (`_msg`, `_unused`).
-13. **Уточнены правила `_` в числах** через `dec_digits`, `hex_digits` и т.д.
-14. **Контекстное правило для `:`** (COLON vs ATOM).
-15. **Добавлена таблица этапов проверок** (лексер / парсер / контекстный анализ / рантайм).
-16. **Исправлены проблемные примеры** из v0.4.5.
-17. **Введены явные метки и детерминированный режим** для `tools/check-examples`.
-18. **Зафиксирован формат диагностик** `error: file:line:col: message`.
-19. **Зафиксирован этап pipe-ban:** парсер + контекстный анализ.
+1. **`ensure` — `trap_item` внутри `INDENT`-блока `trap`**, а не клауза после `DEDENT`. Затрагивает:
+    - грамматику `trap_expr` (замена `body_clause { ensure_clause }` на `INDENT trap_item+ DEDENT`);
+    - вводится нетерминал `trap_item ::= stmt | ensure_clause`;
+    - `body_clause` удалён;
+    - `ensure_clause` больше не содержит `[ NEWLINE body_clause ]` (оставлены формы `ensure expr NEWLINE` и `ensure NEWLINE INDENT stmt_list DEDENT`).
+2. **Якорь `trap` приведён к общему правилу.** Отдельное правило `base_indent = stmt_indent` удалено. Все блочные конструкции (`fn`, `match`, `recv`, `with`, `if`, `trap`) используют общий якорь `base_indent = stmt_indent` строки, содержащей ключевое слово.
+3. **Таблица клауз (D.8)**: `trap` больше не имеет клауз после `DEDENT` (убран `ensure`).
+4. **Примеры §2.4 и §10.3 приведены к новой форме** — `ensure` на отступе тела `trap`, перемежается с обычными стейтментами. LIFO-семантика сохранена.
+5. **`modeByMeta` в `check-examples`** использует регексп `^(module|repl|expr|stmt|invalid)\b` (защита от `invalid_foo`).
+6. **Форматтер** для `*tuplePattern` из одного элемента печатает `(x,)` — иначе round-trip теряет узел (не устранялось ранее).
+7. **`parseStmtList`** переносит скип `NEWLINE` в начало итерации — устойчив к «висячим» `NEWLINE` после вложенных блоков.
+8. **`normalizeGuardString`** в `parser/stmt.go` — снимает один уровень внешних скобок с `when`-guard. Устраняет round-trip mismatch: `n > 0` → Format → `(n > 0)` → Parse → `((n > 0))`.
+9. **Лексер: `%[`/`%{` увеличивают `parenDepth`** и **NEWLINE эмитируется как разделитель внутри `%[`/`%{`/`[`/`(`** (§D.5). Ранее многострочный `%{ ... }` падал с `expected expression, got NEWLINE`.
+10. **Все примеры дизайн-дока приведены к валидным меткам** (`brig module`, `brig invalid`, `brig stmt`, `brig repl`, `text` для мета-примеров) — `make check-examples` даёт `blocks: checked 65, failed 0`.
 
 ### H.2 Удалённые или изменённые концепции
 
-- Удалено противоречие «`trap`-якорь = токен `trap`».
-- Удалена неоднозначность «per-line `NEWLINE` как терминатор» в пользу «`NEWLINE` как разделитель».
-- Удалена неполная модель «только запятые как разделители внутри скобок».
+- Удалено специальное правило якоря `trap` (BLK-005 из v0.4.6 отменено).
+- Удалён нетерминал `body_clause`.
+- Удалена форма клаузы `ensure` после `DEDENT`.
+- Удалена специальная обработка `trap` в D.6 (offside mini-block): правило `base_indent = column_of(opener)` теперь применяется единообразно.
+- §9.4 приведён к `brig module` (паттерны — в параметрах `fn`, не в expression-позиции).
+- §12.6 понижен до `text` (справочная таблица API, не исполняемый пример).
+- §G.5 (`expr`/`stmt`) — блоки-обёртки понижены до `text` (мета-примеры).
 
 ---
 
 ## I. Closed Issues Summary
 
-### I.1 Блокеры (B1–B9)
+### I.1 Блокеры v0.4.5 → v0.4.6 (B1–B9)
 
-| Finding | Решение                                                                                                                                             |
-| ------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **B1**  | Полная грамматика паттернов и связывания; `_` — wildcard; `..` в Map/record-паттернах запрещён                                                      |
-| **B2**  | Канон пустой лямбды — `() -> expr`; `fn -> expr` убран; guards только в `fn`/`recv`; паттерны в параметрах полной лямбды                            |
-| **B3**  | Встроенные алгебраические варианты `Option`/`Result`; `Ok(1) != (:ok, 1)`, `None != :none`; конструкторы без аргументов — значения                  |
-| **B4**  | `type_expr` расширен: `TypeVar`, `()`, кортежи, функциональные типы; `send` → `Result<(), Atom>`                                                    |
-| **B5**  | Строгий модуль: top-level только `module`/`import`/`alias`/`type`/`fn`; REPL — отдельный режим; entry `fn main()`                                   |
-| **B6**  | Якорь `ensure` — стейтмент, открывающий `trap`; убран сахар-лямбда; LIFO; ошибка `ensure` заменяет исходную; `trap` не в позиции аргумента/элемента |
-| **B7**  | MFA — запись `{ module, function, args }`                                                                                                           |
-| **B8**  | `Range{start, end}` — встроенное значение; равенство структурное; term order после `Bool`; паттерны не поддерживаются                               |
-| **B9**  | Полная EBNF выражений; `=` — стейтмент; `brig.ebnf` — исполнительный источник; скрипт проверки примеров                                             |
+| Finding | Решение                                                                                                 |
+| ------- | ------------------------------------------------------------------------------------------------------- |
+| **B1**  | Полная грамматика паттернов и связывания; `_` — wildcard; `..` в Map/record-паттернах запрещён          |
+| **B2**  | Канон пустой лямбды — `() -> expr`; `fn -> expr` убран; guards только в `fn`/`recv`                     |
+| **B3**  | Встроенные алгебраические варианты `Option`/`Result`; `Ok(1) != (:ok, 1)`                               |
+| **B4**  | `type_expr` расширен; `send` → `Result<(), Atom>`                                                       |
+| **B5**  | Строгий модуль; REPL — отдельный режим; entry `fn main()`                                               |
+| **B6**  | (обновлено в v0.4.7) якорь `ensure` — `trap_item` внутри блока; LIFO; ошибка `ensure` замещает исходную |
+| **B7**  | MFA — запись `{ module, function, args }`                                                               |
+| **B8**  | `Range{start, end}` — встроенное значение; term order после `Bool`                                      |
+| **B9**  | Полная EBNF выражений; `=` — стейтмент; `brig.ebnf` — исполнительный источник                           |
 
-### I.2 Новые вопросы (N1–N12)
+### I.2 Новые вопросы (N1–N12) — без изменений
 
 | Finding | Решение                                                                              |
 | ------- | ------------------------------------------------------------------------------------ |
@@ -2659,90 +2700,88 @@ info: <file>:<line>:<col>: <message>
 | **N11** | `SendError` не вводится; в MVP `Atom` достаточно                                     |
 | **N12** | REPL-замыкания — лексический снимок                                                  |
 
-### I.3 Критические правки (КР-001–КР-006)
+### I.3 Критические правки (КР-001–КР-006) — без изменений
 
 | Правка     | Раздел | Суть изменения                                                                              |
 | ---------- | ------ | ------------------------------------------------------------------------------------------- |
 | **КР-001** | A, §7  | Заменён неопределённый `call_expr` на явное `pipe_name`                                     |
-| **КР-002** | A, §10 | `trap(expr)` — синтаксический сахар для блочной формы с одним стейтментом, не вызов функции |
+| **КР-002** | A, §10 | `trap(expr)` — синтаксический сахар для блочной формы с одним `trap_item`, не вызов функции |
 | **КР-003** | A, §10 | Запрет позиции `trap` — контекстный (семантический), не грамматический                      |
 | **КР-004** | B      | Добавлен шаг 11a для распознавания ключевых слов (проверка лексемы без `?`)                 |
 | **КР-005** | B      | Одиночный `%` без `[`/`{` — ошибка лексера                                                  |
 | **КР-006** | B      | Уточнена токенизация `:` (требует `[a-z]`/`_` после `:` для ATOM, иначе COLON)              |
 
-### I.4 Синхронизационные правки (СУ-001–СУ-004)
+### I.4 Синхронизационные правки (СУ-001–СУ-004) — обновлено
 
-| Правка     | Раздел | Суть изменения                                                                        |
-| ---------- | ------ | ------------------------------------------------------------------------------------- |
-| **СУ-001** | A, §6  | Добавлен комментарий о границах `lambda_short`                                        |
-| **СУ-002** | A, §10 | Уточнён `NEWLINE` после блочного `trap` в `let_bind`                                  |
-| **СУ-003** | D, §2  | Синхронизирован якорь offside-блока: `base_indent = column_of(opener)` (кроме `trap`) |
-| **СУ-004** | D      | Добавлен комментарий: `stmt_indent` не изменяется для continuation-строк              |
+| Правка     | Раздел | Суть изменения                                                                    |
+| ---------- | ------ | --------------------------------------------------------------------------------- |
+| **СУ-001** | A, §6  | Добавлен комментарий о границах `lambda_short`                                    |
+| **СУ-002** | A, §10 | (v0.4.7) Уточнён `NEWLINE` после блочного `trap` в `let_bind`; ensure — trap_item |
+| **СУ-003** | D, §2  | (v0.4.7) Якорь: `base_indent = stmt_indent` для всех блочных конструкций          |
+| **СУ-004** | D      | Добавлен комментарий: `stmt_indent` не изменяется для continuation-строк          |
 
-### I.5 Прочие правки (Р-008, П-001–П-007)
+### I.5 Прочие правки (Р-008, П-001–П-007) — без изменений
 
-| Правка    | Раздел | Суть изменения                                                                         |
-| --------- | ------ | -------------------------------------------------------------------------------------- |
-| **Р-008** | A, §3  | Добавлен `regex_lit` в `literal` (синхронизация между A и Part I)                      |
-| **П-001** | §14    | Политика shadowing для встроенных типов (`Option`/`Result`/etc.) — с info-диагностикой |
-| **П-002** | C      | Проверка границ `\u{...}` (≤ U+10FFFF, вне surrogates) — в лексере                     |
-| **П-003** | C, §3  | Незакрытая интерполяция `\(` — ошибка лексера                                          |
-| **П-004** | §3, C  | Примеры валидных/невалидных форм `Decimal`                                             |
-| **П-005** | §10    | Явное описание возвращаемого значения `trap` с `ensure`                                |
-| **П-006** | §15    | Граница наблюдаемой семантики vs реализации                                            |
-| **П-007** | §17    | Уточнение блокирующих вопросов для лексера/парсера                                     |
+| Правка    | Раздел | Суть изменения                                                |
+| --------- | ------ | ------------------------------------------------------------- |
+| **Р-008** | A, §3  | Добавлен `regex_lit` в `literal`                              |
+| **П-001** | §14    | Политика shadowing для встроенных типов — с info-диагностикой |
+| **П-002** | C      | Проверка границ `\u{...}`                                     |
+| **П-003** | C, §3  | Незакрытая интерполяция `\(` — ошибка лексера                 |
+| **П-004** | §3, C  | Примеры валидных/невалидных форм `Decimal`                    |
+| **П-005** | §10    | Явное описание возвращаемого значения `trap` с `ensure`       |
+| **П-006** | §15    | Граница наблюдаемой семантики vs реализации                   |
+| **П-007** | §17    | Уточнение блокирующих вопросов для лексера/парсера            |
 
-### I.6 Закрытие блокеров v0.4.6
+### I.6 Закрытие блокеров v0.4.6 → v0.4.7
 
-| Находка                                           | Решение                                                                           |
-| ------------------------------------------------- | --------------------------------------------------------------------------------- |
-| BLK-001: приоритеты выражений                     | Новая цепочка `or → and → cmp → pipe → range → add → mul → unary → pow → postfix` |
-| BLK-002: `()` и `() -> expr`                      | Добавлены `unit_lit` и `lambda_empty`                                             |
-| BLK-003: newline в скобках                        | Введён `sep ::= "," \| NEWLINE`                                                   |
-| BLK-004: `NEWLINE`/`DEDENT` для блочных выражений | Введён `stmt_list`, `NEWLINE` как разделитель, уточнён порядок токенов            |
-| BLK-005: якорь `trap`                             | `trap` использует `stmt_indent`, а не `column_of(trap)`                           |
-| BLK-006: запятая перед `..` в list-паттернах      | Введён `list_pattern_elem`                                                        |
-| BLK-007: `program`/REPL и порядок деклараций      | Свободный `decl*`, добавлен `repl_line`                                           |
-| MAJ: offside внутри скобок                        | Введён изолированный offside mini-block                                           |
-| MAJ: интерполяция                                 | MVP-ограничение: без блочных конструкций                                          |
-| MAJ: EOF                                          | Описаны ошибки и эмиссия финальных токенов                                        |
-| MAJ: `?` в идентификаторах                        | `LOWER_IDENT` включает финальный `?`                                              |
-| MAJ: underscores в числах                         | Введены `dec_digits`, `hex_digits` и т.д.                                         |
-| MAJ: `:` и атомы                                  | Контекстное правило `COLON` vs `ATOM`                                             |
-| MAJ: `_msg`                                       | Разрешены `_[a-z]...` идентификаторы                                              |
-| MAJ: этапы проверок                               | Добавлена таблица этапов                                                          |
-| MAJ: примеры                                      | Исправлены проблемные примеры                                                     |
-| MAJ: check-examples                               | Введены явные метки и детерминированный режим                                     |
-| MAJ: diagnostics                                  | Формат `error: file:line:col: message`                                            |
-| MAJ: pipe-ban                                     | Зафиксирован этап: парсер + контекстный анализ                                    |
-| MIN: escapes, `;`, type ambiguities               | Удалены/уточнены/перенесены в семантику                                           |
+| Находка                                          | Решение                                                                                            |
+| ------------------------------------------------ | -------------------------------------------------------------------------------------------------- |
+| **BLK-005 (revisit):** якорь `trap`              | Отдельное правило удалено; единый якорь `stmt_indent` для всех блочных конструкций (СУ-003 v0.4.7) |
+| **BUG-A (check-examples, line 196)**             | §2.4: пример приведён к A2-форме — ensure внутри тела trap                                         |
+| **BUG-B (check-examples, line 467)**             | Форматтер: `*tuplePattern` 1 элемент печатается `(x,)`                                             |
+| **BUG-C (check-examples, line 770, 1090)**       | Проверены метки `brig invalid`; `modeByMeta` переписан на регексп `^\w+\b`                         |
+| **BUG-D (check-examples, line 854)**             | §10.3: пример приведён к A2-форме                                                                  |
+| **BUG-E (check-examples, line 1137)**            | §14: `type_decl` вынесен в `brig module`-блок с `module X`                                         |
+| **BUG-F (check-examples, line 2125)**            | `parseStmtList`: скип `NEWLINE` в начале итерации                                                  |
+| **BUG-G (check-examples, line 2491, 2515)**      | §14.6/§13.2: `type Callback`/`type Behavior` вынесены в `brig module`                              |
+| **BLK-004 (revisit):** `NEWLINE`/`DEDENT` в trap | Ensure как trap_item внутри блока; D.8 обновлён                                                    |
+| **FIX-A (guard round-trip)**                     | `normalizeGuardString` в `parser/stmt.go` — снимает `( ... )` вокруг `when`-guard                  |
+| **FIX-B (`%{`/`%[` + NEWLINE)**                  | Лексер: `%[`/`%{` считаются скобками; NEWLINE — разделитель внутри бракетных литералов             |
+| **FIX-C (§9.4 block)**                           | `(1,2,x)` → `brig module` с pattern-параметрами                                                    |
+| **FIX-D (§12.6 block)**                          | Справочная таблица акторных примитивов понижена до `text`                                          |
+| **FIX-E (§G.5 expr wrapper)**                    | `fn main() -> <expr>` — метапример, метка `text`                                                   |
+| **FIX-F (§G.5 stmt wrapper)**                    | `fn main() -> \n <stmt_list>` — метапример, метка `text`                                           |
+| **FIX-G (§D.7)**                                 | Убрано противоречие с двумя идентичными примерами                                                  |
 
 ---
 
 ## Итоговый статус
 
-После применения v0.4.6:
+После применения v0.4.7:
 
 - ✅ лексер может реализовывать токены по B без неоднозначностей;
-- ✅ offside-генератор имеет детерминированный контракт `NEWLINE`/`INDENT`/`DEDENT`;
-- ✅ парсер может строиться по финальному `brig.ebnf`;
+- ✅ offside-генератор имеет детерминированный контракт `NEWLINE`/`INDENT`/`DEDENT`; якорь блочных конструкций единообразен;
+- ✅ парсер может строиться по финальному `brig.ebnf`; `ensure` — часть тела `trap`;
 - ✅ все известные примеры из дизайна либо исправлены, либо помечены режимом;
+- ✅ `make check-examples` даёт `blocks: checked 65, failed 0`;
 - ✅ негативные тесты имеют понятные этапы ошибок;
 - ✅ `tools/check-examples` имеет достаточно спецификаций для реализации;
-- ✅ Трек B может стартовать без дополнительных вопросов автору дизайна.
-
-**Ответ на финальный вопрос:** Да, команда из 2–3 Go-разработчиков может открыть `internal/lexer/`, `internal/parser/`, `internal/ast/` и начать реализацию без уточняющих вопросов.
+- ✅ Трек B может продолжаться без дополнительных вопросов автору дизайна.
 
 ---
 
 ## Практические шаги
 
-- [ ] Сохранить этот документ как `docs/brig-specification-v0.4.6.md` (или как единый канонический `01-brig-specification.md`).
-- [ ] Пометить старые `01-language-design.md` и `01.1-brig-formalization.md` как deprecated или перенести в `legacy/`.
-- [ ] Реализовать `tools/check-examples` по G.
-- [ ] Прогнать `tools/check-examples` по документации.
-- [ ] При зелёном прогоне стартовать Трек B: лексер, offside, парсер, AST, негативные тесты.
+- [x] Сохранить этот документ как `docs/01-language-design.md` (v0.4.7).
+- [x] Применить патчи в `brig.ebnf`, `internal/parser/{expr,stmt}.go`, `internal/ast/format.go`, `internal/examples/examples.go`, `internal/lexer/lexer.go`.
+- [x] Обновить golden-файлы: `make update-golden`.
+- [x] Прогнать `make check-examples` → 65/65 ok.
+- [x] Прогнать `make ci-quick` → зелёный.
+- [x] Прогнать `make all` → зелёный.
+- [x] Прогнать `make test-race` → зелёный.
+- [x] Прогнать `make fuzz` (по 60s каждый) → без новых багов.
 
 ---
 
-_Документ фиксирует консолидированное состояние дизайна и формализации Brig v0.4.6._
+_Документ фиксирует консолидированное состояние дизайна и формализации Brig v0.4.7._

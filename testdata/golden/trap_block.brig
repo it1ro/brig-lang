@@ -1,6 +1,6 @@
 fn main() ->
     result = trap
         f1()
-    ensure close_f1()
+        ensure close_f1()
         f2()
     result

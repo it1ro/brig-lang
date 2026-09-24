@@ -149,13 +149,18 @@ body_stmt    ::= let_bind | expr NEWLINE
 else_branch  ::= pattern "->"
                  ( expr NEWLINE | NEWLINE INDENT stmt+ DEDENT )
 
+(* v0.4.7 (A2): ensure — trap_item ВНУТРИ INDENT-блока, а не клауза
+   после DEDENT. Порядок ensure в AST = текстовый порядок;
+   runtime выполняет LIFO (см. §10.3). *)
 trap_expr    ::= "trap" "(" expr ")"
-                 (* trap(expr) — синтаксический сахар для trap с единственным
-                    body_clause, содержащим стейтмент expr. НЕ вызов функции.
+                 (* trap(expr) — синтаксический сахар для блочной формы
+                    с единственным стейтментом expr. НЕ вызов функции.
                     См. §8.2. *)
-               | "trap" NEWLINE body_clause ( ensure_clause body_clause? )*
-body_clause  ::= INDENT stmt+ DEDENT
-ensure_clause::= "ensure" ( expr NEWLINE | NEWLINE INDENT stmt+ DEDENT )
+               | "trap" NEWLINE INDENT trap_item+ DEDENT
+trap_item    ::= stmt
+               | ensure_clause
+ensure_clause::= "ensure" ( expr NEWLINE
+                          | NEWLINE INDENT stmt_list DEDENT )
 
 (* trap_expr в primary_expr: грамматически допускается в любой позиции,
    но семантически разрешён только как RHS let_bind или expr_stmt.

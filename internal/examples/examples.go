@@ -1,11 +1,5 @@
 // Package examples implements the check-examples tool (A2): extracting
 // ```brig fenced blocks from design docs and running them through the parser.
-//
-// После ужесточения (этап 3, шаг 3):
-//   - убраны текстовые эвристики (reResultType, reFnNoArgs, reArgDotDot,
-//     reOkEquiv, reTopLevelBind): их роль теперь у парсера;
-//   - добавлен режим "invalid" (G.5): блок обязан НЕ парситься;
-//   - добавлен sanity-check parse → Format → parse ≡ parse.
 package examples
 
 import (
@@ -18,14 +12,14 @@ import (
 	"github.com/it1ro/brig-lang/internal/parser"
 )
 
-// Result — отчёт по одному блоку: file:line:col — status — [error] (A2).
+// Result — отчёт по одному блоку (A2).
 type Result struct {
 	File   string
-	Line   int // строка открывающего fence
+	Line   int
 	Col    int
 	Mode   string
 	OK     bool
-	ErrMsg string // сообщение об ошибке (пусто при OK)
+	ErrMsg string
 }
 
 func (r Result) String() string {
@@ -56,16 +50,17 @@ func CheckFile(path string) ([]Result, error) {
 // block — один fenced-блок с метаданными.
 type block struct {
 	file string
-	line int // строка открывающего fence (1-based)
+	line int
 	lang string
-	raw  string // содержимое блока
+	raw  string
 }
 
-// fenceRe: линия-ограждение из 3+ бэктиков. CommonMark: закрывающий fence
-// должен быть НЕ короче открывающего — в дизайн-доках brig-блоки
-// закрываются и ``` и ```` (последнее — когда вокруг внешний 4-бэктиковый
-// fence, который нужно честно пропускать).
+// fenceRe: линия-ограждение из 3+ бэктиков.
 var fenceRe = regexp.MustCompile("^[ \\t]*(`{3,})[ \\t]*(.*)$")
+
+// modeRe извлекает режим из метки fence. \b гарантирует, что
+// "invalid" матчится точно, а не как префикс "invalid_foo".
+var modeRe = regexp.MustCompile(`^(module|repl|expr|stmt|invalid)\b`)
 
 // extractBlocks находит fenced-блоки и возвращает только ```brig*.
 func extractBlocks(path, src string) []block {
@@ -93,7 +88,6 @@ func extractBlocks(path, src string) []block {
 				}
 				continue
 			}
-			// Закрывающий fence короче открывающего — это содержимое.
 			body = append(body, ln)
 			continue
 		}
@@ -106,17 +100,15 @@ func extractBlocks(path, src string) []block {
 
 // modeByMeta — режим из метки fence (module/repl/expr/stmt/invalid) или "".
 func modeByMeta(meta string) string {
-	for _, m := range []string{"module", "repl", "expr", "stmt", "invalid"} {
-		if strings.HasPrefix(meta, m) {
-			return m
-		}
+	if m := modeRe.FindStringSubmatch(meta); m != nil {
+		return m[1]
 	}
 	return ""
 }
 
 // heuristicMode — единственная оставшаяся эвристика: блок целиком из строк
-// с '>' → repl. Во всех остальных случаях — stmt (дизайн-док обязан
-// использовать явные метки, G.4).
+// с '>' → repl. Остальное — stmt (G.4: дизайн-док обязан использовать
+// явные метки).
 func heuristicMode(raw string) string {
 	hasPrompt := false
 	hasOther := false
@@ -146,7 +138,6 @@ func checkBlock(b block) Result {
 		mode = heuristicMode(b.raw)
 	}
 
-	// G.5: invalid — блок обязан НЕ парситься.
 	if mode == "invalid" {
 		if err := parser.Parse(parser.ModeModule, b.raw); err == nil {
 			return fail(b, mode, "invalid block parsed successfully")
@@ -167,9 +158,6 @@ func checkBlock(b block) Result {
 		if err != nil {
 			return fail(b, mode, err.Error())
 		}
-		// Sanity-check: parse → Format → parse ≡ parse.
-		// Ловит баги парсера/форматтера на реальных примерах из доков,
-		// не заводя отдельного golden-файла на каждый пример.
 		formatted := ast.Format(prog)
 		prog2, err := parser.ParseProgram(parser.ModeModule, formatted)
 		if err != nil {
@@ -208,8 +196,7 @@ func wrapForMode(mode, raw string) string {
 	return raw
 }
 
-// parseRepl: каждая строка — отдельный top-level стейтмент (§10.7);
-// '>' — приглашение; вывод REPL отбрасывается эвристикой (A2).
+// parseRepl: каждая строка — отдельный top-level стейтмент (§10.7).
 func parseRepl(src string) error {
 	for _, ln := range strings.Split(src, "\n") {
 		line := strings.TrimSpace(ln)
@@ -222,7 +209,6 @@ func parseRepl(src string) error {
 		if line == "" {
 			continue
 		}
-		// Вывод REPL (значения без признаков кода) отбрасывается (A2).
 		if isReplOutput(line) {
 			continue
 		}
@@ -233,8 +219,7 @@ func parseRepl(src string) error {
 	return nil
 }
 
-// isReplOutput: строка без '=' и операторов/скобок — вероятный вывод,
-// а не код (A2: "строки без =, без оператора, не начинающиеся с ключевого слова").
+// isReplOutput: строка без '=' и операторов/скобок — вероятный вывод (A2).
 func isReplOutput(line string) bool {
 	if strings.ContainsAny(line, "=()[]{}<>+*%|:") {
 		return false

@@ -421,6 +421,10 @@ func (p *printer) withString(v *withExpr, indent int) string {
 	return strings.TrimSuffix(sb.String(), "\n")
 }
 
+// trapString: тело trap и ensure-клаузы живут на одном уровне
+// (A2: ensure — trap_item внутри INDENT-блока). Форматтер печатает
+// сначала все stmt-ы, затем ensure-клаузы в порядке AST (runtime
+// выполняет LIFO).
 func (p *printer) trapString(v *trapExpr, indent int) string {
 	if v.expr != nil {
 		return "trap(" + p.exprString(v.expr, indent) + ")"
@@ -437,9 +441,9 @@ func (p *printer) trapString(v *trapExpr, indent int) string {
 	}
 	for i := range v.ensures {
 		e := &v.ensures[i]
-		sb.WriteString(indentStr(indent))
+		sb.WriteString(indentStr(indent + 1))
 		sb.WriteString("ensure ")
-		sb.WriteString(p.exprString(e.expr, indent))
+		sb.WriteString(p.exprString(e.expr, indent+1))
 		sb.WriteByte('\n')
 	}
 	return strings.TrimSuffix(sb.String(), "\n")
@@ -471,6 +475,9 @@ func (p *printer) writeBranchTail(sb *strings.Builder, e Expr, indent int) {
 
 // ---- patterns ----
 
+// patternString: *tuplePattern из 1 элемента печатается с trailing
+// запятой — иначе "(x)" перепарсится как grouping/identPat, и
+// round-trip потеряет узел tuplePattern.
 func (p *printer) patternString(pat Pattern) string {
 	switch v := pat.(type) {
 	case *wildcardPat:
@@ -494,6 +501,9 @@ func (p *printer) patternString(pat Pattern) string {
 		parts := make([]string, len(v.patterns))
 		for i, sub := range v.patterns {
 			parts[i] = p.patternString(sub)
+		}
+		if len(parts) == 1 {
+			return "(" + parts[0] + ",)"
 		}
 		return "(" + strings.Join(parts, ", ") + ")"
 	case *listPattern:

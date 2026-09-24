@@ -7,33 +7,35 @@
 ## Слои
 
 ```
+
 .brig source
-   │
-   ▼
-internal/lexer     токены + offside NEWLINE/INDENT/DEDENT   (A3, A5)   ✅ этап 1
-   │
-   ▼
-internal/parser    recursive descent по brig.ebnf            (A1, §16)  ⏳ этап 2
-   │
-   ▼
-internal/ast       узлы, visitor, равенство, pretty          (A1)       ⏳
-   │
-   ▼
-internal/...       компилятор bytecode + VM (регистровая)    (§13)      ⏳
-   │
-   ├── internal/vm       интерпретатор, TCO, ensure-кадры    (§8.4)
-   ├── internal/runtime  значения: Vec/Map/Set, term order   (§2, §5.3)
-   └── internal/prelude  встроенные функции                  (§9.1)
+│
+▼
+internal/lexer токены + offside NEWLINE/INDENT/DEDENT (A3, A5) ✅ этап 1
+│
+▼
+internal/parser recursive descent по brig.ebnf (A1, §16) ✅ этап 2
+│
+▼
+internal/ast узлы, visitor, равенство, pretty (A1) ✅ этап 3
+│
+▼
+internal/... компилятор bytecode + VM (регистровая) (§13) ⏳
+│
+├── internal/vm интерпретатор, TCO, ensure-кадры (§8.4)
+├── internal/runtime значения: Vec/Map/Set, term order (§2, §5.3)
+└── internal/prelude встроенные функции (§9.1)
+
 ```
 
 ## Поток сборки
 
-| Слой      | Вход                           | Выход                       |
-| --------- | ------------------------------ | --------------------------- |
-| lexer     | текст `.brig`                  | `[]Token` (NEWLINE/INDENT/DEDENT) |
-| parser    | `[]Token` + режим module/repl  | AST (§9: top-level ограничения)   |
-| compiler  | AST                           | bytecode (регистровый)     |
-| vm        | bytecode                      | значение / raise           |
+| Слой     | Вход                          | Выход                             |
+| -------- | ----------------------------- | --------------------------------- |
+| lexer    | текст `.brig`                 | `[]Token` (NEWLINE/INDENT/DEDENT) |
+| parser   | `[]Token` + режим module/repl | AST (§9: top-level ограничения)   |
+| compiler | AST                           | bytecode (регистровый)            |
+| vm       | bytecode                      | значение / raise                  |
 
 ## Режимы парсинга (§9)
 
@@ -46,13 +48,13 @@ internal/...       компилятор bytecode + VM (регистровая)  
 
 ```mermaid
 graph TD
-  L[internal/lexer] --> P[internal/parser]
-  P --> A[internal/ast]
-  A --> R[internal/runtime]
-  A --> V[internal/vm]
-  V --> Pr[internal/prelude]
-  P --> CE[cmd/check-examples + tools/check-examples]
-  V --> C[cmd/brig]
+    L[internal/lexer] --> P[internal/parser]
+    P --> A[internal/ast]
+    A --> R[internal/runtime]
+    A --> V[internal/vm]
+    V --> Pr[internal/prelude]
+    P --> CE[cmd/check-examples + tools/check-examples]
+    V --> C[cmd/brig]
 ```
 
 Пакеты ниже по списку никогда не импортируют вышестоящие (нет циклических
@@ -68,8 +70,8 @@ graph TD
 
 ## Статус Трека B
 
-- [x] этап 1: лексер (A3 + A5 top-level; A5.4 offside внутри скобок — TODO)
+- [x] этап 1: лексер (A3 + A5 top-level; A5.4 offside внутри скобок — TODO, issue #2)
 - [x] этап 1: check-examples (A2, парсер-заглушка: offside + инварианты)
-- [ ] этап 2: recursive descent парсер по `brig.ebnf`
-- [ ] этап 3: AST + round-trip форматтер
+- [x] этап 2: recursive descent парсер по `brig.ebnf`
+- [x] этап 3: AST + round-trip форматтер
 - [ ] этап 4: компилятор + VM, акторы, прелюдия

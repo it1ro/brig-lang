@@ -6,18 +6,23 @@ import (
 )
 
 // stmt_list ::= stmt { NEWLINE stmt } [ NEWLINE ]
+//
+// SkipNewlines вынесен в начало итерации: после parseStmt, который может
+// вернуть управление уже на NEWLINE (например, после закрытия вложенного
+// INDENT-блока), итерация корректно продолжается/завершается.
 func (p *parser) parseStmtList(until lexer.TokenType) ([]ast.Stmt, error) {
 	var stmts []ast.Stmt
-	p.skipNewlines()
-	for !p.at(until) && !p.at(lexer.EOF) {
+	for {
+		p.skipNewlines()
+		if p.at(until) || p.at(lexer.EOF) {
+			return stmts, nil
+		}
 		s, err := p.parseStmt()
 		if err != nil {
 			return nil, err
 		}
 		stmts = append(stmts, s)
-		p.skipNewlines()
 	}
-	return stmts, nil
 }
 
 // stmt ::= let_bind | local_fn_decl | expr_stmt
@@ -27,7 +32,6 @@ func (p *parser) parseStmt() (ast.Stmt, error) {
 	}
 
 	start := p.cur()
-	// Попытка let_bind: pattern '=' expr, с откатом.
 	save := p.pos
 	pat, err := p.parsePattern()
 	if err == nil && p.at(lexer.OP_ASSIGN) {
@@ -48,7 +52,6 @@ func (p *parser) parseStmt() (ast.Stmt, error) {
 }
 
 // local_fn_decl ::= fn_clause+
-// Все клаузы имеют одно имя; парсер собирает их в один localFnDecl.
 func (p *parser) parseLocalFnDecl() (ast.Stmt, error) {
 	var clauses []ast.LocalFnClauseArg
 	var name string
@@ -67,9 +70,6 @@ func (p *parser) parseLocalFnDecl() (ast.Stmt, error) {
 			return nil, err
 		}
 		clauses = append(clauses, c)
-		// После inline-тела парсер стоит на NEWLINE; после блочного —
-		// на KW_FN (лексер не эмитит NEWLINE после DEDENT, если следующий
-		// токен не клауза). Пробуем продолжить в обоих случаях.
 		save := p.pos
 		p.skipNewlines()
 		if p.at(lexer.KW_FN) && p.peek(1).Type == lexer.LOWER_IDENT && p.peek(1).Lit == name {
@@ -82,7 +82,6 @@ func (p *parser) parseLocalFnDecl() (ast.Stmt, error) {
 }
 
 // fn_clause ::= "fn" LOWER_IDENT "(" [ params ] ")" [ "when" expr ] "->" fn_body
-// вызывается после прочтения "fn" LOWER_IDENT.
 func (p *parser) parseFnClauseRest() (ast.LocalFnClauseArg, error) {
 	params, err := p.parseParams()
 	if err != nil {
@@ -93,7 +92,7 @@ func (p *parser) parseFnClauseRest() (ast.LocalFnClauseArg, error) {
 		save := p.pos
 		g, err := p.parseExpr()
 		if err == nil {
-			guard = g.String()
+			guard = normalizeGuardString(g)
 		} else {
 			p.pos = save
 		}
@@ -109,7 +108,6 @@ func (p *parser) parseFnClauseRest() (ast.LocalFnClauseArg, error) {
 }
 
 // params ::= param { sep param } [ sep ]
-// param ::= pattern | ".." LOWER_IDENT
 func (p *parser) parseParams() ([]string, error) {
 	if _, err := p.expect(lexer.LPAREN, "'('"); err != nil {
 		return nil, err
@@ -163,7 +161,6 @@ func (p *parser) parseFnBody() (*ast.BlockStmt, error) {
 		}
 		return ast.NewBlockStmt(stmts, p.cur().Line, p.cur().Col), nil
 	}
-	// Однострочное тело — оборачиваем в блок из одного expr_stmt.
 	e, err := p.parseExpr()
 	if err != nil {
 		return nil, err
@@ -195,7 +192,7 @@ func (p *parser) parseFnDecl() (ast.Decl, error) {
 			save := p.pos
 			g, err := p.parseExpr()
 			if err == nil {
-				guard = g.String()
+				guard = normalizeGuardString(g)
 			} else {
 				p.pos = save
 			}
@@ -217,4 +214,39 @@ func (p *parser) parseFnDecl() (ast.Decl, error) {
 		break
 	}
 	return ast.NewFuncDecl(name, clauses, start.Line, start.Col), nil
+}
+
+// normalizeGuardString приводит строку guard к канонической форме,
+// снимая один уровень внешних скобок. Без этого round-trip
+// `n > 0` → Format → `(n > 0)` → Parse → `((n > 0))` не сходится:
+// binaryExpr.String() оборачивает в `(a op b)`, а groupingExpr.String()
+// добавляет ещё один уровень. После нормализации обе формы дают
+// одну и ту же строку.
+func normalizeGuardString(e ast.Expr) string {
+	return stripOuterParens(e.String())
+}
+
+// stripOuterParens снимает один уровень внешних скобок, если они
+// обнимают всё выражение целиком (баланс скобок возвращается к 0
+// только в самом конце).
+func stripOuterParens(s string) string {
+	if len(s) < 2 || s[0] != '(' || s[len(s)-1] != ')' {
+		return s
+	}
+	depth := 0
+	for i := 0; i < len(s); i++ {
+		switch s[i] {
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 && i != len(s)-1 {
+				return s // внешняя пара закрылась раньше — не обнимает всё
+			}
+		}
+	}
+	if depth != 0 {
+		return s
+	}
+	return s[1 : len(s)-1]
 }

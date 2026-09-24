@@ -664,7 +664,6 @@ func (p *parser) parseIf() (ast.Expr, error) {
 		return nil, err
 	}
 	thenBlk := ast.NewBlockStmt(stmts, start.Line, start.Col)
-
 	var elseBlk ast.Expr
 	if p.at(lexer.KW_ELSE) {
 		p.advance()
@@ -741,83 +740,6 @@ func (p *parser) parseBranchBody() (ast.Expr, error) {
 	return p.parseExpr()
 }
 
-// recv_expr ::= "recv" NEWLINE INDENT recv_branch+ DEDENT [ else ] [ after ]
-func (p *parser) parseRecv() (ast.Expr, error) {
-	start := p.advance() // recv
-	if _, err := p.expect(lexer.NEWLINE, "NEWLINE after recv"); err != nil {
-		return nil, err
-	}
-	if _, err := p.expect(lexer.INDENT, "INDENT"); err != nil {
-		return nil, err
-	}
-	var branches []ast.RecvBranchArg
-	p.skipNewlines()
-	for !p.at(lexer.DEDENT) && !p.at(lexer.EOF) {
-		pat, err := p.parsePattern()
-		if err != nil {
-			return nil, err
-		}
-		if p.match(lexer.KW_WHEN) {
-			if _, err := p.parseExpr(); err != nil {
-				return nil, err
-			}
-		}
-		if _, err := p.expect(lexer.OP_ARROW, "'->'"); err != nil {
-			return nil, err
-		}
-		body, err := p.parseBranchBody()
-		if err != nil {
-			return nil, err
-		}
-		branches = append(branches, ast.RecvBranchArg{Pattern: pat, Body: body})
-		p.skipNewlines()
-	}
-	if _, err := p.expect(lexer.DEDENT, "DEDENT"); err != nil {
-		return nil, err
-	}
-
-	var clauses ast.RecvClauseArg
-	if p.at(lexer.KW_ELSE) {
-		p.advance()
-		name, err := p.expect(lexer.LOWER_IDENT, "binding after 'else'")
-		if err != nil {
-			return nil, err
-		}
-		clauses.ElseName = name.Lit
-		if _, err := p.expect(lexer.NEWLINE, "NEWLINE"); err != nil {
-			return nil, err
-		}
-		if _, err := p.expect(lexer.INDENT, "INDENT"); err != nil {
-			return nil, err
-		}
-		stmts, err := p.parseStmtList(lexer.DEDENT)
-		if err != nil {
-			return nil, err
-		}
-		if _, err := p.expect(lexer.DEDENT, "DEDENT"); err != nil {
-			return nil, err
-		}
-		clauses.ElseBody = ast.NewBlockStmt(stmts, p.cur().Line, p.cur().Col)
-	}
-	if p.at(lexer.KW_AFTER) {
-		p.advance()
-		t, err := p.parseExpr()
-		if err != nil {
-			return nil, err
-		}
-		clauses.AfterTime = t
-		if _, err := p.expect(lexer.OP_ARROW, "'->'"); err != nil {
-			return nil, err
-		}
-		b, err := p.parseBranchBody()
-		if err != nil {
-			return nil, err
-		}
-		clauses.AfterBody = b
-	}
-	return ast.NewRecvExpr(branches, clauses, start.Line, start.Col), nil
-}
-
 // with_expr ::= "with" NEWLINE INDENT (bind_stmt | stmt)+ DEDENT [ with_else ]
 func (p *parser) parseWith() (ast.Expr, error) {
 	start := p.advance() // with
@@ -854,7 +776,6 @@ func (p *parser) parseWith() (ast.Expr, error) {
 		return nil, err
 	}
 	body := ast.NewBlockStmt(stmts, start.Line, start.Col)
-
 	var elseBranches []ast.WithElseArg
 	if p.at(lexer.KW_ELSE) {
 		p.advance()
@@ -887,11 +808,18 @@ func (p *parser) parseWith() (ast.Expr, error) {
 	return ast.NewWithExpr(items, body, elseBranches, start.Line, start.Col), nil
 }
 
-// trap_expr ::= "trap" "(" expr ")"
+// parseTrap реализует обновлённую грамматику (v0.4.7, A2):
 //
-//	| "trap" NEWLINE INDENT stmt+ DEDENT { ensure ... }
+//	trap_expr ::= "trap" "(" expr ")"
+//	            | "trap" NEWLINE INDENT trap_item+ DEDENT
+//	trap_item ::= stmt | ensure_clause
+//
+// Ensure-клауза — это trap_item внутри INDENT-блока; она попадает в
+// trapExpr.ensures в текстовом порядке (runtime выполняет LIFO).
 func (p *parser) parseTrap() (ast.Expr, error) {
 	start := p.advance() // trap
+
+	// Инлайн-форма: trap(expr).
 	if p.at(lexer.LPAREN) {
 		p.advance()
 		e, err := p.parseExpr()
@@ -903,33 +831,33 @@ func (p *parser) parseTrap() (ast.Expr, error) {
 		}
 		return ast.NewTrapExpr(e, nil, nil, start.Line, start.Col), nil
 	}
+
+	// Блочная форма.
 	if _, err := p.expect(lexer.NEWLINE, "NEWLINE after trap"); err != nil {
 		return nil, err
 	}
 	if _, err := p.expect(lexer.INDENT, "INDENT"); err != nil {
 		return nil, err
 	}
-	stmts, err := p.parseStmtList(lexer.DEDENT)
-	if err != nil {
-		return nil, err
-	}
-	if _, err := p.expect(lexer.DEDENT, "DEDENT"); err != nil {
-		return nil, err
-	}
-	body := ast.NewBlockStmt(stmts, start.Line, start.Col)
 
+	var stmts []ast.Stmt
 	var ensures []ast.EnsureArg
-	for p.at(lexer.KW_ENSURE) {
-		p.advance()
-		e, err := p.parseExpr()
-		if err != nil {
-			return nil, err
-		}
-		ensures = append(ensures, ast.EnsureArg{Expr: e})
-		if p.at(lexer.NEWLINE) {
+
+	p.skipNewlines()
+	for !p.at(lexer.DEDENT) && !p.at(lexer.EOF) {
+		if p.at(lexer.KW_ENSURE) {
 			p.advance()
-			if p.at(lexer.INDENT) {
-				p.advance()
+			e, err := p.parseExpr()
+			if err != nil {
+				return nil, err
+			}
+			ensures = append(ensures, ast.EnsureArg{Expr: e})
+			// Опциональное блочное тело ensure: NEWLINE INDENT stmt_list DEDENT.
+			// Само тело сейчас не сохраняется в AST (ensureClause содержит
+			// только expr); сохраняем текущее поведение парсера.
+			if p.at(lexer.NEWLINE) && p.peek(1).Type == lexer.INDENT {
+				p.advance() // NEWLINE
+				p.advance() // INDENT
 				if _, err := p.parseStmtList(lexer.DEDENT); err != nil {
 					return nil, err
 				}
@@ -937,7 +865,135 @@ func (p *parser) parseTrap() (ast.Expr, error) {
 					return nil, err
 				}
 			}
+			p.skipNewlines()
+			continue
 		}
+		s, err := p.parseStmt()
+		if err != nil {
+			return nil, err
+		}
+		stmts = append(stmts, s)
+		p.skipNewlines()
 	}
+	if _, err := p.expect(lexer.DEDENT, "DEDENT"); err != nil {
+		return nil, err
+	}
+
+	body := ast.NewBlockStmt(stmts, start.Line, start.Col)
 	return ast.NewTrapExpr(nil, body, ensures, start.Line, start.Col), nil
+}
+
+// parseRecv: после DEDENT-веточек грамматика допускает (KW_ELSE | KW_AFTER)
+// без предварительного NEWLINE. Лексер эмитит DEDENT непосредственно
+// перед клаузой-ключевым словом (см. §D.8), поэтому достаточно проверить
+// at(KW_ELSE) / at(KW_AFTER). Дополнительно скипаем NEWLINE-разделители,
+// если лексер их всё же эмитит (защита от новых edge-case'ов).
+func (p *parser) parseRecv() (ast.Expr, error) {
+	start := p.advance() // recv
+
+	// Инлайн-форма.
+	if !p.at(lexer.NEWLINE) {
+		pat, err := p.parsePattern()
+		if err != nil {
+			return nil, err
+		}
+		if p.match(lexer.KW_WHEN) {
+			if _, err := p.parseExpr(); err != nil {
+				return nil, err
+			}
+		}
+		if _, err := p.expect(lexer.OP_ARROW, "'->'"); err != nil {
+			return nil, err
+		}
+		body, err := p.parseExpr()
+		if err != nil {
+			return nil, err
+		}
+		return ast.NewRecvExpr(
+			[]ast.RecvBranchArg{{Pattern: pat, Body: body}},
+			ast.RecvClauseArg{},
+			start.Line, start.Col,
+		), nil
+	}
+
+	// Блочная форма.
+	if _, err := p.expect(lexer.NEWLINE, "NEWLINE after recv"); err != nil {
+		return nil, err
+	}
+	if _, err := p.expect(lexer.INDENT, "INDENT"); err != nil {
+		return nil, err
+	}
+	var branches []ast.RecvBranchArg
+	p.skipNewlines()
+	for !p.at(lexer.DEDENT) && !p.at(lexer.EOF) {
+		pat, err := p.parsePattern()
+		if err != nil {
+			return nil, err
+		}
+		if p.match(lexer.KW_WHEN) {
+			if _, err := p.parseExpr(); err != nil {
+				return nil, err
+			}
+		}
+		if _, err := p.expect(lexer.OP_ARROW, "'->'"); err != nil {
+			return nil, err
+		}
+		body, err := p.parseBranchBody()
+		if err != nil {
+			return nil, err
+		}
+		branches = append(branches, ast.RecvBranchArg{Pattern: pat, Body: body})
+		p.skipNewlines()
+	}
+	if _, err := p.expect(lexer.DEDENT, "DEDENT"); err != nil {
+		return nil, err
+	}
+
+	// Защита: некоторые версии лексера могут эмитить лишний NEWLINE
+	// между DEDENT и else/after.
+	p.skipNewlines()
+
+	var clauses ast.RecvClauseArg
+	if p.at(lexer.KW_ELSE) {
+		p.advance()
+		name, err := p.expect(lexer.LOWER_IDENT, "binding after 'else'")
+		if err != nil {
+			return nil, err
+		}
+		clauses.ElseName = name.Lit
+		if _, err := p.expect(lexer.NEWLINE, "NEWLINE"); err != nil {
+			return nil, err
+		}
+		if _, err := p.expect(lexer.INDENT, "INDENT"); err != nil {
+			return nil, err
+		}
+		stmts, err := p.parseStmtList(lexer.DEDENT)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := p.expect(lexer.DEDENT, "DEDENT"); err != nil {
+			return nil, err
+		}
+		clauses.ElseBody = ast.NewBlockStmt(stmts, p.cur().Line, p.cur().Col)
+	}
+
+	p.skipNewlines()
+
+	if p.at(lexer.KW_AFTER) {
+		p.advance()
+		t, err := p.parseExpr()
+		if err != nil {
+			return nil, err
+		}
+		clauses.AfterTime = t
+		if _, err := p.expect(lexer.OP_ARROW, "'->'"); err != nil {
+			return nil, err
+		}
+		b, err := p.parseBranchBody()
+		if err != nil {
+			return nil, err
+		}
+		clauses.AfterBody = b
+	}
+	return ast.NewRecvExpr(branches, clauses, start.Line, start.Col), nil
 }
