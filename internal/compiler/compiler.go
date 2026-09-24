@@ -673,29 +673,44 @@ func (fc *funcCompiler) compileInlineTrap(inner ast.Expr) error {
 
 // compileBlockTrap компилирует блочную форму trap с ensure-клаузами.
 //
-// Схема байткода:
+// Схема байткода (v0.4.7, A2):
 //
-//	TRAPBEGIN handler
-//	  <body>                 ; оставляет значение тела
-//	TRAPEND
-//	  <ensure[N-1]> POP      ; LIFO: ensure выполняются в обратном порядке
+//	TRAPBEGIN outer              ; ловит raise из ensures (в success и exception)
+//	  TRAPBEGIN body             ; ловит raise из тела
+//	    <body>
+//	  TRAPEND                    ; тело успешно
+//	  <ensure[N-1]> POP          ; LIFO
 //	  ...
 //	  <ensure[0]>   POP
-//	  MAKEOK
+//	  MAKEOK                     ; Ok(v)
+//	  TRAPEND                    ; outer ok
 //	  JMP done
-//	handler:
-//	  SETLOCAL exc            ; только если есть ensure
-//	  <ensure[N-1]> POP      ; тот же LIFO-порядок
+//	body_handler:
+//	  SETLOCAL exc               ; сохраняем исходную ошибку
+//	  <ensure[N-1]> POP          ; LIFO (под outer)
 //	  ...
 //	  <ensure[0]>   POP
+//	  TRAPEND                    ; outer ok
 //	  GETLOCAL exc
-//	  MAKEERROR
+//	  MAKEERROR                  ; Error(exc)
+//	  JMP done
+//	outer_handler:
+//	  MAKEERROR                  ; Error(ensure_raise_value)
 //	done:
 //
-// Замечание: ensure-выражения компилируются дважды (в success- и
-// exception-путях). Если ensure сам бросает raise в success-пути,
-// исключение распространяется наружу — это осознанное упрощение
-// среза (полная семантика §10.3 с заменой ошибки — отдельный подэтап).
+// Семантика §10.3 (упрощение среза):
+//   - если ensure падает, оставшиеся ensure НЕ выполняются;
+//   - побеждает последняя ошибка (упрощённая форма «последняя побеждает»).
+//     TODO(подэтап 4.8): полная семантика «оставшиеся ensure всё равно
+//     выполняются» — вместе с переработкой кадров под акторы.
+//
+// TCO-инвариант (§15.3, принцип #11): TCO внутри области активного ensure
+// должен быть отключён. В текущей стековой ВМ TCO вообще нет — формально
+// инвариант соблюдён; при миграции на регистровую ВМ это точка внимания.
+//
+// Dual-compile ensures (дважды: в success и exception путях) безопасен,
+// потому что ensure — выражение (не блок), локалы в родительской функции
+// не создаёт. Локальные fn в ensure невозможны по грамматике.
 func (fc *funcCompiler) compileBlockTrap(te ast.TrapExpr) error {
 	var stmts []ast.Stmt
 	switch body := te.TrapBody().(type) {
@@ -708,15 +723,50 @@ func (fc *funcCompiler) compileBlockTrap(te ast.TrapExpr) error {
 	}
 	ensures := te.TrapEnsures()
 
+	// --- Быстрый путь: без ensure ---
+	if len(ensures) == 0 {
+		fc.emit(vm.OpTrapBegin, 0)
+		beginPos := fc.chunk.OperandPos()
+
+		if err := fc.compileStmts(stmts); err != nil {
+			return err
+		}
+		fc.emit(vm.OpTrapEnd, 0)
+		fc.emit(vm.OpMakeOk, 0)
+		fc.emit(vm.OpJump, 0)
+		endJumpPos := fc.chunk.OperandPos()
+
+		handlerAddr := len(vm.ChunkCode(fc.chunk))
+		fc.chunk.PatchOperand(beginPos, handlerAddr)
+
+		fc.emit(vm.OpMakeError, 0)
+
+		endAddr := len(vm.ChunkCode(fc.chunk))
+		fc.chunk.PatchOperand(endJumpPos, endAddr)
+		return nil
+	}
+
+	// --- Полный путь: с ensure ---
+
+	// outer — ловит raise из ensures.
 	fc.emit(vm.OpTrapBegin, 0)
-	beginPos := fc.chunk.OperandPos()
+	outerBegin := fc.chunk.OperandPos()
+
+	// body — ловит raise из тела.
+	fc.emit(vm.OpTrapBegin, 0)
+	bodyBegin := fc.chunk.OperandPos()
 
 	if err := fc.compileStmts(stmts); err != nil {
 		return err
 	}
-	fc.emit(vm.OpTrapEnd, 0)
 
-	// Success-путь: ensures LIFO, затем Ok(value).
+	fc.emit(vm.OpTrapEnd, 0) // закрываем body
+
+	// Слот для сохранения исходной ошибки (используется в body_handler).
+	// Резервируем ПОСЛЕ компиляции тела, чтобы не пересечься с локалами тела.
+	excSlot := fc.allocTemp()
+
+	// Success-путь: ensures LIFO, затем Ok(v).
 	for i := len(ensures) - 1; i >= 0; i-- {
 		if err := fc.compileExpr(ensures[i]); err != nil {
 			return err
@@ -724,34 +774,36 @@ func (fc *funcCompiler) compileBlockTrap(te ast.TrapExpr) error {
 		fc.emit(vm.OpPop, 0)
 	}
 	fc.emit(vm.OpMakeOk, 0)
+	fc.emit(vm.OpTrapEnd, 0) // закрываем outer
 	fc.emit(vm.OpJump, 0)
-	endJumpPos := fc.chunk.OperandPos()
+	successJump := fc.chunk.OperandPos()
 
-	// Слот для значения исключения резервируется после компиляции тела
-	// и success-пути — чтобы не пересечься с локалами тела.
-	excSlot := -1
-	if len(ensures) > 0 {
-		excSlot = fc.allocTemp()
-	}
+	// --- body_handler: raise из тела ---
+	bodyHandlerAddr := len(vm.ChunkCode(fc.chunk))
+	fc.chunk.PatchOperand(bodyBegin, bodyHandlerAddr)
 
-	handlerAddr := len(vm.ChunkCode(fc.chunk))
-	fc.chunk.PatchOperand(beginPos, handlerAddr)
-
-	if excSlot >= 0 {
-		fc.emit(vm.OpSetLocal, excSlot)
-	}
+	fc.emit(vm.OpSetLocal, excSlot)
 	for i := len(ensures) - 1; i >= 0; i-- {
 		if err := fc.compileExpr(ensures[i]); err != nil {
 			return err
 		}
 		fc.emit(vm.OpPop, 0)
 	}
-	if excSlot >= 0 {
-		fc.emit(vm.OpGetLocal, excSlot)
-	}
+	fc.emit(vm.OpTrapEnd, 0) // закрываем outer (нормальное завершение handler)
+	fc.emit(vm.OpGetLocal, excSlot)
+	fc.emit(vm.OpMakeError, 0)
+	fc.emit(vm.OpJump, 0)
+	bodyEndJump := fc.chunk.OperandPos()
+
+	// --- outer_handler: raise из ensures (в success или exception пути) ---
+	outerHandlerAddr := len(vm.ChunkCode(fc.chunk))
+	fc.chunk.PatchOperand(outerBegin, outerHandlerAddr)
+
+	// handleRaise уже снял outer и положил значение ошибки на стек.
 	fc.emit(vm.OpMakeError, 0)
 
 	endAddr := len(vm.ChunkCode(fc.chunk))
-	fc.chunk.PatchOperand(endJumpPos, endAddr)
+	fc.chunk.PatchOperand(successJump, endAddr)
+	fc.chunk.PatchOperand(bodyEndJump, endAddr)
 	return nil
 }
