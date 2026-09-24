@@ -87,7 +87,8 @@ func hasOperand(op OpCode) bool {
 	case OpConstant, OpGetLocal, OpSetLocal, OpGetGlobal, OpSetGlobal,
 		OpCall, OpJump, OpJumpFalse, OpJumpTrue,
 		OpTuple, OpList, OpVector, OpMap,
-		OpMakeClosure, OpGetUpvalue, OpSetUpvalue, OpDefineLocalFn:
+		OpMakeClosure, OpGetUpvalue, OpSetUpvalue, OpDefineLocalFn,
+		OpTrapBegin: // v0.4.7: адрес обработчика
 		return true
 	}
 	return false
@@ -127,6 +128,8 @@ func (c *Chunk) disInstr(sb *strings.Builder, ip int) int {
 			fmt.Fprintf(sb, "%4d pairs", operand)
 		case OpJump, OpJumpFalse, OpJumpTrue:
 			fmt.Fprintf(sb, "-> %04d", operand)
+		case OpTrapBegin:
+			fmt.Fprintf(sb, "-> %04d (handler)", operand)
 		default:
 			fmt.Fprintf(sb, "%4d", operand)
 		}
