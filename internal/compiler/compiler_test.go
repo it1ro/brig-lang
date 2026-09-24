@@ -116,3 +116,79 @@ fn main() ->
     print(fact(5))
 `)
 }
+
+// ---- trap / ensure (v0.4.7, §10.2/§10.3) ----
+
+func TestTrapInlineOk(t *testing.T) {
+	runModule(t, `module Main
+fn main() ->
+    result = trap(1 + 1)
+    print(result)
+`)
+}
+
+func TestTrapInlineError(t *testing.T) {
+	runModule(t, `module Main
+fn main() ->
+    result = trap(raise(:boom))
+    print(result)
+`)
+}
+
+func TestTrapBlockOk(t *testing.T) {
+	runModule(t, `module Main
+fn main() ->
+    result = trap
+        x = 1
+        x + 2
+    print(result)
+`)
+}
+
+func TestTrapBlockError(t *testing.T) {
+	runModule(t, `module Main
+fn main() ->
+    result = trap
+        x = 1
+        raise(:oops)
+    print(result)
+`)
+}
+
+func TestTrapWithEnsure(t *testing.T) {
+	runModule(t, `module Main
+fn main() ->
+    result = trap
+        print("body")
+        ensure print("cleanup-1")
+        ensure print("cleanup-2")
+        :ok
+    print(result)
+`)
+}
+
+func TestTrapNested(t *testing.T) {
+	runModule(t, `module Main
+fn main() ->
+    inner = trap(raise(:inner))
+    outer = trap(print(inner))
+    print(outer)
+`)
+}
+
+func TestTrapCatchesDivisionByZero(t *testing.T) {
+	runModule(t, `module Main
+fn main() ->
+    result = trap(1 div 0)
+    print(result)
+`)
+}
+
+func TestTrapBlockPropagatesThroughFn(t *testing.T) {
+	runModule(t, `module Main
+fn boom() -> raise(:deep)
+fn main() ->
+    result = trap(boom())
+    print(result)
+`)
+}
