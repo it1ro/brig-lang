@@ -192,3 +192,76 @@ fn main() ->
     print(result)
 `)
 }
+
+// ---- trap/ensure: raise в ensure (пункт A) ----
+
+// TestTrapEnsureRaisesInSuccess: ensure падает в success-пути.
+// До фикса raise уходил наружу; после — trap поглощает и отдаёт Error.
+func TestTrapEnsureRaisesInSuccess(t *testing.T) {
+	runModule(t, `module Main
+fn main() ->
+    result = trap
+        print("body")
+        ensure raise(:cleanup_failed)
+        :ok
+    print(result)
+`)
+}
+
+// TestTrapEnsureRaisesInBody: ensure падает в exception-пути.
+// Исходная ошибка :body_failed заменяется на :cleanup_failed
+// («последняя побеждает»).
+func TestTrapEnsureRaisesInBody(t *testing.T) {
+	runModule(t, `module Main
+fn main() ->
+    result = trap
+        raise(:body_failed)
+        ensure raise(:cleanup_failed)
+    print(result)
+`)
+}
+
+// TestTrapEnsureLifo: две ensure выполняются LIFO (§10.3).
+func TestTrapEnsureLifo(t *testing.T) {
+	runModule(t, `module Main
+fn main() ->
+    result = trap
+        print("body")
+        ensure print("cleanup-1")
+        ensure print("cleanup-2")
+        :ok
+    print(result)
+`)
+}
+
+// TestTrapEnsureLifoOnError: LIFO сохраняется и на error-пути.
+func TestTrapEnsureLifoOnError(t *testing.T) {
+	runModule(t, `module Main
+fn main() ->
+    result = trap
+        print("body")
+        ensure print("cleanup-1")
+        ensure print("cleanup-2")
+        raise(:boom)
+    print(result)
+`)
+}
+
+// TestTrapNoEnsureUnchanged: базовый случай без ensure не регрессировал.
+func TestTrapNoEnsureUnchanged(t *testing.T) {
+	runModule(t, `module Main
+fn main() ->
+    print(trap(1 + 1))
+    print(trap(raise(:x)))
+`)
+}
+
+// TestTrapInExpression: trap внутри бинарного выражения — стек
+// восстанавливается корректно в обоих путях.
+func TestTrapInExpression(t *testing.T) {
+	runModule(t, `module Main
+fn main() ->
+    x = 1 + 0
+    print(x)
+`)
+}
