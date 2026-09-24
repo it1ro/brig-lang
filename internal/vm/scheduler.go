@@ -643,16 +643,43 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 			if err != nil {
 				return fail(err)
 			}
-			r, err := s.vm.Call(callee, callArgs)
+
+			// Нативные функции (map/fold/print/...) вызываются немедленно.
+			// Они не могут блокироваться; recv в sync-контексте — ошибка
+			// по дизайну (§15.2).
+			if callee.Kind == runtime.KindFunction &&
+				callee.Func != nil && callee.Func.IsNative {
+				r, err := callee.Func.Native(s.vm, callArgs)
+				if err != nil {
+					if handleRaise(err) {
+						continue
+					}
+					return fail(err)
+				}
+				push(r)
+				f.ip += 3
+				continue
+			}
+
+			// Non-native: пушим кадр в стек ТЕКУЩЕГО актора.
+			// Это делает акторную рекурсию (counter_loop → counter_loop)
+			// полноценной: recv внутри callee работает на ящике
+			// вызывающего актора, а не на временном пустом.
+			//
+			// TCO пока нет: стек актора растёт на каждый рекурсивный вызов.
+			// Для counter_loop это означает unwinding всех кадров при
+			// :stop, но main всё равно завершится раньше и процесс
+			// выйдет по RunMain. TCO — отдельный подэтап.
+			newFrame, err := frameFromFn(callee, callArgs)
 			if err != nil {
 				if handleRaise(err) {
 					continue
 				}
 				return fail(err)
 			}
-			push(r)
+			a.frames = append(a.frames, newFrame)
 			f.ip += 3
-
+			return stepContinue
 		case OpReturn:
 			v, err := pop()
 			if err != nil {
