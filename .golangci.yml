@@ -14,7 +14,10 @@ linters:
     generated: lax
     # terminal-const именование (KW_FN, OP_STAR, ...) намеренно зеркалит
     # терминалы спеки A3; revive-стилистика к token.go не применяется.
+    # ast.type categories use underscore naming per spec A3/A4
     rules:
+      - path: internal/ast/ast\.go
+        linters: [revive]
       - path: internal/lexer/token\.go
         linters: [revive]
     paths:

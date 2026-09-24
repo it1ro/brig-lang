@@ -79,8 +79,8 @@ type variantInfo struct {
 
 // fieldInfo — поле варианта/записи.
 type fieldInfo struct {
-	name  string
-	typ Type
+	name string
+	typ  Type
 }
 
 // recordInfo — поля record-декларации.
@@ -107,7 +107,7 @@ func joinFields(fields []fieldInfo, sep string) string {
 		if i > 0 {
 			buf.WriteString(sep)
 		}
-		buf.WriteString(fmt.Sprintf("%s: %s", f.name, f.typ))
+		fmt.Fprintf(&buf, "%s: %s", f.name, f.typ)
 	}
 	return buf.String()
 }

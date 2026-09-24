@@ -70,7 +70,7 @@ func prettyExpr(buf *bytes.Buffer, e Expr, indent int) {
 	case *literalExpr:
 		fmt.Fprintf(buf, "(lit %s)", n.value)
 	case *variableExpr:
-		buf.WriteString(fmt.Sprintf("(var %s)", n.name))
+		fmt.Fprintf(buf, "(var %s)", n.name)
 	case *assignExpr:
 		buf.WriteString("(= ")
 		buf.WriteString(n.name)
@@ -439,9 +439,9 @@ func prettyType(buf *bytes.Buffer, t Type, indent int) {
 func prettyDecl(buf *bytes.Buffer, d Decl, indent int) {
 	switch n := d.(type) {
 	case *importDecl:
-		buf.WriteString(fmt.Sprintf("(import %s)", n.module))
+		fmt.Fprintf(buf, "(import %s)", n.module)
 	case *aliasDecl:
-		buf.WriteString(fmt.Sprintf("(alias %s as %s)", n.original, n.alias))
+		fmt.Fprintf(buf, "(alias %s as %s)", n.original, n.alias)
 	case *typeDecl:
 		buf.WriteString("(type " + n.name)
 		if len(n.generic) > 0 {

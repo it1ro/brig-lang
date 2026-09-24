@@ -13,8 +13,10 @@ import (
 type Mode int
 
 const (
+	// ModeModule is module parsing mode.
 	ModeModule Mode = iota // ModeModule is module parsing mode
-	ModeRepl
+	// ModeRepl selects REPL parsing mode.
+	ModeRepl // ModeRepl is REPL parsing mode
 )
 
 // Parse — совместимая обёртка: только проверка без возврата AST.

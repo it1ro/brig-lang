@@ -168,8 +168,8 @@ type nominalType struct {
 
 // fieldType — поле nominal/anonymous.
 type fieldType struct {
-	name  string
-	typ Type
+	name string
+	typ  Type
 }
 
 func (n *nominalType) IsExpression() bool { return false }

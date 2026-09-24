@@ -123,8 +123,8 @@ type TypeCategory int
 
 const (
 	// Primitive types
-	TypeCat_Int TypeCategory = iota // TypeCat_Int is an integer type
-	TypeCat_Float // TypeCat_Float is a floating point type
+	TypeCat_Int      TypeCategory = iota // TypeCat_Int is an integer type
+	TypeCat_Float                        // TypeCat_Float is a floating point type
 	TypeCat_Decimal                      // exact decimal
 	TypeCat_Bool                         // булево
 	TypeCat_Str                          // строка
@@ -136,7 +136,7 @@ const (
 	TypeCat_Ref                          // Ref
 
 	// Collection types
-	TypeCat_List // TypeCat_List is a list type
+	TypeCat_List   // TypeCat_List is a list type
 	TypeCat_Vector // Vector<T>
 	TypeCat_Map    // Map<K, V>
 	TypeCat_Set    // Set<T>
@@ -147,7 +147,7 @@ const (
 	TypeCat_Result // Result<T, E>
 
 	// Composite/constructed
-	TypeCat_Nominal // TypeCat_Nominal is a nominal type
+	TypeCat_Nominal   // TypeCat_Nominal is a nominal type
 	TypeCat_Anonymous // анонимная запись {...}
 )
 
