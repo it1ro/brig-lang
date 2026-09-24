@@ -1,0 +1,20 @@
+module Main
+
+fn counter_loop(n) ->
+    recv
+        (:inc) -> counter_loop(n + 1)
+        (:get, from) ->
+            send(from, n)
+            counter_loop(n)
+        (:stop) -> :ok
+
+fn main() ->
+    pid = spawn(() -> counter_loop(0))
+    send(pid, :inc)
+    send(pid, :inc)
+    send(pid, (:get, self()))
+    n = recv
+        (:value) -> :unused
+        v -> v
+    print("counter:", n)
+    send(pid, :stop)
