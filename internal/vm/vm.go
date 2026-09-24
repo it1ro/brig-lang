@@ -53,7 +53,7 @@ func FuncValue(fn *Function) runtime.Value {
 		Name:     fn.Name,
 		Arity:    fn.Arity,
 		IsNative: false,
-		Body:     fn.Chunk,
+		Body:     fn.Chunk, // *Chunk реализует runtime.Code
 	})
 }
 
