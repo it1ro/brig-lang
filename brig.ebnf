@@ -1,0 +1,212 @@
+(* Brig v0.4.5 — EBNF *)
+(* NEWLINE, INDENT, DEDENT, EOF — терминалы, эмитируемые лексером (см. A5). *)
+(* Комментарии: # до конца строки; не влияют на offside. *)
+
+(* ============ Программа ============ *)
+
+program      ::= module_decl? import_decl* top_decl*
+module_decl  ::= "module" ModuleName NEWLINE
+import_decl  ::= "import" ModuleName NEWLINE
+alias_decl   ::= "alias" ModuleName "as" ModuleName NEWLINE
+ModuleName   ::= UpperIdent ( "." UpperIdent )*
+top_decl     ::= fn_decl | type_decl | alias_decl
+
+(* ============ Стейтменты ============ *)
+
+stmt         ::= let_bind | local_fn_decl | expr_stmt
+let_bind     ::= pattern "=" expr NEWLINE
+expr_stmt    ::= expr NEWLINE
+local_fn_decl::= fn_clause+
+
+(* Примечание: let_bind с блочным trap требует NEWLINE после DEDENT блочной формы. *)
+
+(* ============ Функции ============ *)
+
+fn_decl      ::= fn_clause+
+fn_clause    ::= "fn" lower_ident "(" [ params ] ")" [ "when" expr ] "->"
+                 ( expr NEWLINE | NEWLINE INDENT stmt+ DEDENT )
+params       ::= param ( "," param )*
+param        ::= pattern | ".." lower_ident
+
+(* ============ Выражения ============ *)
+
+expr         ::= lambda_expr | pipe_expr
+lambda_expr  ::= lambda_short | lambda_full
+lambda_short ::= lower_ident "->" expr
+                 (* Границы expr: до ближайшего токена, не входящего в выражение
+                    на этом уровне приоритета: , ) ] } NEWLINE (вне скобок);
+                    внутри скобок — до , или закрывающей скобки. См. §4.2 (N2). *)
+lambda_full  ::= "fn" "(" [ params ] ")" "->"
+                 ( expr NEWLINE | NEWLINE INDENT stmt+ DEDENT )
+
+pipe_expr    ::= range_expr ( "|>" pipe_rhs )*
+pipe_rhs     ::= pipe_name [ "(" [ args ] ")" ]
+pipe_name    ::= ( lower_ident | UpperIdent )
+                 ( "." ( lower_ident | UpperIdent ) )*
+
+range_expr   ::= or_expr [ "to" or_expr ]
+or_expr      ::= and_expr ( "or" and_expr )*
+and_expr     ::= cmp_expr ( "and" cmp_expr )*
+cmp_expr     ::= add_expr [ cmp_op add_expr ]
+cmp_op       ::= "==" | "!=" | "<" | ">" | "<=" | ">="
+add_expr     ::= mul_expr ( ( "+" | "-" ) mul_expr )*
+mul_expr     ::= pow_expr ( ( "*" | "/" | "div" | "rem" ) pow_expr )*
+pow_expr     ::= unary_expr [ "**" pow_expr ]
+unary_expr   ::= [ "-" | "not" ] postfix_expr
+postfix_expr ::= primary_expr postfix_op*
+postfix_op   ::= "." ( lower_ident | UpperIdent )
+               | "(" [ args ] ")"
+               | "[" expr "]"
+
+primary_expr ::= literal
+               | lower_ident
+               | UpperIdent
+               | "(" expr ")"
+               | tuple_literal
+               | list_literal
+               | vector_literal
+               | map_literal
+               | record_literal
+               | if_expr
+               | match_expr
+               | recv_expr
+               | with_expr
+               | trap_expr
+
+args         ::= arg ( "," arg )*
+arg          ::= expr | ".." expr
+
+(* ============ Литералы ============ *)
+
+literal      ::= int_lit | float_lit | decimal_lit
+               | string_lit | bytes_lit | regex_lit
+               | atom_lit | bool_lit
+
+atom_lit     ::= ":" lower_ident [ "?" ]
+bool_lit     ::= "true" | "false"
+
+tuple_literal  ::= "(" expr "," [ expr ( "," expr )* ] ")"
+                   (* (x) — группировка; (x,) — 1-кортеж; (x,y) — n-кортеж *)
+list_literal   ::= "[" [ list_elem ( "," list_elem )* [ "," ] ] "]"
+vector_literal ::= "%[" [ list_elem ( "," list_elem )* [ "," ] ] "]"
+list_elem      ::= expr | ".." expr
+
+map_literal  ::= "%{" [ map_elem ( "," map_elem )* [ "," ] ] "}"
+map_elem     ::= expr "=>" expr | ".." expr
+
+record_literal ::= [ TypeName ] "{"
+                   [ record_elem ( "," record_elem )* [ "," ] ] "}"
+                   (* { ... } в позиции expr — record_literal;
+                      в позиции type_body — variant_list/field_list *)
+record_elem  ::= lower_ident ":" expr | ".." expr
+
+(* ============ Паттерны ============ *)
+
+pattern      ::= pattern_atom [ "as" lower_ident ]
+pattern_atom ::= "_"
+               | lower_ident
+               | literal
+               | constructor_pattern
+               | tuple_pattern
+               | list_pattern
+               | map_pattern
+               | record_pattern
+
+constructor_pattern ::= UpperIdent [ "(" [ pattern ( "," pattern )* ] ")" ]
+tuple_pattern       ::= "(" pattern "," [ pattern ( "," pattern )* ] ")"
+list_pattern        ::= "[" [ pattern ( "," pattern )*
+                             [ ".." [ lower_ident ] ] ] "]"
+map_pattern         ::= "%{" [ map_pair ( "," map_pair )* ] "}"
+map_pair            ::= expr "=>" pattern
+record_pattern      ::= TypeName "{"
+                        [ field_pattern ( "," field_pattern )* ] "}"
+field_pattern       ::= lower_ident ":" pattern
+
+(* ============ Управляющие конструкции ============ *)
+
+if_expr      ::= "if" expr NEWLINE INDENT stmt+ DEDENT
+                 [ "else" NEWLINE INDENT stmt+ DEDENT ]
+               | "if" expr "then" expr "else" expr
+
+match_expr   ::= "match" expr NEWLINE INDENT match_branch+ DEDENT
+match_branch ::= pattern "->"
+                 ( expr NEWLINE | NEWLINE INDENT stmt+ DEDENT )
+
+recv_expr    ::= "recv" NEWLINE INDENT recv_branch+ DEDENT
+                 [ else_clause ] [ after_clause ]
+               | "recv" recv_branch
+recv_branch  ::= pattern [ "when" expr ] "->"
+                 ( expr NEWLINE | NEWLINE INDENT stmt+ DEDENT )
+else_clause  ::= "else" lower_ident NEWLINE INDENT stmt+ DEDENT
+                 (* else/after — только блочная форма (INDENT...DEDENT) *)
+after_clause ::= "after" expr "->"
+                 ( expr NEWLINE | NEWLINE INDENT stmt+ DEDENT )
+
+with_expr    ::= "with" NEWLINE INDENT bind_stmt+ body_stmt+ DEDENT
+                 [ "else" NEWLINE INDENT else_branch+ DEDENT ]
+bind_stmt    ::= pattern "<-" expr NEWLINE
+body_stmt    ::= let_bind | expr NEWLINE
+else_branch  ::= pattern "->"
+                 ( expr NEWLINE | NEWLINE INDENT stmt+ DEDENT )
+
+trap_expr    ::= "trap" "(" expr ")"
+                 (* trap(expr) — синтаксический сахар для trap с единственным
+                    body_clause, содержащим стейтмент expr. НЕ вызов функции.
+                    См. §8.2. *)
+               | "trap" NEWLINE body_clause ( ensure_clause body_clause? )*
+body_clause  ::= INDENT stmt+ DEDENT
+ensure_clause::= "ensure" ( expr NEWLINE | NEWLINE INDENT stmt+ DEDENT )
+
+(* trap_expr в primary_expr: грамматически допускается в любой позиции,
+   но семантически разрешён только как RHS let_bind или expr_stmt.
+   Контекстная проверка выдаёт ошибку при нарушении. См. §16.10. *)
+
+(* ============ Типы ============ *)
+
+type_decl     ::= "type" TypeName [ "<" GenericParams ">" ] type_body
+GenericParams ::= TypeVar ( "," TypeVar )*
+type_body     ::= "{" variant_list "}"
+                | "{" field_list "}"
+                | "=" type_expr
+
+variant_list  ::= variant ( "," variant )*
+variant       ::= ConName [ "(" type_expr ( "," type_expr )* ")" ]
+field_list    ::= field ( "," field )*
+field         ::= lower_ident ":" type_expr
+
+type_expr     ::= TypeName [ "<" type_expr ( "," type_expr )* ">" ]
+                | TypeVar
+                | "()"
+                | "(" type_expr ( "," type_expr )* ")"
+                | "(" [ type_expr ( "," type_expr )* ] ")" "->" type_expr
+                (* (Int) — группировка типа; (Int,) — 1-кортеж типа *)
+
+(* ============ Лексические терминалы ============ *)
+
+lower_ident  ::= [a-z] [a-zA-Z0-9_]*
+UpperIdent   ::= [A-Z] [a-zA-Z0-9_]*
+TypeName     ::= UpperIdent
+ConName      ::= UpperIdent
+TypeVar      ::= UpperIdent
+
+int_lit      ::= "0x" hex_digit ( hex_digit | "_" )*
+               | "0b" bin_digit ( bin_digit | "_" )*
+               | "0o" oct_digit ( oct_digit | "_" )*
+               | dec_digit ( dec_digit | "_" )*
+
+float_lit    ::= dec_digit ( dec_digit | "_" )* "."
+                 dec_digit ( dec_digit | "_" )* [ exponent ]
+               | dec_digit ( dec_digit | "_" )* exponent
+exponent     ::= ( "e" | "E" ) [ "+" | "-" ] dec_digit ( dec_digit )*
+
+decimal_lit  ::= "dec" "\"" decimal_body "\""
+string_lit   ::= "\"" ( string_char | interpolation )* "\""
+bytes_lit    ::= "b\"" ( bytes_char )* "\""
+regex_lit    ::= "rx\"" ( regex_char )* "\""
+                 (* regex_lit: статус Should (feature-flagged).
+                    Если фича не реализована — парсер выдаёт
+                    "feature not implemented". *)
+
+interpolation::= "\\(" expr ")"
+
+(* Правила string_char, bytes_char, regex_char, decimal_body — см. A4. *)
