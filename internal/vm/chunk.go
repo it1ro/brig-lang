@@ -136,3 +136,8 @@ func (c *Chunk) disInstr(sb *strings.Builder, ip int) int {
 	sb.WriteByte('\n')
 	return ip + 1
 }
+
+// IsBrigCode реализует runtime.Code — маркер скомпилированного байткода.
+// Позволяет хранить *Chunk в runtime.FuncValue.Body без циклического
+// импорта и без потери типобезопасности (вместо any).
+func (c *Chunk) IsBrigCode() {}
