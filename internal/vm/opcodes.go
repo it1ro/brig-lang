@@ -43,12 +43,23 @@ const (
 	OpMap    // собрать n пар (2n значений) в мапу
 	OpRaise  // raise(top)
 
-	// Трек α (замыкания, локальные функции) — заглушки.
+	// Трек α (замыкания, локальные функции).
 	OpMakeClosure
 	OpGetUpvalue
 	OpSetUpvalue
 	OpCloseUpvalue
 	OpDefineLocalFn
+
+	// v0.4.7 (A2): trap / ensure (§10.2, §10.3).
+	//
+	//	OpTrapBegin <handler_addr>  — открыть обработчик исключений
+	//	OpTrapEnd                   — закрыть (нормальное завершение тела)
+	//	OpMakeOk                    — pop v; push Ok(v)
+	//	OpMakeError                 — pop v; push Error(v)
+	OpTrapBegin
+	OpTrapEnd
+	OpMakeOk
+	OpMakeError
 )
 
 func (op OpCode) String() string {
@@ -68,6 +79,10 @@ func (op OpCode) String() string {
 		OpMakeClosure: "MAKECLOSURE", OpGetUpvalue: "GETUPVAL",
 		OpSetUpvalue: "SETUPVAL", OpCloseUpvalue: "CLOSEUPVAL",
 		OpDefineLocalFn: "DEFLOCALFN",
+		OpTrapBegin:     "TRAPBEGIN",
+		OpTrapEnd:       "TRAPEND",
+		OpMakeOk:        "MAKEOK",
+		OpMakeError:     "MAKEERROR",
 	}
 	if n, ok := names[op]; ok {
 		return n
