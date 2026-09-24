@@ -351,7 +351,7 @@ func walkType(v Visitor, t Type) error {
 
 	case *nominalType:
 		for i := range n.fields {
-			if err := walkNode(v, n.fields[i].type_); err != nil {
+			if err := walkNode(v, n.fields[i].typ); err != nil {
 				return err
 			}
 		}
@@ -359,7 +359,7 @@ func walkType(v Visitor, t Type) error {
 
 	case *anonymousType:
 		for i := range n.fields {
-			if err := walkNode(v, n.fields[i].type_); err != nil {
+			if err := walkNode(v, n.fields[i].typ); err != nil {
 				return err
 			}
 		}
@@ -389,14 +389,14 @@ func walkDecl(v Visitor, d Decl) error {
 	case *typeDecl:
 		for i := range n.variants {
 			for j := range n.variants[i].fields {
-				if err := walkNode(v, n.variants[i].fields[j].type_); err != nil {
+				if err := walkNode(v, n.variants[i].fields[j].typ); err != nil {
 					return err
 				}
 			}
 		}
 		if n.record != nil {
 			for i := range n.record.fields {
-				if err := walkNode(v, n.record.fields[i].type_); err != nil {
+				if err := walkNode(v, n.record.fields[i].typ); err != nil {
 					return err
 				}
 			}

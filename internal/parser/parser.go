@@ -13,7 +13,7 @@ import (
 type Mode int
 
 const (
-	ModeModule Mode = iota
+	ModeModule Mode = iota // ModeModule is module parsing mode
 	ModeRepl
 )
 

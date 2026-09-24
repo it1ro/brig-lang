@@ -43,7 +43,7 @@ func prettyNode(buf *bytes.Buffer, node Node, indent int) {
 	case Decl:
 		prettyDecl(buf, n, indent)
 	default:
-		buf.WriteString(fmt.Sprintf("(unknown %T)", node))
+		fmt.Fprintf(buf, "(unknown %T)", node)
 	}
 }
 
@@ -68,7 +68,7 @@ func prettyExpr(buf *bytes.Buffer, e Expr, indent int) {
 		prettyNode(buf, n.expr, indent)
 		buf.WriteString(")")
 	case *literalExpr:
-		buf.WriteString(fmt.Sprintf("(lit %s)", n.value))
+		fmt.Fprintf(buf, "(lit %s)", n.value)
 	case *variableExpr:
 		buf.WriteString(fmt.Sprintf("(var %s)", n.name))
 	case *assignExpr:
@@ -200,7 +200,7 @@ func prettyExpr(buf *bytes.Buffer, e Expr, indent int) {
 		}
 		buf.WriteString(")")
 	case *lambdaShortExpr:
-		buf.WriteString(fmt.Sprintf("(lambda %s ", n.param))
+		fmt.Fprintf(buf, "(lambda %s ", n.param)
 		prettyNode(buf, n.body, indent)
 		buf.WriteString(")")
 	case *lambdaFullExpr:
@@ -225,13 +225,13 @@ func prettyExpr(buf *bytes.Buffer, e Expr, indent int) {
 		prettyNode(buf, n.end, indent)
 		buf.WriteString(")")
 	case *decimalExpr:
-		buf.WriteString(fmt.Sprintf("(dec %s)", n.value))
+		fmt.Fprintf(buf, "(dec %s)", n.value)
 	case *bytesExpr:
-		buf.WriteString(fmt.Sprintf("(bytes %s)", n.value))
+		fmt.Fprintf(buf, "(bytes %s)", n.value)
 	case *regexExpr:
-		buf.WriteString(fmt.Sprintf("(regex %s)", n.value))
+		fmt.Fprintf(buf, "(regex %s)", n.value)
 	case *atomExpr:
-		buf.WriteString(fmt.Sprintf("(:%s)", n.ident))
+		fmt.Fprintf(buf, "(:%s)", n.ident)
 	case *BlockStmt:
 		// BlockStmt реализует и Expr, и Stmt; prettyNode выбирает Expr
 		// первым, поэтому рендер здесь.
@@ -410,7 +410,7 @@ func prettyType(buf *bytes.Buffer, t Type, indent int) {
 		buf.WriteString("(type " + n.name)
 		for i := range n.fields {
 			buf.WriteString(" " + n.fields[i].name + ": ")
-			prettyNode(buf, n.fields[i].type_, indent)
+			prettyNode(buf, n.fields[i].typ, indent)
 		}
 		buf.WriteString(")")
 	case *anonymousType:
@@ -420,7 +420,7 @@ func prettyType(buf *bytes.Buffer, t Type, indent int) {
 				buf.WriteString(" ")
 			}
 			buf.WriteString(n.fields[i].name + ": ")
-			prettyNode(buf, n.fields[i].type_, indent)
+			prettyNode(buf, n.fields[i].typ, indent)
 		}
 		buf.WriteString("}")
 	case *optionType:
@@ -459,7 +459,7 @@ func prettyDecl(buf *bytes.Buffer, d Decl, indent int) {
 			buf.WriteString(" (variant " + v.name)
 			for _, f := range v.fields {
 				buf.WriteString(" " + f.name + ": ")
-				prettyNode(buf, f.type_, indent)
+				prettyNode(buf, f.typ, indent)
 			}
 			buf.WriteString(")")
 		}
@@ -467,7 +467,7 @@ func prettyDecl(buf *bytes.Buffer, d Decl, indent int) {
 			buf.WriteString(" (record")
 			for _, f := range n.record.fields {
 				buf.WriteString(" " + f.name + ": ")
-				prettyNode(buf, f.type_, indent)
+				prettyNode(buf, f.typ, indent)
 			}
 			buf.WriteString(")")
 		}

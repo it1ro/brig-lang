@@ -1,6 +1,5 @@
 // Package ast implements the Abstract Syntax Tree for Brig language.
 // Corresponds to Part II of the language specification (A1, §2-14).
-
 package ast
 
 // Node — базовый интерфейс для всех узлов AST.
@@ -69,54 +68,54 @@ type Decl interface {
 
 // ExprType — константный тип для выражений.
 const (
-	ExprType_Binary        = "binary"
-	ExprType_Unary         = "unary"
-	ExprType_Grouping      = "grouping"
-	ExprType_Literal       = "literal"
-	ExprType_Variable      = "variable"
-	ExprType_Assign        = "assign"
-	ExprType_Call          = "call"
-	ExprType_Pipe          = "pipe"
-	ExprType_If            = "if"
-	ExprType_Match         = "match"
-	ExprType_Recv          = "recv"
-	ExprType_With          = "with"
-	ExprType_Spread        = "spread"
-	ExprType_Lambda        = "lambda"
-	ExprType_Interpolation = "interpolation"
-	ExprType_Range         = "range"
-	ExprType_Decimal       = "decimal"
-	ExprType_Bytes         = "bytes"
-	ExprType_Regex         = "regex"
-	ExprType_Atom          = "atom"
-	ExprType_Bool          = "bool"
-	ExprType_Unit          = "unit"
-	ExprType_RangeLit      = "range_literal"
+	ExprTypeBinary        = "binary"
+	ExprTypeUnary         = "unary"
+	ExprTypeGrouping      = "grouping"
+	ExprTypeLiteral       = "literal"
+	ExprTypeVariable      = "variable"
+	ExprTypeAssign        = "assign"
+	ExprTypeCall          = "call"
+	ExprTypePipe          = "pipe"
+	ExprTypeIf            = "if"
+	ExprTypeMatch         = "match"
+	ExprTypeRecv          = "recv"
+	ExprTypeWith          = "with"
+	ExprTypeSpread        = "spread"
+	ExprTypeLambda        = "lambda"
+	ExprTypeInterpolation = "interpolation"
+	ExprTypeRange         = "range"
+	ExprTypeDecimal       = "decimal"
+	ExprTypeBytes         = "bytes"
+	ExprTypeRegex         = "regex"
+	ExprTypeAtom          = "atom"
+	ExprTypeBool          = "bool"
+	ExprTypeUnit          = "unit"
+	ExprTypeRangeLit      = "range_literal"
 )
 
 // StmtType — константные типы для стейтментов.
 const (
-	StmtType_Let     = "let"
-	StmtType_Expr    = "expr"
-	StmtType_LocalFn = "local_fn"
-	StmtType_Block   = "block"
-	StmtType_Import  = "import"
-	StmtType_Alias   = "alias"
-	StmtType_Type    = "type"
-	StmtType_Fn      = "fn"
+	StmtTypeLet     = "let"
+	StmtTypeExpr    = "expr"
+	StmtTypeLocalFn = "local_fn"
+	StmtTypeBlock   = "block"
+	StmtTypeImport  = "import"
+	StmtTypeAlias   = "alias"
+	StmtTypeType    = "type"
+	StmtTypeFn      = "fn"
 )
 
 // PatternType — константные типы паттернов.
 const (
-	PatternType_Wildcard    = "wildcard"
-	PatternType_Ident       = "ident"
-	PatternType_Literal     = "literal"
-	PatternType_Constructor = "constructor"
-	PatternType_Tuple       = "tuple"
-	PatternType_List        = "list"
-	PatternType_Map         = "map"
-	PatternType_Record      = "record"
-	PatternType_As          = "as"
+	PatternTypeWildcard    = "wildcard"
+	PatternTypeIdent       = "ident"
+	PatternTypeLiteral     = "literal"
+	PatternTypeConstructor = "constructor"
+	PatternTypeTuple       = "tuple"
+	PatternTypeList        = "list"
+	PatternTypeMap         = "map"
+	PatternTypeRecord      = "record"
+	PatternTypeAs          = "as"
 )
 
 // TypeCategory — категории типов для отчетов и проверок.
@@ -124,8 +123,8 @@ type TypeCategory int
 
 const (
 	// Primitive types
-	TypeCat_Int      TypeCategory = iota // целочисленный
-	TypeCat_Float                        // floating point
+	TypeCat_Int TypeCategory = iota // TypeCat_Int is an integer type
+	TypeCat_Float // TypeCat_Float is a floating point type
 	TypeCat_Decimal                      // exact decimal
 	TypeCat_Bool                         // булево
 	TypeCat_Str                          // строка
@@ -137,18 +136,18 @@ const (
 	TypeCat_Ref                          // Ref
 
 	// Collection types
-	TypeCat_List   // List<T>
+	TypeCat_List // TypeCat_List is a list type
 	TypeCat_Vector // Vector<T>
 	TypeCat_Map    // Map<K, V>
 	TypeCat_Set    // Set<T>
 	TypeCat_Tuple  // Tuple<...>
 
 	// Algebraic types
-	TypeCat_Option // Option<T>
+	TypeCat_Option // TypeCat_Option is an option type
 	TypeCat_Result // Result<T, E>
 
 	// Composite/constructed
-	TypeCat_Nominal   // номинальный тип (type X { ... })
+	TypeCat_Nominal // TypeCat_Nominal is a nominal type
 	TypeCat_Anonymous // анонимная запись {...}
 )
 
@@ -213,31 +212,11 @@ func (n posEnd) String() string { return "pos0-" + string(rune(n.pos0)) + "+" + 
 var _ Node = (*posEnd)(nil)
 
 // shallowCopyExpr создает поверхностную копию выражения (нужен Visitor).
-func shallowCopyExpr(expr Expr) Expr {
-	// Visitor pattern would be used here in a full implementation
-	return expr
-}
 
 // shallowCopyStmt создает поверхностную копию стейтмента.
-func shallowCopyStmt(stmt Stmt) Stmt {
-	// Visitor pattern would be used here in a full implementation
-	return stmt
-}
 
 // shallowCopyPattern создает поверхностную копию паттерна.
-func shallowCopyPattern(pat Pattern) Pattern {
-	// Visitor pattern would be used here in a full implementation
-	return pat
-}
 
 // shallowCopyType создает поверхностную копию типа.
-func shallowCopyType(t Type) Type {
-	// Visitor pattern would be used here in a full implementation
-	return t
-}
 
 // shallowCopyDecl создает поверхностную копию декларации.
-func shallowCopyDecl(d Decl) Decl {
-	// Visitor pattern would be used here in a full implementation
-	return d
-}

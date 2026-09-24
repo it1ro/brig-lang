@@ -169,7 +169,7 @@ type nominalType struct {
 // fieldType — поле nominal/anonymous.
 type fieldType struct {
 	name  string
-	type_ Type
+	typ Type
 }
 
 func (n *nominalType) IsExpression() bool { return false }
@@ -234,9 +234,9 @@ func joinFieldTypeNames(fields []fieldType, sep string) string {
 	if len(fields) == 0 {
 		return ""
 	}
-	out := fields[0].name + ": " + fields[0].type_.String()
+	out := fields[0].name + ": " + fields[0].typ.String()
 	for _, f := range fields[1:] {
-		out += sep + f.name + ": " + f.type_.String()
+		out += sep + f.name + ": " + f.typ.String()
 	}
 	return out
 }

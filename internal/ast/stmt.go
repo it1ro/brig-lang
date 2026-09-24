@@ -52,12 +52,15 @@ type BlockStmt struct {
 	stmts []Stmt
 }
 
+// IsExpression reports whether the statement is an expression.
 func (e *BlockStmt) IsExpression() bool { return false }
+// IsStatement reports whether the statement is a statement.
 func (e *BlockStmt) IsStatement() bool  { return true }
 func (e *BlockStmt) String() string {
 	return fmt.Sprintf("block(%d stmts)", len(e.stmts))
 }
 
+// Stmts returns the statements in the block.
 func (e *BlockStmt) Stmts() []Stmt { return e.stmts }
 
 func join(ss []string, sep string) string {

@@ -331,7 +331,7 @@ type FieldTypeArg struct {
 func NewNominalType(name string, fields []FieldTypeArg, pos, end int) Type {
 	fs := make([]fieldType, 0, len(fields))
 	for _, f := range fields {
-		fs = append(fs, fieldType{name: f.Name, type_: f.Field})
+		fs = append(fs, fieldType{name: f.Name, typ: f.Field})
 	}
 	return &nominalType{posEnd{pos, end}, name, fs}
 }
@@ -339,7 +339,7 @@ func NewNominalType(name string, fields []FieldTypeArg, pos, end int) Type {
 func NewAnonymousType(fields []FieldTypeArg, pos, end int) Type {
 	fs := make([]fieldType, 0, len(fields))
 	for _, f := range fields {
-		fs = append(fs, fieldType{name: f.Name, type_: f.Field})
+		fs = append(fs, fieldType{name: f.Name, typ: f.Field})
 	}
 	return &anonymousType{posEnd{pos, end}, fs}
 }
@@ -364,7 +364,7 @@ func NewVariantTypeDecl(name string, generic []string, variants []VariantArg, po
 	for _, v := range variants {
 		fs := make([]fieldInfo, 0, len(v.Fields))
 		for i, ft := range v.Fields {
-			fs = append(fs, fieldInfo{name: itoa(i), type_: ft})
+			fs = append(fs, fieldInfo{name: itoa(i), typ: ft})
 		}
 		vs = append(vs, variantInfo{name: v.Name, fields: fs})
 	}
@@ -374,7 +374,7 @@ func NewVariantTypeDecl(name string, generic []string, variants []VariantArg, po
 func NewRecordTypeDecl(name string, generic []string, fields []FieldTypeArg, pos, end int) Decl {
 	fs := make([]fieldInfo, 0, len(fields))
 	for _, f := range fields {
-		fs = append(fs, fieldInfo{name: f.Name, type_: f.Field})
+		fs = append(fs, fieldInfo{name: f.Name, typ: f.Field})
 	}
 	return &typeDecl{posEnd{pos, end}, name, generic, nil, &recordInfo{fields: fs}, nil}
 }

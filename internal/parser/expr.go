@@ -528,9 +528,9 @@ func (p *parser) parseMapLiteral() (ast.Expr, error) {
 		start.Line, start.Col), nil
 }
 
-func (p *parser) parseElems(close lexer.TokenType) ([]ast.Expr, error) {
+func (p *parser) parseElems(closeToken lexer.TokenType) ([]ast.Expr, error) {
 	var out []ast.Expr
-	if p.at(close) {
+	if p.at(closeToken) {
 		return out, nil
 	}
 	for {
@@ -549,13 +549,13 @@ func (p *parser) parseElems(close lexer.TokenType) ([]ast.Expr, error) {
 			out = append(out, e)
 		}
 		if p.match(lexer.COMMA) {
-			if p.at(close) {
+			if p.at(closeToken) {
 				break
 			}
 			continue
 		}
 		if p.match(lexer.NEWLINE) {
-			if p.at(close) {
+			if p.at(closeToken) {
 				break
 			}
 			continue

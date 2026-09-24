@@ -80,7 +80,7 @@ type variantInfo struct {
 // fieldInfo — поле варианта/записи.
 type fieldInfo struct {
 	name  string
-	type_ Type
+	typ Type
 }
 
 // recordInfo — поля record-декларации.
@@ -91,7 +91,6 @@ type recordInfo struct {
 // funcClause — один клоз верхнеуровневой fn.
 type funcClause struct {
 	posEnd
-	recv   string
 	guard  string
 	params []string
 	body   *BlockStmt
@@ -108,7 +107,7 @@ func joinFields(fields []fieldInfo, sep string) string {
 		if i > 0 {
 			buf.WriteString(sep)
 		}
-		buf.WriteString(fmt.Sprintf("%s: %s", f.name, f.type_))
+		buf.WriteString(fmt.Sprintf("%s: %s", f.name, f.typ))
 	}
 	return buf.String()
 }

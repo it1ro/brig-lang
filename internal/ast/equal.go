@@ -470,7 +470,7 @@ func equalNodes(a, b Node) bool {
 		}
 		for i := range x.fields {
 			if x.fields[i].name != y.fields[i].name ||
-				!equalNodes(x.fields[i].type_, y.fields[i].type_) {
+				!equalNodes(x.fields[i].typ, y.fields[i].typ) {
 				return false
 			}
 		}
@@ -483,7 +483,7 @@ func equalNodes(a, b Node) bool {
 		}
 		for i := range x.fields {
 			if x.fields[i].name != y.fields[i].name ||
-				!equalNodes(x.fields[i].type_, y.fields[i].type_) {
+				!equalNodes(x.fields[i].typ, y.fields[i].typ) {
 				return false
 			}
 		}
@@ -515,7 +515,7 @@ func equalNodes(a, b Node) bool {
 				return false
 			}
 			for j := range xv.fields {
-				if !equalNodes(xv.fields[j].type_, yv.fields[j].type_) {
+				if !equalNodes(xv.fields[j].typ, yv.fields[j].typ) {
 					return false
 				}
 			}
@@ -531,7 +531,7 @@ func equalNodes(a, b Node) bool {
 			}
 			for i := range x.record.fields {
 				if x.record.fields[i].name != y.record.fields[i].name ||
-					!equalNodes(x.record.fields[i].type_, y.record.fields[i].type_) {
+					!equalNodes(x.record.fields[i].typ, y.record.fields[i].typ) {
 					return false
 				}
 			}

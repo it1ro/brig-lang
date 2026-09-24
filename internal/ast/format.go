@@ -132,7 +132,7 @@ func (p *printer) typeDeclString(v *typeDecl) string {
 		sb.WriteString(" { ")
 		parts := make([]string, len(v.record.fields))
 		for i, f := range v.record.fields {
-			parts[i] = f.name + ": " + p.typeString(f.type_)
+			parts[i] = f.name + ": " + p.typeString(f.typ)
 		}
 		sb.WriteString(strings.Join(parts, ", "))
 		sb.WriteString(" }")
@@ -145,7 +145,7 @@ func (p *printer) typeDeclString(v *typeDecl) string {
 			} else {
 				fs := make([]string, len(vr.fields))
 				for j, f := range vr.fields {
-					fs[j] = p.typeString(f.type_)
+					fs[j] = p.typeString(f.typ)
 				}
 				parts[i] = vr.name + "(" + strings.Join(fs, ", ") + ")"
 			}
@@ -596,13 +596,13 @@ func (p *printer) typeString(t Type) string {
 		}
 		parts := make([]string, len(v.fields))
 		for i, f := range v.fields {
-			parts[i] = f.name + ": " + p.typeString(f.type_)
+			parts[i] = f.name + ": " + p.typeString(f.typ)
 		}
 		return v.name + "{ " + strings.Join(parts, ", ") + " }"
 	case *anonymousType:
 		parts := make([]string, len(v.fields))
 		for i, f := range v.fields {
-			parts[i] = f.name + ": " + p.typeString(f.type_)
+			parts[i] = f.name + ": " + p.typeString(f.typ)
 		}
 		return "{ " + strings.Join(parts, ", ") + " }"
 	}
