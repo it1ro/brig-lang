@@ -6,77 +6,102 @@ import (
 )
 
 // binaryExpr — бинарное выражение (a op b).
+// op ∈ { "+", "-", "*", "/", "**", "to", "|>", "and", "or",
+//
+//	"==", "!=", "<", ">", "<=", ">=", "=>", ":" }
 type binaryExpr struct {
 	posEnd
-	op   string // оператор: "+", "-", "*", "/", "**", "..", "..", "to", "|>", "and", "or", "==", "!=", "<", ">", "<=", ">="
-	left Expr
+	op    string
+	left  Expr
 	right Expr
 }
 
-func (e *binaryExpr) IsExpression() bool    { return true }
-func (e *binaryExpr) String() string         { return fmt.Sprintf("(%s %s %s)", e.left, e.op, e.right) }
-func (e *binaryExpr) IsStatement() bool      { return false }
-
-// unaryExpr — унарное выражение (-a, !a, not a).
-type unaryExpr struct {
-	posEnd
-	op    string // "-", "not"
-	expr  Expr
+func (e *binaryExpr) IsExpression() bool { return true }
+func (e *binaryExpr) IsStatement() bool  { return false }
+func (e *binaryExpr) String() string {
+	return fmt.Sprintf("(%s %s %s)", e.left, e.op, e.right)
 }
 
-func (e *unaryExpr) IsExpression() bool    { return true }
-func (e *unaryExpr) String() string         { return fmt.Sprintf("(%s %s)", e.op, e.expr) }
-func (e *unaryExpr) IsStatement() bool      { return false }
+// unaryExpr — унарное выражение: -a, not a, ..xs (спред-как-унарный).
+type unaryExpr struct {
+	posEnd
+	op   string // "-", "not", ".."
+	expr Expr
+}
 
-// groupingExpr — сгруппированное выражение (a).
+func (e *unaryExpr) IsExpression() bool { return true }
+func (e *unaryExpr) IsStatement() bool  { return false }
+func (e *unaryExpr) String() string {
+	return fmt.Sprintf("(%s %s)", e.op, e.expr)
+}
+
+// groupingExpr — сгруппированное выражение: (expr).
 type groupingExpr struct {
 	posEnd
 	expr Expr
 }
 
-func (e *groupingExpr) IsExpression() bool    { return true }
-func (e *groupingExpr) String() string         { return fmt.Sprintf("(%s)", e.expr) }
-func (e *groupingExpr) IsStatement() bool      { return false }
+func (e *groupingExpr) IsExpression() bool { return true }
+func (e *groupingExpr) IsStatement() bool  { return false }
+func (e *groupingExpr) String() string {
+	return fmt.Sprintf("(%s)", e.expr)
+}
 
-// literalExpr — литеральное значение (число, строка, атом, булево, unit).
+// literalExpr — литеральное значение (число, строка, bool, unit "()").
 type literalExpr struct {
 	posEnd
-	value string // текстовое представление литерала
+	value string
 }
 
-func (e *literalExpr) IsExpression() bool    { return true }
-func (e *literalExpr) String() string         { return e.value }
-func (e *literalExpr) IsStatement() bool      { return false }
+func (e *literalExpr) IsExpression() bool { return true }
+func (e *literalExpr) IsStatement() bool  { return false }
+func (e *literalExpr) String() string {
+	return e.value
+}
 
-// variableExpr — переменная (идентификатор).
+// variableExpr — переменная или имя конструктора (lower/Upper).
 type variableExpr struct {
 	posEnd
-	name string // имя переменной
+	name string
 }
 
-func (e *variableExpr) IsExpression() bool    { return true }
-func (e *variableExpr) String() string         { return e.name }
-func (e *variableExpr) IsStatement() bool      { return false }
+func (e *variableExpr) IsExpression() bool { return true }
+func (e *variableExpr) IsStatement() bool  { return false }
+func (e *variableExpr) String() string {
+	return e.name
+}
 
-// assignExpr — привязка (x = expr).
+// assignExpr — привязка (x = expr). Используется только внутри обёрток;
+// грамматически let_bind — стейтмент, но парсер может строить assignExpr
+// для REPL-строк и диагностики.
 type assignExpr struct {
 	posEnd
-	name string
+	name  string
 	value Expr
 }
 
-func (e *assignExpr) IsExpression() bool    { return true }
-func (e *assignExpr) String() string         { return fmt.Sprintf("%s = %s", e.name, e.value) }
-func (e *assignExpr) IsStatement() bool      { return false }
-
-// callExpr — вызов функции.
-type callExpr struct {
-	posEnd
-	callee  Expr
-	args    []Expr // аргументы (с возможностью спреда ..args)
+func (e *assignExpr) IsExpression() bool { return true }
+func (e *assignExpr) IsStatement() bool  { return false }
+func (e *assignExpr) String() string {
+	return fmt.Sprintf("%s = %s", e.name, e.value)
 }
 
-// IsExpression — всегда true для callExpr.
+// callExpr — вызов функции/конструктора: f(args).
+type callExpr struct {
+	posEnd
+	callee Expr
+	args   []Expr
+}
+
+func (e *callExpr) IsExpression() bool { return true }
+func (e *callExpr) IsStatement() bool  { return false }
+func (e *callExpr) String() string {
+	if len(e.args) == 0 {
+		return fmt.Sprintf("%s()", e.callee)
+	}
+	return fmt.Sprintf("%s(%s)", e.callee, argsToString(e.args))
+}
+
 func argsToString(args []Expr) string {
 	if len(args) == 0 {
 		return ""
@@ -90,184 +115,251 @@ func argsToString(args []Expr) string {
 	return buf.String()
 }
 
-// pipeExpr — pipe-выражение (a |> f).
+// pipeExpr — конвейер: expr |> callee(args).
 type pipeExpr struct {
 	posEnd
-	expr   Expr    // выражение слева от pipe
-	callee Expr    // функция/конструкция справа
-	args   []Expr  // аргументы (если callee(args))
+	expr   Expr
+	callee Expr
+	args   []Expr
 }
 
-func (e *pipeExpr) IsExpression() bool    { return true }
-func (e *pipeExpr) String() string         { return fmt.Sprintf("%s |> %s", e.expr, e.callee) }
-func (e *pipeExpr) IsStatement() bool      { return false }
+func (e *pipeExpr) IsExpression() bool { return true }
+func (e *pipeExpr) IsStatement() bool  { return false }
+func (e *pipeExpr) String() string {
+	if len(e.args) == 0 {
+		return fmt.Sprintf("%s |> %s", e.expr, e.callee)
+	}
+	return fmt.Sprintf("%s |> %s(%s)", e.expr, e.callee, argsToString(e.args))
+}
 
-// ifExpr — if-выражение.
-// corresponds to: if expr NEWLINE INDENT stmt_list DEDENT [ else_if_clause ]
+// memberExpr — доступ к члену: obj.name (постфиксная форма .name).
+type memberExpr struct {
+	posEnd
+	obj  Expr
+	name string
+}
+
+func (e *memberExpr) IsExpression() bool { return true }
+func (e *memberExpr) IsStatement() bool  { return false }
+func (e *memberExpr) String() string {
+	return fmt.Sprintf("%s.%s", e.obj, e.name)
+}
+
+// indexExpr — индексация: obj[idx] (постфиксная форма [expr]).
+type indexExpr struct {
+	posEnd
+	obj   Expr
+	index Expr
+}
+
+func (e *indexExpr) IsExpression() bool { return true }
+func (e *indexExpr) IsStatement() bool  { return false }
+func (e *indexExpr) String() string {
+	return fmt.Sprintf("%s[%s]", e.obj, e.index)
+}
+
+// ifExpr — if-выражение: блочная и однострочная формы (сводимы к одной структуре).
 type ifExpr struct {
 	posEnd
-	cond    Expr   // условие
-thenBody Expr   // тело then
-elseIf  []ifExpr // цепочка else-if
-elseBody Expr   // тело else (или nil, если else absent)
+	cond     Expr
+	thenBody Expr
+	elseIf   []ifExpr // цепочка else-if (в грамматике не порождается, но оставлена)
+	elseBody Expr     // nil, если ветки else нет
 }
 
-func (e *ifExpr) IsExpression() bool    { return true }
-func (e *ifExpr) String() string         { return fmt.Sprintf("if %s then %s else %s", e.cond, e.thenBody, e.elseBody) }
-func (e *ifExpr) IsStatement() bool      { return false }
+func (e *ifExpr) IsExpression() bool { return true }
+func (e *ifExpr) IsStatement() bool  { return false }
+func (e *ifExpr) String() string {
+	if e.elseBody == nil {
+		return fmt.Sprintf("(if %s %s)", e.cond, e.thenBody)
+	}
+	return fmt.Sprintf("(if %s %s %s)", e.cond, e.thenBody, e.elseBody)
+}
 
 // matchExpr — match-выражение.
-// corresponds to: match expr NEWLINE INDENT match_branch_list DEDENT
 type matchExpr struct {
 	posEnd
-	expr      Expr      // выражение для матчинга
-	branches  []matchBranch // списки веток
+	expr     Expr
+	branches []matchBranch
 }
 
+// matchBranch — ветка match.
 type matchBranch struct {
 	pattern Pattern
 	expr    Expr
 }
 
-func (e *matchExpr) IsExpression() bool    { return true }
-func (e *matchExpr) String() string         { return fmt.Sprintf("match %s", e.expr) }
-func (e *matchExpr) IsStatement() bool      { return false }
-
-// recvExpr — recv-выражение.
-// corresponds to: recv NEWLINE INDENT recv_branch_list DEDENT [ else_clause ] [ after_clause ]
-type recvExpr struct {
-	posEnd
-	branches  []recvBranch // списки веток recv
-	elseBody  Expr         // тело else (если есть)
-	afterBody Expr         // тело after (если есть)
+func (e *matchExpr) IsExpression() bool { return true }
+func (e *matchExpr) IsStatement() bool  { return false }
+func (e *matchExpr) String() string {
+	return fmt.Sprintf("(match %s ...)", e.expr)
 }
 
+// recvExpr — recv-выражение.
+type recvExpr struct {
+	posEnd
+	branches  []recvBranch
+	elseBody  Expr // nil, если else отсутствует
+	afterBody Expr // nil, если after отсутствует
+}
+
+// recvBranch — ветка recv.
 type recvBranch struct {
 	pattern Pattern
 	expr    Expr
 }
 
-func (e *recvExpr) IsExpression() bool    { return true }
-func (e *recvExpr) String() string         { return "recv ..." }
-func (e *recvExpr) IsStatement() bool      { return false }
-
-// withExpr — with-выражение.
-// corresponds to: with NEWLINE INDENT with_item_list DEDENT [ with_else ]
-type withExpr struct {
-	posEnd
-	items  []withItem   // список привязей
-	elseBody Expr        // тело else (если есть)
+func (e *recvExpr) IsExpression() bool { return true }
+func (e *recvExpr) IsStatement() bool  { return false }
+func (e *recvExpr) String() string {
+	return "(recv ...)"
 }
 
+// withExpr — with-выражение.
+type withExpr struct {
+	posEnd
+	items    []withItem
+	elseBody Expr // nil, если else отсутствует
+}
+
+// withItem — привязка with: pattern <- expr.
 type withItem struct {
 	pattern Pattern
 	expr    Expr
 }
 
-func (e *withExpr) IsExpression() bool    { return true }
-func (e *withExpr) String() string         { return "with ..." }
-func (e *withExpr) IsStatement() bool      { return false }
+func (e *withExpr) IsExpression() bool { return true }
+func (e *withExpr) IsStatement() bool  { return false }
+func (e *withExpr) String() string {
+	return "(with ...)"
+}
 
-// trapExpr — trap-выражение.
-// corresponds to: trap ( expr ) | trap NEWLINE body_clause { ensure_clause }
+// trapExpr — trap-выражение: инлайн trap(expr) или блочная форма с ensure.
 type trapExpr struct {
 	posEnd
-	expr    Expr       // выражение (для trap (expr))
-	body    *bodyClause // тело блока (для trap NEWLINE ...)
-	ensures []ensureClause // ensure-clauses
+	expr    Expr        // для trap(expr); nil для блочной формы
+	body    *bodyClause // для блочной формы; nil для trap(expr)
+	ensures []ensureClause
 }
 
+// bodyClause — тело блочного trap (единственный стейтмент).
 type bodyClause struct {
-	stmt Stmt // тело блока
+	stmt Stmt
 }
 
+// ensureClause — клауза ensure (выражение).
 type ensureClause struct {
-	expr Expr // выражение ensure
+	expr Expr
 }
 
-func (e *trapExpr) IsExpression() bool    { return true }
-func (e *trapExpr) String() string         { return "trap ..." }
-func (e *trapExpr) IsStatement() bool      { return false }
+func (e *trapExpr) IsExpression() bool { return true }
+func (e *trapExpr) IsStatement() bool  { return false }
+func (e *trapExpr) String() string {
+	switch {
+	case e.expr != nil:
+		return fmt.Sprintf("(trap %s)", e.expr)
+	case e.body != nil:
+		return fmt.Sprintf("(trap %s)", e.body.stmt)
+	default:
+		return "(trap)"
+	}
+}
 
 // lambdaShortExpr — короткая лямбда: x -> expr.
 type lambdaShortExpr struct {
 	posEnd
-	param string // имя параметра
-	body  Expr   // тело выражения
+	param string
+	body  Expr
 }
 
-func (e *lambdaShortExpr) IsExpression() bool    { return true }
-func (e *lambdaShortExpr) String() string         { return fmt.Sprintf("(%s -> %s)", e.param, e.body) }
-func (e *lambdaShortExpr) IsStatement() bool      { return false }
+func (e *lambdaShortExpr) IsExpression() bool { return true }
+func (e *lambdaShortExpr) IsStatement() bool  { return false }
+func (e *lambdaShortExpr) String() string {
+	return fmt.Sprintf("(lambda %s -> %s)", e.param, e.body)
+}
 
-// lambdaFullExpr — полная лямбда: fn (x) -> body.
+// lambdaFullExpr — полная лямбда: fn (params) -> block.
 type lambdaFullExpr struct {
 	posEnd
-	params []string // список параметров
-	body   BlockStmt // тело блока
+	params []string
+	body   *BlockStmt
 }
 
-func (e *lambdaFullExpr) IsExpression() bool    { return true }
-func (e *lambdaFullExpr) String() string         { return fmt.Sprintf("fn(%s) -> ...", join(e.params, ", ")) }
-func (e *lambdaFullExpr) IsStatement() bool      { return false }
+func (e *lambdaFullExpr) IsExpression() bool { return true }
+func (e *lambdaFullExpr) IsStatement() bool  { return false }
+func (e *lambdaFullExpr) String() string {
+	return fmt.Sprintf("(fn (%s) -> %s)", join(e.params, ", "), e.body)
+}
 
 // lambdaEmptyExpr — пустая лямбда: () -> expr.
 type lambdaEmptyExpr struct {
 	posEnd
-	body Expr // тело выражения
+	body Expr
 }
 
-func (e *lambdaEmptyExpr) IsExpression() bool    { return true }
-func (e *lambdaEmptyExpr) String() string         { return "() -> " + e.body.String() }
-func (e *lambdaEmptyExpr) IsStatement() bool      { return false }
+func (e *lambdaEmptyExpr) IsExpression() bool { return true }
+func (e *lambdaEmptyExpr) IsStatement() bool  { return false }
+func (e *lambdaEmptyExpr) String() string {
+	return fmt.Sprintf("(() -> %s)", e.body)
+}
 
-// rangeExpr — range выражение: 1 to 10.
+// rangeExpr — диапазон: a to b.
 type rangeExpr struct {
 	posEnd
 	start Expr
 	end   Expr
 }
 
-func (e *rangeExpr) IsExpression() bool    { return true }
-func (e *rangeExpr) String() string         { return fmt.Sprintf("%s to %s", e.start, e.end) }
-func (e *rangeExpr) IsStatement() bool      { return false }
+func (e *rangeExpr) IsExpression() bool { return true }
+func (e *rangeExpr) IsStatement() bool  { return false }
+func (e *rangeExpr) String() string {
+	return fmt.Sprintf("(to %s %s)", e.start, e.end)
+}
 
-// decimalExpr — decimal литерал: dec"1.50".
+// decimalExpr — dec"...".
 type decimalExpr struct {
 	posEnd
-	value string // текстовое представление dec"..."
+	value string
 }
 
-func (e *decimalExpr) IsExpression() bool    { return true }
-func (e *decimalExpr) String() string         { return e.value }
-func (e *decimalExpr) IsStatement() bool      { return false }
+func (e *decimalExpr) IsExpression() bool { return true }
+func (e *decimalExpr) IsStatement() bool  { return false }
+func (e *decimalExpr) String() string {
+	return fmt.Sprintf("dec\"%s\"", e.value)
+}
 
-// bytesExpr — bytes литерал: b"\x89PNG".
+// bytesExpr — b"...".
 type bytesExpr struct {
 	posEnd
-	value string // текстовое представление b"..."
+	value string
 }
 
-func (e *bytesExpr) IsExpression() bool    { return true }
-func (e *bytesExpr) String() string         { return e.value }
-func (e *bytesExpr) IsStatement() bool      { return false }
+func (e *bytesExpr) IsExpression() bool { return true }
+func (e *bytesExpr) IsStatement() bool  { return false }
+func (e *bytesExpr) String() string {
+	return fmt.Sprintf("b\"%s\"", e.value)
+}
 
-// regexExpr — regex литерал: rx"...".
+// regexExpr — rx"...".
 type regexExpr struct {
 	posEnd
-	value string // текстовое представление rx"..."
+	value string
 }
 
-func (e *regexExpr) IsExpression() bool    { return true }
-func (e *regexExpr) String() string         { return e.value }
-func (e *regexExpr) IsStatement() bool      { return false }
+func (e *regexExpr) IsExpression() bool { return true }
+func (e *regexExpr) IsStatement() bool  { return false }
+func (e *regexExpr) String() string {
+	return fmt.Sprintf("rx\"%s\"", e.value)
+}
 
-// atomExpr — атомарное выражение: :ok, :ready?.
+// atomExpr — :name, :ready?.
 type atomExpr struct {
 	posEnd
-	ident string // имя атома (без :)
+	ident string // без ':' — "ok", "ready?"
 }
 
-func (e *atomExpr) IsExpression() bool    { return true }
-func (e *atomExpr) String() string         { return ":" + e.ident }
-func (e *atomExpr) IsStatement() bool      { return false }
+func (e *atomExpr) IsExpression() bool { return true }
+func (e *atomExpr) IsStatement() bool  { return false }
+func (e *atomExpr) String() string {
+	return ":" + e.ident
+}

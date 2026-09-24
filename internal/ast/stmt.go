@@ -5,58 +5,65 @@ import (
 	"fmt"
 )
 
-// letBind — привязка переменной: pattern = expr.
-// corresponds to grammar: let_bind ::= pattern "=" expr
+// letBind — pattern = expr.
 type letBind struct {
 	posEnd
 	pattern Pattern
 	value   Expr
 }
 
-func (e *letBind) IsExpression() bool    { return false }
-func (e *letBind) String() string         { return fmt.Sprintf("%s = %s", e.pattern, e.value) }
-func (e *letBind) IsStatement() bool      { return true }
+func (e *letBind) IsExpression() bool { return false }
+func (e *letBind) IsStatement() bool  { return true }
+func (e *letBind) String() string     { return fmt.Sprintf("%s = %s", e.pattern, e.value) }
 
-// exprStmt — выражение-стейтмент: просто expr.
-// corresponds to grammar: expr_stmt ::= expr
+// exprStmt — просто expr.
 type exprStmt struct {
 	posEnd
 	expr Expr
 }
 
-func (e *exprStmt) IsExpression() bool    { return false }
-func (e *exprStmt) String() string         { return e.expr.String() }
-func (e *exprStmt) IsStatement() bool      { return true }
+func (e *exprStmt) IsExpression() bool { return false }
+func (e *exprStmt) IsStatement() bool  { return true }
+func (e *exprStmt) String() string     { return e.expr.String() }
 
-// localFnDecl — локальная функция.
-// corresponds to grammar: local_fn_decl ::= fn_clause+
+// localFnDecl — локальная функция (одна или несколько клауз).
 type localFnDecl struct {
 	posEnd
 	clauses []localFnClause
 }
 
+// localFnClause — один клоз локальной fn.
 type localFnClause struct {
 	posEnd
-	recv  string // имя受 recipient (может быть пустым)
-	guard string // guard expression (опционально)
-	body  BlockStmt
+	guard  string
+	params []string
+	body   *BlockStmt
 }
 
-func (e *localFnDecl) IsExpression() bool    { return false }
-func (e *localFnDecl) String() string         { return fmt.Sprintf("local fn with %d clauses", len(e.clauses)) }
-func (e *localFnDecl) IsStatement() bool      { return true }
+func (e *localFnDecl) IsExpression() bool { return false }
+func (e *localFnDecl) IsStatement() bool  { return true }
+func (e *localFnDecl) String() string {
+	return fmt.Sprintf("local fn with %d clauses", len(e.clauses))
+}
 
-// blockStmt — блок стейтментов (INDENT ... DEDENT).
-type blockStmt struct {
+// BlockStmt — блок стейтментов (INDENT ... DEDENT).
+// Реализует и Expr, и Stmt: используется как тело if/match/fn/recv/trap
+// и как RHS в let_bind (где грамматика допускает expr).
+type BlockStmt struct {
 	posEnd
 	stmts []Stmt
 }
 
-func (e *blockStmt) IsExpression() bool    { return false }
-func (e *blockStmt) String() string         { return fmt.Sprintf("block(%d stmts)", len(e.stmts)) }
-func (e *blockStmt) IsStatement() bool      { return true }
+func (e *BlockStmt) IsExpression() bool { return false }
+func (e *BlockStmt) IsStatement() bool  { return true }
+func (e *BlockStmt) String() string {
+	return fmt.Sprintf("block(%d stmts)", len(e.stmts))
+}
 
-// String helpers
+// Stmts — доступ к содержимому блока.
+func (e *BlockStmt) Stmts() []Stmt { return e.stmts }
+
+// join — склейка строк через разделитель.
 func join(ss []string, sep string) string {
 	if len(ss) == 0 {
 		return ""

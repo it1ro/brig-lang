@@ -69,54 +69,54 @@ type Decl interface {
 
 // ExprType — константный тип для выражений.
 const (
-	ExprType_Binary      = "binary"
-	ExprType_Unary       = "unary"
-	ExprType_Grouping    = "grouping"
-	ExprType_Literal     = "literal"
-	ExprType_Variable    = "variable"
-	ExprType_Assign      = "assign"
-	ExprType_Call        = "call"
-	ExprType_Pipe        = "pipe"
-	ExprType_If          = "if"
-	ExprType_Match       = "match"
-	ExprType_Recv        = "recv"
-	ExprType_With        = "with"
-	ExprType_Spread      = "spread"
-	ExprType_Lambda      = "lambda"
+	ExprType_Binary        = "binary"
+	ExprType_Unary         = "unary"
+	ExprType_Grouping      = "grouping"
+	ExprType_Literal       = "literal"
+	ExprType_Variable      = "variable"
+	ExprType_Assign        = "assign"
+	ExprType_Call          = "call"
+	ExprType_Pipe          = "pipe"
+	ExprType_If            = "if"
+	ExprType_Match         = "match"
+	ExprType_Recv          = "recv"
+	ExprType_With          = "with"
+	ExprType_Spread        = "spread"
+	ExprType_Lambda        = "lambda"
 	ExprType_Interpolation = "interpolation"
-	ExprType_Range       = "range"
-	ExprType_Decimal     = "decimal"
-	ExprType_Bytes       = "bytes"
-	ExprType_Regex       = "regex"
-	ExprType_Atom        = "atom"
-	ExprType_Bool        = "bool"
-	ExprType_Unit        = "unit"
-	ExprType_RangeLit    = "range_literal"
+	ExprType_Range         = "range"
+	ExprType_Decimal       = "decimal"
+	ExprType_Bytes         = "bytes"
+	ExprType_Regex         = "regex"
+	ExprType_Atom          = "atom"
+	ExprType_Bool          = "bool"
+	ExprType_Unit          = "unit"
+	ExprType_RangeLit      = "range_literal"
 )
 
 // StmtType — константные типы для стейтментов.
 const (
-	StmtType_Let      = "let"
-	StmtType_Expr     = "expr"
-	StmtType_LocalFn  = "local_fn"
-	StmtType_Block    = "block"
-	StmtType_Import   = "import"
-	StmtType_Alias    = "alias"
-	StmtType_Type     = "type"
-	StmtType_Fn       = "fn"
+	StmtType_Let     = "let"
+	StmtType_Expr    = "expr"
+	StmtType_LocalFn = "local_fn"
+	StmtType_Block   = "block"
+	StmtType_Import  = "import"
+	StmtType_Alias   = "alias"
+	StmtType_Type    = "type"
+	StmtType_Fn      = "fn"
 )
 
 // PatternType — константные типы паттернов.
 const (
-	PatternType_Wildcard  = "wildcard"
-	PatternType_Ident     = "ident"
-	PatternType_Literal   = "literal"
+	PatternType_Wildcard    = "wildcard"
+	PatternType_Ident       = "ident"
+	PatternType_Literal     = "literal"
 	PatternType_Constructor = "constructor"
-	PatternType_Tuple     = "tuple"
-	PatternType_List      = "list"
-	PatternType_Map       = "map"
-	PatternType_Record    = "record"
-	PatternType_As        = "as"
+	PatternType_Tuple       = "tuple"
+	PatternType_List        = "list"
+	PatternType_Map         = "map"
+	PatternType_Record      = "record"
+	PatternType_As          = "as"
 )
 
 // TypeCategory — категории типов для отчетов и проверок.
@@ -124,7 +124,7 @@ type TypeCategory int
 
 const (
 	// Primitive types
-	TypeCat_Int    TypeCategory = iota // целочисленный
+	TypeCat_Int      TypeCategory = iota // целочисленный
 	TypeCat_Float                        // floating point
 	TypeCat_Decimal                      // exact decimal
 	TypeCat_Bool                         // булево
@@ -137,18 +137,18 @@ const (
 	TypeCat_Ref                          // Ref
 
 	// Collection types
-	TypeCat_List       // List<T>
-	TypeCat_Vector     // Vector<T>
-	TypeCat_Map        // Map<K, V>
-	TypeCat_Set        // Set<T>
-	TypeCat_Tuple      // Tuple<...>
+	TypeCat_List   // List<T>
+	TypeCat_Vector // Vector<T>
+	TypeCat_Map    // Map<K, V>
+	TypeCat_Set    // Set<T>
+	TypeCat_Tuple  // Tuple<...>
 
 	// Algebraic types
-	TypeCat_Option     // Option<T>
-	TypeCat_Result     // Result<T, E>
+	TypeCat_Option // Option<T>
+	TypeCat_Result // Result<T, E>
 
 	// Composite/constructed
-	TypeCat_Nominal // номинальный тип (type X { ... })
+	TypeCat_Nominal   // номинальный тип (type X { ... })
 	TypeCat_Anonymous // анонимная запись {...}
 )
 
@@ -200,14 +200,14 @@ func (t TypeCategory) String() string {
 	}
 }
 
-// PosEnd — реализация Node с позиции.
+// PosEnd — реализация Node с позиции (value receivers for Node interface compatibility).
 type posEnd struct {
 	pos0, pos1 int
 }
 
-func (n *posEnd) Pos() int  { return n.pos0 }
-func (n *posEnd) End() int  { return n.pos1 }
-func (n *posEnd) String() string { return "pos0-" + string(rune(n.pos0)) + "+" + string(rune(n.pos1)) }
+func (n posEnd) Pos() int       { return n.pos0 }
+func (n posEnd) End() int       { return n.pos1 }
+func (n posEnd) String() string { return "pos0-" + string(rune(n.pos0)) + "+" + string(rune(n.pos1)) }
 
 // Ensure Node interface compliance
 var _ Node = (*posEnd)(nil)

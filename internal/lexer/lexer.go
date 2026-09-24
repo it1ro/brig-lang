@@ -26,13 +26,13 @@ type lexer struct {
 	src string
 
 	// A5.1 состояние лексера.
-	indentStack      []int // начинается с [0]
-	parenDepth       int   // глубина () [] {} %[] %{}
-	stmtIndent       int   // отступ первой строки текущего стейтмента
-	firstLine        bool  // первая ли логическая строка файла
+	indentStack []int // начинается с [0]
+	parenDepth  int   // глубина () [] {} %[] %{}
+	stmtIndent  int   // отступ первой строки текущего стейтмента
+	firstLine   bool  // первая ли логическая строка файла
 
-	line      int // текущая физическая строка (1-based)
-	pos       int // текущая позиция чтения в src
+	line int // текущая физическая строка (1-based)
+	pos  int // текущая позиция чтения в src
 
 	lastEndedNL bool // предыдущая физическая строка закончилась \n
 	tokens      []Token

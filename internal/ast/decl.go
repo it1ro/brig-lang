@@ -5,110 +5,99 @@ import (
 	"fmt"
 )
 
-// Decl — интерфейс для деклараций верхнего уровня.
-// corresponds to grammar: decl ::= import_decl | alias_decl | type_decl | fn_decl
-
 // importDecl — импорт модуля.
 type importDecl struct {
 	posEnd
-	module string // имя модуля
+	module string
 }
 
-func (e *importDecl) IsExpression() bool    { return false }
-func (e *importDecl) String() string         { return fmt.Sprintf("import %s", e.module) }
-func (e *importDecl) IsTopLevel() bool      { return true }
-func (e *importDecl) ModuleName() string    { return "" } // imports don't have a module name per se
+func (e *importDecl) IsExpression() bool { return false }
+func (e *importDecl) String() string     { return fmt.Sprintf("import %s", e.module) }
+func (e *importDecl) IsTopLevel() bool   { return true }
+func (e *importDecl) ModuleName() string { return "" }
 
-// aliasDecl — алиас модуля.
+// aliasDecl — алиас модуля: alias Http.Client as Http.
 type aliasDecl struct {
 	posEnd
-	original, alias string // например, "alias Http.Client as Http"
+	original, alias string
 }
 
-func (e *aliasDecl) IsExpression() bool    { return false }
-func (e *aliasDecl) String() string         { return fmt.Sprintf("alias %s as %s", e.original, e.alias) }
-func (e *aliasDecl) IsTopLevel() bool      { return true }
-func (e *aliasDecl) ModuleName() string    { return "" }
+func (e *aliasDecl) IsExpression() bool { return false }
+func (e *aliasDecl) String() string     { return fmt.Sprintf("alias %s as %s", e.original, e.alias) }
+func (e *aliasDecl) IsTopLevel() bool   { return true }
+func (e *aliasDecl) ModuleName() string { return "" }
 
-// typeDecl — объявление типа.
-// corresponds to: type_decl ::= "type" UPPER_IDENT [ "<" generic_params ">" ] type_body
+// typeDecl — объявление типа: алиас, запись или сумма вариантов.
 type typeDecl struct {
 	posEnd
-	name    string           // имя типа (UPPER_IDENT)
-	generic []string         // типовые параметры, nil если нет
-	variant *variantInfo   // если type X { Ok(T), Error(E) }
-	record  *recordInfo    // если type X { id: Int, name: Str }
+	name     string
+	generic  []string
+	variants []variantInfo
+	record   *recordInfo
+	alias    Type
 }
 
-func (e *typeDecl) IsExpression() bool    { return false }
-func (e *typeDecl) String() string         { return fmt.Sprintf("type %s %s", e.name, variantOrRecord(e.variant, e.record)) }
-func (e *typeDecl) IsTopLevel() bool      { return true }
-func (e *typeDecl) ModuleName() string    { return e.name }
+func (e *typeDecl) IsExpression() bool { return false }
+func (e *typeDecl) String() string {
+	switch {
+	case e.alias != nil:
+		return fmt.Sprintf("type %s = %s", e.name, e.alias)
+	case e.record != nil:
+		return fmt.Sprintf("type %s { %s }", e.name, joinFields(e.record.fields, ", "))
+	default:
+		var parts []string
+		for _, v := range e.variants {
+			if len(v.fields) == 0 {
+				parts = append(parts, v.name)
+			} else {
+				parts = append(parts, fmt.Sprintf("%s(%s)", v.name, joinFields(v.fields, ", ")))
+			}
+		}
+		return fmt.Sprintf("type %s { %s }", e.name, join(parts, ", "))
+	}
+}
+func (e *typeDecl) IsTopLevel() bool   { return true }
+func (e *typeDecl) ModuleName() string { return e.name }
 
-// funcDecl — объявление функции на модульном уровне.
-// corresponds to: fn_decl ::= fn_clause+
+// funcDecl — объявление функции верхнего уровня.
 type funcDecl struct {
 	posEnd
-	name    string      // имя функции (LOWER_IDENT)
+	name    string
 	clauses []funcClause
 }
 
-func (e *funcDecl) IsExpression() bool    { return false }
-func (e *funcDecl) String() string         { return fmt.Sprintf("fn %s -> ...", e.name) }
-func (e *funcDecl) IsTopLevel() bool      { return true }
-func (e *funcDecl) ModuleName() string    { return "" }
+func (e *funcDecl) IsExpression() bool { return false }
+func (e *funcDecl) String() string     { return fmt.Sprintf("fn %s (%d clauses)", e.name, len(e.clauses)) }
+func (e *funcDecl) IsTopLevel() bool   { return true }
+func (e *funcDecl) ModuleName() string { return "" }
 
-// variantInfo — вспомогательная структура для variant в typeDecl.
+// variantInfo — вариант суммы.
 type variantInfo struct {
-	name   string         // имя варианта (Ok, Error)
-	fields []fieldInfo    // список полей, nil если конструктор без полей
+	name   string
+	fields []fieldInfo
 }
 
+// fieldInfo — поле варианта/записи.
 type fieldInfo struct {
-	name string       // имя поля
-	type_ Type       // тип поля
+	name  string
+	type_ Type
 }
 
-// recordInfo — вспомогательная структура для record в typeDecl.
+// recordInfo — поля record-декларации.
 type recordInfo struct {
-	fields []fieldInfo // список полей записи
+	fields []fieldInfo
 }
 
-// funcClause —Clause функции.
+// funcClause — один клоз верхнеуровневой fn.
 type funcClause struct {
 	posEnd
-	recv   string // имя receiver (пусто для обычных fn)
-	guard  string // guard expression (опционально)
-	params []string // список параметров
-	body   BlockStmt // тело функции
+	recv   string
+	guard  string
+	params []string
+	body   *BlockStmt
 }
 
-// BlockStmt — блок стейтментов (INDENT ... DEDENT), используется внутри fn.
-type BlockStmt struct {
-	posEnd
-	stmts []Stmt
-}
-
-func (b *BlockStmt) IsExpression() bool    { return false }
-func (b *BlockStmt) String() string         { return fmt.Sprintf("block(%d stmts)", len(b.stmts)) }
-func (b *BlockStmt) IsStatement() bool      { return true }
-
-// Ensure Decl interface compliance
-var _ Decl = (*importDecl)(nil)
-var _ Decl = (*aliasDecl)(nil)
-var _ Decl = (*typeDecl)(nil)
-var _ Decl = (*funcDecl)(nil)
-
-// helpers
-func variantOrRecord(v *variantInfo, r *recordInfo) string {
-	if v != nil {
-		return fmt.Sprintf("{ %s }", joinFields(v.fields, ", "))
-	}
-	if r != nil {
-		return fmt.Sprintf("{ %s }", joinFields(r.fields, ", "))
-	}
-	return ""
-}
+// ---- helpers ----
 
 func joinFields(fields []fieldInfo, sep string) string {
 	if len(fields) == 0 {
@@ -124,33 +113,9 @@ func joinFields(fields []fieldInfo, sep string) string {
 	return buf.String()
 }
 
-func paramsToString(params []string) string {
-	return join(params, ", ")
-}
-
-func elementTypeArgs(t Type) []Type {
-	// Возвращает [T] для List<T>, Vector<T> и Set<T>
-	switch tt := t.(type) {
-	case *listType:
-		return []Type{tt.element}
-	case *vectorType:
-		return []Type{tt.element}
-	case *setType:
-		return []Type{tt.element}
-	}
-	return nil
-}
-
-func joinTypes(types []Type, sep string) string {
-	if len(types) == 0 {
-		return ""
-	}
-	buf := bytes.Buffer{}
-	for i, t := range types {
-		if i > 0 {
-			buf.WriteString(sep)
-		}
-		buf.WriteString(t.String())
-	}
-	return buf.String()
-}
+var (
+	_ Decl = (*importDecl)(nil)
+	_ Decl = (*aliasDecl)(nil)
+	_ Decl = (*typeDecl)(nil)
+	_ Decl = (*funcDecl)(nil)
+)
