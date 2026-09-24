@@ -179,3 +179,31 @@ fn main() ->
     after 20 -> :ok
 `)
 }
+
+// TestSchedulerTailRecursionActor — много-итерационный цикл в акторе
+// через recv-ветки. С TCO кадр актора заменяется, стек не растёт.
+// HWM=64 позволяет отправить 64 :inc без блокировки; для теста хватит.
+func TestSchedulerTailRecursionActor(t *testing.T) {
+	runModuleSync(t, `module Main
+fn counter_loop(n) ->
+    recv
+        (:inc) -> counter_loop(n + 1)
+        (:get, from) ->
+            send(from, n)
+            counter_loop(n)
+        (:stop) -> :ok
+
+fn main() ->
+    pid = spawn(() -> counter_loop(0))
+    send(pid, :inc)
+    send(pid, :inc)
+    send(pid, :inc)
+    send(pid, :inc)
+    send(pid, :inc)
+    send(pid, (:get, self()))
+    n = recv
+        v -> v
+    assert(n == 5)
+    send(pid, :stop)
+`)
+}
