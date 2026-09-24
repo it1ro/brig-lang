@@ -8,16 +8,16 @@ import (
 
 // InstallPrelude наполняет глобальную таблицу встроенными функциями (§11.5).
 //
-// Срез: I/O, базовые коллекции, конверсии. Акторные примитивы —
-// заглушки, бросающие "не реализовано в этом срезе" (подэтап 4.8).
-func InstallPrelude(globals map[string]runtime.Value) {
+// Акторные примитивы (spawn/send/recv/watch/...) реализованы опкодами
+// ВМ (см. compileCall в compiler.go) — не как глобалы.
+func InstallPrelude(vm *VM) {
+	globals := vm.globals
 	def := func(name string, arity int, fn runtime.NativeFunc) {
 		globals[name] = runtime.Func(&runtime.FuncValue{
 			Name: name, Arity: arity, IsNative: true, Native: fn,
 		})
 	}
 
-	// I/O
 	def("print", -1, func(c runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		line := ""
 		for i, a := range args {
@@ -40,7 +40,6 @@ func InstallPrelude(globals map[string]runtime.Value) {
 		return runtime.Unit, nil
 	})
 
-	// len
 	def("len", 1, func(c runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		switch a := args[0]; a.Kind {
 		case runtime.KindList:
@@ -57,19 +56,14 @@ func InstallPrelude(globals map[string]runtime.Value) {
 		return runtime.Unit, fmt.Errorf("(:type_error, (:len, %s))", args[0].Inspect())
 	})
 
-	// to_str
 	def("to_str", 1, func(c runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		return runtime.Str(args[0].Inspect()), nil
 	})
 
-	// list(range) материализует 1..n в срезе без полноценного Range-значения.
-	// Здесь упрощение: поддерживаем только list(1 to n) через отдельную
-	// функцию range_to в срезе НЕ реализованы; оставляем list(..args).
 	def("list", -1, func(c runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		return runtime.List(args...), nil
 	})
 
-	// map(f, xs)
 	def("map", 2, func(c runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		f, xs := args[0], args[1]
 		if xs.Kind != runtime.KindList {
@@ -86,7 +80,6 @@ func InstallPrelude(globals map[string]runtime.Value) {
 		return runtime.List(out...), nil
 	})
 
-	// fold(f, acc, xs)
 	def("fold", 3, func(c runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		f, acc, xs := args[0], args[1], args[2]
 		if xs.Kind != runtime.KindList {
@@ -102,8 +95,6 @@ func InstallPrelude(globals map[string]runtime.Value) {
 		return acc, nil
 	})
 
-	// Встроенные варианты: Some/None/Ok/Error (§10.1).
-	// Конструктор без аргументов — значение; с аргументами — функция.
 	globals["None"] = runtime.Variant("None")
 	def("Some", 1, func(c runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		return runtime.Variant("Some", args...), nil
@@ -115,7 +106,6 @@ func InstallPrelude(globals map[string]runtime.Value) {
 		return runtime.Variant("Error", args...), nil
 	})
 
-	// Эффекты.
 	def("raise", 1, func(c runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		return runtime.Unit, &ErrRaise{Val: args[0]}
 	})
@@ -131,18 +121,4 @@ func InstallPrelude(globals map[string]runtime.Value) {
 		}
 		return runtime.Unit, nil
 	})
-
-	// Акторные примитивы — заглушки среза (подэтап 4.8).
-	notImpl := func(name string) runtime.NativeFunc {
-		return func(c runtime.Caller, args []runtime.Value) (runtime.Value, error) {
-			return runtime.Unit, fmt.Errorf(
-				"%s: акторы не реализованы в вертикальном срезе (подэтап 4.8)", name)
-		}
-	}
-	for _, n := range []string{
-		"spawn", "spawn_linked", "send", "link",
-		"watch", "unwatch", "self", "make_ref", "mailbox_size",
-	} {
-		def(n, -1, notImpl(n))
-	}
 }
