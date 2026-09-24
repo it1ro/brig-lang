@@ -24,6 +24,14 @@
 - *(vm)* Update chunk container
 - *(vm)* Update opcodes
 - *(vm)* Update vm implementation
+- *(runtime)* Update value implementation
+- *(vm)* Update chunk implementation
+- *(vm)* Update vm implementation
+- *(ast)* Update accessors
+- *(parser)* Update compiler
+- *(vm)* Update chunk
+- *(vm)* Update opcodes
+- *(vm)* Update vm
 
 ### 🐛 Bug Fixes
 
@@ -56,6 +64,9 @@
 - Add arithmetic example brig file
 - Add fibonacci example brig file
 - Add hello example brig file
+- Regenerate changelog
+- Update architecture notes
+- Add trap example
 
 ### 🚜 Refactor
 
@@ -67,6 +78,8 @@
 - *(compiler)* Add compiler unit tests
 - *(vm)* Add vm unit tests
 - *(compiler)* Extend compiler tests
+- *(runtime)* Add serialize tests
+- *(compiler)* Update compiler tests
 
 ### ⚙️ Miscellaneous Tasks
 
@@ -78,6 +91,7 @@
 - *(make)* Add focus targets for stage 3
 - *(git)* Fix lint exclusions and formatting for ast and parser
 - *(build)* Add test-vm test-compiler run repl targets
+- *(git)* Ignore coverage output
 
 ### 💼 Other
 
