@@ -289,6 +289,8 @@ func (fc *funcCompiler) compileExpr(e ast.Expr) error {
 		return fc.compileCall(ex)
 	case ast.IfExpr:
 		return fc.compileIf(ex)
+	case ast.TrapExpr:
+		return fc.compileTrap(ex)
 	case ast.LambdaShort:
 		return fc.compileLambda("", []string{ex.ParamName()}, ex.Body())
 	case ast.LambdaEmpty:
@@ -625,4 +627,131 @@ func patch(ch *vm.Chunk, operandPos, target int) {
 	code := vm.ChunkCode(ch)
 	code[operandPos] = byte(target >> 8)
 	code[operandPos+1] = byte(target)
+}
+
+// ---- trap / ensure (v0.4.7, §10.2/§10.3) ----
+
+// allocTemp резервирует анонимный локальный слот под временное значение.
+func (fc *funcCompiler) allocTemp() int {
+	idx := len(fc.locals)
+	fc.locals = append(fc.locals, "") // анонимный слот
+	return idx
+}
+
+// compileTrap различает инлайн-форму trap(expr) и блочную.
+func (fc *funcCompiler) compileTrap(te ast.TrapExpr) error {
+	if inline := te.TrapInline(); inline != nil {
+		return fc.compileInlineTrap(inline)
+	}
+	return fc.compileBlockTrap(te)
+}
+
+// compileInlineTrap: trap(expr) — синтаксический сахар для блочной формы
+// с одним стейтментом expr и без ensure (§10.2).
+func (fc *funcCompiler) compileInlineTrap(inner ast.Expr) error {
+	fc.emit(vm.OpTrapBegin, 0)
+	beginPos := fc.chunk.OperandPos()
+
+	if err := fc.compileExpr(inner); err != nil {
+		return err
+	}
+
+	fc.emit(vm.OpTrapEnd, 0)
+	fc.emit(vm.OpMakeOk, 0)
+	fc.emit(vm.OpJump, 0)
+	endJumpPos := fc.chunk.OperandPos()
+
+	handlerAddr := len(vm.ChunkCode(fc.chunk))
+	fc.chunk.PatchOperand(beginPos, handlerAddr)
+
+	fc.emit(vm.OpMakeError, 0)
+
+	endAddr := len(vm.ChunkCode(fc.chunk))
+	fc.chunk.PatchOperand(endJumpPos, endAddr)
+	return nil
+}
+
+// compileBlockTrap компилирует блочную форму trap с ensure-клаузами.
+//
+// Схема байткода:
+//
+//	TRAPBEGIN handler
+//	  <body>                 ; оставляет значение тела
+//	TRAPEND
+//	  <ensure[N-1]> POP      ; LIFO: ensure выполняются в обратном порядке
+//	  ...
+//	  <ensure[0]>   POP
+//	  MAKEOK
+//	  JMP done
+//	handler:
+//	  SETLOCAL exc            ; только если есть ensure
+//	  <ensure[N-1]> POP      ; тот же LIFO-порядок
+//	  ...
+//	  <ensure[0]>   POP
+//	  GETLOCAL exc
+//	  MAKEERROR
+//	done:
+//
+// Замечание: ensure-выражения компилируются дважды (в success- и
+// exception-путях). Если ensure сам бросает raise в success-пути,
+// исключение распространяется наружу — это осознанное упрощение
+// среза (полная семантика §10.3 с заменой ошибки — отдельный подэтап).
+func (fc *funcCompiler) compileBlockTrap(te ast.TrapExpr) error {
+	var stmts []ast.Stmt
+	switch body := te.TrapBody().(type) {
+	case *ast.BlockStmt:
+		stmts = body.Body()
+	case nil:
+		// пустое тело — валидно, вернёт ()
+	default:
+		stmts = []ast.Stmt{body}
+	}
+	ensures := te.TrapEnsures()
+
+	fc.emit(vm.OpTrapBegin, 0)
+	beginPos := fc.chunk.OperandPos()
+
+	if err := fc.compileStmts(stmts); err != nil {
+		return err
+	}
+	fc.emit(vm.OpTrapEnd, 0)
+
+	// Success-путь: ensures LIFO, затем Ok(value).
+	for i := len(ensures) - 1; i >= 0; i-- {
+		if err := fc.compileExpr(ensures[i]); err != nil {
+			return err
+		}
+		fc.emit(vm.OpPop, 0)
+	}
+	fc.emit(vm.OpMakeOk, 0)
+	fc.emit(vm.OpJump, 0)
+	endJumpPos := fc.chunk.OperandPos()
+
+	// Слот для значения исключения резервируется после компиляции тела
+	// и success-пути — чтобы не пересечься с локалами тела.
+	excSlot := -1
+	if len(ensures) > 0 {
+		excSlot = fc.allocTemp()
+	}
+
+	handlerAddr := len(vm.ChunkCode(fc.chunk))
+	fc.chunk.PatchOperand(beginPos, handlerAddr)
+
+	if excSlot >= 0 {
+		fc.emit(vm.OpSetLocal, excSlot)
+	}
+	for i := len(ensures) - 1; i >= 0; i-- {
+		if err := fc.compileExpr(ensures[i]); err != nil {
+			return err
+		}
+		fc.emit(vm.OpPop, 0)
+	}
+	if excSlot >= 0 {
+		fc.emit(vm.OpGetLocal, excSlot)
+	}
+	fc.emit(vm.OpMakeError, 0)
+
+	endAddr := len(vm.ChunkCode(fc.chunk))
+	fc.chunk.PatchOperand(endJumpPos, endAddr)
+	return nil
 }
