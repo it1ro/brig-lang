@@ -1,18 +1,12 @@
-// Package vm — стековая байткод-машина Брига.
-//
-// Этап 4.2/4.3: вертикальный срез. ОСОЗНАННОЕ отступление от §15.1:
-// первая машина стековая, не регистровая — ради быстрого получения
-// исполняемого пайплайна и отладки семантики. Миграция на регистровую
-// (с дизассемблером --dump-bytecode) — отдельный подэтап.
 package vm
 
 // OpCode — инструкция стековой ВМ.
 type OpCode byte
 
 const (
-	OpConstant OpCode = iota // push constants[op]
-	OpPop                    // discard top
-	OpDup                    // duplicate top
+	OpConstant OpCode = iota
+	OpPop
+	OpDup
 	OpAdd
 	OpSub
 	OpMul
@@ -28,20 +22,20 @@ const (
 	OpGt
 	OpLe
 	OpGe
-	OpJump      // безусловный переход
-	OpJumpFalse // pop; переход если ложь
-	OpJumpTrue  // pop; переход если истина
+	OpJump
+	OpJumpFalse
+	OpJumpTrue
 	OpGetLocal
 	OpSetLocal
 	OpGetGlobal
 	OpSetGlobal
-	OpCall   // вызов значения-функции
-	OpReturn // возврат из функции
-	OpTuple  // собрать n значений в кортеж
-	OpList   // собрать n значений в список
-	OpVector // собрать n значений в вектор
-	OpMap    // собрать n пар (2n значений) в мапу
-	OpRaise  // raise(top)
+	OpCall
+	OpReturn
+	OpTuple
+	OpList
+	OpVector
+	OpMap
+	OpRaise
 
 	// Трек α (замыкания, локальные функции).
 	OpMakeClosure
@@ -51,15 +45,27 @@ const (
 	OpDefineLocalFn
 
 	// v0.4.7 (A2): trap / ensure (§10.2, §10.3).
-	//
-	//	OpTrapBegin <handler_addr>  — открыть обработчик исключений
-	//	OpTrapEnd                   — закрыть (нормальное завершение тела)
-	//	OpMakeOk                    — pop v; push Ok(v)
-	//	OpMakeError                 — pop v; push Error(v)
 	OpTrapBegin
 	OpTrapEnd
 	OpMakeOk
 	OpMakeError
+
+	// v0.4.8 (подэтап 4.8): акторы (§12).
+	//
+	//	OpSpawn <linked>            — pop fn; spawn; push pid
+	//	OpSend                      — pop msg; pop pid; send; push Result<(),Atom>
+	//	OpSelf                      — push self pid
+	OpMakeRef // push fresh ref
+	OpWatch   // pop pid; watch; push ref
+	OpUnwatch // pop ref; unwatch; push ()
+	OpMailboxSize
+	OpRecvTimer // pop ms; set recv deadline
+	OpRecvTake  // <slot> <afterAddr>; take msg into slot, or block/after
+	OpMatchLocal
+	OpYield
+	OpSpawn
+	OpSend
+	OpSelf
 )
 
 func (op OpCode) String() string {
@@ -83,6 +89,17 @@ func (op OpCode) String() string {
 		OpTrapEnd:       "TRAPEND",
 		OpMakeOk:        "MAKEOK",
 		OpMakeError:     "MAKEERROR",
+		OpSpawn:         "SPAWN",
+		OpSend:          "SEND",
+		OpSelf:          "SELF",
+		OpMakeRef:       "MAKEREF",
+		OpWatch:         "WATCH",
+		OpUnwatch:       "UNWATCH",
+		OpMailboxSize:   "MAILBOXSIZE",
+		OpRecvTimer:     "RECVTIMER",
+		OpRecvTake:      "RECVTAKE",
+		OpMatchLocal:    "MATCHLOCAL",
+		OpYield:         "YIELD",
 	}
 	if n, ok := names[op]; ok {
 		return n
