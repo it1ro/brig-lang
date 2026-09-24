@@ -85,7 +85,7 @@ UPPER_IDENT ::= [A-Z] [a-zA-Z0-9_]*
 WILDCARD    ::= "_"
 ```
 
-**Допустимые:** `x`, `foo`, `ready?`, `and?`, `true?`, `_msg`, `_unused`.  
+**Допустимые:** `x`, `foo`, `ready?`, `done?`, `true?`, `_msg`, `_unused`.  
 **Недопустимые:** `_1`, `_Foo`, `x?y`, `_`.
 
 Правила:
@@ -95,7 +95,7 @@ WILDCARD    ::= "_"
 - `?` допускается только как **последний** символ идентификатора.
 - `x?y` — ошибка лексера.
 - Ключевые слова без финального `?` не являются `LOWER_IDENT`.
-- `and?`, `true?`, `if?` — допустимые `LOWER_IDENT`.
+- `done?`, `true?`, `if?` — допустимые `LOWER_IDENT`.
 
 ### 1.3 Ключевые слова
 
@@ -120,7 +120,7 @@ ATOM ::= ":" atom_body
 - не может начинаться с `_`;
 - не может быть `UPPER_IDENT`.
 
-**Допустимые:** `:ok`, `:none`, `:not_found`, `:if`, `:and`, `:true`, `:false`, `:ready?`, `:and?`.  
+**Допустимые:** `:ok`, `:none`, `:not_found`, `:if`, `:and`, `:true`, `:false`, `:ready?`, `:done?`.  
 **Недопустимые:** `:_`, `:_foo`, `:Foo`.
 
 ### 1.5 Поведение `:`
@@ -1713,7 +1713,7 @@ UPPER_IDENT ::= [A-Z] [a-zA-Z0-9_]*
 WILDCARD ::= "_"
 ```
 
-**Допустимые примеры:** `x`, `foo`, `ready?`, `and?`, `true?`, `_msg`, `_unused`.  
+**Допустимые примеры:** `x`, `foo`, `ready?`, `done?`, `true?`, `_msg`, `_unused`.  
 **Недопустимые:** `_1`, `_Foo`, `x?y`.  
 Одиночный `_` — это `WILDCARD`.
 
@@ -1731,7 +1731,7 @@ ATOM ::= ":" atom_body
 - не может начинаться с `_`;
 - не может быть `UPPER_IDENT`.
 
-**Допустимые:** `:ok`, `:none`, `:not_found`, `:if`, `:and`, `:true`, `:false`, `:ready?`, `:and?`.  
+**Допустимые:** `:ok`, `:none`, `:not_found`, `:if`, `:and`, `:true`, `:false`, `:ready?`, `:done?`.  
 **Недопустимые:** `:_`, `:_foo`, `:Foo`.
 
 #### Числа
@@ -1818,7 +1818,7 @@ EOF
 
 ```text
 and      -> KEYWORD(and)
-and?     -> LOWER_IDENT(and?)
+done?     -> LOWER_IDENT(done?)
 true     -> KEYWORD(true)
 true?    -> LOWER_IDENT(true?)
 _msg     -> LOWER_IDENT(_msg)
