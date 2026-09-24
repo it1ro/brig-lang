@@ -348,3 +348,56 @@ fn main() ->
     after 100 -> :ok
 `)
 }
+
+// ---- TCO (v0.4.8) ----
+
+// TestTailRecursion — без TCO этот тест заполнит стек кадров актора
+// миллионом записей (~2.5 GB locals) и упадёт по OOM. С TCO — меньше
+// секунды.
+func TestTailRecursion(t *testing.T) {
+	runModule(t, `module Main
+fn sum_to(n, acc) ->
+    if n == 0 then acc else sum_to(n - 1, acc + n)
+
+fn main() ->
+    assert(sum_to(1000000, 0) == 500000500000)
+`)
+}
+
+// TestNonTailRecursionStillWorks — не-хвостовая рекурсия не должна
+// ломаться: n * fact(n-1) требует умножения после возврата.
+func TestNonTailRecursionStillWorks(t *testing.T) {
+	runModule(t, `module Main
+fn fact(n) ->
+    if n <= 1 then 1 else n * fact(n - 1)
+
+fn main() ->
+    assert(fact(10) == 3628800)
+`)
+}
+
+// TestTailRecursionThroughRecv — хвостовой вызов внутри ветки recv
+// (паттерн CALL ; JMP end ; end: RETURN). Актор обрабатывает много
+// сообщений, стек кадров не растёт.
+func TestTailRecursionThroughRecv(t *testing.T) {
+	runModule(t, `module Main
+fn counter_loop(n) ->
+    recv
+        (:inc) -> counter_loop(n + 1)
+        (:get, from) ->
+            send(from, n)
+            counter_loop(n)
+        (:stop) -> :ok
+
+fn main() ->
+    pid = spawn(() -> counter_loop(0))
+    send(pid, :inc)
+    send(pid, :inc)
+    send(pid, :inc)
+    send(pid, (:get, self()))
+    n = recv
+        v -> v
+    assert(n == 3)
+    send(pid, :stop)
+`)
+}
