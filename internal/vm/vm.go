@@ -1,14 +1,8 @@
 // Package vm — стековая байткод-машина Brig.
 //
-// ОСОЗНАННОЕ отступление от §15.1: первая машина стековая, не регистровая —
-// ради быстрого получения исполняемого пайплайна и отладки наблюдаемой
-// семантики. Миграция на регистровую модель (плюс дизассемблер
-// --dump-bytecode и редукционные yield-точки §15.2) — отдельный подэтап.
-//
-// Модель исполнения в срезе: каждый вызов функции рекурсивно вызывает
-// vm.Call → run, где фрейм получает собственный локальный стек. Это
-// использует Go-стек вместо стека кадра и упрощает срез; полноценные
-// кадры на общем стеке — в миграции на регистровую ВМ.
+// ОСОЗНАННОЕ отступление от §15.1: первая машина стековая, не регистровая.
+// Трек α: добавлена поддержка замыканий (KindClosure, OpMakeClosure,
+// OpGetUpvalue, OpSetUpvalue). Capture-by-value на момент создания.
 package vm
 
 import (
@@ -19,34 +13,21 @@ import (
 	"github.com/it1ro/brig-lang/internal/runtime"
 )
 
-// maxLocals — резерв локалей на кадр в срезе.
-// Компонент назначает индексы локалей последовательно; 64 покрывает
-// типовые функции. Динамический расчёт числа локалей придёт с
-// регистровой ВМ.
 const maxLocals = 64
 
-// ErrRaise — перенос необработанного исключения (значение ошибки).
-//
-// Срез: без полноценного стекового трейса (открытый вопрос §17.1).
-// При выходе из run ошибка всплывает в cmd/brig → exit code 2.
+// ErrRaise — перенос необработанного исключения.
 type ErrRaise struct{ Val runtime.Value }
 
 func (e *ErrRaise) Error() string { return "raise: " + e.Val.Inspect() }
 
 // frame — кадр вызова (задел под общий стек кадров).
-//
-// В срезе поля не используются полноценно: исполнение идёт через
-// рекурсию с локальными стеками. Оставлено как структура для миграции.
 type frame struct {
 	fn   *Function
 	ip   int
-	base int // индекс начала локалей кадра в общем стеке значений
+	base int
 }
 
 // VM — стековый интерпретатор байткода.
-//
-// globals: функции модуля + прелюдия (§11.5). Стек значений общий;
-// каждый кадр в срезе работает со своим срезом через рекурсию.
 type VM struct {
 	globals map[string]runtime.Value
 	stack   []runtime.Value
@@ -60,16 +41,13 @@ func New() *VM {
 	return vm
 }
 
-// DefineGlobal регистрирует глобальное имя (функцию модуля/константу).
+// DefineGlobal регистрирует глобальное имя.
 func (vm *VM) DefineGlobal(name string, v runtime.Value) { vm.globals[name] = v }
 
-// Global возвращает глобальное значение по имени (нулевое, если нет).
+// Global возвращает глобальное значение по имени.
 func (vm *VM) Global(name string) runtime.Value { return vm.globals[name] }
 
 // FuncValue оборачивает скомпилированную функцию в значение-функцию.
-//
-// Тело кладём в Body как *Chunk через any, чтобы пакет runtime не
-// импортировал vm и не возникало циклической зависимости.
 func FuncValue(fn *Function) runtime.Value {
 	return runtime.Func(&runtime.FuncValue{
 		Name:     fn.Name,
@@ -80,33 +58,49 @@ func FuncValue(fn *Function) runtime.Value {
 }
 
 // Call реализует runtime.Caller: прелюдия может вызывать функции.
-//
-// Принимает значение-функцию и аргументы, возвращает результат.
-// Нативные функции исполняются сразу; байткод-функции — через run.
+// Поддерживает KindFunction (обычные) и KindClosure (замыкания).
 func (vm *VM) Call(fn runtime.Value, args []runtime.Value) (runtime.Value, error) {
-	if fn.Kind != runtime.KindFunction || fn.Func == nil {
+	switch fn.Kind {
+	case runtime.KindFunction:
+		if fn.Func == nil {
+			return runtime.Unit, fmt.Errorf("(:type_error, (:call, nil))")
+		}
+		f := fn.Func
+		if f.IsNative {
+			if f.Native == nil {
+				return runtime.Unit, fmt.Errorf("internal: nil native %q", f.Name)
+			}
+			return f.Native(vm, args)
+		}
+		chunk, ok := f.Body.(*Chunk)
+		if !ok || chunk == nil {
+			return runtime.Unit, fmt.Errorf("internal: function without chunk")
+		}
+		return vm.run(Function{Name: f.Name, Arity: f.Arity, Chunk: chunk}, args, nil)
+
+	case runtime.KindClosure:
+		cv := fn.ClosureVal
+		if cv == nil {
+			return runtime.Unit, fmt.Errorf("(:type_error, (:call, nil-closure))")
+		}
+		chunk, ok := cv.Func.(*Chunk)
+		if !ok || chunk == nil {
+			return runtime.Unit, fmt.Errorf("internal: closure without chunk")
+		}
+		return vm.run(
+			Function{Name: cv.Name, Arity: cv.Arity, Chunk: chunk},
+			args, cv.Captures,
+		)
+
+	default:
 		return runtime.Unit,
 			fmt.Errorf("(:type_error, (:call, %s))", fn.Inspect())
 	}
-	f := fn.Func
-	if f.IsNative {
-		if f.Native == nil {
-			return runtime.Unit, fmt.Errorf("internal: nil native function %q", f.Name)
-		}
-		return f.Native(vm, args)
-	}
-	chunk, ok := f.Body.(*Chunk)
-	if !ok || chunk == nil {
-		return runtime.Unit, fmt.Errorf("internal: compiled function without chunk")
-	}
-	return vm.run(Function{Name: f.Name, Arity: f.Arity, Chunk: chunk}, args)
 }
 
-// run исполняет один фрейм с аргументами и возвращает значение.
-//
-// Стек кадра локальный; локалы — в фиксированном слайсе (см. maxLocals).
-// Опкоды с операндом читают 16-битное значение прямо из Code.
-func (vm *VM) run(fn Function, args []runtime.Value) (runtime.Value, error) {
+// run исполняет один фрейм. captures — захваченные переменные замыкания
+// (nil для обычных функций).
+func (vm *VM) run(fn Function, args, captures []runtime.Value) (runtime.Value, error) {
 	if fn.Arity >= 0 && len(args) != fn.Arity {
 		return runtime.Unit, fmt.Errorf("(:function_clause, (%s, %d args))",
 			fn.Name, len(args))
@@ -295,10 +289,22 @@ func (vm *VM) run(fn Function, args []runtime.Value) (runtime.Value, error) {
 				ip += 3
 			}
 
+		case OpJumpTrue:
+			target := operand(ip)
+			v, err := pop()
+			if err != nil {
+				return runtime.Unit, err
+			}
+			if v.Kind == runtime.KindBool && v.Bool {
+				ip = target
+			} else {
+				ip += 3
+			}
+
 		case OpGetLocal:
 			idx := operand(ip)
 			if idx >= len(locals) {
-				return runtime.Unit, fmt.Errorf("internal: local index %d out of range", idx)
+				return runtime.Unit, fmt.Errorf("internal: local %d out of range", idx)
 			}
 			push(locals[idx])
 			ip += 3
@@ -306,7 +312,7 @@ func (vm *VM) run(fn Function, args []runtime.Value) (runtime.Value, error) {
 		case OpSetLocal:
 			idx := operand(ip)
 			if idx >= len(locals) {
-				return runtime.Unit, fmt.Errorf("internal: local index %d out of range", idx)
+				return runtime.Unit, fmt.Errorf("internal: local %d out of range", idx)
 			}
 			v, err := pop()
 			if err != nil {
@@ -335,19 +341,19 @@ func (vm *VM) run(fn Function, args []runtime.Value) (runtime.Value, error) {
 
 		case OpCall:
 			argc := operand(ip)
-			args := make([]runtime.Value, argc)
+			callArgs := make([]runtime.Value, argc)
 			for i := argc - 1; i >= 0; i-- {
 				v, err := pop()
 				if err != nil {
 					return runtime.Unit, err
 				}
-				args[i] = v
+				callArgs[i] = v
 			}
 			callee, err := pop()
 			if err != nil {
 				return runtime.Unit, err
 			}
-			r, err := vm.Call(callee, args)
+			r, err := vm.Call(callee, callArgs)
 			if err != nil {
 				return runtime.Unit, err
 			}
@@ -382,7 +388,7 @@ func (vm *VM) run(fn Function, args []runtime.Value) (runtime.Value, error) {
 			ip += 3
 
 		case OpMap:
-			n := operand(ip) // число пар
+			n := operand(ip)
 			entries := make([]runtime.MapEntry, n)
 			for i := n - 1; i >= 0; i-- {
 				val, err := pop()
@@ -405,6 +411,56 @@ func (vm *VM) run(fn Function, args []runtime.Value) (runtime.Value, error) {
 			}
 			return runtime.Unit, &ErrRaise{Val: v}
 
+		// ---- Трек α: замыкания ----
+
+		case OpMakeClosure:
+			n := operand(ip) // число захватов
+			caps := make([]runtime.Value, n)
+			for i := n - 1; i >= 0; i-- {
+				v, err := pop()
+				if err != nil {
+					return runtime.Unit, err
+				}
+				caps[i] = v
+			}
+			fnVal, err := pop()
+			if err != nil {
+				return runtime.Unit, err
+			}
+			if fnVal.Kind != runtime.KindFunction || fnVal.Func == nil {
+				return runtime.Unit,
+					fmt.Errorf("internal: MAKECLOSURE expects function on stack")
+			}
+			fv := fnVal.Func
+			push(runtime.MakeClosure(fv.Name, fv.Arity, fv.Body, caps))
+			ip += 3
+
+		case OpGetUpvalue:
+			idx := operand(ip)
+			if idx >= len(captures) {
+				return runtime.Unit,
+					fmt.Errorf("internal: upvalue %d out of range in %s", idx, fn.Name)
+			}
+			push(captures[idx])
+			ip += 3
+
+		case OpSetUpvalue:
+			idx := operand(ip)
+			if idx >= len(captures) {
+				return runtime.Unit,
+					fmt.Errorf("internal: upvalue %d out of range in %s", idx, fn.Name)
+			}
+			v, err := pop()
+			if err != nil {
+				return runtime.Unit, err
+			}
+			captures[idx] = v
+			ip += 3
+
+		case OpCloseUpvalue, OpDefineLocalFn:
+			return runtime.Unit,
+				fmt.Errorf("internal: opcode %s not yet implemented", op)
+
 		default:
 			return runtime.Unit,
 				fmt.Errorf("internal: unknown opcode %d at %d in %s", op, ip, fn.Name)
@@ -418,16 +474,8 @@ func (vm *VM) run(fn Function, args []runtime.Value) (runtime.Value, error) {
 }
 
 // ---- арифметика (§7.3) ----
-//
-// Правила (Must для VM):
-//   - `/` всегда возвращает Float;
-//   - деление на ноль → raise((:division_by_zero, ()));
-//   - `div` — целочисленное деление к нулю;
-//   - `rem` — знак результата следует за делимым;
-//   - переполнение Int невозможно (произвольная точность через big.Int).
 
 func add(a, b runtime.Value) (runtime.Value, error) {
-	// конкатенация строк и списков
 	if a.Kind == runtime.KindStr && b.Kind == runtime.KindStr {
 		return runtime.Str(a.Str + b.Str), nil
 	}
@@ -466,7 +514,6 @@ func mul(a, b runtime.Value) (runtime.Value, error) {
 	return runtime.IntBig(new(big.Int).Mul(a.Int, b.Int)), nil
 }
 
-// div всегда возвращает Float (§7.3).
 func div(a, b runtime.Value) (runtime.Value, error) {
 	if !bothNum(a, b) {
 		return runtime.Unit, arithErr(a, b, ":div")
@@ -478,7 +525,6 @@ func div(a, b runtime.Value) (runtime.Value, error) {
 	return runtime.Float(numToFloat(a) / numToFloat(b)), nil
 }
 
-// intDiv — целочисленное деление к нулю (big.Int.Quo).
 func intDiv(a, b runtime.Value) (runtime.Value, error) {
 	if a.Kind != runtime.KindInt || b.Kind != runtime.KindInt {
 		return runtime.Unit, arithErr(a, b, ":div")
@@ -490,7 +536,6 @@ func intDiv(a, b runtime.Value) (runtime.Value, error) {
 	return runtime.IntBig(new(big.Int).Quo(a.Int, b.Int)), nil
 }
 
-// rem — остаток; знак следует за делимым (big.Int.Rem).
 func rem(a, b runtime.Value) (runtime.Value, error) {
 	if a.Kind != runtime.KindInt || b.Kind != runtime.KindInt {
 		return runtime.Unit, arithErr(a, b, ":rem")
@@ -502,8 +547,6 @@ func rem(a, b runtime.Value) (runtime.Value, error) {
 	return runtime.IntBig(new(big.Int).Rem(a.Int, b.Int)), nil
 }
 
-// pow — возведение в степень. Целая неотрицательная степень над Int —
-// точно через big.Int.Exp; иначе — через math.Pow (Float).
 func pow(a, b runtime.Value) (runtime.Value, error) {
 	if !bothNum(a, b) {
 		return runtime.Unit, arithErr(a, b, ":pow")
@@ -523,8 +566,6 @@ func neg(a runtime.Value) (runtime.Value, error) {
 	}
 	return runtime.Unit, fmt.Errorf("(:type_error, (:neg, %s))", a.Inspect())
 }
-
-// ---- вспомогательные ----
 
 func bothNum(a, b runtime.Value) bool {
 	return (a.Kind == runtime.KindInt || a.Kind == runtime.KindFloat) &&
