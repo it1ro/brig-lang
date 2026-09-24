@@ -18,6 +18,7 @@ import (
 )
 
 // version поднят до 0.1.0-dev: появился исполняемый пайплайн Трека C.
+// v0.4.8: акторы — scheduler loop, spawn/send/recv/watch.
 const version = "0.1.0-dev"
 
 // Exit codes (см. скилл brig-cli):
@@ -94,6 +95,8 @@ func runCheck(args []string) {
 // Полный пайплайн Трека C. С --dump-bytecode печатает дизассемблированный
 // байткод всех функций модуля и не исполняет — основной инструмент
 // отладки компилятора (§15.1 Must).
+//
+// v0.4.8: main запускается как актор через vm.RunMain (scheduler loop).
 func runFile(args []string) {
 	var dump bool
 	for len(args) > 0 && strings.HasPrefix(args[0], "-") {
@@ -144,7 +147,7 @@ func runFile(args []string) {
 		machine.DefineGlobal(name, vm.FuncValue(fn))
 	}
 	mainVal := machine.Global("main")
-	if _, err := machine.Call(mainVal, nil); err != nil {
+	if _, err := machine.RunMain(mainVal); err != nil {
 		fmt.Fprintf(os.Stderr, "brig run: %s: %v\n", args[0], err)
 		os.Exit(exitRuntime)
 	}
