@@ -1,0 +1,12 @@
+#!/bin/sh
+# pre-push: прогон make test и make lint; блокирует push при поломке.
+set -eu
+
+echo "pre-push: go test ./... и golangci-lint (если установлен)..."
+go test ./...
+if command -v golangci-lint >/dev/null 2>&1; then
+  golangci-lint run ./...
+else
+  echo "pre-push: golangci-lint не установлен — пропуск lint"
+fi
+echo "pre-push: ok"

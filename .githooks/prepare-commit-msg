@@ -1,0 +1,15 @@
+#!/bin/sh
+# prepare-commit-msg: подсказка по Conventional Commits (не блокирует).
+set -eu
+
+MSG_FILE="$1"
+case "$2" in
+  message|template|merge|squash) exit 0 ;;
+esac
+
+cat >"$MSG_FILE" <<'EOF'
+# <type>(<scope>): <subject>   |  example: feat(lexer): add offside INDENT/DEDENT
+# types: feat fix refactor docs test chore ci perf
+# scopes: lexer parser ast vm runtime prelude cli repl test tools docs ci build git
+# subject: английский, императив, ≤72 символа, без точки в конце
+EOF

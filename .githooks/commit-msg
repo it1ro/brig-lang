@@ -1,0 +1,34 @@
+#!/bin/sh
+# commit-msg: валидация Conventional Commits (English). Блокирует нарушителей.
+set -eu
+
+MSG_FILE="$1"
+SUBJECT="$(sed -n '1p' "$MSG_FILE" | tr -d '\n')"
+
+# Пропуск merge-коммитов.
+case "$SUBJECT" in
+  Merge* | merge*) exit 0 ;;
+esac
+
+if ! printf '%s' "$SUBJECT" | grep -qE '^(feat|fix|refactor|docs|test|chore|ci|perf)(\([a-z][a-z-]+\))?: [a-z].*'; then
+  echo "commit-msg: не Conventional Commit:"
+  echo "  $SUBJECT"
+  echo "  формат: <type>(<scope>): <subject>  (английский, императив, строчными)"
+  exit 1
+fi
+
+LEN=${#SUBJECT}
+if [ "$LEN" -gt 72 ]; then
+  echo "commit-msg: subject ${LEN} символов (>72):"
+  echo "  $SUBJECT"
+  exit 1
+fi
+
+# Запрет кириллицы в subject.
+if printf '%s' "$SUBJECT" | grep -qP '[\x{0400}-\x{04FF}]'; then
+  echo "commit-msg: кириллица в subject запрещена (история — English):"
+  echo "  $SUBJECT"
+  exit 1
+fi
+
+exit 0
