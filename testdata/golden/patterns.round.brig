@@ -1,0 +1,18 @@
+fn p_wildcard(_) ->
+    1
+fn p_ident(x) ->
+    x
+fn p_literal(1) ->
+    2
+fn p_ctor(Some(v)) ->
+    v
+fn p_tuple((a, b)) ->
+    a
+fn p_list([1, ..rest]) ->
+    rest
+fn p_map(%{"a" => a}) ->
+    a
+fn p_record(User{id: id}) ->
+    id
+fn p_as((:ok, _) as full) ->
+    full

@@ -1,0 +1,2 @@
+type Color { Red, Green, Blue }
+type Result2<T, E> { Ok(T), Error(E) }

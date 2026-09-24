@@ -1,0 +1,3 @@
+fn main() ->
+    x = if ready then start() else wait()
+    x

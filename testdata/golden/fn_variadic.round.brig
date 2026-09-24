@@ -1,0 +1,4 @@
+fn log_all(..args) ->
+    args
+fn sum(x, ..rest) ->
+    x

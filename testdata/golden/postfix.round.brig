@@ -1,0 +1,5 @@
+fn main() ->
+    x = obj.name
+    y = f(1).b
+    z = v[0][1]
+    (x, y, z)

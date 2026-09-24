@@ -1,0 +1,7 @@
+fn main() ->
+    match v
+        Some(u) -> u
+        None -> 0
+        _ ->
+            y = 1
+            y + 2

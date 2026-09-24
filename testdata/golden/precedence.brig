@@ -1,0 +1,5 @@
+fn main() ->
+    a = 1 + 2 * 3 ** 4
+    b = -x ** 2
+    c = p and q or r
+    (a, b, c)

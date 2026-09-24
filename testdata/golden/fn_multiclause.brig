@@ -1,0 +1,3 @@
+fn classify(n) when n > 0 -> "positive"
+fn classify(0) -> "zero"
+fn classify(n) -> "negative"

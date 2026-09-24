@@ -1,5 +1,11 @@
 // Package examples implements the check-examples tool (A2): extracting
 // ```brig fenced blocks from design docs and running them through the parser.
+//
+// После ужесточения (этап 3, шаг 3):
+//   - убраны текстовые эвристики (reResultType, reFnNoArgs, reArgDotDot,
+//     reOkEquiv, reTopLevelBind): их роль теперь у парсера;
+//   - добавлен режим "invalid" (G.5): блок обязан НЕ парситься;
+//   - добавлен sanity-check parse → Format → parse ≡ parse.
 package examples
 
 import (
@@ -8,6 +14,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/it1ro/brig-lang/internal/ast"
 	"github.com/it1ro/brig-lang/internal/parser"
 )
 
@@ -32,7 +39,7 @@ func (r Result) String() string {
 	return fmt.Sprintf("%s:%d:%d — %s — [%s]", r.File, r.Line, r.Col, status, r.ErrMsg)
 }
 
-// CheckFile прогоняет все brig-блоки файла через парсер-заглушку (A2).
+// CheckFile прогоняет все brig-блоки файла через парсер (A2).
 func CheckFile(path string) ([]Result, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -97,9 +104,9 @@ func extractBlocks(path, src string) []block {
 	return out
 }
 
-// modeByMeta — режим из метки fence (module/repl/expr/stmt) или "" (нет).
+// modeByMeta — режим из метки fence (module/repl/expr/stmt/invalid) или "".
 func modeByMeta(meta string) string {
-	for _, m := range []string{"module", "repl", "expr", "stmt"} {
+	for _, m := range []string{"module", "repl", "expr", "stmt", "invalid"} {
 		if strings.HasPrefix(meta, m) {
 			return m
 		}
@@ -107,64 +114,31 @@ func modeByMeta(meta string) string {
 	return ""
 }
 
-var (
-	reModuleMarker = regexp.MustCompile(`\b(module|import|fn\s+main)\b`)
-	reResultType   = regexp.MustCompile(`Result\s*\[`)
-	reFnNoArgs     = regexp.MustCompile(`\bfn\s+->`)
-	reArgDotDot    = regexp.MustCompile(`\(\s*\.\.\s*\)`)
-	reOkEquiv      = regexp.MustCompile(`Ok\([^)]*\)\s*≡`)
-	// reTopLevelBind: "<ident> =" на колонке 0 — top-level связывание,
-	// несовместимое с module-режимом (§9). Тело fn в примерах всегда
-	// индентировано, поэтому строки колонки 0 не могут быть внутри fn.
-	reTopLevelBind = regexp.MustCompile(`(?m)^[a-z][a-zA-Z0-9_]*\s*=\s`)
-)
-
-// hasTopLevelBind — есть ли в блоке top-level связывание (см. reTopLevelBind).
-func hasTopLevelBind(raw string) bool {
-	return reTopLevelBind.MatchString(raw)
-}
-
-// explicit — есть ли в метке fence явный режим (module/repl/expr/stmt).
-func explicit(b block) bool {
-	meta := strings.TrimSpace(strings.TrimPrefix(b.lang, "brig"))
-	return modeByMeta(meta) != ""
-}
-
-// heuristicMode — эвристика A2 для блоков без метки.
+// heuristicMode — единственная оставшаяся эвристика: блок целиком из строк
+// с '>' → repl. Во всех остальных случаях — stmt (дизайн-док обязан
+// использовать явные метки, G.4).
 func heuristicMode(raw string) string {
-	if reModuleMarker.MatchString(raw) {
-		return "module"
-	}
+	hasPrompt := false
+	hasOther := false
 	for _, ln := range strings.Split(raw, "\n") {
-		if strings.HasPrefix(strings.TrimSpace(ln), ">") {
-			return "repl"
+		s := strings.TrimSpace(ln)
+		if s == "" {
+			continue
 		}
-	}
-	var nonEmpty []string
-	for _, ln := range strings.Split(raw, "\n") {
-		if strings.TrimSpace(ln) != "" {
-			nonEmpty = append(nonEmpty, strings.TrimSpace(ln))
+		if strings.HasPrefix(s, ">") {
+			hasPrompt = true
+			continue
 		}
+		hasOther = true
+		break
 	}
-	if len(nonEmpty) == 1 && !strings.Contains(nonEmpty[0], "=") {
-		return "expr"
+	if hasPrompt && !hasOther {
+		return "repl"
 	}
 	return "stmt"
 }
 
-// stripComments убирает '#'-комментарии для семантических текстовых проверок.
-func stripComments(raw string) string {
-	var out []string
-	for _, ln := range strings.Split(raw, "\n") {
-		if idx := strings.Index(ln, "#"); idx >= 0 {
-			ln = ln[:idx]
-		}
-		out = append(out, ln)
-	}
-	return strings.Join(out, "\n")
-}
-
-// checkBlock: выбор режима, обёртка expr/stmt, парсинг, текстовые проверки A2.
+// checkBlock: выбор режима, обёртка expr/stmt, парсинг, sanity-check.
 func checkBlock(b block) Result {
 	meta := strings.TrimSpace(strings.TrimPrefix(b.lang, "brig"))
 	mode := modeByMeta(meta)
@@ -172,39 +146,40 @@ func checkBlock(b block) Result {
 		mode = heuristicMode(b.raw)
 	}
 
-	// A2: неоднозначный блок без метки (модульные маркеры + top-level let) —
-	// эвристика даёт module, но такой код в module-режиме запрещён (§9).
-	// Требуем явную метку module|stmt|repl.
-	if !explicit(b) && mode == "module" && hasTopLevelBind(b.raw) {
-		return fail(b, mode, "ambiguous block: module markers + top-level bind; "+
-			"add explicit mode label (```brig module|stmt|repl)")
-	}
-
-	// Текстовые проверки A2 (на блоке без комментариев).
-	clean := stripComments(b.raw)
-	switch {
-	case reResultType.MatchString(clean):
-		return fail(b, mode, "Result[...] forbidden in type position (B4)")
-	case reFnNoArgs.MatchString(clean):
-		return fail(b, mode, "fn -> ... removed (B2); use () -> ...")
-	case reArgDotDot.MatchString(clean):
-		return fail(b, mode, "f(..) without operand forbidden in args (M-004)")
-	case reOkEquiv.MatchString(clean):
-		return fail(b, mode, "Ok(x) ≡ (:ok, x) only in comments (§2.9)")
+	// G.5: invalid — блок обязан НЕ парситься.
+	if mode == "invalid" {
+		if err := parser.Parse(parser.ModeModule, b.raw); err == nil {
+			return fail(b, mode, "invalid block parsed successfully")
+		}
+		return Result{File: b.file, Line: b.line, Col: 1, Mode: mode, OK: true}
 	}
 
 	src := wrapForMode(mode, b.raw)
+
 	switch mode {
 	case "repl":
 		if err := parseRepl(src); err != nil {
 			return fail(b, mode, err.Error())
 		}
+		return Result{File: b.file, Line: b.line, Col: 1, Mode: mode, OK: true}
 	default:
-		if err := parser.Parse(parser.ModeModule, src); err != nil {
+		prog, err := parser.ParseProgram(parser.ModeModule, src)
+		if err != nil {
 			return fail(b, mode, err.Error())
 		}
+		// Sanity-check: parse → Format → parse ≡ parse.
+		// Ловит баги парсера/форматтера на реальных примерах из доков,
+		// не заводя отдельного golden-файла на каждый пример.
+		formatted := ast.Format(prog)
+		prog2, err := parser.ParseProgram(parser.ModeModule, formatted)
+		if err != nil {
+			return fail(b, mode, fmt.Sprintf("format round-trip re-parse: %v", err))
+		}
+		if !ast.Equal(prog, prog2) {
+			return fail(b, mode, "format round-trip mismatch")
+		}
+		return Result{File: b.file, Line: b.line, Col: 1, Mode: mode, OK: true}
 	}
-	return Result{File: b.file, Line: b.line, Col: 1, Mode: mode, OK: true}
 }
 
 func fail(b block, mode, msg string) Result {
@@ -251,7 +226,7 @@ func parseRepl(src string) error {
 		if isReplOutput(line) {
 			continue
 		}
-		if err := parser.Parse(parser.ModeRepl, line+"\n"); err != nil {
+		if _, err := parser.ParseProgram(parser.ModeRepl, line+"\n"); err != nil {
 			return fmt.Errorf("repl line %q: %w", line, err)
 		}
 	}

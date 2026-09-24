@@ -44,7 +44,6 @@ func TestExtractBlocksCommonMark(t *testing.T) {
 			t.Errorf("block %d: lang=%q, want %q", i, b.lang, wantLangs[i])
 		}
 	}
-	// Блоки, попавшие внутрь внешнего fence, не извлекаются.
 	if got := blocks[1].raw; got != "module Main" {
 		t.Errorf("block 1 raw: %q", got)
 	}
@@ -54,7 +53,6 @@ func TestExtractBlocksCommonMark(t *testing.T) {
 }
 
 func TestExtractBlocksUnclosedFence(t *testing.T) {
-	// Незакрытый fence (например, конец файла) не должен приводить к панике.
 	src := "```brig\nx = 1\n"
 	blocks := extractBlocks("t.md", src)
 	if len(blocks) != 0 {
@@ -69,7 +67,9 @@ func TestModeByMeta(t *testing.T) {
 		{"repl", "repl"},
 		{"expr", "expr"},
 		{"stmt", "stmt"},
-		{"module explicit", "module"}, // метка с пояснением после пробела
+		{"invalid", "invalid"},
+		{"module explicit", "module"},
+		{"invalid something", "invalid"},
 		{"foo", ""},
 	}
 	for _, c := range cases {
@@ -84,11 +84,13 @@ func TestHeuristicMode(t *testing.T) {
 		raw  string
 		want string
 	}{
-		{"import Option\nx = 1", "module"},             // import → module
-		{"module Main\nfn main() ->\n    x", "module"}, // fn main → module
-		{"> 1 + 2", "repl"},                            // '>' → repl
-		{"1 + 2", "expr"},                              // одна строка без '=' → expr
-		{"x = 1\ny = 2", "stmt"},                       // иначе → stmt
+		{"> 1 + 2", "repl"},
+		{"> x = 1\n> x + 1", "repl"},
+		{"> x = 1\n2", "stmt"},
+		{"1 + 2", "stmt"},
+		{"x = 1\ny = 2", "stmt"},
+		{"module Main\nfn main() ->\n    1 + 2", "stmt"},
+		{"", "stmt"},
 	}
 	for _, c := range cases {
 		if got := heuristicMode(c.raw); got != c.want {
@@ -97,42 +99,36 @@ func TestHeuristicMode(t *testing.T) {
 	}
 }
 
-func TestHasTopLevelBind(t *testing.T) {
-	cases := []struct {
-		raw  string
-		want bool
-	}{
-		{"import Option\nx = opt |> f", true}, // top-level bind
-		{"fn main() ->\n    x = 1", false},    // bind внутри fn (индент)
-		{"module Main\nfn main() ->\n    1 + 2", false},
-		{"x = 1", true},
-	}
-	for _, c := range cases {
-		if got := hasTopLevelBind(c.raw); got != c.want {
-			t.Errorf("hasTopLevelBind(%q) = %v, want %v", c.raw, got, c.want)
-		}
-	}
-}
-
-func TestCheckBlockTextRules(t *testing.T) {
+// TestCheckBlockModes проверяет поведение checkBlock по режимам.
+//
+// Тонкость: checkBlock("invalid") вызывает parser.Parse(ModeModule, raw)
+// без обёртки. Чтобы проверить ветку «invalid-блок всё же парсится»,
+// raw должен быть валидным module-сниппетом. И наоборот, чтобы проверить
+// ветку «invalid-блок падает по синтаксису», raw должен содержать
+// module-скелет, в котором ошибка возникает в теле.
+func TestCheckBlockModes(t *testing.T) {
 	cases := []struct {
 		name   string
 		raw    string
 		lang   string
 		wantOK bool
 	}{
-		{"ok stmt", "x = 1\ny = x + 1", "brig", true},
-		{"B4 Result[]", "fn f() -> Result[Int]", "brig", false},
-		{"B2 fn ->", "f = fn -> 1", "brig", false},
-		{"M-004 f(..)", "f(..)", "brig", false},
-		{"2.9 Ok equiv", "x = Ok(1) ≡ (:ok, 1)", "brig", false},
-		{"ambiguous module+let", "import Option\nx = f()", "brig", false},
-		{"module ok", "module Main\nfn main() ->\n    1 + 2", "brig", true},
+		{"ok stmt (без метки)", "x = 1\ny = x + 1", "brig", true},
+		{"ok stmt явно", "x = 1\ny = x + 1", "brig stmt", true},
+		{"module ok", "module Main\nfn main() ->\n    1 + 2", "brig module", true},
+		{"module rejects top-level let", "module M\nx = 1", "brig module", false},
+		{"expr ok", "1 to 10 |> list", "brig expr", true},
+		{"expr fails on multi-stmt", "x = 1\ny = 2", "brig expr", false},
+
+		{"invalid parses — FAIL", "fn main() ->\n    1", "brig invalid", false},
+		{"invalid fails — OK", "fn main() ->\n    x = [1, ..]", "brig invalid", true},
+		{"invalid lex error — OK", "x %", "brig invalid", true},
 	}
 	for _, c := range cases {
 		r := checkBlock(block{file: "t.md", line: 1, lang: c.lang, raw: c.raw})
 		if r.OK != c.wantOK {
-			t.Errorf("%s: OK=%v (want %v), msg=%q", c.name, r.OK, c.wantOK, r.ErrMsg)
+			t.Errorf("%s: OK=%v (want %v), msg=%q",
+				c.name, r.OK, c.wantOK, r.ErrMsg)
 		}
 	}
 }
@@ -149,14 +145,19 @@ func TestWrapForMode(t *testing.T) {
 	if got != want {
 		t.Errorf("wrap stmt:\n%q\nwant:\n%q", got, want)
 	}
+
+	for _, m := range []string{"module", "repl", "invalid"} {
+		if got := wrapForMode(m, "x = 1\n"); got != "x = 1\n" {
+			t.Errorf("wrap %s: got %q, want unchanged", m, got)
+		}
+	}
 }
 
 func TestParseRepl(t *testing.T) {
-	// Приглашения и вывод отбрасываются; строки-код парсятся по отдельности.
 	src := strings.Join([]string{
 		"> x = 1",
 		"> x + 1",
-		"2", // вывод REPL (без операторов) — отбрасывается
+		"2",
 		"> y = x * 2",
 		"",
 	}, "\n")
@@ -164,7 +165,6 @@ func TestParseRepl(t *testing.T) {
 		t.Fatalf("parseRepl: %v", err)
 	}
 
-	// Ошибка лексера: одиночный '%' — КР-005.
 	bad := "> x %"
 	if err := parseRepl(bad); err == nil {
 		t.Fatal("parseRepl: want error for '> x %'")

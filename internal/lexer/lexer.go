@@ -469,10 +469,13 @@ func firstToken(s string) string {
 		}
 	case c == '"':
 		// Сигилы: "..." b"..." rx"..." dec"..." — прочесть до закрывающей кавычки.
+		// Регрессия FuzzLex/ff7bb51f08e94b47: раньше "\" в конце строки
+		// давал k = len(s)+1 и панику в s[i:k]. Теперь k <= len(s) всегда.
 		k := i + 1
 		for k < len(s) && s[k] != '"' {
-			if s[k] == '\\' {
-				k++
+			if s[k] == '\\' && k+1 < len(s) {
+				k += 2
+				continue
 			}
 			k++
 		}
@@ -486,7 +489,10 @@ func firstToken(s string) string {
 				return op.text
 			}
 		}
-		return s[j : j+1]
+		if i < len(s) {
+			return s[i : i+1]
+		}
+		return ""
 	}
 	return s[i:j]
 }

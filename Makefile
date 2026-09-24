@@ -85,7 +85,7 @@ ci-quick: fmt-check vet test-roundtrip test-lexer test-parser
 
 ## ---- Документация и грамматика (A1, A2, A6) ----
 
-# Прогон всех brig-примеров из дизайн-доков через парсер-заглушку (A2).
+# Прогон всех brig-примеров из дизайн-доков через парсер (A2).
 check-examples:
 	$(GO) run ./cmd/check-examples -- docs/01-language-design.md
 
@@ -112,15 +112,18 @@ changelog:
 
 ## ---- Тест-инфраструктура ----
 
-# NB: пока no-op — TestGolden ещё нет (см. этап 3, шаг 2 итерации).
-# Как только golden_test.go появится, цели начнут писать/сверять .ast/.round.brig.
+# TestGolden живёт только в internal/parser; флаг -update объявлен там.
+# Нельзя гонять `go test ./internal/... -update` — остальные пакеты флага
+# не знают и падают с "flag provided but not defined: -update".
 update-golden:
-	$(GO) test ./internal/... -run=TestGolden -update
-	$(GO) test ./cmd/...       -run=TestGolden -update
+	$(GO) test ./internal/parser/ -run=TestGolden -update
 
+# Три фаззера в трёх пакетах. FuzzRoundTrip живёт в internal/ast/format_test.go,
+# FuzzLex — в internal/lexer/lexer_test.go, FuzzParse — в internal/parser/parser_test.go.
 fuzz:
-	$(GO) test ./internal/lexer/  -run=^$$ -fuzz=FuzzLex    -fuzztime=60s
-	$(GO) test ./internal/parser/ -run=^$$ -fuzz=FuzzParse  -fuzztime=60s
+	$(GO) test ./internal/lexer/  -run=^$$ -fuzz=FuzzLex        -fuzztime=60s
+	$(GO) test ./internal/parser/ -run=^$$ -fuzz=FuzzParse      -fuzztime=60s
+	$(GO) test ./internal/ast/    -run=^$$ -fuzz=FuzzRoundTrip  -fuzztime=60s
 
 ## ---- CLI без сборки ----
 

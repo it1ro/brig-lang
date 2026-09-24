@@ -38,21 +38,31 @@ func TestLexBasics(t *testing.T) {
 	}{
 		// Классика из дизайна.
 		{`x = 1`, []TokenType{LOWER_IDENT, OP_ASSIGN, INT, NEWLINE, EOF}},
-		{`t = (1, "a", :ok)`,
-			[]TokenType{LOWER_IDENT, OP_ASSIGN, LPAREN, INT, COMMA, STRING, COMMA, ATOM, RPAREN, NEWLINE, EOF}},
-		{`v = %[1, 2, 3]`,
-			[]TokenType{LOWER_IDENT, OP_ASSIGN, VEC_OPEN, INT, COMMA, INT, COMMA, INT, RBRACKET, NEWLINE, EOF}},
-		{`m = %{ "a" => 1 }`,
-			[]TokenType{LOWER_IDENT, OP_ASSIGN, MAP_OPEN, STRING, OP_FATARROW, INT, RBRACE, NEWLINE, EOF}},
+		{
+			`t = (1, "a", :ok)`,
+			[]TokenType{LOWER_IDENT, OP_ASSIGN, LPAREN, INT, COMMA, STRING, COMMA, ATOM, RPAREN, NEWLINE, EOF},
+		},
+		{
+			`v = %[1, 2, 3]`,
+			[]TokenType{LOWER_IDENT, OP_ASSIGN, VEC_OPEN, INT, COMMA, INT, COMMA, INT, RBRACKET, NEWLINE, EOF},
+		},
+		{
+			`m = %{ "a" => 1 }`,
+			[]TokenType{LOWER_IDENT, OP_ASSIGN, MAP_OPEN, STRING, OP_FATARROW, INT, RBRACE, NEWLINE, EOF},
+		},
 		{`f(x)`, []TokenType{LOWER_IDENT, LPAREN, LOWER_IDENT, RPAREN, NEWLINE, EOF}},
-		{`xs |> f(a, b)`,
-			[]TokenType{LOWER_IDENT, OP_PIPE, LOWER_IDENT, LPAREN, LOWER_IDENT, COMMA, LOWER_IDENT, RPAREN, NEWLINE, EOF}},
+		{
+			`xs |> f(a, b)`,
+			[]TokenType{LOWER_IDENT, OP_PIPE, LOWER_IDENT, LPAREN, LOWER_IDENT, COMMA, LOWER_IDENT, RPAREN, NEWLINE, EOF},
+		},
 		{`:ready?`, []TokenType{ATOM, NEWLINE, EOF}},
 		{`and?`, []TokenType{LOWER_IDENT, NEWLINE, EOF}}, // шаг 11a: не keyword
 		{`map?`, []TokenType{LOWER_IDENT, NEWLINE, EOF}},
 		{`_`, []TokenType{WILDCARD, NEWLINE, EOF}},
-		{`User{ id: 1 }`,
-			[]TokenType{UPPER_IDENT, LBRACE, LOWER_IDENT, COLON, INT, RBRACE, NEWLINE, EOF}},
+		{
+			`User{ id: 1 }`,
+			[]TokenType{UPPER_IDENT, LBRACE, LOWER_IDENT, COLON, INT, RBRACE, NEWLINE, EOF},
+		},
 		{`0xFF`, []TokenType{INT, NEWLINE, EOF}},
 		{`0b101`, []TokenType{INT, NEWLINE, EOF}},
 		{`1_000_000`, []TokenType{INT, NEWLINE, EOF}},
@@ -230,6 +240,24 @@ func TestLexAtomVsColon(t *testing.T) {
 	for _, tk := range toks {
 		if tk.Type == ATOM {
 			t.Fatalf(":K must not be ATOM (got %v)", tk)
+		}
+	}
+}
+
+// TestLexUnclosedStringTrailingBackslash — регрессия на панику в firstToken,
+// найденную FuzzLex. Вход, оканчивающийся на '\' внутри незакрытой строки,
+// раньше давал k = len(s)+1 и slice out of range; теперь — обычная ошибка.
+// Зеркалит testdata/fuzz/FuzzLex/ff7bb51f08e94b47 (сохранён fuzzer'ом).
+func TestLexUnclosedStringTrailingBackslash(t *testing.T) {
+	for _, src := range []string{
+		`"\\`,
+		`"a\`,
+		`"ab\`,
+		`"\"`,
+		`a = "x\`,
+	} {
+		if _, err := Lex(src); err == nil {
+			t.Errorf("Lex(%q): want error, got nil", src)
 		}
 	}
 }

@@ -94,3 +94,26 @@ func TestFormatIdempotent(t *testing.T) {
 		t.Fatalf("not idempotent:\n--- f1 ---\n%s\n--- f2 ---\n%s", f1, f2)
 	}
 }
+
+func FuzzRoundTrip(f *testing.F) {
+	f.Add("fn main() ->\n    1 + 2\n")
+	f.Add("x = %{ \"a\" => 1 }\n")
+	f.Fuzz(func(t *testing.T, src string) {
+		for _, m := range []parser.Mode{parser.ModeModule, parser.ModeRepl} {
+			prog, err := parser.ParseProgram(m, src)
+			if err != nil {
+				continue
+			}
+			out := ast.Format(prog)
+			prog2, err := parser.ParseProgram(m, out)
+			if err != nil {
+				t.Fatalf("re-parse failed:\n--- in ---\n%s\n--- out ---\n%s\n%v",
+					src, out, err)
+			}
+			if !ast.Equal(prog, prog2) {
+				t.Fatalf("round-trip mismatch:\n--- in ---\n%s\n--- out ---\n%s",
+					src, out)
+			}
+		}
+	})
+}

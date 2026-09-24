@@ -1,0 +1,3 @@
+fn main() ->
+    result = trap(1 + 1)
+    result

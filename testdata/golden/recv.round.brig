@@ -1,0 +1,7 @@
+fn main() ->
+    recv
+        (:value, v) -> v
+        :done -> :done
+    else msg
+        log(msg)
+    after 5000 -> :timeout

@@ -1,0 +1,7 @@
+fn main() ->
+    with
+        Ok(a) <- validate(x)
+        Ok(b) <- transform(a)
+        Ok(b)
+    else
+        Error(e) -> Error(e)
