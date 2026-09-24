@@ -10,6 +10,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/it1ro/brig-lang/internal/compiler"
 	"github.com/it1ro/brig-lang/internal/parser"
@@ -88,14 +89,25 @@ func runCheck(args []string) {
 	fmt.Printf("%s: ok\n", args[0])
 }
 
-// runFile: brig run <file.brig> — полный пайплайн Трека C (вертикальный срез).
+// runFile: brig run [--dump-bytecode] <file.brig>
 //
-// Лексер → парсер → компилятор → стековая ВМ. Точка входа — `fn main()`.
-// Осознанное отступление от §15.1: ВМ стековая, не регистровая — ради
-// быстрого получения исполняемого пайплайна. Миграция на регистровую — отдельный подэтап.
+// Полный пайплайн Трека C. С --dump-bytecode печатает дизассемблированный
+// байткод всех функций модуля и не исполняет — основной инструмент
+// отладки компилятора (§15.1 Must).
 func runFile(args []string) {
+	var dump bool
+	for len(args) > 0 && strings.HasPrefix(args[0], "-") {
+		switch args[0] {
+		case "--dump-bytecode", "-d":
+			dump = true
+			args = args[1:]
+		default:
+			fmt.Fprintf(os.Stderr, "brig run: неизвестный флаг %q\n", args[0])
+			os.Exit(exitParse)
+		}
+	}
 	if len(args) != 1 {
-		fmt.Fprintln(os.Stderr, "brig run: ожидается один файл")
+		fmt.Fprintln(os.Stderr, "brig run: ожидается один файл (опционально --dump-bytecode)")
 		os.Exit(exitParse)
 	}
 	src, err := os.ReadFile(args[0])
@@ -104,14 +116,11 @@ func runFile(args []string) {
 		os.Exit(exitInternal)
 	}
 
-	// 1. Парсинг (режим module: top-level только декларации).
 	prog, err := parser.ParseProgram(parser.ModeModule, string(src))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "brig run: %s: %v\n", args[0], err)
 		os.Exit(exitParse)
 	}
-
-	// 2. Компиляция AST → байткод.
 	img, err := compiler.New().Compile(prog)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "brig run: %s: compile: %v\n", args[0], err)
@@ -122,13 +131,18 @@ func runFile(args []string) {
 		os.Exit(exitParse)
 	}
 
-	// 3. Загрузка в ВМ: все функции модуля + прелюдия (ставится в vm.New()).
+	// --dump-bytecode: печатаем все функции и выходим.
+	if dump {
+		for name, fn := range img.Functions {
+			fmt.Print(fn.Chunk.Disassemble(name))
+		}
+		return
+	}
+
 	machine := vm.New()
 	for name, fn := range img.Functions {
 		machine.DefineGlobal(name, vm.FuncValue(fn))
 	}
-
-	// 4. Исполнение точки входа.
 	mainVal := machine.Global("main")
 	if _, err := machine.Call(mainVal, nil); err != nil {
 		fmt.Fprintf(os.Stderr, "brig run: %s: %v\n", args[0], err)
