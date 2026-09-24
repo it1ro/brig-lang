@@ -53,3 +53,66 @@ fn main() ->
     print(fib(10))
 `)
 }
+
+func TestAndOr(t *testing.T) {
+	runModule(t, `module Main
+fn main() ->
+    a = true and false
+    b = false or true
+    c = true and true
+    d = false or false
+    print(a, b, c, d)
+`)
+}
+
+func TestLocalFn(t *testing.T) {
+	runModule(t, `module Main
+fn main() ->
+    fn add(x, y) -> x + y
+    print(add(1, 2))
+`)
+}
+
+func TestClosure(t *testing.T) {
+	runModule(t, `module Main
+fn main() ->
+    x = 10
+    f = () -> x
+    print(f())
+`)
+}
+
+func TestMutualRecursion(t *testing.T) {
+	runModule(t, `module Main
+fn main() ->
+    fn is_even(n) -> if n == 0 then true else is_odd(n - 1)
+    fn is_odd(n) -> if n == 0 then false else is_even(n - 1)
+    print(is_even(10))
+`)
+}
+
+func TestLambdaShort(t *testing.T) {
+	runModule(t, `module Main
+fn main() ->
+    xs = [1, 2, 3]
+    ys = map(x -> x * 2, xs)
+    print(ys)
+`)
+}
+
+func TestClosureCapture(t *testing.T) {
+	runModule(t, `module Main
+fn main() ->
+    base = 100
+    add_base = x -> base + x
+    print(add_base(5))
+`)
+}
+
+func TestLocalFnRecursion(t *testing.T) {
+	runModule(t, `module Main
+fn main() ->
+    fn fact(n) -> if n <= 1 then 1 else n * fact(n - 1)
+    print(fact(5))
+`)
+}
