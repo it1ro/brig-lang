@@ -8,6 +8,8 @@ import (
 	"github.com/it1ro/brig-lang/internal/vm"
 )
 
+// runModule прогоняет модуль через scheduler (RunMain), чтобы recv
+// и другие акторные примитивы работали.
 func runModule(t *testing.T, src string) {
 	t.Helper()
 	prog, err := parser.ParseProgram(parser.ModeModule, src)
@@ -25,7 +27,7 @@ func runModule(t *testing.T, src string) {
 	for name, fn := range img.Functions {
 		m.DefineGlobal(name, vm.FuncValue(fn))
 	}
-	if _, err := m.Call(m.Global("main"), nil); err != nil {
+	if _, err := m.RunMain(m.Global("main")); err != nil {
 		t.Fatalf("run: %v", err)
 	}
 }
@@ -193,10 +195,6 @@ fn main() ->
 `)
 }
 
-// ---- trap/ensure: raise в ensure (пункт A) ----
-
-// TestTrapEnsureRaisesInSuccess: ensure падает в success-пути.
-// До фикса raise уходил наружу; после — trap поглощает и отдаёт Error.
 func TestTrapEnsureRaisesInSuccess(t *testing.T) {
 	runModule(t, `module Main
 fn main() ->
@@ -208,9 +206,6 @@ fn main() ->
 `)
 }
 
-// TestTrapEnsureRaisesInBody: ensure падает в exception-пути.
-// Исходная ошибка :body_failed заменяется на :cleanup_failed
-// («последняя побеждает»).
 func TestTrapEnsureRaisesInBody(t *testing.T) {
 	runModule(t, `module Main
 fn main() ->
@@ -221,7 +216,6 @@ fn main() ->
 `)
 }
 
-// TestTrapEnsureLifo: две ensure выполняются LIFO (§10.3).
 func TestTrapEnsureLifo(t *testing.T) {
 	runModule(t, `module Main
 fn main() ->
@@ -234,7 +228,6 @@ fn main() ->
 `)
 }
 
-// TestTrapEnsureLifoOnError: LIFO сохраняется и на error-пути.
 func TestTrapEnsureLifoOnError(t *testing.T) {
 	runModule(t, `module Main
 fn main() ->
@@ -247,7 +240,6 @@ fn main() ->
 `)
 }
 
-// TestTrapNoEnsureUnchanged: базовый случай без ensure не регрессировал.
 func TestTrapNoEnsureUnchanged(t *testing.T) {
 	runModule(t, `module Main
 fn main() ->
@@ -256,12 +248,103 @@ fn main() ->
 `)
 }
 
-// TestTrapInExpression: trap внутри бинарного выражения — стек
-// восстанавливается корректно в обоих путях.
 func TestTrapInExpression(t *testing.T) {
 	runModule(t, `module Main
 fn main() ->
     x = 1 + 0
     print(x)
+`)
+}
+
+// ---- v0.4.8: акторы ----
+
+func TestSpawnAndSend(t *testing.T) {
+	runModule(t, `module Main
+fn worker_loop() ->
+    x = recv
+        (:stop) -> :ok
+        msg -> msg
+    print(x)
+
+fn main() ->
+    pid = spawn(worker_loop)
+    send(pid, :hello)
+    send(pid, :stop)
+    recv
+        :never -> :never
+    after 50 -> :ok
+`)
+}
+
+func TestSpawnLinked(t *testing.T) {
+	runModule(t, `module Main
+fn worker() ->
+    x = recv
+        msg -> msg
+    x
+
+fn main() ->
+    pid = spawn_linked(worker)
+    send(pid, :hi)
+    recv
+        (:down, _, _) -> :done
+        _ -> :other
+    after 50 -> :timeout
+`)
+}
+
+func TestSelfIsPid(t *testing.T) {
+	runModule(t, `module Main
+fn main() ->
+    me = self()
+    print(me)
+`)
+}
+
+func TestWatchAndDown(t *testing.T) {
+	runModule(t, `module Main
+fn quick() -> :done
+
+fn main() ->
+    pid = spawn(quick)
+    ref = watch(pid)
+    x = recv
+        (:down, r, reason) -> (r, reason)
+        _ -> :other
+    print(x)
+`)
+}
+
+func TestRecvElse(t *testing.T) {
+	runModule(t, `module Main
+fn worker() ->
+    x = recv
+        :a -> :got_a
+    else msg
+        :unknown
+    print(x)
+
+fn main() ->
+    pid = spawn(worker)
+    send(pid, :b)
+    recv
+        :never -> :never
+    after 50 -> :ok
+`)
+}
+
+func TestRecvAfter(t *testing.T) {
+	runModule(t, `module Main
+fn worker() ->
+    x = recv
+        :a -> :got_a
+    after 10 -> :timeout
+    print(x)
+
+fn main() ->
+    pid = spawn(worker)
+    recv
+        :never -> :never
+    after 100 -> :ok
 `)
 }
