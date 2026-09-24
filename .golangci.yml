@@ -1,0 +1,34 @@
+version: "2"
+
+run:
+  go: "1.27"
+  timeout: 5m
+
+linters:
+  enable:
+    - gocritic
+    - misspell
+    - revive
+    - unconvert
+  exclusions:
+    generated: lax
+    # terminal-const именование (KW_FN, OP_STAR, ...) намеренно зеркалит
+    # терминалы спеки A3; revive-стилистика к token.go не применяется.
+    rules:
+      - path: internal/lexer/token\.go
+        linters: [revive]
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

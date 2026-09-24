@@ -1,0 +1,12 @@
+# Сборка
+/bin/
+/brig
+/dist/
+
+# IDE / редакторы
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store

@@ -1,0 +1,22 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+max_line_length = 100
+
+[Makefile]
+# Рецепты требуют табы (make: "missing separator" на пробелах).
+indent_style = tab
+tab_width = 8
+
+[*.md]
+# ВАЖНО: два пробела в конце строки = жёсткий перенос в Markdown,
+# поэтому trailing whitespace здесь НЕ тримим — иначе prettier/editors
+# будут ломать разметку (примеры brig в дизайн-доках).
+trim_trailing_whitespace = false
+max_line_length = 80
