@@ -30,6 +30,7 @@ const (
 	OpGe
 	OpJump      // безусловный переход
 	OpJumpFalse // pop; переход если ложь
+	OpJumpTrue  // pop; переход если истина
 	OpGetLocal
 	OpSetLocal
 	OpGetGlobal
@@ -41,6 +42,13 @@ const (
 	OpVector // собрать n значений в вектор
 	OpMap    // собрать n пар (2n значений) в мапу
 	OpRaise  // raise(top)
+
+	// Трек α (замыкания, локальные функции) — заглушки.
+	OpMakeClosure
+	OpGetUpvalue
+	OpSetUpvalue
+	OpCloseUpvalue
+	OpDefineLocalFn
 )
 
 func (op OpCode) String() string {
@@ -51,12 +59,15 @@ func (op OpCode) String() string {
 		OpNeg: "NEG", OpNot: "NOT",
 		OpEq: "EQ", OpNeq: "NEQ", OpLt: "LT", OpGt: "GT",
 		OpLe: "LE", OpGe: "GE",
-		OpJump: "JMP", OpJumpFalse: "JMPFALSE",
+		OpJump: "JMP", OpJumpFalse: "JMPFALSE", OpJumpTrue: "JMPTRUE",
 		OpGetLocal: "GETLOCAL", OpSetLocal: "SETLOCAL",
 		OpGetGlobal: "GETGLOBAL", OpSetGlobal: "SETGLOBAL",
 		OpCall: "CALL", OpReturn: "RETURN",
 		OpTuple: "TUPLE", OpList: "LIST", OpVector: "VECTOR",
 		OpMap: "MAP", OpRaise: "RAISE",
+		OpMakeClosure: "MAKECLOSURE", OpGetUpvalue: "GETUPVAL",
+		OpSetUpvalue: "SETUPVAL", OpCloseUpvalue: "CLOSEUPVAL",
+		OpDefineLocalFn: "DEFLOCALFN",
 	}
 	if n, ok := names[op]; ok {
 		return n
