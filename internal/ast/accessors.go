@@ -4,6 +4,10 @@ package ast
 // Методы живут на приватных типах этого же пакета; наружу отдаются
 // только интерфейсы. Это позволяет Треку C читать AST без ломки
 // инкапсуляции и без дублирования структуры.
+//
+// v0.4.7: добавлен TrapExpr.
+// v0.4.8: добавлены RecvExpr и Pattern* (нужны компилятору акторов).
+// RecvBranchArg уже объявлен в construct.go — здесь не дублируется.
 
 // --- выражения ---
 
@@ -201,6 +205,42 @@ type LiteralPattern interface {
 
 func (p *literalPat) ValueStr() string { return p.value }
 
+// PatternWildcard — `_` в паттерне.
+type PatternWildcard interface {
+	Pattern
+}
+
+type PatternCtor interface {
+	Pattern
+	CtorName() string
+	CtorArgs() []Pattern
+}
+
+func (p *constructorPat) CtorName() string { return p.name }
+func (p *constructorPat) CtorArgs() []Pattern {
+	out := make([]Pattern, len(p.fields))
+	for i := range p.fields {
+		out[i] = p.fields[i].pattern
+	}
+	return out
+}
+
+type PatternTuple interface {
+	Pattern
+	TupleElems() []Pattern
+}
+
+func (p *tuplePattern) TupleElems() []Pattern { return p.patterns }
+
+type PatternAs interface {
+	Pattern
+	AsInner() Pattern
+	AsName() string
+}
+
+func (p *asPat) AsInner() Pattern { return p.pattern }
+func (p *asPat) AsName() string   { return p.ident }
+
 // --- декларации ---
 
 type FuncDecl interface {
@@ -223,6 +263,7 @@ func (d *funcDecl) FuncClauses() []FnClauseArg {
 // --- trap (v0.4.7, §10.2/§10.3) ---
 
 // TrapExpr — экспортируемый аксессор к trap-выражению.
+//
 // Инлайн-форма: TrapInline() != nil, TrapBody() == nil.
 // Блочная форма: TrapInline() == nil, TrapBody() != nil.
 type TrapExpr interface {
@@ -252,3 +293,30 @@ func (e *trapExpr) TrapEnsures() []Expr {
 	}
 	return out
 }
+
+// --- recv (v0.4.8, §12.4) ---
+//
+// RecvBranchArg уже объявлен в construct.go — здесь только аксессор.
+
+// RecvExpr — аксессор к recv-выражению для компилятора.
+type RecvExpr interface {
+	Expr
+	RecvBranches() []RecvBranchArg
+	RecvElseName() string
+	RecvElseBody() Expr
+	RecvAfterTime() Expr
+	RecvAfterBody() Expr
+}
+
+func (e *recvExpr) RecvBranches() []RecvBranchArg {
+	out := make([]RecvBranchArg, 0, len(e.branches))
+	for _, b := range e.branches {
+		out = append(out, RecvBranchArg{Pattern: b.pattern, Body: b.expr})
+	}
+	return out
+}
+
+func (e *recvExpr) RecvElseName() string { return e.elseName }
+func (e *recvExpr) RecvElseBody() Expr   { return e.elseBody }
+func (e *recvExpr) RecvAfterTime() Expr  { return e.afterTime }
+func (e *recvExpr) RecvAfterBody() Expr  { return e.afterBody }
