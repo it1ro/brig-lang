@@ -78,19 +78,15 @@ type FuncValue struct {
 	Arity    int
 	IsNative bool
 	Native   NativeFunc
-	Body     any // *vm.Chunk для байткод-функций
+	Body     Code // *vm.Chunk; nil для нативных
 }
 
 // ClosureValue — замыкание: функция + захваченные переменные.
-//
-// Func хранит *vm.Chunk через any (runtime не импортирует vm).
-// Captures — значения, скопированные из объемлющей области
-// на момент создания замыкания (capture-by-value).
 type ClosureValue struct {
 	Name     string
 	Arity    int
-	Func     any     // *vm.Chunk
-	Captures []Value // захваченные переменные
+	Func     Code // *vm.Chunk
+	Captures []Value
 }
 
 // VariantValue — конструктор варианта.
@@ -157,7 +153,7 @@ func Vector(vs ...Value) Value { return Value{Kind: KindVector, Vector: vs} }
 func Func(f *FuncValue) Value { return Value{Kind: KindFunction, Func: f} }
 
 // MakeClosure создаёт замыкание.
-func MakeClosure(name string, arity int, fn any, captures []Value) Value {
+func MakeClosure(name string, arity int, fn Code, captures []Value) Value {
 	return Value{Kind: KindClosure, ClosureVal: &ClosureValue{
 		Name: name, Arity: arity, Func: fn, Captures: captures,
 	}}
@@ -377,4 +373,98 @@ func Compare(a, b Value) (int, error) {
 
 func cmpErr(a, b Value) error {
 	return fmt.Errorf("(:type_error, (:compare, (%s, %s)))", a.Kind, b.Kind)
+}
+
+// Code — маркер скомпилированного байткода.
+// Реализуется *vm.Chunk. Интерфейс объявлен в runtime, чтобы
+// FuncValue.Body был типобезопасным без циклического импорта
+// runtime → vm. vm импортирует runtime и реализует Code.
+type Code interface {
+	IsBrigCode()
+}
+
+// ---- Сериализация (§14.8, §13.1) ----
+
+// Serialize проверяет сериализуемость значения для передачи между
+// нодами. Функции, замыкания, Pid, Ref не сериализуемы (§14.8).
+// Для передачи поведения между распределёнными акторами используйте
+// MFA-дескриптор (§13.1): { module, function, args }.
+//
+// В shared-heap модели (§15.1) функции передаются по ссылке без
+// сериализации — Serialize вызывается только при выходе за пределы
+// общего хипа.
+func Serialize(v Value) error {
+	return serializeValue(v, 0)
+}
+
+const maxSerializeDepth = 64
+
+func serializeValue(v Value, depth int) error {
+	if depth > maxSerializeDepth {
+		return fmt.Errorf("(:serialize_error, :depth_limit)")
+	}
+	switch v.Kind {
+	case KindFunction:
+		return fmt.Errorf(
+			"(:serialize_error, (:function, %q)) — "+
+				"функции не сериализуемы (§14.8); "+
+				"используйте MFA-дескриптор { module: M, function: F, args: A } (§13.1)",
+			v.Func.Name)
+	case KindClosure:
+		return fmt.Errorf(
+			"(:serialize_error, (:closure, %q)) — "+
+				"замыкания не сериализуемы (§14.8); "+
+				"используйте MFA-дескриптор (§13.1)",
+			v.ClosureVal.Name)
+	case KindPid:
+		return fmt.Errorf("(:serialize_error, :pid) — Pid не сериализуем (§14.8)")
+	case KindRef:
+		return fmt.Errorf("(:serialize_error, :ref) — Ref не сериализуем (§14.8)")
+	case KindTuple:
+		for _, e := range v.Tuple {
+			if err := serializeValue(e, depth+1); err != nil {
+				return err
+			}
+		}
+	case KindList:
+		for _, e := range v.List {
+			if err := serializeValue(e, depth+1); err != nil {
+				return err
+			}
+		}
+	case KindVector:
+		for _, e := range v.Vector {
+			if err := serializeValue(e, depth+1); err != nil {
+				return err
+			}
+		}
+	case KindMap:
+		for _, e := range v.Map {
+			if err := serializeValue(e.Key, depth+1); err != nil {
+				return err
+			}
+			if err := serializeValue(e.Val, depth+1); err != nil {
+				return err
+			}
+		}
+	case KindVariant:
+		for _, e := range v.Variant.Args {
+			if err := serializeValue(e, depth+1); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// MFA — сериализуемый дескриптор функции для передачи между акторами
+// (§13.1). Запись { module: Str, function: Str, args: List }, не кортеж.
+// В shared-heap модели функции передаются напрямую; MFA нужен для
+// распределённых акторов, где замыкание невозможно передать по ссылке.
+func MFA(module, function string, args []Value) Value {
+	return Map([]MapEntry{
+		{Key: Atom("module"), Val: Str(module)},
+		{Key: Atom("function"), Val: Str(function)},
+		{Key: Atom("args"), Val: List(args...)},
+	})
 }
