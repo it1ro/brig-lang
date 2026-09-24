@@ -32,12 +32,23 @@
 - *(vm)* Update chunk
 - *(vm)* Update opcodes
 - *(vm)* Update vm
+- *(parser)* Update compiler
+- *(cli)* Update main
+- *(ast)* Update accessors
+- *(parser)* Update compiler
+- *(vm)* Update chunk
+- *(vm)* Update opcodes
+- *(vm)* Update prelude
+- *(vm)* Update vm
+- *(vm)* Add pattern module
+- *(vm)* Add scheduler module
 
 ### 🐛 Bug Fixes
 
 - Exclude expected MVP errors from check-examples
 - *(lexer)* Guard firstToken against slice bounds on trailing backslash
 - *(ast)* Resolve revive and staticcheck lint errors
+- *(vm)* Route non-native OpCall into current actor's frame stack
 
 ### 📚 Documentation
 
@@ -67,6 +78,8 @@
 - Regenerate changelog
 - Update architecture notes
 - Add trap example
+- Regenerate changelog
+- Add actors example
 
 ### 🚜 Refactor
 
@@ -80,6 +93,9 @@
 - *(compiler)* Extend compiler tests
 - *(runtime)* Add serialize tests
 - *(compiler)* Update compiler tests
+- *(compiler)* Update compiler tests
+- *(compiler)* Update compiler tests
+- *(vm)* Add scheduler tests
 
 ### ⚙️ Miscellaneous Tasks
 
