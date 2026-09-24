@@ -26,16 +26,22 @@ type lexer struct {
 	src string
 
 	// A5.1 состояние лексера.
-	indentStack []int // начинается с [0]
-	parenDepth  int   // глубина () [] {} %[] %{}
-	stmtIndent  int   // отступ первой строки текущего стейтмента
-	firstLine   bool  // первая ли логическая строка файла
+	indentStack      []int // начинается с [0]
+	parenDepth       int   // глубина () [] {} %[] %{}
+	stmtIndent       int   // отступ первой строки текущего стейтмента
+	firstLine        bool  // первая ли логическая строка файла
 
-	line int // текущая физическая строка (1-based)
-	pos  int // текущая позиция чтения в src
+	line      int // текущая физическая строка (1-based)
+	pos       int // текущая позиция чтения в src
 
 	lastEndedNL bool // предыдущая физическая строка закончилась \n
 	tokens      []Token
+
+	// A5.4 offside-мини-блоки внутри скобок.
+	// blockDepth > 0 означает, что мы внутри offside-мини-блока.
+	// Внутри блока отступы считаются относительно base_indent блока,
+	// а paren_depth временно сбрасывается к 0.
+	blockDepth int
 }
 
 func newLexer(src string) *lexer {
@@ -44,6 +50,7 @@ func newLexer(src string) *lexer {
 		indentStack: []int{0},
 		firstLine:   true,
 		line:        1,
+		blockDepth:  0,
 	}
 }
 
@@ -78,10 +85,47 @@ func (l *lexer) run() ([]Token, error) {
 
 // processLine обрабатывает одну непустую физическую строку по A5.2.
 func (l *lexer) processLine(pl physLine) error {
+	// A5.4: offside-мини-блоки внутри скобок.
+	// Если blockDepth > 0, мы внутри offside-мини-блока.
+	// В этом случае offside-термины эмитируются относительно base_indent блока,
+	// а paren_depth временно сброшен к 0.
+	if l.blockDepth > 0 {
+		// Внутри mini-block'а: эмитируем NEWLINE если это не первая строка
+		// и у строки есть токены.
+		if !l.firstLine {
+			l.emit(NEWLINE, "\n")
+		}
+		// Проверяем, не нужно ли закрыть mini-block.
+		// Mini-block закрывается, когда встречается токен с отступом
+		// меньше или равным base_indent (по умолчанию 0 для mini-block'а).
+		// Так как мы сбросили parenDepth к 0, а indentStack сохраняет
+		// внешний контекст, просто проверяем indent.
+		indent := countLeadingSpaces(pl.text)
+		if indent <= l.top() {
+			// Закрываем mini-block: восстанавливаем внешний контекст
+			l.blockDepth = 0
+		}
+		return l.lexLine(pl)
+	}
+
+	// Обычный путь: parenDepth > 0 но blockDepth == 0.
+	// Это значит, что мы внутри скобок, но mini-block еще не открыт.
+	// Проверяем, не открыт ли мы mini-block'ом через firstToken.
 	if l.parenDepth > 0 {
-		// Внутри скобок offside отключён: NEWLINE/INDENT/DEDENT не эмитятся.
-		// TODO(A5.4): offside-блоки внутри скобок (fn/match/... внутри %{...})
-		// — отдельный мини-проход lex_offside_block с якорем column_of(opener).
+		ft := firstToken(pl.text)
+		if isBlockOpener(ft) && l.blockDepth == 0 {
+			// Открываем mini-block: сбрасываем parenDepth, ставим blockDepth=1
+			l.parenDepth = 0
+			l.blockDepth = 1
+			// stmtIndent сбрасываем, так как внутри mini-block'а
+			// отступы считаются относительно base_indent (0).
+			l.stmtIndent = 0
+		}
+
+		// Внутри скобок без активного mini-block: offside отключён.
+		// NEWLINE не эмитируется (оставить пустым, как в оригинале),
+		// так как переносы строк внутри скобок обрабатываются лексером
+		// как элементы списка, а не терминалы offside.
 		return l.lexLine(pl)
 	}
 
@@ -370,6 +414,15 @@ func (l *lexer) scanOperator(text string, i int) (int, TokenType, bool) {
 		return 1, SEMICOLON, true
 	}
 	return 0, ILLEGAL, false
+}
+
+// isBlockOpener проверяет, является ли токен открывающим конструкционным ключевым словом.
+func isBlockOpener(tok string) bool {
+	switch tok {
+	case "fn", "match", "recv", "with", "trap", "if":
+		return true
+	}
+	return false
 }
 
 func (l *lexer) addToken(t Token, pl physLine, i int) {
