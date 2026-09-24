@@ -1,0 +1,11 @@
+module Main
+
+fn safe_div(a, b) ->
+    trap
+        print("computing...")
+        ensure print("done")
+        a div b
+
+fn main() ->
+    print(safe_div(10, 2))
+    print(safe_div(1, 0))
