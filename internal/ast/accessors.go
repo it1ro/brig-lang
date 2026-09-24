@@ -219,3 +219,36 @@ func (d *funcDecl) FuncClauses() []FnClauseArg {
 	}
 	return out
 }
+
+// --- trap (v0.4.7, §10.2/§10.3) ---
+
+// TrapExpr — экспортируемый аксессор к trap-выражению.
+// Инлайн-форма: TrapInline() != nil, TrapBody() == nil.
+// Блочная форма: TrapInline() == nil, TrapBody() != nil.
+type TrapExpr interface {
+	Expr
+	// TrapInline возвращает выражение инлайн-формы trap(expr) или nil.
+	TrapInline() Expr
+	// TrapBody возвращает тело блочной формы (обычно *BlockStmt) или nil.
+	TrapBody() Stmt
+	// TrapEnsures возвращает ensure-выражения в текстовом порядке.
+	// Runtime выполняет их LIFO (§10.3).
+	TrapEnsures() []Expr
+}
+
+func (e *trapExpr) TrapInline() Expr { return e.expr }
+
+func (e *trapExpr) TrapBody() Stmt {
+	if e.body == nil {
+		return nil
+	}
+	return e.body.stmt
+}
+
+func (e *trapExpr) TrapEnsures() []Expr {
+	out := make([]Expr, len(e.ensures))
+	for i := range e.ensures {
+		out[i] = e.ensures[i].expr
+	}
+	return out
+}
