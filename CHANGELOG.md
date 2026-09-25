@@ -42,6 +42,14 @@
 - *(vm)* Update vm
 - *(vm)* Add pattern module
 - *(vm)* Add scheduler module
+- *(vm)* Update scheduler
+- *(ast)* Update accessors
+- *(parser)* Update compiler
+- *(runtime)* Update value model
+- *(vm)* Add pattern module
+- *(vm)* Update prelude
+- *(vm)* Update scheduler
+- *(vm)* Update vm
 
 ### 🐛 Bug Fixes
 
@@ -49,6 +57,15 @@
 - *(lexer)* Guard firstToken against slice bounds on trailing backslash
 - *(ast)* Resolve revive and staticcheck lint errors
 - *(vm)* Route non-native OpCall into current actor's frame stack
+- *(runtime,vm,ast)* Small-int nil-deref and int-literal member access
+- *(ast)* Add exported interface comments
+- *(compiler)* Fix case order
+- *(runtime)* Add KindUnit comment
+- *(vm)* Suppress unused warning
+- *(vm)* Add opcode comments
+- *(vm)* Add PatWildcard comment
+- *(vm)* Suppress staticcheck
+- *(ast,compiler)* Seal literal accessor interfaces to disambiguate type switch
 
 ### 📚 Documentation
 
@@ -80,6 +97,7 @@
 - Add trap example
 - Regenerate changelog
 - Add actors example
+- Regenerate changelog
 
 ### 🚜 Refactor
 
@@ -96,6 +114,9 @@
 - *(compiler)* Update compiler tests
 - *(compiler)* Update compiler tests
 - *(vm)* Add scheduler tests
+- *(compiler)* Update compiler tests
+- *(vm)* Update scheduler tests
+- *(compiler)* Update compiler tests
 
 ### ⚙️ Miscellaneous Tasks
 
@@ -108,6 +129,8 @@
 - *(git)* Fix lint exclusions and formatting for ast and parser
 - *(build)* Add test-vm test-compiler run repl targets
 - *(git)* Ignore coverage output
+- Add test-vm test-compiler targets
+- Disable gocritic linter
 
 ### 💼 Other
 
