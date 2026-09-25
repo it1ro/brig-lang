@@ -719,3 +719,83 @@ fn main() ->
     print(result)
 `)
 }
+
+// ---- Sprint 5.4: Decimal (§3.1) ----
+
+func TestDecimalLiteral(t *testing.T) {
+	runModule(t, `module Main
+fn main() ->
+    print(dec"1.5")
+    print(dec"-1.5")
+    print(dec"0")
+    print(dec"1_000.5")
+`)
+}
+
+func TestDecimalEquality(t *testing.T) {
+	runModule(t, `module Main
+fn main() ->
+    assert(dec"1.5" == dec"1.5")
+    assert(dec"1.50" == dec"1.5")
+    assert(dec"1.5" != dec"1.6")
+    assert(dec"2" == 2)
+    assert(2 == dec"2")
+`)
+}
+
+func TestDecimalArithmetic(t *testing.T) {
+	runModule(t, `module Main
+fn main() ->
+    assert(dec"1.5" + dec"2.5" == dec"4")
+    assert(dec"1.5" - dec"0.5" == dec"1")
+    assert(dec"1.5" * dec"2" == dec"3")
+    assert(dec"1.5" / dec"0.5" == dec"3")
+    assert(-dec"1.5" == dec"-1.5")
+    assert(dec"2" ** 10 == dec"1024")
+`)
+}
+
+func TestDecimalIntMix(t *testing.T) {
+	runModule(t, `module Main
+fn main() ->
+    assert(dec"1.5" + 1 == dec"2.5")
+    assert(1 + dec"1.5" == dec"2.5")
+    assert(dec"2.5" * 2 == dec"5")
+    assert(5 < dec"5.5")
+    assert(dec"5.5" > 5)
+`)
+}
+
+func TestDecimalFloatTypeError(t *testing.T) {
+	runModule(t, `module Main
+fn main() ->
+    print(trap(dec"1.5" + 1.5))
+    print(trap(dec"1.5" == 1.5))
+    print(trap(dec"1.5" < 1.5))
+`)
+}
+
+func TestDecimalDivideByZero(t *testing.T) {
+	runModule(t, `module Main
+fn main() ->
+    print(trap(dec"1" / dec"0"))
+`)
+}
+
+func TestDecimalIntDivRemTypeError(t *testing.T) {
+	runModule(t, `module Main
+fn main() ->
+    print(trap(dec"5" div 2))
+    print(trap(dec"5" rem 2))
+`)
+}
+
+func TestDecimalCompare(t *testing.T) {
+	runModule(t, `module Main
+fn main() ->
+    assert(dec"1.5" < dec"2")
+    assert(dec"1.5" <= dec"1.5")
+    assert(dec"2" > dec"1.999")
+    assert(dec"1.5" >= dec"1.5")
+`)
+}

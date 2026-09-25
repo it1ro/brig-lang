@@ -278,7 +278,7 @@ func (fc *funcCompiler) compileExpr(e ast.Expr) error {
 		fc.emit(vm.OpConstant, idx)
 		return nil
 	case ast.DecimalExpr:
-		return fmt.Errorf("срез: decimal не реализован")
+		return fc.compileDecimalLiteral(ex.ValueStr())
 	case ast.BytesExpr:
 		return fc.compileBytesLiteral(ex.ValueStr())
 	case ast.RegexExpr:
@@ -1155,6 +1155,13 @@ func parseLiteralValue(s string) (runtime.Value, error) {
 	if s[0] == '"' && s[len(s)-1] == '"' {
 		return runtime.Str(s[1 : len(s)-1]), nil
 	}
+	if strings.HasPrefix(s, `dec"`) && strings.HasSuffix(s, `"`) {
+		r, err := runtime.ParseDecimal(s[4 : len(s)-1])
+		if err != nil {
+			return runtime.Unit, err
+		}
+		return runtime.Decimal(r), nil
+	}
 	if i, err := strconv.ParseInt(strings.ReplaceAll(s, "_", ""), 0, 64); err == nil {
 		return runtime.Int(i), nil
 	}
@@ -1207,4 +1214,17 @@ func (c *Compiler) CompileReplLine(names []string, s ast.Stmt) (*vm.Function, st
 	fc.emit(vm.OpReturn, 0)
 	fn := &vm.Function{Name: "__repl__", Arity: len(names), Chunk: fc.chunk}
 	return fn, newName, nil
+}
+
+// compileDecimalLiteral парсит тело dec"..." (без префикса и кавычек)
+// в *big.Rat и грузит как константу (§3.1). Тело уже провалидировано
+// лексером (A4.4).
+func (fc *funcCompiler) compileDecimalLiteral(body string) error {
+	r, err := runtime.ParseDecimal(body)
+	if err != nil {
+		return err
+	}
+	idx := fc.chunk.AddConstant(runtime.Decimal(r))
+	fc.emit(vm.OpConstant, idx)
+	return nil
 }
