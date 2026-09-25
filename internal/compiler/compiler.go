@@ -414,7 +414,7 @@ func (c *Compiler) compileFunction(name string, params []string, body *ast.Block
 	fc := c.newFuncCompiler(nil)
 	fc.prefix = name + "$"
 
-	if err := fc.compileBody(name, params, body); err != nil {
+	if err := fc.compileBody(params, body); err != nil {
 		return nil, err
 	}
 	fc.chunk.NumRegs = fc.maxReg
@@ -491,7 +491,7 @@ func isIdentParam(p string) bool {
 	return true
 }
 
-func (fc *funcCompiler) compileBody(name string, params []string, body *ast.BlockStmt) error {
+func (fc *funcCompiler) compileBody(params []string, body *ast.BlockStmt) error {
 	variadic := false
 	for i, p := range params {
 		if strings.HasPrefix(p, "..") {
@@ -542,6 +542,8 @@ func (c *Compiler) CompileReplLine(names []string, s ast.Stmt) (fn *vm.Function,
 			panic(r)
 		}
 	}()
+
+	c.image = &ProgramImage{Functions: make(map[string]*vm.Function)}
 
 	fc := c.newFuncCompiler(nil)
 	fc.prefix = "__repl__$"

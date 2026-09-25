@@ -27,9 +27,7 @@ description: >
 4. **`make all`** — `check-smallint` + `fmt` + `vet` + `test` + `lint` +
    `build`; его же запускает CI (`.github/workflows/ci.yml`) на push и PR
    в `main`. Вместе с `BRIG_VERIFY=1 go test ./...` — обязательный гейт
-   перед PR (`CONTRIBUTING.md` §5). На `iter/regvm` он красный из-за 10
-   замечаний `golangci-lint` (O-F3) до T-06 (#6) — это не повод пропускать
-   остальные цели; пока lint красный, сообщать об этом явно.
+   перед PR (`CONTRIBUTING.md` §5).
 5. **`make fuzz`** — 3×60s (лексер, парсер, round-trip). Не входит в
    стандартный цикл; гонять точечно после правок в `lexer`/`parser`/
    `ast`-форматтере, особенно если менялась offside-логика или граничные

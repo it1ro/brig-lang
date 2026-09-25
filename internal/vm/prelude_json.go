@@ -6,8 +6,8 @@ import (
 	"github.com/it1ro/brig-lang/internal/runtime"
 )
 
-// InstallJsonPrelude регистрирует Json.encode/Json.decode (§4.7, Must).
-func InstallJsonPrelude(vm *VM) {
+// InstallJSONPrelude регистрирует Json.encode/Json.decode (§4.7, Must).
+func InstallJSONPrelude(vm *VM) {
 	def := func(name string, arity int, fn runtime.NativeFunc) {
 		vm.globals[name] = runtime.Func(&runtime.FuncValue{
 			Name: name, Arity: arity, IsNative: true, Native: fn,

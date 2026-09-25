@@ -7,9 +7,10 @@ package vm
 // стековой ВМ, добавлены MOVE и TAILCALL.
 type OpCode byte
 
+// Опкоды регистровой ВМ. LOADK — R[A] = K[Bx].
 const (
-	LOADK OpCode = iota // R[A] = K[Bx]
-	MOVE                // R[A] = R[B]
+	LOADK OpCode = iota
+	MOVE         // R[A] = R[B]
 
 	GETGLOBAL // R[A] = G[K[Bx].Str]
 	SETGLOBAL // G[K[Bx].Str] = R[A]
