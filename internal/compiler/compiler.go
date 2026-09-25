@@ -765,10 +765,10 @@ func (fc *funcCompiler) compileCall(call ast.CallExpr) error {
 }
 
 // isPreludeModule — имена Upper-модулей прелюдии, для которых compileCall
-// выполняет dispatch по имени "Mod.func" (Vec/Map/Str/Bytes).
+// выполняет dispatch по имени "Mod.func" (Vec/Map/Str/Bytes/Json/Test).
 func isPreludeModule(name string) bool {
 	switch name {
-	case "Vec", "Map", "Str", "Bytes":
+	case "Vec", "Map", "Str", "Bytes", "Json", "Test":
 		return true
 	}
 	return false
