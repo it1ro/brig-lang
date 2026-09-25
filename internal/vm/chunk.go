@@ -99,12 +99,14 @@ func (c *Chunk) LineAt(ip int) int {
 }
 
 // hasOperand — опкод несёт один 16-битный операнд.
+//
+// Sprint 6.2: удалены мёртвые OpDefineLocalFn (см. opcodes.go).
 func hasOperand(op OpCode) bool {
 	switch op {
 	case OpConstant, OpGetLocal, OpSetLocal, OpGetGlobal, OpSetGlobal,
 		OpCall, OpJump, OpJumpFalse, OpJumpTrue,
 		OpTuple, OpList, OpVector, OpMap,
-		OpMakeClosure, OpGetUpvalue, OpSetUpvalue, OpDefineLocalFn,
+		OpMakeClosure, OpGetUpvalue, OpSetUpvalue,
 		OpTrapBegin, OpSpawn:
 		return true
 	}
