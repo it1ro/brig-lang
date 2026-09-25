@@ -1,8 +1,8 @@
 // Command brig — референсный интерпретатор языка Brig.
 //
 // Подкоманды:
-//   - check — парсинг без исполнения (Трек B);
-//   - run   — полный пайплайн: парсер → компилятор → стековая ВМ (Трек C, вертикальный срез);
+//   - check — парсинг + контекстный анализ без исполнения;
+//   - run   — полный пайплайн: парсер → sema → компилятор → стековая ВМ;
 //   - repl  — отладочный цикл (токены лексера);
 //   - version / help.
 package main
@@ -14,11 +14,10 @@ import (
 
 	"github.com/it1ro/brig-lang/internal/compiler"
 	"github.com/it1ro/brig-lang/internal/parser"
+	"github.com/it1ro/brig-lang/internal/sema"
 	"github.com/it1ro/brig-lang/internal/vm"
 )
 
-// version поднят до 0.1.0-dev: появился исполняемый пайплайн Трека C.
-// v0.4.8: акторы — scheduler loop, spawn/send/recv/watch.
 const version = "0.1.0-dev"
 
 // Exit codes (см. скилл brig-cli):
@@ -63,16 +62,33 @@ func usage() {
 	fmt.Fprint(os.Stderr, `brig — референсный интерпретатор
 
 Использование:
-  brig check <file.brig>    распарсить и проверить, не исполняя
-  brig run   <file.brig>    выполнить модуль (Трек C: компилятор + стековая ВМ)
+  brig check <file.brig>    распарсить и проверить (парсер + sema)
+  brig run   <file.brig>    выполнить модуль (парсер + sema + компилятор + ВМ)
   brig repl                 интерактивный режим (отладочный)
   brig version              версия
 
-Exit codes: 0 ok, 1 ошибка парсинга, 2 runtime raise, 3 внутренняя ошибка.
+Exit codes: 0 ok, 1 ошибка парсинга/sema, 2 runtime raise, 3 внутренняя ошибка.
 `)
 }
 
-// runCheck: brig check <file.brig> — лексинг + парсинг (Трек B).
+// reportDiagnostics печатает диагностики sema в формате E.1:
+//
+//	error: <file>:<line>:<col>: <message>
+//	info:  <file>:<line>:<col>: <message>
+//
+// info не влияет на exit code.
+func reportDiagnostics(file string, r *sema.Result) {
+	for _, d := range r.Diagnostics {
+		sev := "error"
+		if d.Severity == sema.SeverityInfo {
+			sev = "info"
+		}
+		fmt.Fprintf(os.Stderr, "%s: %s:%d:%d: %s\n",
+			sev, file, d.Line, d.Col, d.Message)
+	}
+}
+
+// runCheck: brig check <file.brig> — лексинг + парсинг + sema.
 func runCheck(args []string) {
 	if len(args) != 1 {
 		fmt.Fprintln(os.Stderr, "brig check: ожидается один файл")
@@ -83,20 +99,20 @@ func runCheck(args []string) {
 		fmt.Fprintf(os.Stderr, "brig check: %v\n", err)
 		os.Exit(exitInternal)
 	}
-	if err := parser.Parse(parser.ModeModule, string(src)); err != nil {
+	prog, err := parser.ParseProgram(parser.ModeModule, string(src))
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "brig check: %s: %v\n", args[0], err)
+		os.Exit(exitParse)
+	}
+	semaRes := sema.Check(prog)
+	reportDiagnostics(args[0], semaRes)
+	if semaRes.HasErrors() {
 		os.Exit(exitParse)
 	}
 	fmt.Printf("%s: ok\n", args[0])
 }
 
 // runFile: brig run [--dump-bytecode] <file.brig>
-//
-// Полный пайплайн Трека C. С --dump-bytecode печатает дизассемблированный
-// байткод всех функций модуля и не исполняет — основной инструмент
-// отладки компилятора (§15.1 Must).
-//
-// v0.4.8: main запускается как актор через vm.RunMain (scheduler loop).
 func runFile(args []string) {
 	var dump bool
 	for len(args) > 0 && strings.HasPrefix(args[0], "-") {
@@ -124,6 +140,14 @@ func runFile(args []string) {
 		fmt.Fprintf(os.Stderr, "brig run: %s: %v\n", args[0], err)
 		os.Exit(exitParse)
 	}
+
+	// Контекстный анализ (§F.3) — до компиляции.
+	semaRes := sema.Check(prog)
+	reportDiagnostics(args[0], semaRes)
+	if semaRes.HasErrors() {
+		os.Exit(exitParse)
+	}
+
 	img, err := compiler.New().Compile(prog)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "brig run: %s: compile: %v\n", args[0], err)
@@ -134,7 +158,6 @@ func runFile(args []string) {
 		os.Exit(exitParse)
 	}
 
-	// --dump-bytecode: печатаем все функции и выходим.
 	if dump {
 		for name, fn := range img.Functions {
 			fmt.Print(fn.Chunk.Disassemble(name))
@@ -154,7 +177,6 @@ func runFile(args []string) {
 }
 
 // runRepl: отладочный REPL — по строке выводит токены лексера.
-// Полноценная семантика §10.7 (снимок связываний на строку, N12) — после расширения ВМ.
 func runRepl(args []string) {
 	if len(args) != 0 {
 		fmt.Fprintln(os.Stderr, "brig repl: аргументы не принимаются")
