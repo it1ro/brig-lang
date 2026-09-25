@@ -66,6 +66,7 @@
 - *(vm)* Increase max locals and add persistent VM support
 - *(repl)* Add persistent REPL module
 - *(sema)* Add semantic analysis pipeline
+- *(compiler)* Update compiler logic
 
 ### 🐛 Bug Fixes
 
@@ -82,6 +83,7 @@
 - *(vm)* Add PatWildcard comment
 - *(vm)* Suppress staticcheck
 - *(ast,compiler)* Seal literal accessor interfaces to disambiguate type switch
+- *(docs)* Correct logo reference and optimize png
 
 ### 📚 Documentation
 
@@ -120,6 +122,12 @@
 - Add range example (Sprint 5.1)
 - Add centered logo with 100px height to readme
 - Add bytes example
+- Regenerate changelog
+- Add MIT license for Ilmir Karimov
+- Add author to readme
+- Fix license section format
+- Round logo corners and simplify readme
+- Extract ebnf from canonical into separate file brig.ebnf
 
 ### 🚜 Refactor
 
@@ -156,6 +164,7 @@
 - *(git)* Ignore coverage output
 - Add test-vm test-compiler targets
 - Disable gocritic linter
+- Crop logo
 
 ### 💼 Other
 
