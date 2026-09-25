@@ -328,10 +328,6 @@ func (s *Scheduler) runSlice(a *Actor) {
 			reds--
 
 		case stepFailed:
-			// Невыловленный raise в callee — попробовать unwind вверх
-			// по стеку кадров актора, ища активный trap handler.
-			// §10.2: trap ловит raise из тела, в том числе из функций,
-			// вызванных в теле.
 			if s.tryUnwindRaise(a) {
 				reds--
 				continue
@@ -918,8 +914,13 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 			if msVal.Kind != runtime.KindInt {
 				return fail(fmt.Errorf("(:type_error, (:after, %s))", msVal.Inspect()))
 			}
-			a.recvDeadline = time.Now().Add(
-				time.Duration(msVal.Int.Int64()) * time.Millisecond)
+			var ms int64
+			if msVal.IsSmall {
+				ms = msVal.SmallInt
+			} else {
+				ms = msVal.Int.Int64()
+			}
+			a.recvDeadline = time.Now().Add(time.Duration(ms) * time.Millisecond)
 			f.ip++
 
 		case OpRecvTake:
