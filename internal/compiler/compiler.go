@@ -1776,7 +1776,11 @@ func parseLiteralValue(s string) (runtime.Value, error) {
 		return runtime.Atom(s[1:]), nil
 	}
 	if s[0] == '"' && s[len(s)-1] == '"' {
-		return runtime.Str(decodeStrBody(s[1 : len(s)-1])), nil
+		body, err := decodeStrBody(s[1 : len(s)-1])
+		if err != nil {
+			return runtime.Unit, err
+		}
+		return runtime.Str(body), nil
 	}
 	if strings.HasPrefix(s, `dec"`) && strings.HasSuffix(s, `"`) {
 		r, err := runtime.ParseDecimal(s[4 : len(s)-1])
@@ -1794,7 +1798,7 @@ func parseLiteralValue(s string) (runtime.Value, error) {
 	return runtime.Unit, fmt.Errorf("неизвестный литерал %q", s)
 }
 
-func decodeStrBody(s string) string {
+func decodeStrBody(s string) (string, error) {
 	var sb strings.Builder
 	for i := 0; i < len(s); {
 		c := s[i]
@@ -1844,16 +1848,14 @@ func decodeStrBody(s string) string {
 			}
 			i = j + 1
 		case '(':
-			// Интерполяция — оставляем как есть.
-			sb.WriteByte(c)
-			sb.WriteByte(esc)
-			i += 2
+			// Интерполяция ещё не реализована (T-53/T-54) — fail-fast (T-04 / S-F1).
+			return "", fmt.Errorf("string interpolation is not implemented yet")
 		default:
 			sb.WriteByte(c)
 			i++
 		}
 	}
-	return sb.String()
+	return sb.String(), nil
 }
 
 func decodeBytesBody(s string) ([]byte, error) {
