@@ -95,10 +95,10 @@ make update-bytecode
 
 ## Регресс-тесты аудита и `t.Skip("blocked: T-NN")`
 
-T-10 (#8) добавляет тесты из §7 `AUDIT_REPORT.md`
-(`internal/compiler/audit_regress_test.go`, `internal/vm/verify_test.go`,
-`internal/ast/audit_pretty_test.go`, `internal/repl/audit_repl_test.go`).
-Тест, который падает на текущем коде, помечен
+Набор §7 `AUDIT_REPORT.md` лежит в
+`internal/compiler/audit_regress_test.go`, `internal/vm/verify_test.go`,
+`internal/ast/audit_pretty_test.go`, `internal/repl/audit_repl_test.go`
+(добавлен T-10 #8). Тест, который падает на текущем коде, помечен
 `t.Skip("blocked: T-NN")` — CI остаётся зелёным. Задача T-NN обязана:
 снять свой skip, увидеть падение, починить, увидеть зелёный. После неё
 `rg -n 'blocked: T-NN' internal` пуст. Новые skip'ы — только в таком

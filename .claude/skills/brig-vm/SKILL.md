@@ -125,9 +125,10 @@ definite assignment (dataflow: регистр определён на всех �
 моделирует успешное ребро `MATCHLOCAL` (ip+2) и ребро `RECVTAKE→after`,
 `applyWrites` не помечает слоты паттерна определёнными. Тела всех веток
 `recv` и `after` для definite assignment недостижимы (`in[ip]==nil`) и
-**не проверяются**. Unit-тестов `vm.Verify` (`verify_test.go`) нет до
-T-10 (#8); guard `TAILCALL under active trap` в VM (`scheduler.go:676`)
-тоже не покрыт тестом.
+**не проверяются**. Якоря в `verify_test.go` (T-10 #8):
+`TestVerifyRejectsTailCallUnderTrap` и `TestVMTailCallUnderTrapGuard`
+зелёные; `TestVerifyMatchLocalBranchUndefinedReg` /
+`TestVerifyRecvAfterUndefinedReg` — `t.Skip("blocked: T-36")`.
 
 **Не отключать `Verify` в тестах компилятора/VM** — это единственная
 защита, ловящая рассинхрон между `emit`, `RegUse` и реальной семантикой

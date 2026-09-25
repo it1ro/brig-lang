@@ -125,3 +125,129 @@ fn main() ->
 		t.Fatalf("Compile: %v", err)
 	}
 }
+
+// R0 / I-F2: ни одна форма trap (inline / block / ensure) не должна давать
+// TAILCALL, даже если trap стоит в хвостовой позиции функции.
+func TestAuditNoTailCallInsideTrap(t *testing.T) {
+	img := compileModule(t, `module Main
+fn g() -> 1
+fn f_inline() -> trap(g())
+fn f_block() ->
+    trap
+        g()
+fn f_ensure() ->
+    trap
+        ensure g()
+        g()
+fn main() -> f_inline()
+`)
+	for _, name := range []string{"f_inline", "f_block", "f_ensure"} {
+		if dis := img.Functions[name].Disassemble(); strings.Contains(dis, "TAILCALL") {
+			t.Errorf("%s: TAILCALL inside trap region:\n%s", name, dis)
+		}
+	}
+}
+
+// §4 табл. п.6 (doc 02): правый операнд and/or — хвостовая позиция (T-82).
+func TestAuditAndOrRightOperandIsTail(t *testing.T) {
+	t.Skip("blocked: T-82")
+	img := compileModule(t, `module Main
+fn loop(n) -> n == 0 or loop(n - 1)
+fn main() -> loop(3)
+`)
+	if dis := img.Functions["loop"].Disassemble(); !strings.Contains(dis, "TAILCALL") {
+		t.Errorf("right operand of `or` is not TAILCALL:\n%s", dis)
+	}
+}
+
+// §6.5: канонический пример локальной fn с захватом `base` (T-39).
+func TestAuditLocalFnCapturesEnclosingParam(t *testing.T) {
+	t.Skip("blocked: T-39")
+	if err := runModuleErr(t, `module Main
+fn outer(base) ->
+    fn helper(n) -> base + n
+    helper(1)
+fn main() -> assert(outer(41) == 42)
+`); err != nil {
+		t.Errorf("local fn capture: %v", err)
+	}
+}
+
+// §3.1: Int — произвольной точности; литерал за пределами int64 — Int (T-22).
+func TestAuditBigIntLiteral(t *testing.T) {
+	t.Skip("blocked: T-22")
+	if err := runModuleErr(t, `module Main
+fn main() -> assert(99999999999999999999 - 99999999999999999998 == 1)
+`); err != nil {
+		t.Errorf("big int literal: %v", err)
+	}
+}
+
+// brig.ebnf int_lit ::= dec_digits: `010` — десятичное 10, не восьмеричное (T-22).
+func TestAuditLeadingZeroIsDecimal(t *testing.T) {
+	t.Skip("blocked: T-22")
+	if err := runModuleErr(t, `module Main
+fn main() -> assert(010 == 10)
+`); err != nil {
+		t.Errorf("leading-zero literal: %v", err)
+	}
+}
+
+// §12 / doc 02 §6: наблюдатель получает значение raise в причине :down (T-40).
+func TestAuditDownReasonCarriesRaiseValue(t *testing.T) {
+	t.Skip("blocked: T-40")
+	if err := runModuleErr(t, `module Main
+fn boom() -> raise(:boom)
+fn main() ->
+    p = spawn(boom)
+    r = watch(p)
+    reason = recv
+        (:down, _, why) -> why
+    assert(reason == (:raise, :boom))
+`); err != nil {
+		t.Errorf("down reason: %v", err)
+	}
+}
+
+// trap внутри колбэка прелюдии должен ловить raise из вложенного кадра (T-34).
+func TestAuditTrapInsideNativeCallback(t *testing.T) {
+	t.Skip("blocked: T-34")
+	if err := runModuleErr(t, `module Main
+fn g(x) -> if x == 2 then raise(:bad) else x
+fn main() ->
+    ys = map(fn (x) -> trap(g(x)), [1, 2])
+    assert(ys == [Ok(1), Error(:bad)])
+`); err != nil {
+		t.Errorf("trap across callSync: %v", err)
+	}
+}
+
+// §10.3: ensure видит локали тела, объявленные до него (T-37).
+func TestAuditEnsureSeesBodyLocals(t *testing.T) {
+	t.Skip("blocked: T-37")
+	if err := runModuleErr(t, `module Main
+fn main() ->
+    r = trap
+        f1 = 10
+        ensure f1
+        f1 + 1
+    assert(r == Ok(11))
+`); err != nil {
+		t.Errorf("ensure scope: %v", err)
+	}
+}
+
+// §4.8: pattern matching чисел — точный (1.0 не матчит паттерн 1) (T-84).
+func TestAuditLiteralPatternIsExact(t *testing.T) {
+	t.Skip("blocked: T-84")
+	if err := runModuleErr(t, `module Main
+fn main() ->
+    send(self(), 1.0)
+    r = recv
+        1 -> :int
+        _ -> :other
+    assert(r == :other)
+`); err != nil {
+		t.Errorf("exact literal pattern: %v", err)
+	}
+}
