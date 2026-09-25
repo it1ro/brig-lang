@@ -29,9 +29,10 @@ const (
 	KindVariant
 	KindPid
 	KindRef
-	KindRange // Sprint 5.1 (§4.3)
-	KindSet   // Sprint 5.2 (§4.6)
-	KindBytes // Sprint 5.4 (§3.2)
+	KindRange   // Sprint 5.1 (§4.3)
+	KindSet     // Sprint 5.2 (§4.6)
+	KindBytes   // Sprint 5.4 (§3.2)
+	KindDecimal // Sprint 5.4 (§3.1)
 )
 
 func (k Kind) String() string {
@@ -72,6 +73,8 @@ func (k Kind) String() string {
 		return "Set"
 	case KindBytes:
 		return "Bytes"
+	case KindDecimal:
+		return "Decimal"
 	}
 	return "unknown"
 }
@@ -113,15 +116,17 @@ type MapEntry struct{ Key, Val Value }
 // Value — любое значение Brig.
 //
 // Small-int fast-path: IsSmall==true означает, что целое представлено
-// в SmallInt (int64), а Int == nil. IsSmall==false + Kind==KindInt
-// означает, что Int != nil (big.Int). Все конструкторы соблюдают
-// этот инвариант.
+// в SmallInt (int64), а intBig == nil. IsSmall==false + Kind==KindInt
+// означает, что intBig != nil. Все конструкторы соблюдают этот инвариант.
 //
 // Range (Sprint 5.1): границы хранятся как int64; при построении
 // диапазона с big-int границами VM возбуждает :range_error.
 //
 // Bytes (Sprint 5.4, §3.2): иммутабельная последовательность байт;
 // escape-последовательности раскодируются компилятором.
+//
+// Decimal (Sprint 5.4, §3.1): *big.Rat — точная арифметика, равенство
+// и сравнение по значению; dec"1.50" == dec"1.5".
 type Value struct {
 	Kind       Kind
 	Bool       bool
@@ -144,6 +149,7 @@ type Value struct {
 	RangeStart int64
 	RangeEnd   int64
 	Bytes      []byte
+	Dec        *big.Rat
 }
 
 // ---- конструкторы ----
@@ -212,6 +218,10 @@ func Bytes(b []byte) Value {
 	return Value{Kind: KindBytes, Bytes: buf}
 }
 
+// Decimal создаёт десятичное значение из *big.Rat (Sprint 5.4, §3.1).
+// Вызывающий не должен мутировать r после передачи.
+func Decimal(r *big.Rat) Value { return Value{Kind: KindDecimal, Dec: r} }
+
 // Func создаёт значение-функцию.
 func Func(f *FuncValue) Value { return Value{Kind: KindFunction, Func: f} }
 
@@ -276,6 +286,8 @@ func (v Value) Inspect() string {
 			strconv.FormatInt(v.RangeEnd, 10)
 	case KindBytes:
 		return inspectBytes(v.Bytes)
+	case KindDecimal:
+		return `dec"` + FormatDecimal(v.Dec) + `"`
 	case KindFunction:
 		return fmt.Sprintf("#<function %s/%d>", v.Func.Name, v.Func.Arity)
 	case KindClosure:
@@ -342,8 +354,18 @@ func inspectJoin(vs []Value) string {
 // ---- равенство (§4.8) ----
 
 // Equal — структурное равенство.
+//
+// Decimal-правила (§4.8, §7.4): Decimal×Decimal и Decimal×Int — по
+// значению (1.50 == 1.5, dec"2" == 2); Decimal×Float — false (мягкая
+// форма; жёсткая ошибка — на уровне оператора ==, см. vm.checkMixedEq).
 func Equal(a, b Value) bool {
 	if a.Kind != b.Kind {
+		if a.Kind == KindDecimal {
+			return equalDecimalOther(a, b)
+		}
+		if b.Kind == KindDecimal {
+			return equalDecimalOther(b, a)
+		}
 		if isNum(a) && isNum(b) {
 			return numToFloat(a) == numToFloat(b)
 		}
@@ -361,6 +383,8 @@ func Equal(a, b Value) bool {
 		return a.AsBig().Cmp(b.AsBig()) == 0
 	case KindFloat:
 		return a.Float == b.Float
+	case KindDecimal:
+		return a.Dec.Cmp(b.Dec) == 0
 	case KindStr:
 		return a.Str == b.Str
 	case KindAtom:
@@ -435,6 +459,17 @@ func Equal(a, b Value) bool {
 	return false
 }
 
+func equalDecimalOther(dec, other Value) bool {
+	switch other.Kind {
+	case KindDecimal:
+		return dec.Dec.Cmp(other.Dec) == 0
+	case KindInt:
+		return dec.Dec.Cmp(new(big.Rat).SetInt(other.AsBig())) == 0
+	}
+	// Decimal × Float и прочее — false на уровне Equal.
+	return false
+}
+
 func equalSlice(a, b []Value) bool {
 	if len(a) != len(b) {
 		return false
@@ -460,10 +495,32 @@ func numToFloat(v Value) float64 {
 	return f
 }
 
+// valueToRat возвращает big.Rat для Int/Decimal; для остальных — false.
+func valueToRat(v Value) (*big.Rat, bool) {
+	switch v.Kind {
+	case KindDecimal:
+		return v.Dec, true
+	case KindInt:
+		return new(big.Rat).SetInt(v.AsBig()), true
+	}
+	return nil, false
+}
+
 // ---- сравнение (§7.4) ----
 
 // Compare возвращает -1/0/+1.
+//
+// Decimal-правила: Decimal×Decimal и Decimal×Int — точно, по значению;
+// Decimal×Float — ошибка (жёстко, §7.4).
 func Compare(a, b Value) (int, error) {
+	if a.Kind == KindDecimal || b.Kind == KindDecimal {
+		ar, ok1 := valueToRat(a)
+		br, ok2 := valueToRat(b)
+		if !ok1 || !ok2 {
+			return 0, cmpErr(a, b)
+		}
+		return ar.Cmp(br), nil
+	}
 	if isNum(a) && isNum(b) {
 		af, bf := numToFloat(a), numToFloat(b)
 		switch {

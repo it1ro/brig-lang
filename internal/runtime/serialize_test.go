@@ -1,6 +1,9 @@
 package runtime
 
-import "testing"
+import (
+	"math/big"
+	"testing"
+)
 
 func TestSerializeRejectsFunction(t *testing.T) {
 	fn := Func(&FuncValue{Name: "test", Arity: 1, IsNative: true})
@@ -48,5 +51,35 @@ func TestMFAIsSerializable(t *testing.T) {
 	mfa := MFA("Math", "fib", []Value{Int(10)})
 	if err := Serialize(mfa); err != nil {
 		t.Fatalf("Serialize(MFA) = %v, want nil", err)
+	}
+}
+
+func TestSerializeAcceptsDecimal(t *testing.T) {
+	r, err := ParseDecimal("1.50")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Serialize(Decimal(r)); err != nil {
+		t.Fatalf("Serialize(decimal) = %v, want nil", err)
+	}
+}
+
+func TestDecimalTrailingZerosEqual(t *testing.T) {
+	a, _ := ParseDecimal("1.50")
+	b, _ := ParseDecimal("1.5")
+	if !Equal(Decimal(a), Decimal(b)) {
+		t.Fatal("1.50 != 1.5, want equal")
+	}
+	if FormatDecimal(a) != "1.5" {
+		t.Fatalf("FormatDecimal(1.50) = %q, want \"1.5\"", FormatDecimal(a))
+	}
+}
+
+func TestDecimalNonTerminating(t *testing.T) {
+	a, _ := ParseDecimal("1")
+	b, _ := ParseDecimal("3")
+	q := new(big.Rat).Quo(a, b)
+	if got := FormatDecimal(q); got != "1/3" {
+		t.Fatalf("FormatDecimal(1/3) = %q, want \"1/3\"", got)
 	}
 }
