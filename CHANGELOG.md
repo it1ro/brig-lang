@@ -67,6 +67,17 @@
 - *(repl)* Add persistent REPL module
 - *(sema)* Add semantic analysis pipeline
 - *(compiler)* Update compiler logic
+- *(runtime)* Add decimal and update runtime
+- *(vm)* Update vm scheduler and vm
+- *(workflows)* Update .github/workflows/ci.yml
+- *(compiler)* Update internal/compiler/compiler.go
+- *(vm)* Update internal/vm/vm.go
+- *(compiler)* Update internal/compiler/json_test.go
+- *(compiler)* Update internal/compiler/test_framework_test.go
+- *(runtime)* Update internal/runtime/json.go
+- *(runtime)* Update internal/runtime/json_test.go
+- *(vm)* Update internal/vm/prelude_json.go
+- *(vm)* Update internal/vm/prelude_test_fw.go
 
 ### 🐛 Bug Fixes
 
@@ -128,6 +139,9 @@
 - Fix license section format
 - Round logo corners and simplify readme
 - Extract ebnf from canonical into separate file brig.ebnf
+- Update changelog
+- Update architecture
+- Update status
 
 ### 🚜 Refactor
 
