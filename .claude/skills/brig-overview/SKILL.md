@@ -95,9 +95,11 @@ AUDIT_REPORT.md, TASKS.md
 - `2` — runtime uncaught raise
 - `3` — внутренняя ошибка / not implemented
 
-Известные отклонения (A-F7, проверяется в T-14, #12): «срез: не
-реализовано» (ошибка пользователя) уходит в `3`, а
-`internal: upvalue out of range` — в `2`. Комментарий про exit-коды в
+Известные отклонения (A-F7, verified T-14, #12): «срез: … не
+реализован» (ошибка пользователя) уходит в `3` вместо `1`;
+`internal: upvalue out of range` — в `2` вместо `3`; `runModule` в
+тестах компилятора обходит sema. Follow-up: exit-коды (T-45, #57),
+`runModule`+sema (T-46, #58). Комментарий про exit-коды в
 `cmd/brig/main.go:27` ссылается на несуществующий skill (чистится в
 T-60, #38).
 

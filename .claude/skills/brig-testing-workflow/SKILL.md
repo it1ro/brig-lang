@@ -109,8 +109,8 @@ make update-bytecode
 При написании тестов CLI (`cmd/brig`) помнить коды из `brig-overview`:
 `0` ok, `1` parse/sema error, `2` runtime raise, `3` internal error. Тест,
 проверяющий обработку ошибки, должен целиться в конкретный код, а не
-просто «err != nil». Известные отклонения кодов — в `brig-overview`
-(A-F7, T-14 #12).
+просто «err != nil». Отклонения кодов (A-F7, verified T-14 #12) чинятся
+в T-45 (#57); `runModule` без sema — T-46 (#58) (`TestVerifyAF7RunModuleSkipsSema`).
 
 Тест должен **утверждать** результат (`t.Fatalf` при несовпадении), а не
 печатать его: часть существующих тестов компилятора только печатает
