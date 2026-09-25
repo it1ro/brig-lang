@@ -1,6 +1,6 @@
 # Brig
 
-<p align="center"><img src="doc/brig-logo.png" height="100" alt="Brig logo"/></p>
+<p align="center"><img src="docs/brig-logo.png" height="100" alt="Brig logo"/></p>
 
 Референсный интерпретатор языка программирования Brig на Go.
 
