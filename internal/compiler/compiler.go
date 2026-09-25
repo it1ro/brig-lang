@@ -274,18 +274,18 @@ func (fc *funcCompiler) compileLocalFn(decl ast.LocalFnDecl) error {
 func (fc *funcCompiler) compileExpr(e ast.Expr) error {
 	fc.line = e.Pos()
 	switch ex := e.(type) {
-	case ast.BytesExpr:
-		return fmt.Errorf("срез: bytes не реализован")
-	case ast.RegexExpr:
-		return fmt.Errorf("срез: regex не реализован")
 	case ast.LiteralExpr:
 		return fc.compileLiteral(ex.ValueStr())
-	case ast.DecimalExpr:
-		return fmt.Errorf("срез: decimal не реализован")
 	case ast.AtomExpr:
 		idx := fc.chunk.AddConstant(runtime.Atom(ex.AtomName()))
 		fc.emit(vm.OpConstant, idx)
 		return nil
+	case ast.DecimalExpr:
+		return fmt.Errorf("срез: decimal не реализован")
+	case ast.BytesExpr:
+		return fmt.Errorf("срез: bytes не реализован")
+	case ast.RegexExpr:
+		return fmt.Errorf("срез: regex не реализован")
 	case ast.VariableExpr:
 		return fc.compileVar(ex.Name())
 	case ast.GroupingExpr:
