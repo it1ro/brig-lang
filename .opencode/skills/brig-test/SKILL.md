@@ -1,22 +1,21 @@
-````markdown
 ---
 name: brig-test
-description: Use when writing or running Brig tests — check-examples (A2), property-based tests, golden files, fuzzing, CI configuration, or testdata layout. Covers tools/check-examples and the two-level test strategy.
+description: Use when writing or running Brig tests — check-examples (A2), property-based tests, golden files (AST и bytecode), fuzzing, CI configuration, or testdata layout.
 ---
 
 # Тестирование Brig
 
 Два уровня: (1) `tools/check-examples` — прогон **всех brig-примеров из
 дизайн-документов** через парсер (принцип #10 «примеры — валидный код»);
-(2) классические Go-тесты `internal/**` с golden, property-based и fuzzing.
-Этот скилл описывает правила и грабли тестов, а не дублирует A2 и
-`tools/check-examples`.
+(2) классические Go-тесты `internal/**` с golden (AST и bytecode),
+property-based и fuzzing. Этот скилл описывает правила и грабли тестов, а
+не дублирует A2 и `tools/check-examples`.
 
 ## Когда применять / не применять
 
 **Применять:** написание тестов в `internal/**/*_test.go`, `testdata/`,
-`tools/check-examples/`, конфигурация CI, обновление golden, добавление
-fuzz-целей, property-based проверки.
+`tools/check-examples/`, конфигурация CI, обновление golden (AST или
+bytecode), добавление fuzz-целей, property-based проверки.
 
 **Не применять:** правки самого кода, который тестируется (парсер, лексер,
 AST, VM — свои скиллы). Разметка fenced-блоков в docs — скилл `brig-docs`;
@@ -24,14 +23,16 @@ AST, VM — свои скиллы). Разметка fenced-блоков в docs
 
 ## Структура
 
-| Путь                                 | Роль                                                     |
-| ------------------------------------ | -------------------------------------------------------- |
-| `tools/check-examples/`              | Гейт A2: прогон примеров из docs                         |
-| `internal/**/testdata/golden/`       | Эталоны (pretty, сериализация AST, bytecode, REPL-вывод) |
-| `internal/**/testdata/negative/`     | Обязательные негативные кейсы                            |
-| `internal/**/testdata/fuzz/<FuzzX>/` | Минимизированные входы после падений                     |
-| `internal/**/*_test.go`              | Unit + табличные + property-based                        |
-| `.github/workflows/ci.yml`           | Матрица Go 1.27, linux+macos                             |
+| Путь                                 | Роль                                                |
+| ------------------------------------ | --------------------------------------------------- |
+| `tools/check-examples/`              | Гейт A2: прогон примеров из docs                    |
+| `testdata/golden/`                   | AST-goldens (pretty, round.brig) для parser         |
+| `testdata/bytecode/`                 | Bytecode-goldens `*.txt` для `Function.Disassemble` |
+| `internal/**/testdata/golden/`       | Эталоны per-package (если появятся)                 |
+| `testdata/negative/`                 | Обязательные негативные кейсы (parser/lexer)        |
+| `internal/**/testdata/fuzz/<FuzzX>/` | Минимизированные входы после падений                |
+| `internal/**/*_test.go`              | Unit + табличные + property-based                   |
+| `.github/workflows/ci.yml`           | Матрица Go, linux+macos                             |
 
 ## Инварианты
 
@@ -48,16 +49,25 @@ AST, VM — свои скиллы). Разметка fenced-блоков в docs
    минимизированный вход в `testdata/fuzz/<FuzzX>/<hash>` — это регресс-тест,
    без него баг вернётся.
 5. **Golden-файлы обновляются осознанно и отдельным PR.** Молчаливое
-   обновление в feature-коммите скрывает регрессию.
+   обновление в feature-коммите скрывает регрессию. Относится и к
+   `testdata/golden/*.{ast,round.brig}`, и к `testdata/bytecode/*.txt`.
 6. **Property-based тесты в CI — укороченные (seed), полный прогон — локально.**
 7. **Тесты уровня `internal/**` не зависят от порядка.** Параллельный прогон
    (`-race`) обязателен в CI.
 8. **Fuzz-цели вне CI** (по образцу splink), но запускаются локально перед PR.
+9. **Bytecode-goldens стабильны.** `Function.Disassemble` выдаёт заголовок с
+   `arity`, `params`, `regs`, `consts`, `patterns`; инструкции — с `line:col`.
+   Порядок констант детерминирован (по первому использованию при обходе AST),
+   порядок функций в выводе — `sort.Strings` (см. `cmd/brig/main.go`).
+   Изменения компилятора **и** VM требуют `make update-bytecode`.
+10. **`compiler.Verify = true` в тестах** (`verify_on_test.go`). Любая
+    регрессия I-4 (регистр ≥ `nextReg`) или отсутствующая `JMP` после
+    `MATCHLOCAL` падает на стадии `Compile`, а не в рантайме.
 
 ## tools/check-examples (A2)
 
-**Цель:** прогнать fenced-блоки ` ```brig ` из `01-language-design.md` (Part II G) и
-`01-language-design.md` через парсер; exit 0 — все распарсились.
+**Цель:** прогнать fenced-блоки ` ```brig ` из `docs/01-language-design.md`
+через парсер; exit 0 — все распарсились.
 
 **Метки блока:**
 
@@ -65,6 +75,7 @@ AST, VM — свои скиллы). Разметка fenced-блоков в docs
 - `repl` — top-level `let` и выражения; строки могут начинаться с `>`.
 - `expr` — одно выражение → оборачивается в `fn main() -> <expr>`.
 - `stmt` — стейтменты → оборачиваются в `fn main() -> ...`.
+- `invalid` — блок обязан не парситься.
 
 **Обработка:**
 
@@ -78,14 +89,12 @@ AST, VM — свои скиллы). Разметка fenced-блоков в docs
 - нет `Result[...]` в позиции типа (B4);
 - нет `fn -> ...` (B2);
 - нет `Ok(x) ≡ (:ok, x)` в fenced-блоках — только в комментариях;
-- нет `f(..)` без операнда в args (М-004).
+- нет `f(..)` без операнда в args (М-004);
+- round-trip `parse → Format → parse ≡ parse` для module/expr/stmt.
 
 **Выход:** `file:line:col — status — [error message]`.
 **Кэш:** `brig.ebnf` + дизайн-док не менялись → пропуск.
 **CI:** на каждый коммит.
-
-**Реализация:** временно — рукописный парсер-заглушка (offside + скобки +
-ключевые слова); затем полноценный (recursive descent / tree-sitter).
 **CI-таргет:** `make check-examples`.
 
 ## Property-based
@@ -105,22 +114,45 @@ seed; полный — локально.
 
 ## Golden files
 
-`testdata/golden/`:
+### AST-goldens (`testdata/golden/`)
 
-- pretty-print AST,
-- сериализация AST,
-- эмиссия bytecode,
-- REPL-вывод.
+- pretty-print AST (`*.ast`),
+- round-trip formatter (`*.round.brig`).
 
 **Обновление:** `make update-golden` — осознанное действие, **diff в PR
 читается глазами**. Обновление golden — отдельный PR, не часть feature.
 
+### Bytecode-goldens (`testdata/bytecode/`)
+
+- `Function.Disassemble` для фиксированного набора модулей
+  (`hello`, `arith`, `fib`, `tail`, `closure`, `trap_ensure`,
+  `recv_after`).
+- Фиксируют: instruction numbering, `line:col` per instruction, `TAILCALL`
+  placement, `trap/ensure` layout, содержимое констант.
+
+**Обновление:** `make update-bytecode` (флаг `-update-bytecode` в
+`bytecode_test.go`). Diff читается глазами: `PatchJump` пересчитывает цели,
+поэтому сдвиг нумерации — норма; структура `TRAPBEGIN`/`TRAPEND`/
+`MAKEOK`/`MAKEERROR` и наличие `TAILCALL` — контракт.
+
+### Порядок обновления golden
+
+```sh
+make update-golden      # AST: parser/format
+make update-bytecode    # bytecode: compiler/VM
+git diff testdata/
+# глазами проверить: не «принять всё»
+go test ./...           # без -update — должно пройти
+git add testdata/
+git commit -m "test: regenerate goldens for <reason>"
+```
+
 ## Fuzzing
 
-**Цели** (по образцу splink, вне CI):
+**Цели** (вне CI):
 
 - `FuzzParse` — `internal/parser`.
-- `FuzzRoundTrip` — pretty (`internal/format`-аналог).
+- `FuzzRoundTrip` — `internal/ast`.
 - `FuzzLex` — `internal/lexer`.
 
 **Падение** кладёт минимизированный вход в
@@ -128,36 +160,33 @@ seed; полный — локально.
 фиксом**.
 
 ```sh
-go test ./internal/parser/ -run=^$ -fuzz=FuzzParse -fuzztime=60s
-go test ./internal/lexer/  -run=^$ -fuzz=FuzzLex   -fuzztime=60s
+go test ./internal/parser/ -run=^$ -fuzz=FuzzParse     -fuzztime=60s
+go test ./internal/lexer/  -run=^$ -fuzz=FuzzLex       -fuzztime=60s
+go test ./internal/ast/    -run=^$ -fuzz=FuzzRoundTrip -fuzztime=60s
 ```
-````
 
 При правке парсера/лексер/pretty **обязательно** прогнать все три цели
 локально — CI их не запускает.
 
-## Пример: добавление golden-кейса
+## Пример: добавление bytecode-golden-кейса
 
 ```sh
-# 1. Добавить вход в testdata/ (например, internal/parser/testdata/tuple.brig)
-$EDITOR internal/parser/testdata/tuple.brig
+# 1. Добавить кейс в bytecodeCases (internal/compiler/bytecode_test.go)
+$EDITOR internal/compiler/bytecode_test.go
 
-# 2. Сгенерировать golden (осознанно, не «обновить всё»)
-make update-golden
+# 2. Сгенерировать (или перегенерировать)
+make update-bytecode
 
-# 3. Прочитать diff глазами — не «принять всё»
-git diff internal/parser/testdata/golden/tuple.json
+# 3. Прочитать diff глазами
+git diff testdata/bytecode/new_case.txt
 
-# 4. Прогнать тесты без -update — должны пройти
-go test ./internal/parser/
+# 4. Прогнать без -update
+go test ./internal/compiler/ -run TestBytecodeGolden
 
-# 5. Отдельный коммит/PR на golden
-git add internal/parser/testdata/
-git commit -m "test(parser): golden for tuple literal"
+# 5. Отдельный коммит
+git add testdata/bytecode/new_case.txt internal/compiler/bytecode_test.go
+git commit -m "test(compiler): bytecode golden for <case>"
 ```
-
-Порядок нарушать нельзя: `make update-golden` в feature-коммите скрывает
-регрессию, и на ревью её никто не увидит.
 
 ## Проверка
 
@@ -167,13 +196,13 @@ make check-examples
 
 # Уровень 2: Go-тесты
 go test ./... -race
-go test ./... -run=Examples
 go vet ./...
 make lint
 
 # Golden
 make update-golden       # осознанно, diff в PR читать
-go test ./... -run=Golden  # без -update — должны пройти
+make update-bytecode     # осознанно, diff в PR читать
+go test ./... -run Golden  # без -update — должны пройти
 
 # Fuzz (локально, вне CI)
 go test ./internal/parser/ -run=^$ -fuzz=FuzzParse -fuzztime=60s
@@ -188,8 +217,8 @@ go test ./internal/parser/ -run=^$ -fuzz=FuzzParse -fuzztime=60s
 
 - Go 1.27 (текущая, см. `mise`).
 - ОС: linux + macos.
-- Шаги: `go vet`, `go test -race ./...`, `make check-examples`,
-  `make lint` (golangci-lint), `make changelog-check`.
+- Шаги: `make all` (внутри: `check-smallint`, `fmt`, `vet`, `test`,
+  `lint`, `build`).
 
 ## Частые ошибки
 
@@ -201,6 +230,12 @@ go test ./internal/parser/ -run=^$ -fuzz=FuzzParse -fuzztime=60s
 - **Golden обновлён молча в feature-коммите** — скрывает регрессию. Симптом:
   ревьюер видит огромный diff golden, не понимает, что изменилось; правится
   отдельным PR (инвариант 5).
+- **`make update-bytecode` не запущен после правок компилятора** — golden
+  расходится с реальным выводом; тест `TestBytecodeGolden` падает.
+  Симптом: в CI красное `testdata/bytecode/*.txt`.
+- **Bytecode-golden обновлён без просмотра diff** — потерян `TAILCALL`
+  или изменён trap-layout. Симптом: следующий тест TCO/`ensure` падает,
+  а причина — в «принятом вслепую» golden.
 - **Проверяющий пример помечен ` ```brig ` без метки и неоднозначен** —
   скрипт требует явной метки. Симптом: warning в CI, который «всегда был»;
   на самом деле блок мог парситься не так, как задумано. Правка — в
@@ -213,17 +248,23 @@ go test ./internal/parser/ -run=^$ -fuzz=FuzzParse -fuzztime=60s
   обхода AST. Симптом: CI падает на race-детекторе, локально всё зелёное.
 - **Тест зависит от порядка выполнения** (`go test` без `-p 1` не
   воспроизводит). Симптом: тест падает только в полном прогоне.
+- **`compiler.Verify` выключен в тестах** — регрессии I-4/definite
+  assignment не ловятся на стадии `Compile`. Симптом: баг проявляется
+  в рантайме как неверный результат. `verify_on_test.go` обязателен.
 
 ## Ссылки
 
-- `01-language-design.md` Part II:
-    - **A2** — `check-examples`: метки блоков, эвристика, семантические проверки.
-- `01-language-design.md`: принципы #10 (примеры — валидный код), Part II G:
+- `docs/01-language-design.md` Part II:
+  - **A2** — `check-examples`: метки блоков, эвристика, семантические проверки.
+- `docs/01-language-design.md`: принципы #10 (примеры — валидный код),
   #13 (иммутабельность).
+- `docs/02-register-based-virtual-machine.md` §9 — формат дизассемблера,
+  §12 — риски и `Verify`.
 - **B2** — удаление `fn -> expr`.
 - **B4** — запрет `Result[...]` в позиции типа.
 - **КР-003** — контекстные позиции `trap`.
 - **М-004** — `..` без операнда только в паттерне.
 - Скилл `brig-docs` — разметка fenced-блоков (источник для `check-examples`).
 - Скилл `brig-cli` — exit codes и диагностики (`file:line:col — message`).
-- Скилл `brig-parser` / `brig-lexer` — код, который здесь тестируется.
+- Скилл `brig-parser` / `brig-lexer` / `brig-vm` — код, который здесь
+  тестируется.
