@@ -46,8 +46,6 @@ type CompiledPattern struct {
 	// PatAs
 	AsSlot int
 	Inner  *CompiledPattern
-
-	FailAddr int
 }
 
 // MatchPattern пытается сопоставить v с p, записывая связывания в locals.
@@ -163,11 +161,11 @@ func FormatCompiledPattern(p *CompiledPattern) string {
 	case PatWildcard:
 		return "_"
 	case PatIdent:
-		return fmt.Sprintf("$%d", p.Slot)
+		return fmt.Sprintf("r%d", p.Slot)
 	case PatLiteral:
 		return p.Lit.Inspect()
 	case PatAs:
-		return FormatCompiledPattern(p.Inner) + fmt.Sprintf(" as $%d", p.AsSlot)
+		return FormatCompiledPattern(p.Inner) + fmt.Sprintf(" as r%d", p.AsSlot)
 	case PatCtor:
 		s := p.Tag
 		if len(p.Subs) > 0 {
@@ -204,7 +202,7 @@ func FormatCompiledPattern(p *CompiledPattern) string {
 			}
 			s += ".."
 			if p.RestSlot >= 0 {
-				s += fmt.Sprintf("$%d", p.RestSlot)
+				s += fmt.Sprintf("r%d", p.RestSlot)
 			}
 		}
 		return s + "]"
