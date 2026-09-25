@@ -95,7 +95,16 @@ func add(a, b runtime.Value) (runtime.Value, error) {
 	if a.Kind == runtime.KindFloat || b.Kind == runtime.KindFloat {
 		return runtime.Float(numToFloat(a) + numToFloat(b)), nil
 	}
-	return runtime.IntBig(new(big.Int).Add(a.Int, b.Int)), nil
+	if a.IsSmall && b.IsSmall {
+		sum := a.SmallInt + b.SmallInt
+		// overflow detection: знаки a и b совпадают, но знак суммы — нет.
+		if (b.SmallInt > 0 && sum > a.SmallInt) ||
+			(b.SmallInt < 0 && sum < a.SmallInt) ||
+			b.SmallInt == 0 {
+			return runtime.Int(sum), nil
+		}
+	}
+	return runtime.IntBig(new(big.Int).Add(a.AsBig(), b.AsBig())), nil
 }
 
 func sub(a, b runtime.Value) (runtime.Value, error) {
@@ -105,7 +114,16 @@ func sub(a, b runtime.Value) (runtime.Value, error) {
 	if a.Kind == runtime.KindFloat || b.Kind == runtime.KindFloat {
 		return runtime.Float(numToFloat(a) - numToFloat(b)), nil
 	}
-	return runtime.IntBig(new(big.Int).Sub(a.Int, b.Int)), nil
+	if a.IsSmall && b.IsSmall {
+		diff := a.SmallInt - b.SmallInt
+		// overflow: знаки a и b различаются, но знак разности — как у b.
+		if (b.SmallInt > 0 && diff < a.SmallInt) ||
+			(b.SmallInt < 0 && diff > a.SmallInt) ||
+			b.SmallInt == 0 {
+			return runtime.Int(diff), nil
+		}
+	}
+	return runtime.IntBig(new(big.Int).Sub(a.AsBig(), b.AsBig())), nil
 }
 
 func mul(a, b runtime.Value) (runtime.Value, error) {
@@ -115,7 +133,13 @@ func mul(a, b runtime.Value) (runtime.Value, error) {
 	if a.Kind == runtime.KindFloat || b.Kind == runtime.KindFloat {
 		return runtime.Float(numToFloat(a) * numToFloat(b)), nil
 	}
-	return runtime.IntBig(new(big.Int).Mul(a.Int, b.Int)), nil
+	if a.IsSmall && b.IsSmall {
+		r := a.SmallInt * b.SmallInt
+		if a.SmallInt == 0 || (r/a.SmallInt == b.SmallInt && !(a.SmallInt == -1 && b.SmallInt == math.MinInt64) && !(b.SmallInt == -1 && a.SmallInt == math.MinInt64)) {
+			return runtime.Int(r), nil
+		}
+	}
+	return runtime.IntBig(new(big.Int).Mul(a.AsBig(), b.AsBig())), nil
 }
 
 func div(a, b runtime.Value) (runtime.Value, error) {
@@ -133,30 +157,49 @@ func intDiv(a, b runtime.Value) (runtime.Value, error) {
 	if a.Kind != runtime.KindInt || b.Kind != runtime.KindInt {
 		return runtime.Unit, arithErr(a, b, ":div")
 	}
-	if b.Int.Sign() == 0 {
+	if b.IsSmall {
+		if b.SmallInt == 0 {
+			return runtime.Unit, &ErrRaise{Val: runtime.Tuple(
+				runtime.Atom("division_by_zero"), runtime.Unit)}
+		}
+		// MinInt64 / -1 overflows int64; fall through to big.
+		if a.IsSmall && !(a.SmallInt == math.MinInt64 && b.SmallInt == -1) {
+			return runtime.Int(a.SmallInt / b.SmallInt), nil
+		}
+	} else if b.Int.Sign() == 0 {
 		return runtime.Unit, &ErrRaise{Val: runtime.Tuple(
 			runtime.Atom("division_by_zero"), runtime.Unit)}
 	}
-	return runtime.IntBig(new(big.Int).Quo(a.Int, b.Int)), nil
+	return runtime.IntBig(new(big.Int).Quo(a.AsBig(), b.AsBig())), nil
 }
 
 func rem(a, b runtime.Value) (runtime.Value, error) {
 	if a.Kind != runtime.KindInt || b.Kind != runtime.KindInt {
 		return runtime.Unit, arithErr(a, b, ":rem")
 	}
-	if b.Int.Sign() == 0 {
+	if b.IsSmall {
+		if b.SmallInt == 0 {
+			return runtime.Unit, &ErrRaise{Val: runtime.Tuple(
+				runtime.Atom("division_by_zero"), runtime.Unit)}
+		}
+		if a.IsSmall {
+			// Go's % and big.Int.Rem both truncate toward zero;
+			// MinInt64 % -1 == 0, no overflow.
+			return runtime.Int(a.SmallInt % b.SmallInt), nil
+		}
+	} else if b.Int.Sign() == 0 {
 		return runtime.Unit, &ErrRaise{Val: runtime.Tuple(
 			runtime.Atom("division_by_zero"), runtime.Unit)}
 	}
-	return runtime.IntBig(new(big.Int).Rem(a.Int, b.Int)), nil
+	return runtime.IntBig(new(big.Int).Rem(a.AsBig(), b.AsBig())), nil
 }
 
 func pow(a, b runtime.Value) (runtime.Value, error) {
 	if !bothNum(a, b) {
 		return runtime.Unit, arithErr(a, b, ":pow")
 	}
-	if a.Kind == runtime.KindInt && b.Kind == runtime.KindInt && b.Int.Sign() >= 0 {
-		return runtime.IntBig(new(big.Int).Exp(a.Int, b.Int, nil)), nil
+	if a.Kind == runtime.KindInt && b.Kind == runtime.KindInt && b.AsBig().Sign() >= 0 {
+		return runtime.IntBig(new(big.Int).Exp(a.AsBig(), b.AsBig(), nil)), nil
 	}
 	return runtime.Float(math.Pow(numToFloat(a), numToFloat(b))), nil
 }
@@ -164,7 +207,10 @@ func pow(a, b runtime.Value) (runtime.Value, error) {
 func neg(a runtime.Value) (runtime.Value, error) {
 	switch a.Kind {
 	case runtime.KindInt:
-		return runtime.IntBig(new(big.Int).Neg(a.Int)), nil
+		if a.IsSmall && a.SmallInt != math.MinInt64 {
+			return runtime.Int(-a.SmallInt), nil
+		}
+		return runtime.IntBig(new(big.Int).Neg(a.AsBig())), nil
 	case runtime.KindFloat:
 		return runtime.Float(-a.Float), nil
 	}
@@ -179,6 +225,9 @@ func bothNum(a, b runtime.Value) bool {
 func numToFloat(v runtime.Value) float64 {
 	if v.Kind == runtime.KindFloat {
 		return v.Float
+	}
+	if v.IsSmall {
+		return float64(v.SmallInt)
 	}
 	f, _ := new(big.Float).SetInt(v.Int).Float64()
 	return f
