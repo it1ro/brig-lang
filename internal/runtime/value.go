@@ -12,6 +12,7 @@ import (
 type Kind int
 
 const (
+	// KindUnit — тег типа unit ()
 	KindUnit Kind = iota
 	KindBool
 	KindInt
