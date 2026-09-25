@@ -26,8 +26,10 @@ func (e *ErrRaise) Error() string { return "raise: " + e.Val.Inspect() }
 
 // VM — виртуальная машина.
 type VM struct {
-	globals   map[string]runtime.Value
-	scheduler *Scheduler
+	globals      map[string]runtime.Value
+	scheduler    *Scheduler
+	tests        []testCase
+	currentGroup string
 }
 
 // New создаёт ВМ с установленной прелюдией.
@@ -35,6 +37,8 @@ func New() *VM {
 	vm := &VM{globals: make(map[string]runtime.Value)}
 	vm.scheduler = NewScheduler(vm)
 	InstallPrelude(vm)
+	InstallJsonPrelude(vm)
+	InstallTestPrelude(vm)
 	return vm
 }
 
