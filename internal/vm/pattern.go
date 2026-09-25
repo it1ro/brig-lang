@@ -10,6 +10,7 @@ import (
 type PatternKind int
 
 const (
+	// PatWildcard — паттерн `_` (любой элемент).
 	PatWildcard PatternKind = iota
 	PatIdent
 	PatLiteral
