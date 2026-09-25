@@ -23,21 +23,141 @@ const (
 	actorFailed
 )
 
-// Frame — кадр вызова.
+// stepOutcome — результат одного шага stepFrame.
+type stepOutcome int
+
+const (
+	stepContinue stepOutcome = iota
+	stepYield
+	stepBlock
+	stepDone
+	stepFailed
+)
+
+// ---- Frame (§2) ----
+
+// Frame — кадр вызова регистровой ВМ.
+//
+// Значения живут в regs; стека операндов нет. Параметры лежат в
+// R0..R(NumParams-1), за ними локали и временные.
 type Frame struct {
-	fn       *Function
+	chunk    *Chunk
+	name     string
 	ip       int
-	stack    []runtime.Value
-	locals   []runtime.Value
+	regs     []runtime.Value
 	captures []runtime.Value
 	handlers []trapHandler
+	callDst  int
 }
 
-// trapHandler — активный trap (§10.2).
-type trapHandler struct {
-	ip       int
-	stackLen int
+// catch пытается поймать *ErrRaise активным trap-регионом. При успехе
+// снимает верхний handler, кладёт значение в errReg и переводит ip
+// на адрес обработчика. Возвращает true, если ошибка была поймана.
+func (f *Frame) catch(err error) bool {
+	var rerr *ErrRaise
+	if !errors.As(err, &rerr) {
+		return false
+	}
+	if len(f.handlers) == 0 {
+		return false
+	}
+	h := f.handlers[len(f.handlers)-1]
+	f.handlers = f.handlers[:len(f.handlers)-1]
+	f.regs[h.errReg] = rerr.Val
+	f.ip = h.ip
+	return true
 }
+
+// trapHandler — активный trap (§2, §5).
+type trapHandler struct {
+	ip     int // абсолютный индекс инструкции-обработчика
+	errReg int // регистр, куда кладётся значение raise
+}
+
+// callee — разобранный Function/Closure с байткод-телом (§2).
+type callee struct {
+	chunk    *Chunk
+	name     string
+	captures []runtime.Value
+}
+
+// resolveCallee разбирает Function/Closure с байткод-телом.
+func resolveCallee(fn runtime.Value) (callee, error) {
+	switch fn.Kind {
+	case runtime.KindFunction:
+		if fn.Func == nil {
+			return callee{}, fmt.Errorf("(:type_error, (:call, nil))")
+		}
+		ch, ok := fn.Func.Body.(*Chunk)
+		if !ok {
+			return callee{}, fmt.Errorf("(:type_error, (:call, %s))", fn.Inspect())
+		}
+		return callee{chunk: ch, name: fn.Func.Name}, nil
+	case runtime.KindClosure:
+		if fn.ClosureVal == nil {
+			return callee{}, fmt.Errorf("(:type_error, (:call, nil-closure))")
+		}
+		ch, ok := fn.ClosureVal.Func.(*Chunk)
+		if !ok {
+			return callee{}, fmt.Errorf("(:type_error, (:call, %s))", fn.Inspect())
+		}
+		return callee{
+			chunk:    ch,
+			name:     fn.ClosureVal.Name,
+			captures: fn.ClosureVal.Captures,
+		}, nil
+	}
+	return callee{}, fmt.Errorf("(:type_error, (:call, %s))", fn.Inspect())
+}
+
+// checkArity: variadic — argc >= NumParams-1, иначе argc == NumParams.
+func checkArity(c callee, argc int) error {
+	if c.chunk.Variadic {
+		if argc < c.chunk.NumParams-1 {
+			return fmt.Errorf("(:function_clause, (%s, %d args))", c.name, argc)
+		}
+		return nil
+	}
+	if argc != c.chunk.NumParams {
+		return fmt.Errorf("(:function_clause, (%s, %d args))", c.name, argc)
+	}
+	return nil
+}
+
+// bindArgs раскладывает args по регистрам параметров и НЕ удерживает args.
+// Безопасна при перекрытии args и regs (TAILCALL): rest копируется первым.
+func bindArgs(regs []runtime.Value, ch *Chunk, args []runtime.Value) {
+	if !ch.Variadic {
+		copy(regs, args) // copy == memmove; перекрытие допустимо
+		return
+	}
+	fixed := ch.NumParams - 1
+	rest := make([]runtime.Value, len(args)-fixed)
+	copy(rest, args[fixed:])
+	copy(regs, args[:fixed])
+	regs[fixed] = runtime.List(rest...)
+}
+
+// frameFromFn создаёт кадр вызова.
+func frameFromFn(fn runtime.Value, args []runtime.Value) (*Frame, error) {
+	c, err := resolveCallee(fn)
+	if err != nil {
+		return nil, err
+	}
+	if err := checkArity(c, len(args)); err != nil {
+		return nil, err
+	}
+	regs := make([]runtime.Value, c.chunk.NumRegs)
+	bindArgs(regs, c.chunk, args)
+	return &Frame{
+		chunk:    c.chunk,
+		name:     c.name,
+		regs:     regs,
+		captures: c.captures,
+	}, nil
+}
+
+// ---- Actor / Scheduler ----
 
 // Actor — процесс в планировщике.
 type Actor struct {
@@ -99,53 +219,6 @@ func (s *Scheduler) Spawn(fn runtime.Value, args []runtime.Value) (int, error) {
 	s.actors[pid] = a
 	s.ready = append(s.ready, a)
 	return pid, nil
-}
-
-func frameFromFn(fn runtime.Value, args []runtime.Value) (*Frame, error) {
-	var chunk *Chunk
-	var captures []runtime.Value
-	var fnName string
-	var arity int
-
-	switch fn.Kind {
-	case runtime.KindFunction:
-		if fn.Func == nil {
-			return nil, fmt.Errorf("(:type_error, (:spawn, nil))")
-		}
-		c, ok := fn.Func.Body.(*Chunk)
-		if !ok {
-			return nil, fmt.Errorf("(:type_error, (:spawn, %s))", fn.Inspect())
-		}
-		chunk = c
-		fnName = fn.Func.Name
-		arity = fn.Func.Arity
-	case runtime.KindClosure:
-		if fn.ClosureVal == nil {
-			return nil, fmt.Errorf("(:type_error, (:spawn, nil-closure))")
-		}
-		c, ok := fn.ClosureVal.Func.(*Chunk)
-		if !ok {
-			return nil, fmt.Errorf("(:type_error, (:spawn, %s))", fn.Inspect())
-		}
-		chunk = c
-		captures = fn.ClosureVal.Captures
-		fnName = fn.ClosureVal.Name
-		arity = fn.ClosureVal.Arity
-	default:
-		return nil, fmt.Errorf("(:type_error, (:spawn, %s))", fn.Inspect())
-	}
-
-	if arity >= 0 && len(args) != arity {
-		return nil, fmt.Errorf("(:function_clause, (spawn %s, %d args))", fnName, len(args))
-	}
-
-	f := &Frame{
-		fn:       &Function{Name: fnName, Arity: arity, Chunk: chunk},
-		locals:   make([]runtime.Value, maxLocals),
-		captures: captures,
-	}
-	copy(f.locals, args)
-	return f, nil
 }
 
 // ---- send / watch / unwatch ----
@@ -304,7 +377,7 @@ func (s *Scheduler) wakeExpired() {
 	}
 }
 
-// ---- run slice ----
+// ---- runSlice ----
 
 func (s *Scheduler) runSlice(a *Actor) {
 	reds := s.reds
@@ -320,15 +393,17 @@ func (s *Scheduler) runSlice(a *Actor) {
 		outcome := s.stepFrame(a, f)
 		switch outcome {
 		case stepDone:
+			// nil слот перед усечением, чтобы кадр не висел в backing-массиве.
+			a.frames[len(a.frames)-1] = nil
 			a.frames = a.frames[:len(a.frames)-1]
+			reds--
 			if len(a.frames) == 0 {
 				a.status = actorDone
 				s.notifyWatchers(a, runtime.Atom("normal"))
 				return
 			}
 			caller := a.frames[len(a.frames)-1]
-			caller.stack = append(caller.stack, a.result)
-			reds--
+			caller.regs[caller.callDst] = a.result
 
 		case stepFailed:
 			if s.tryUnwindRaise(a) {
@@ -338,6 +413,7 @@ func (s *Scheduler) runSlice(a *Actor) {
 			a.status = actorFailed
 			s.notifyWatchers(a, runtime.Tuple(runtime.Atom("raise"), a.result))
 			return
+
 		case stepBlock:
 			a.status = actorBlocked
 			return
@@ -351,55 +427,12 @@ func (s *Scheduler) runSlice(a *Actor) {
 	s.ready = append(s.ready, a)
 }
 
-type stepOutcome int
-
-const (
-	stepContinue stepOutcome = iota
-	stepYield
-	stepBlock
-	stepDone
-	stepFailed
-)
-
 // ---- stepFrame ----
 
 func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
-	chunk := f.fn.Chunk
-	code := chunk.Code
-	consts := chunk.Constants
-
-	operand := func(ip int) int {
-		return int(code[ip+1])<<8 | int(code[ip+2])
-	}
-	operand2 := func(ip int) int {
-		return int(code[ip+3])<<8 | int(code[ip+4])
-	}
-
-	push := func(v runtime.Value) { f.stack = append(f.stack, v) }
-	pop := func() (runtime.Value, error) {
-		if len(f.stack) == 0 {
-			return runtime.Unit, fmt.Errorf("internal: stack underflow in %s", f.fn.Name)
-		}
-		v := f.stack[len(f.stack)-1]
-		f.stack = f.stack[:len(f.stack)-1]
-		return v, nil
-	}
-
-	handleRaise := func(err error) bool {
-		var rerr *ErrRaise
-		if !errors.As(err, &rerr) {
-			return false
-		}
-		if len(f.handlers) == 0 {
-			return false
-		}
-		h := f.handlers[len(f.handlers)-1]
-		f.handlers = f.handlers[:len(f.handlers)-1]
-		f.stack = f.stack[:h.stackLen]
-		push(rerr.Val)
-		f.ip = h.ip
-		return true
-	}
+	regs := f.regs
+	code := f.chunk.Code
+	consts := f.chunk.Constants
 
 	fail := func(err error) stepOutcome {
 		a.err = err
@@ -408,552 +441,449 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 	}
 
 	for f.ip < len(code) {
-		op := OpCode(code[f.ip])
+		in := code[f.ip]
+		op := in.Op()
+
 		switch op {
-		case OpConstant:
-			push(consts[operand(f.ip)])
-			f.ip += 3
-
-		case OpPop:
-			if _, err := pop(); err != nil {
-				return fail(err)
-			}
+		case LOADK:
+			regs[in.A()] = consts[in.Bx()]
 			f.ip++
 
-		case OpDup:
-			top, err := pop()
-			if err != nil {
-				return fail(err)
-			}
-			push(top)
-			push(top)
+		case MOVE:
+			regs[in.A()] = regs[in.B()]
 			f.ip++
 
-		case OpAdd:
-			b, _ := pop()
-			aa, _ := pop()
-			r, err := add(aa, b)
-			if err != nil {
-				if handleRaise(err) {
-					continue
-				}
-				return fail(err)
-			}
-			push(r)
-			f.ip++
-
-		case OpSub:
-			b, _ := pop()
-			aa, _ := pop()
-			r, err := sub(aa, b)
-			if err != nil {
-				if handleRaise(err) {
-					continue
-				}
-				return fail(err)
-			}
-			push(r)
-			f.ip++
-
-		case OpMul:
-			b, _ := pop()
-			aa, _ := pop()
-			r, err := mul(aa, b)
-			if err != nil {
-				if handleRaise(err) {
-					continue
-				}
-				return fail(err)
-			}
-			push(r)
-			f.ip++
-
-		case OpDiv:
-			b, _ := pop()
-			aa, _ := pop()
-			r, err := div(aa, b)
-			if err != nil {
-				if handleRaise(err) {
-					continue
-				}
-				return fail(err)
-			}
-			push(r)
-			f.ip++
-
-		case OpIntDiv:
-			b, _ := pop()
-			aa, _ := pop()
-			r, err := intDiv(aa, b)
-			if err != nil {
-				if handleRaise(err) {
-					continue
-				}
-				return fail(err)
-			}
-			push(r)
-			f.ip++
-
-		case OpRem:
-			b, _ := pop()
-			aa, _ := pop()
-			r, err := rem(aa, b)
-			if err != nil {
-				if handleRaise(err) {
-					continue
-				}
-				return fail(err)
-			}
-			push(r)
-			f.ip++
-
-		case OpPow:
-			b, _ := pop()
-			aa, _ := pop()
-			r, err := pow(aa, b)
-			if err != nil {
-				if handleRaise(err) {
-					continue
-				}
-				return fail(err)
-			}
-			push(r)
-			f.ip++
-
-		case OpNeg:
-			aa, err := pop()
-			if err != nil {
-				return fail(err)
-			}
-			r, err := neg(aa)
-			if err != nil {
-				if handleRaise(err) {
-					continue
-				}
-				return fail(err)
-			}
-			push(r)
-			f.ip++
-
-		case OpNot:
-			aa, err := pop()
-			if err != nil {
-				return fail(err)
-			}
-			if aa.Kind != runtime.KindBool {
-				return fail(fmt.Errorf("(:type_error, (:not, %s))", aa.Inspect()))
-			}
-			push(runtime.Bool(!aa.Bool))
-			f.ip++
-
-		case OpEq, OpNeq:
-			b, _ := pop()
-			aa, _ := pop()
-			if err := checkMixedEq(aa, b); err != nil {
-				if handleRaise(err) {
-					continue
-				}
-				return fail(err)
-			}
-			eq := runtime.Equal(aa, b)
-			if op == OpNeq {
-				eq = !eq
-			}
-			push(runtime.Bool(eq))
-			f.ip++
-
-		case OpLt, OpGt, OpLe, OpGe:
-			b, _ := pop()
-			aa, _ := pop()
-			if err := checkMixedCmp(aa, b); err != nil {
-				if handleRaise(err) {
-					continue
-				}
-				return fail(err)
-			}
-			c, err := runtime.Compare(aa, b)
-			if err != nil {
-				return fail(err)
-			}
-			var r bool
-			switch op {
-			case OpLt:
-				r = c < 0
-			case OpGt:
-				r = c > 0
-			case OpLe:
-				r = c <= 0
-			case OpGe:
-				r = c >= 0
-			}
-			push(runtime.Bool(r))
-			f.ip++
-
-		case OpJump:
-			f.ip = operand(f.ip)
-
-		case OpJumpFalse:
-			target := operand(f.ip)
-			v, err := pop()
-			if err != nil {
-				return fail(err)
-			}
-			if v.Kind == runtime.KindBool && !v.Bool {
-				f.ip = target
-			} else {
-				f.ip += 3
-			}
-
-		case OpJumpTrue:
-			target := operand(f.ip)
-			v, err := pop()
-			if err != nil {
-				return fail(err)
-			}
-			if v.Kind == runtime.KindBool && v.Bool {
-				f.ip = target
-			} else {
-				f.ip += 3
-			}
-
-		case OpGetLocal:
-			idx := operand(f.ip)
-			if idx >= len(f.locals) {
-				return fail(fmt.Errorf("internal: local %d out of range", idx))
-			}
-			push(f.locals[idx])
-			f.ip += 3
-
-		case OpSetLocal:
-			idx := operand(f.ip)
-			if idx >= len(f.locals) {
-				return fail(fmt.Errorf("internal: local %d out of range", idx))
-			}
-			v, err := pop()
-			if err != nil {
-				return fail(err)
-			}
-			f.locals[idx] = v
-			f.ip += 3
-
-		case OpGetGlobal:
-			name := consts[operand(f.ip)].Str
+		case GETGLOBAL:
+			name := consts[in.Bx()].Str
 			g, ok := s.vm.globals[name]
 			if !ok {
 				return fail(fmt.Errorf("undefined: %s", name))
 			}
-			push(g)
-			f.ip += 3
+			regs[in.A()] = g
+			f.ip++
 
-		case OpSetGlobal:
-			name := consts[operand(f.ip)].Str
-			v, err := pop()
-			if err != nil {
-				return fail(err)
+		case SETGLOBAL:
+			name := consts[in.Bx()].Str
+			s.vm.globals[name] = regs[in.A()]
+			f.ip++
+
+		case GETUPVAL:
+			idx := in.B()
+			if idx >= len(f.captures) {
+				return fail(fmt.Errorf("internal: upvalue %d out of range", idx))
 			}
-			s.vm.globals[name] = v
-			f.ip += 3
+			regs[in.A()] = f.captures[idx]
+			f.ip++
 
-		case OpCall:
-			argc := operand(f.ip)
-			callArgs := make([]runtime.Value, argc)
-			for i := argc - 1; i >= 0; i-- {
-				v, err := pop()
-				if err != nil {
-					return fail(err)
+		case ADD:
+			r, err := add(regs[in.B()], regs[in.C()])
+			if err != nil {
+				if f.catch(err) {
+					continue
 				}
-				callArgs[i] = v
+				return fail(err)
 			}
-			callee, err := pop()
+			regs[in.A()] = r
+			f.ip++
+
+		case SUB:
+			r, err := sub(regs[in.B()], regs[in.C()])
+			if err != nil {
+				if f.catch(err) {
+					continue
+				}
+				return fail(err)
+			}
+			regs[in.A()] = r
+			f.ip++
+
+		case MUL:
+			r, err := mul(regs[in.B()], regs[in.C()])
+			if err != nil {
+				if f.catch(err) {
+					continue
+				}
+				return fail(err)
+			}
+			regs[in.A()] = r
+			f.ip++
+
+		case DIV:
+			r, err := div(regs[in.B()], regs[in.C()])
+			if err != nil {
+				if f.catch(err) {
+					continue
+				}
+				return fail(err)
+			}
+			regs[in.A()] = r
+			f.ip++
+
+		case INTDIV:
+			r, err := intDiv(regs[in.B()], regs[in.C()])
+			if err != nil {
+				if f.catch(err) {
+					continue
+				}
+				return fail(err)
+			}
+			regs[in.A()] = r
+			f.ip++
+
+		case REM:
+			r, err := rem(regs[in.B()], regs[in.C()])
+			if err != nil {
+				if f.catch(err) {
+					continue
+				}
+				return fail(err)
+			}
+			regs[in.A()] = r
+			f.ip++
+
+		case POW:
+			r, err := pow(regs[in.B()], regs[in.C()])
+			if err != nil {
+				if f.catch(err) {
+					continue
+				}
+				return fail(err)
+			}
+			regs[in.A()] = r
+			f.ip++
+
+		case NEG:
+			r, err := neg(regs[in.B()])
+			if err != nil {
+				if f.catch(err) {
+					continue
+				}
+				return fail(err)
+			}
+			regs[in.A()] = r
+			f.ip++
+
+		case NOT:
+			v := regs[in.B()]
+			if v.Kind != runtime.KindBool {
+				return fail(fmt.Errorf("(:type_error, (:not, %s))", v.Inspect()))
+			}
+			regs[in.A()] = runtime.Bool(!v.Bool)
+			f.ip++
+
+		case EQ, NEQ:
+			av := regs[in.B()]
+			bv := regs[in.C()]
+			if err := checkMixedEq(av, bv); err != nil {
+				if f.catch(err) {
+					continue
+				}
+				return fail(err)
+			}
+			eq := runtime.Equal(av, bv)
+			if op == NEQ {
+				eq = !eq
+			}
+			regs[in.A()] = runtime.Bool(eq)
+			f.ip++
+
+		case LT, GT, LE, GE:
+			av := regs[in.B()]
+			bv := regs[in.C()]
+			if err := checkMixedCmp(av, bv); err != nil {
+				if f.catch(err) {
+					continue
+				}
+				return fail(err)
+			}
+			c, err := runtime.Compare(av, bv)
 			if err != nil {
 				return fail(err)
 			}
+			var res bool
+			switch op {
+			case LT:
+				res = c < 0
+			case GT:
+				res = c > 0
+			case LE:
+				res = c <= 0
+			case GE:
+				res = c >= 0
+			}
+			regs[in.A()] = runtime.Bool(res)
+			f.ip++
 
-			if callee.Kind == runtime.KindFunction &&
-				callee.Func != nil && callee.Func.IsNative {
-				r, err := callee.Func.Native(s.vm, callArgs)
+		case JMP:
+			f.ip += 1 + in.SBx()
+
+		case JMPIFNOT:
+			v := regs[in.A()]
+			if v.Kind == runtime.KindBool && !v.Bool {
+				f.ip += 1 + in.SBx()
+			} else {
+				f.ip++
+			}
+
+		case JMPIF:
+			v := regs[in.A()]
+			if v.Kind == runtime.KindBool && v.Bool {
+				f.ip += 1 + in.SBx()
+			} else {
+				f.ip++
+			}
+
+		case CALL:
+			base, argc, dst := in.A(), in.B(), in.C()
+			cv := regs[base]
+			args := regs[base+1 : base+1+argc]
+
+			if cv.Kind == runtime.KindFunction && cv.Func != nil && cv.Func.IsNative {
+				if ar := cv.Func.Arity; ar >= 0 && ar != argc {
+					return fail(fmt.Errorf(
+						"(:function_clause, (%s, %d args))", cv.Func.Name, argc))
+				}
+				fresh := append([]runtime.Value(nil), args...) // K-5
+				r, err := cv.Func.Native(s.vm, fresh)
 				if err != nil {
-					if handleRaise(err) {
+					if f.catch(err) {
 						continue
 					}
 					return fail(err)
 				}
-				push(r)
-				f.ip += 3
+				regs[dst] = r
+				f.ip++
 				continue
 			}
 
-			newFrame, err := frameFromFn(callee, callArgs)
+			nf, err := frameFromFn(cv, args)
 			if err != nil {
-				if handleRaise(err) {
+				if f.catch(err) {
 					continue
 				}
 				return fail(err)
 			}
+			f.callDst = dst
+			f.ip++
+			a.frames = append(a.frames, nf)
+			return stepContinue
 
-			if len(f.handlers) == 0 && isTailCall(code, f.ip) {
-				a.frames[len(a.frames)-1] = newFrame
-				return stepContinue
+		case TAILCALL:
+			base, argc := in.A(), in.B()
+			cv := regs[base]
+			args := regs[base+1 : base+1+argc]
+
+			if len(f.handlers) != 0 {
+				return fail(errors.New("internal: TAILCALL under active trap"))
 			}
 
-			a.frames = append(a.frames, newFrame)
-			f.ip += 3
-			return stepContinue
-		case OpReturn:
-			v, err := pop()
+			if cv.Kind == runtime.KindFunction && cv.Func != nil && cv.Func.IsNative {
+				if ar := cv.Func.Arity; ar >= 0 && ar != argc {
+					return fail(fmt.Errorf(
+						"(:function_clause, (%s, %d args))", cv.Func.Name, argc))
+				}
+				r, err := cv.Func.Native(s.vm, append([]runtime.Value(nil), args...))
+				if err != nil {
+					return fail(err)
+				}
+				a.result = r
+				return stepDone
+			}
+
+			c, err := resolveCallee(cv)
+			if err == nil {
+				err = checkArity(c, argc)
+			}
 			if err != nil {
 				return fail(err)
 			}
-			a.result = v
+
+			nregs := c.chunk.NumRegs
+			if nregs <= cap(f.regs) {
+				regs = f.regs[:nregs]
+				bindArgs(regs, c.chunk, args) // args ⊂ старого regs: memmove-безопасно
+				clear(regs[c.chunk.NumParams:cap(regs)])
+			} else {
+				regs = make([]runtime.Value, nregs)
+				bindArgs(regs, c.chunk, args)
+			}
+			f.regs, f.chunk, f.name, f.captures, f.ip =
+				regs, c.chunk, c.name, c.captures, 0
+			// f.callDst НЕ трогаем: результат уйдёт туда же, куда ушёл бы
+			// у исходного вызова.
+			return stepContinue
+
+		case RETURN:
+			a.result = regs[in.A()]
 			return stepDone
 
-		case OpTuple, OpList, OpVector:
-			n := operand(f.ip)
-			vs := make([]runtime.Value, n)
-			for i := n - 1; i >= 0; i-- {
-				v, err := pop()
-				if err != nil {
-					return fail(err)
-				}
-				vs[i] = v
-			}
+		case TUPLE, LIST, VECTOR:
+			n := in.C()
+			base := in.B()
+			elems := make([]runtime.Value, n)
+			copy(elems, regs[base:base+n])
 			switch op {
-			case OpTuple:
-				push(runtime.Tuple(vs...))
-			case OpList:
-				push(runtime.List(vs...))
-			case OpVector:
-				push(runtime.Vector(vs...))
+			case TUPLE:
+				regs[in.A()] = runtime.Tuple(elems...)
+			case LIST:
+				regs[in.A()] = runtime.List(elems...)
+			case VECTOR:
+				regs[in.A()] = runtime.Vector(elems...)
 			}
-			f.ip += 3
+			f.ip++
 
-		case OpMap:
-			n := operand(f.ip)
+		case MAP:
+			n := in.C()
+			base := in.B()
 			entries := make([]runtime.MapEntry, n)
-			for i := n - 1; i >= 0; i-- {
-				val, err := pop()
-				if err != nil {
-					return fail(err)
+			for i := 0; i < n; i++ {
+				entries[i] = runtime.MapEntry{
+					Key: regs[base+2*i],
+					Val: regs[base+2*i+1],
 				}
-				key, err := pop()
-				if err != nil {
-					return fail(err)
-				}
-				entries[i] = runtime.MapEntry{Key: key, Val: val}
 			}
-			push(runtime.Map(entries))
-			f.ip += 3
+			regs[in.A()] = runtime.Map(entries)
+			f.ip++
 
-		case OpRange:
-			endV, err := pop()
+		case RANGE:
+			r, err := vmMakeRange(regs[in.B()], regs[in.C()])
 			if err != nil {
-				return fail(err)
-			}
-			startV, err := pop()
-			if err != nil {
-				return fail(err)
-			}
-			r, err := vmMakeRange(startV, endV)
-			if err != nil {
-				if handleRaise(err) {
+				if f.catch(err) {
 					continue
 				}
 				return fail(err)
 			}
-			push(r)
+			regs[in.A()] = r
 			f.ip++
 
-		case OpIndex:
-			idx, err := pop()
+		case INDEX:
+			r, err := vmIndex(regs[in.B()], regs[in.C()])
 			if err != nil {
-				return fail(err)
-			}
-			obj, err := pop()
-			if err != nil {
-				return fail(err)
-			}
-			r, err := vmIndex(obj, idx)
-			if err != nil {
-				if handleRaise(err) {
+				if f.catch(err) {
 					continue
 				}
 				return fail(err)
 			}
-			push(r)
+			regs[in.A()] = r
 			f.ip++
 
-		case OpRaise:
-			v, err := pop()
-			if err != nil {
-				return fail(err)
-			}
-			if handleRaise(&ErrRaise{Val: v}) {
+		case RAISE:
+			rerr := &ErrRaise{Val: regs[in.A()]}
+			if f.catch(rerr) {
 				continue
 			}
-			return fail(&ErrRaise{Val: v})
+			return fail(rerr)
 
-		case OpMakeClosure:
-			n := operand(f.ip)
-			caps := make([]runtime.Value, n)
-			for i := n - 1; i >= 0; i-- {
-				v, err := pop()
-				if err != nil {
-					return fail(err)
-				}
-				caps[i] = v
-			}
-			fnVal, err := pop()
-			if err != nil {
-				return fail(err)
-			}
+		case MAKECLOSURE:
+			fnVal := regs[in.B()]
 			if fnVal.Kind != runtime.KindFunction || fnVal.Func == nil {
 				return fail(fmt.Errorf("internal: MAKECLOSURE expects function"))
 			}
-			fv := fnVal.Func
-			push(runtime.MakeClosure(fv.Name, fv.Arity, fv.Body, caps))
-			f.ip += 3
+			n := in.C()
+			caps := make([]runtime.Value, n)
+			copy(caps, regs[in.B()+1:in.B()+1+n])
+			regs[in.A()] = runtime.MakeClosure(
+				fnVal.Func.Name, fnVal.Func.Arity, fnVal.Func.Body, caps)
+			f.ip++
 
-		case OpGetUpvalue:
-			idx := operand(f.ip)
-			if idx >= len(f.captures) {
-				return fail(fmt.Errorf("internal: upvalue %d out of range", idx))
-			}
-			push(f.captures[idx])
-			f.ip += 3
-
-		case OpSetUpvalue:
-			idx := operand(f.ip)
-			if idx >= len(f.captures) {
-				return fail(fmt.Errorf("internal: upvalue %d out of range", idx))
-			}
-			v, err := pop()
-			if err != nil {
-				return fail(err)
-			}
-			f.captures[idx] = v
-			f.ip += 3
-
-		case OpTrapBegin:
+		case TRAPBEGIN:
 			f.handlers = append(f.handlers, trapHandler{
-				ip:       operand(f.ip),
-				stackLen: len(f.stack),
+				ip:     f.ip + 1 + in.SBx(),
+				errReg: in.A(),
 			})
-			f.ip += 3
+			f.ip++
 
-		case OpTrapEnd:
+		case TRAPEND:
 			if len(f.handlers) == 0 {
 				return fail(fmt.Errorf("internal: TRAPEND without handler"))
 			}
 			f.handlers = f.handlers[:len(f.handlers)-1]
 			f.ip++
 
-		case OpMakeOk:
-			v, err := pop()
-			if err != nil {
-				return fail(err)
-			}
-			push(runtime.Variant("Ok", v))
+		case MAKEOK:
+			regs[in.A()] = runtime.Variant("Ok", regs[in.B()])
 			f.ip++
 
-		case OpMakeError:
-			v, err := pop()
-			if err != nil {
-				return fail(err)
-			}
-			push(runtime.Variant("Error", v))
+		case MAKEERROR:
+			regs[in.A()] = runtime.Variant("Error", regs[in.B()])
 			f.ip++
 
-		case OpSpawn:
-			linked := operand(f.ip) == 1
-			fn, err := pop()
-			if err != nil {
-				return fail(err)
-			}
+		// ---- Акторные опкоды (§6) ----
+
+		case SPAWN:
+			base, linked := in.A(), in.C() == 1
+			fn := regs[in.B()]
 			pid, err := s.Spawn(fn, nil)
 			if err != nil {
+				if f.catch(err) {
+					continue
+				}
 				return fail(err)
 			}
 			if linked {
 				s.Watch(a.pid, pid)
 			}
-			push(runtime.Value{Kind: runtime.KindPid, Pid: pid})
-			f.ip += 3
+			regs[base] = runtime.Value{Kind: runtime.KindPid, Pid: pid}
+			f.ip++
 
-		case OpSend:
-			msg, err := pop()
-			if err != nil {
-				return fail(err)
-			}
-			pidVal, err := pop()
-			if err != nil {
-				return fail(err)
-			}
+		case SEND:
+			pidVal := regs[in.B()]
+			msg := regs[in.C()]
 			if pidVal.Kind != runtime.KindPid {
-				return fail(fmt.Errorf("(:type_error, (:send, %s))", pidVal.Inspect()))
+				return fail(fmt.Errorf(
+					"(:type_error, (:send, %s))", pidVal.Inspect()))
 			}
-			push(s.Send(pidVal.Pid, msg))
+			regs[in.A()] = s.Send(pidVal.Pid, msg)
 			f.ip++
 
-		case OpSelf:
-			push(runtime.Value{Kind: runtime.KindPid, Pid: a.pid})
+		case SELF:
+			regs[in.A()] = runtime.Value{Kind: runtime.KindPid, Pid: a.pid}
 			f.ip++
 
-		case OpMakeRef:
+		case MAKEREF:
 			ref := s.nextRef
 			s.nextRef++
-			push(runtime.Value{Kind: runtime.KindRef, Ref: ref})
+			regs[in.A()] = runtime.Value{Kind: runtime.KindRef, Ref: ref}
 			f.ip++
 
-		case OpWatch:
-			pidVal, err := pop()
-			if err != nil {
-				return fail(err)
-			}
+		case WATCH:
+			pidVal := regs[in.B()]
 			if pidVal.Kind != runtime.KindPid {
-				return fail(fmt.Errorf("(:type_error, (:watch, %s))", pidVal.Inspect()))
+				return fail(fmt.Errorf(
+					"(:type_error, (:watch, %s))", pidVal.Inspect()))
 			}
 			ref := s.Watch(a.pid, pidVal.Pid)
-			push(runtime.Value{Kind: runtime.KindRef, Ref: ref})
+			regs[in.A()] = runtime.Value{Kind: runtime.KindRef, Ref: ref}
 			f.ip++
 
-		case OpUnwatch:
-			refVal, err := pop()
-			if err != nil {
-				return fail(err)
-			}
+		case UNWATCH:
+			refVal := regs[in.B()]
 			if refVal.Kind != runtime.KindRef {
-				return fail(fmt.Errorf("(:type_error, (:unwatch, %s))", refVal.Inspect()))
+				return fail(fmt.Errorf(
+					"(:type_error, (:unwatch, %s))", refVal.Inspect()))
 			}
 			s.Unwatch(a.pid, refVal.Ref)
-			push(runtime.Unit)
+			regs[in.A()] = runtime.Unit
 			f.ip++
 
-		case OpMailboxSize:
-			pidVal, err := pop()
-			if err != nil {
-				return fail(err)
-			}
+		case MAILBOXSIZE:
+			pidVal := regs[in.B()]
 			if pidVal.Kind != runtime.KindPid {
-				return fail(fmt.Errorf("(:type_error, (:mailbox_size, %s))", pidVal.Inspect()))
+				return fail(fmt.Errorf(
+					"(:type_error, (:mailbox_size, %s))", pidVal.Inspect()))
 			}
 			if t, ok := s.actors[pidVal.Pid]; ok {
-				push(runtime.Int(int64(len(t.mailbox))))
+				regs[in.A()] = runtime.Int(int64(len(t.mailbox)))
 			} else {
-				push(runtime.Int(0))
+				regs[in.A()] = runtime.Int(0)
 			}
 			f.ip++
 
-		case OpYield:
-			f.ip++
-			return stepYield
-
-		case OpRecvTimer:
-			msVal, err := pop()
-			if err != nil {
-				return fail(err)
-			}
+		case RECVTIMER:
+			msVal := regs[in.A()]
 			if msVal.Kind != runtime.KindInt {
-				return fail(fmt.Errorf("(:type_error, (:after, %s))", msVal.Inspect()))
+				return fail(fmt.Errorf(
+					"(:type_error, (:after, %s))", msVal.Inspect()))
 			}
 			var ms int64
 			if msVal.IsSmall {
@@ -963,66 +893,67 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 			}
 			a.recvDeadline = time.Now().Add(time.Duration(ms) * time.Millisecond)
 			f.ip++
-		case OpRecvTake:
-			slot := operand(f.ip)
-			after := operand2(f.ip)
-			f.ip += 5
+
+		case RECVTAKE:
+			slot := in.A()
+			sbx := in.SBx()
 
 			if len(a.downMsgs) > 0 {
 				msg := a.downMsgs[0]
 				a.downMsgs = a.downMsgs[1:]
 				a.recvDeadline = time.Time{}
-				if slot < len(f.locals) {
-					f.locals[slot] = msg
-				}
+				regs[slot] = msg
+				f.ip++
 				continue
 			}
 			if len(a.mailbox) > 0 {
 				msg := a.mailbox[0]
 				a.mailbox = a.mailbox[1:]
 				a.recvDeadline = time.Time{}
-				if slot < len(f.locals) {
-					f.locals[slot] = msg
-				}
+				regs[slot] = msg
+				f.ip++
 				continue
 			}
 
 			if !a.recvDeadline.IsZero() && !time.Now().Before(a.recvDeadline) {
 				a.recvDeadline = time.Time{}
-				if after != 0xFFFF {
-					f.ip = after
+				if sbx != 0 {
+					f.ip += 1 + sbx
 					continue
 				}
+				// after не задан: проваливаемся к stepBlock.
 			}
 
-			f.ip -= 5
 			return stepBlock
 
-		case OpMatchLocal:
-			slot := operand(f.ip)
-			patIdx := operand2(f.ip)
-			f.ip += 5
+		case MATCHLOCAL:
+			slot := in.A()
+			patIdx := in.Bx()
+			if patIdx >= len(f.chunk.Patterns) {
+				return fail(fmt.Errorf(
+					"internal: pattern %d out of range", patIdx))
+			}
+			pat := f.chunk.Patterns[patIdx]
+			if MatchPattern(regs[slot], pat, regs) {
+				f.ip += 2 // пропустить MATCHLOCAL и следующую JMP
+			} else {
+				f.ip++ // встать на JMP (fail-переход)
+			}
 
-			if slot >= len(f.locals) {
-				return fail(fmt.Errorf("internal: match slot %d out of range", slot))
-			}
-			if patIdx >= len(chunk.Patterns) {
-				return fail(fmt.Errorf("internal: pattern %d out of range", patIdx))
-			}
-			pat := chunk.Patterns[patIdx]
-			if !MatchPattern(f.locals[slot], pat, f.locals) {
-				f.ip = pat.FailAddr
-			}
+		case YIELD:
+			f.ip++
+			return stepYield
 
 		default:
-			return fail(fmt.Errorf("internal: unknown opcode %d at %d in %s", op, f.ip, f.fn.Name))
+			return fail(fmt.Errorf(
+				"internal: unknown opcode %d at %d in %s", op, f.ip, f.name))
 		}
 	}
 
-	return fail(fmt.Errorf("internal: fell off end of %s", f.fn.Name))
+	return fail(fmt.Errorf("internal: fell off end of %s", f.name))
 }
 
-// ---- helpers for OpRange / OpIndex ----
+// ---- helpers for RANGE / INDEX ----
 
 func vmMakeRange(startV, endV runtime.Value) (runtime.Value, error) {
 	if startV.Kind != runtime.KindInt || endV.Kind != runtime.KindInt {
@@ -1154,42 +1085,28 @@ func (s *Scheduler) callSync(fn runtime.Value, args []runtime.Value) (runtime.Va
 		outcome := s.stepFrame(tmp, top)
 		switch outcome {
 		case stepDone:
+			tmp.frames[len(tmp.frames)-1] = nil
 			tmp.frames = tmp.frames[:len(tmp.frames)-1]
 			if len(tmp.frames) == 0 {
 				return tmp.result, nil
 			}
 			caller := tmp.frames[len(tmp.frames)-1]
-			caller.stack = append(caller.stack, tmp.result)
+			caller.regs[caller.callDst] = tmp.result
+
 		case stepFailed:
 			return runtime.Unit, tmp.err
+
 		case stepBlock:
 			return runtime.Unit,
 				fmt.Errorf("internal: recv in synchronous call context")
+
 		case stepYield, stepContinue:
 			// продолжаем
 		}
 	}
 }
 
-// isTailCall reports whether the OpCall at byte offset ip in code is in
-// tail position of its enclosing function.
-func isTailCall(code []byte, ip int) bool {
-	next := ip + 3
-	if next >= len(code) {
-		return false
-	}
-	switch OpCode(code[next]) {
-	case OpReturn:
-		return true
-	case OpJump:
-		if next+2 >= len(code) {
-			return false
-		}
-		target := int(code[next+1])<<8 | int(code[next+2])
-		return target < len(code) && OpCode(code[target]) == OpReturn
-	}
-	return false
-}
+// ---- tryUnwindRaise ----
 
 // tryUnwindRaise пытается поймать невыловленный raise, всплывая вверх
 // по стеку кадров текущего актора.
@@ -1202,6 +1119,7 @@ func (s *Scheduler) tryUnwindRaise(a *Actor) bool {
 		return false
 	}
 
+	a.frames[len(a.frames)-1] = nil
 	a.frames = a.frames[:len(a.frames)-1]
 
 	for len(a.frames) > 0 {
@@ -1209,13 +1127,13 @@ func (s *Scheduler) tryUnwindRaise(a *Actor) bool {
 		if len(parent.handlers) > 0 {
 			h := parent.handlers[len(parent.handlers)-1]
 			parent.handlers = parent.handlers[:len(parent.handlers)-1]
-			parent.stack = parent.stack[:h.stackLen]
-			parent.stack = append(parent.stack, rerr.Val)
+			parent.regs[h.errReg] = rerr.Val
 			parent.ip = h.ip
 			a.err = nil
 			a.result = runtime.Unit
 			return true
 		}
+		a.frames[len(a.frames)-1] = nil
 		a.frames = a.frames[:len(a.frames)-1]
 	}
 	return false

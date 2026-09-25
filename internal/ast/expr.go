@@ -198,6 +198,7 @@ type recvExpr struct {
 
 type recvBranch struct {
 	pattern Pattern
+	guard   Expr
 	expr    Expr
 }
 

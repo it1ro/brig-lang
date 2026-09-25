@@ -88,6 +88,7 @@ func NewMatchExpr(expr Expr, branches []MatchBranchArg, pos, end int) Expr {
 // RecvBranchArg is an AST argument node.
 type RecvBranchArg struct {
 	Pattern Pattern
+	Guard   Expr
 	Body    Expr
 }
 
@@ -108,7 +109,7 @@ type RecvClauseArg struct {
 func NewRecvExpr(branches []RecvBranchArg, clauses RecvClauseArg, pos, end int) Expr {
 	brs := make([]recvBranch, 0, len(branches))
 	for _, b := range branches {
-		brs = append(brs, recvBranch{pattern: b.Pattern, expr: b.Body})
+		brs = append(brs, recvBranch{pattern: b.Pattern, guard: b.Guard, expr: b.Body})
 	}
 	return &recvExpr{
 		posEnd{pos, end},

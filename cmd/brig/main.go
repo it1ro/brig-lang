@@ -2,14 +2,18 @@
 //
 // Подкоманды:
 //   - check — парсинг + контекстный анализ без исполнения;
-//   - run   — полный пайплайн: парсер → sema → компилятор → стековая ВМ;
+//   - run   — полный пайплайн: парсер → sema → компилятор → регистровая ВМ;
 //   - repl  — отладочный цикл (токены лексера);
 //   - version / help.
+//
+// Переменные окружения:
+//   - BRIG_VERIFY=1 — прогнать vm.Verify по всем функциям перед RunMain.
 package main
 
 import (
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/it1ro/brig-lang/internal/compiler"
@@ -66,6 +70,9 @@ func usage() {
   brig run   <file.brig>    выполнить модуль (парсер + sema + компилятор + ВМ)
   brig repl                 интерактивный режим (отладочный)
   brig version              версия
+
+Переменные окружения:
+  BRIG_VERIFY=1             прогнать vm.Verify перед RunMain
 
 Exit codes: 0 ok, 1 ошибка парсинга/sema, 2 runtime raise, 3 внутренняя ошибка.
 `)
@@ -158,9 +165,29 @@ func runFile(args []string) {
 		os.Exit(exitParse)
 	}
 
+	if os.Getenv("BRIG_VERIFY") == "1" {
+		names := make([]string, 0, len(img.Functions))
+		for name := range img.Functions {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		for _, name := range names {
+			if verr := vm.Verify(img.Functions[name].Chunk); verr != nil {
+				fmt.Fprintf(os.Stderr,
+					"brig run: verify %s: %v\n", name, verr)
+				os.Exit(exitInternal)
+			}
+		}
+	}
+
 	if dump {
-		for name, fn := range img.Functions {
-			fmt.Print(fn.Chunk.Disassemble(name))
+		names := make([]string, 0, len(img.Functions))
+		for name := range img.Functions {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		for _, name := range names {
+			fmt.Print(img.Functions[name].Disassemble())
 		}
 		return
 	}

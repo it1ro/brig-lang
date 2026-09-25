@@ -68,7 +68,7 @@ func jsonEncode(sb *strings.Builder, v Value, depth int) error {
 
 	case KindFloat:
 		// %g даёт наиболее компактную форму, приемлемую как JSON number.
-		sb.WriteString(fmt.Sprintf("%g", v.Float))
+		fmt.Fprintf(sb, "%g", v.Float)
 
 	case KindStr:
 		b, _ := json.Marshal(v.Str)

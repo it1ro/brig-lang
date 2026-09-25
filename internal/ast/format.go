@@ -383,6 +383,10 @@ func (p *printer) recvString(v *recvExpr, indent int) string {
 		br := &v.branches[i]
 		sb.WriteString(indentStr(indent + 1))
 		sb.WriteString(p.patternString(br.pattern))
+		if br.guard != nil {
+			sb.WriteString(" when ")
+			sb.WriteString(p.exprString(br.guard, indent+1))
+		}
 		sb.WriteString(" ->")
 		p.writeBranchTail(&sb, br.expr, indent+1)
 	}
