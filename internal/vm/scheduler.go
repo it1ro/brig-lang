@@ -48,8 +48,8 @@ type Actor struct {
 	downMsgs []runtime.Value
 	hwm      int
 
-	watchers map[int]int // ref -> pid наблюдателя
-	watching map[int]int // target pid -> ref
+	watchers map[int]int
+	watching map[int]int
 
 	status actorStatus
 	result runtime.Value
@@ -67,7 +67,7 @@ type Scheduler struct {
 	ready   []*Actor
 	reds    int
 	mainPid int
-	active  *Actor // для sync-вызовов из прелюдии
+	active  *Actor
 }
 
 // NewScheduler создаёт планировщик.
@@ -154,7 +154,6 @@ func frameFromFn(fn runtime.Value, args []runtime.Value) (*Frame, error) {
 func (s *Scheduler) Send(to int, msg runtime.Value) runtime.Value {
 	a, ok := s.actors[to]
 	if !ok {
-		// Мёртвому — Ok(()), потеря.
 		return runtime.Variant("Ok", runtime.Unit)
 	}
 	if len(a.mailbox) >= a.hwm {
@@ -165,7 +164,6 @@ func (s *Scheduler) Send(to int, msg runtime.Value) runtime.Value {
 	return runtime.Variant("Ok", runtime.Unit)
 }
 
-// sendDown доставляет :down с приоритетом, игнорируя HWM.
 func (s *Scheduler) sendDown(to int, down runtime.Value) {
 	a, ok := s.actors[to]
 	if !ok {
@@ -189,7 +187,6 @@ func (s *Scheduler) Watch(watcherPid, targetPid int) int {
 
 	target, ok := s.actors[targetPid]
 	if !ok {
-		// Target мёртв — :down с :noproc сразу.
 		s.sendDown(watcherPid, runtime.Tuple(
 			runtime.Atom("down"),
 			runtime.Value{Kind: runtime.KindRef, Ref: ref},
@@ -218,7 +215,6 @@ func (s *Scheduler) Unwatch(watcherPid, ref int) {
 	}
 }
 
-// notifyWatchers рассылает :down наблюдателям.
 func (s *Scheduler) notifyWatchers(a *Actor, reason runtime.Value) {
 	for ref, watcherPid := range a.watchers {
 		s.sendDown(watcherPid, runtime.Tuple(
@@ -231,9 +227,18 @@ func (s *Scheduler) notifyWatchers(a *Actor, reason runtime.Value) {
 
 // ---- RunMain ----
 
-// RunMain запускает main как актор и крутит планировщик до его завершения.
+// RunMain запускает main как актор без аргументов.
 func (s *Scheduler) RunMain(mainFn runtime.Value) (runtime.Value, error) {
-	pid, err := s.Spawn(mainFn, nil)
+	return s.runMain(mainFn, nil)
+}
+
+// RunMainWithArgs — вариант с аргументами (Sprint 6.2, REPL).
+func (s *Scheduler) RunMainWithArgs(mainFn runtime.Value, args []runtime.Value) (runtime.Value, error) {
+	return s.runMain(mainFn, args)
+}
+
+func (s *Scheduler) runMain(mainFn runtime.Value, args []runtime.Value) (runtime.Value, error) {
+	pid, err := s.Spawn(mainFn, args)
 	if err != nil {
 		return runtime.Unit, err
 	}
@@ -358,11 +363,6 @@ const (
 
 // ---- stepFrame ----
 
-// stepFrame выполняет инструкции кадра f до:
-//   - OpReturn  (stepDone)
-//   - OpYield   (stepYield)
-//   - recv на пустом ящике (stepBlock)
-//   - невыловленный raise (stepFailed)
 func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 	chunk := f.fn.Chunk
 	code := chunk.Code
@@ -371,9 +371,6 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 	operand := func(ip int) int {
 		return int(code[ip+1])<<8 | int(code[ip+2])
 	}
-	// operand2 — чтение второго операнда EmitTwo-инструкции.
-	// EmitTwo: [op][a_hi][a_lo][b_hi][b_lo]. a читается через operand(ip),
-	// b — здесь. НЕ используйте operand(ip+3): это сдвиг на 5 байт, а не 3.
 	operand2 := func(ip int) int {
 		return int(code[ip+3])<<8 | int(code[ip+4])
 	}
@@ -645,10 +642,6 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 				return fail(err)
 			}
 
-			// Native callees (print/map/fold/raise/...) run inline.
-			// They cannot block; recv in a sync context is a design
-			// error (§15.2), and callSync is only appropriate for
-			// prelude-driven lambdas.
 			if callee.Kind == runtime.KindFunction &&
 				callee.Func != nil && callee.Func.IsNative {
 				r, err := callee.Func.Native(s.vm, callArgs)
@@ -663,13 +656,6 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 				continue
 			}
 
-			// Non-native callee: TCO if tail, else push a new frame
-			// onto the current actor's stack.
-			//
-			// §15.3: TCO is guaranteed outside active `ensure`. We
-			// conservatively disable it whenever a trap handler is
-			// active on this frame, because replacing the frame
-			// would drop the handler.
 			newFrame, err := frameFromFn(callee, callArgs)
 			if err != nil {
 				if handleRaise(err) {
@@ -679,9 +665,6 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 			}
 
 			if len(f.handlers) == 0 && isTailCall(code, f.ip) {
-				// Replace the top frame in place; the caller's
-				// RETURN (or JMP-to-RETURN) is elided along with
-				// the frame.
 				a.frames[len(a.frames)-1] = newFrame
 				return stepContinue
 			}
@@ -823,9 +806,6 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 			f.captures[idx] = v
 			f.ip += 3
 
-		case OpCloseUpvalue, OpDefineLocalFn:
-			return fail(fmt.Errorf("internal: opcode %s not implemented", op))
-
 		case OpTrapBegin:
 			f.handlers = append(f.handlers, trapHandler{
 				ip:       operand(f.ip),
@@ -855,8 +835,6 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 			}
 			push(runtime.Variant("Error", v))
 			f.ip++
-
-		// ---- v0.4.8: акторы ----
 
 		case OpSpawn:
 			linked := operand(f.ip) == 1
@@ -959,13 +937,10 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 			a.recvDeadline = time.Now().Add(time.Duration(ms) * time.Millisecond)
 			f.ip++
 		case OpRecvTake:
-			// EmitTwo: [op][a_hi][a_lo][b_hi][b_lo]. slot — первый операнд,
-			// after — второй. operand2 читает code[ip+3..ip+4] корректно.
 			slot := operand(f.ip)
 			after := operand2(f.ip)
 			f.ip += 5
 
-			// down-очередь приоритетна.
 			if len(a.downMsgs) > 0 {
 				msg := a.downMsgs[0]
 				a.downMsgs = a.downMsgs[1:]
@@ -985,9 +960,7 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 				continue
 			}
 
-			// Пусто. Проверяем таймаут.
 			if !a.recvDeadline.IsZero() && !time.Now().Before(a.recvDeadline) {
-				// Таймаут истёк: прыгаем на after-ветку.
 				a.recvDeadline = time.Time{}
 				if after != 0xFFFF {
 					f.ip = after
@@ -995,13 +968,10 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 				}
 			}
 
-			// Блокируемся. Откатываем ip, чтобы повторить take
-			// при пробуждении.
 			f.ip -= 5
 			return stepBlock
 
 		case OpMatchLocal:
-			// EmitTwo: [op][slot_hi][slot_lo][pat_hi][pat_lo].
 			slot := operand(f.ip)
 			patIdx := operand2(f.ip)
 			f.ip += 5
@@ -1025,7 +995,7 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 	return fail(fmt.Errorf("internal: fell off end of %s", f.fn.Name))
 }
 
-// ---- helpers for OpRange / OpIndex (Sprint 5.1, 5.3) ----
+// ---- helpers for OpRange / OpIndex ----
 
 func vmMakeRange(startV, endV runtime.Value) (runtime.Value, error) {
 	if startV.Kind != runtime.KindInt || endV.Kind != runtime.KindInt {
@@ -1035,7 +1005,6 @@ func vmMakeRange(startV, endV runtime.Value) (runtime.Value, error) {
 	sb := startV.AsBig()
 	eb := endV.AsBig()
 	if !sb.IsInt64() || !eb.IsInt64() {
-		// Границы не влезают в int64 — контейнированный :range_error.
 		return runtime.Unit, &ErrRaise{Val: runtime.Tuple(
 			runtime.Atom("range_error"),
 			runtime.Tuple(startV, endV))}
@@ -1082,6 +1051,18 @@ func vmIndex(obj, idx runtime.Value) (runtime.Value, error) {
 		}
 		return runtime.Str(string(runes[i])), nil
 
+	case runtime.KindBytes:
+		i, err := indexToInt(idx)
+		if err != nil {
+			return runtime.Unit, err
+		}
+		if i < 0 || i >= int64(len(obj.Bytes)) {
+			return runtime.Unit, &ErrRaise{Val: runtime.Tuple(
+				runtime.Atom("index_out_of_bounds"),
+				runtime.Tuple(idx, runtime.Int(int64(len(obj.Bytes)))))}
+		}
+		return runtime.Int(int64(obj.Bytes[i])), nil
+
 	case runtime.KindTuple:
 		i, err := indexToInt(idx)
 		if err != nil {
@@ -1120,7 +1101,6 @@ func indexToInt(v runtime.Value) (int64, error) {
 
 // ---- callSync ----
 
-// callSync — синхронный вызов функции.
 func (s *Scheduler) callSync(fn runtime.Value, args []runtime.Value) (runtime.Value, error) {
 	f, err := frameFromFn(fn, args)
 	if err != nil {
@@ -1165,23 +1145,7 @@ func (s *Scheduler) callSync(fn runtime.Value, args []runtime.Value) (runtime.Va
 }
 
 // isTailCall reports whether the OpCall at byte offset ip in code is in
-// tail position of its enclosing function. Two patterns are detected:
-//
-//	CALL ... ; RETURN
-//	CALL ... ; JMP target ; ... ; target: RETURN
-//
-// This is a heuristic, not full data-flow analysis, but it covers the
-// common cases generated by this compiler:
-//
-//   - tail of a function body:      CALL ; RETURN
-//   - tail of a `recv`/`match`/`if` branch: CALL ; JMP end ; ... ;
-//     end: RETURN  (compileRecv/compileIf emit a trailing JMP that
-//     targets a shared RETURN).
-//
-// TCO must additionally be disabled inside any active trap handler
-// (§15.3: TCO is guaranteed outside active `ensure`). We conservatively
-// disable it for any active handler, because replacing the frame would
-// drop the handler and break ensure semantics.
+// tail position of its enclosing function.
 func isTailCall(code []byte, ip int) bool {
 	next := ip + 3
 	if next >= len(code) {
@@ -1201,18 +1165,7 @@ func isTailCall(code []byte, ip int) bool {
 }
 
 // tryUnwindRaise пытается поймать невыловленный raise, всплывая вверх
-// по стеку кадров текущего актора. Возвращает true, если handler найден
-// и стек/ip восстановлены так, что stepFrame продолжит работу с места
-// catch-блока.
-//
-// Семантика (§10.2):
-//   - raise всплывает до ближайшего активного trap handler в стеке
-//     кадров;
-//   - если handler не найден до дна стека — актор падает.
-//
-// Вызывается только когда a.err — *ErrRaise. Для прочих ошибок
-// (internal: ..., type_error от не-native путей и т.п.) unwind не
-// применяется, актор падает.
+// по стеку кадров текущего актора.
 func (s *Scheduler) tryUnwindRaise(a *Actor) bool {
 	var rerr *ErrRaise
 	if !errors.As(a.err, &rerr) {
@@ -1222,7 +1175,6 @@ func (s *Scheduler) tryUnwindRaise(a *Actor) bool {
 		return false
 	}
 
-	// Снимаем кадр, в котором raise не был пойман.
 	a.frames = a.frames[:len(a.frames)-1]
 
 	for len(a.frames) > 0 {
