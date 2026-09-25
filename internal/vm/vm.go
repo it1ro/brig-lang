@@ -1,6 +1,7 @@
 // Package vm — стековая байткод-машина Brig.
 //
 // Подэтап 4.8: акторы с явным scheduler loop (§12, §15.2).
+// Sprint 6.2: RunMainWithArgs для persistent REPL.
 package vm
 
 import (
@@ -11,7 +12,12 @@ import (
 	"github.com/it1ro/brig-lang/internal/runtime"
 )
 
-const maxLocals = 64
+// maxLocals — потолок числа локальных слотов на кадр функции.
+// Sprint 6.2: увеличен с 64 до 256 + проверка в compiler.declareLocal.
+const maxLocals = 256
+
+// MaxLocals — экспортируемая версия для compiler.declareLocal.
+const MaxLocals = maxLocals
 
 // ErrRaise — необработанное исключение.
 type ErrRaise struct{ Val runtime.Value }
@@ -77,6 +83,11 @@ func (vm *VM) RunMain(mainFn runtime.Value) (runtime.Value, error) {
 	return vm.scheduler.RunMain(mainFn)
 }
 
+// RunMainWithArgs — вариант RunMain с аргументами (Sprint 6.2, REPL).
+func (vm *VM) RunMainWithArgs(mainFn runtime.Value, args []runtime.Value) (runtime.Value, error) {
+	return vm.scheduler.RunMainWithArgs(mainFn, args)
+}
+
 // ---- арифметика (§7.3) ----
 
 func add(a, b runtime.Value) (runtime.Value, error) {
@@ -97,7 +108,6 @@ func add(a, b runtime.Value) (runtime.Value, error) {
 	}
 	if a.IsSmall && b.IsSmall {
 		sum := a.SmallInt + b.SmallInt
-		// overflow detection: знаки a и b совпадают, но знак суммы — нет.
 		if (b.SmallInt > 0 && sum > a.SmallInt) ||
 			(b.SmallInt < 0 && sum < a.SmallInt) ||
 			b.SmallInt == 0 {
@@ -116,7 +126,6 @@ func sub(a, b runtime.Value) (runtime.Value, error) {
 	}
 	if a.IsSmall && b.IsSmall {
 		diff := a.SmallInt - b.SmallInt
-		// overflow: знаки a и b различаются, но знак разности — как у b.
 		if (b.SmallInt > 0 && diff < a.SmallInt) ||
 			(b.SmallInt < 0 && diff > a.SmallInt) ||
 			b.SmallInt == 0 {
