@@ -2,7 +2,7 @@
 //
 // Sprint 7, S7.2 + S7.6. Дизайн: docs/02-register-based-virtual-machine.md §7.
 //
-// Аллокатор — bump-указатель со стековой дисциплиной (nextReg + releaseToMark).
+// Аллокатор — bump-указатель со регистровой дисциплиной (nextReg + releaseToMark).
 // Соглашение о вызовах (§3): callee в R[A], аргументы в R[A+1..A+B], результат
 // в R[C]. Хвостовость — поле dest.tail; TAILCALL эмитится только вне trap.
 package compiler
@@ -598,7 +598,7 @@ func (fc *funcCompiler) compileLetBind(st ast.LetBind, d dest) error {
 		return err
 	}
 	fc.bindLocal(name, r)
-	// Значение let-стейтмента — () (совместимо со стековой VM).
+	// Значение let-стейтмента — () (совместимо с регистровой VM).
 	return fc.loadUnit(d)
 }
 
@@ -669,7 +669,7 @@ func (fc *funcCompiler) compileLocalFn(decl ast.LocalFnDecl, d dest) error {
 	fn := &vm.Function{Name: mangled, Arity: fnArity, Chunk: child.chunk}
 	fc.compiler.image.Functions[mangled] = fn
 
-	// Значение local fn — () (совместимо со стековой VM).
+	// Значение local fn — () (совместимо с регистровой VM).
 	return fc.loadUnit(d)
 }
 

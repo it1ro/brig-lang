@@ -1,4 +1,4 @@
-// Package vm — стековая байткод-машина Brig.
+// Package vm — регистровая байткод-машина Brig.
 //
 // Подэтап 4.8: акторы с явным scheduler loop (§12, §15.2).
 // Sprint 6.2: RunMainWithArgs для persistent REPL.

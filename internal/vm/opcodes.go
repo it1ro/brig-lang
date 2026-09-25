@@ -4,7 +4,7 @@ package vm
 //
 // Инструкция — 4 байта (Instr); op занимает младший байт uint32.
 // Полный набор — 49 опкодов: удалены Pop/Dup/GetLocal/SetLocal/SetUpvalue
-// стековой ВМ, добавлены MOVE и TAILCALL.
+// регистровой ВМ, добавлены MOVE и TAILCALL.
 type OpCode byte
 
 const (
