@@ -211,7 +211,6 @@ fn main() ->
 
 // trap внутри колбэка прелюдии должен ловить raise из вложенного кадра (T-34).
 func TestAuditTrapInsideNativeCallback(t *testing.T) {
-	t.Skip("blocked: T-34")
 	if err := runModuleErr(t, `module Main
 fn g(x) -> if x == 2 then raise(:bad) else x
 fn main() ->
