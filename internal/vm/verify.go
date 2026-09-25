@@ -228,20 +228,34 @@ func verifyDefiniteAssignment(c *Chunk) error {
 			}
 			out := cloneBoolSlice(in[ip])
 			applyWrites(c.Code[ip], out)
-			for _, succ := range successors(c.Code, ip) {
+
+			propagate := func(succ int, state []bool) {
 				if succ < 0 || succ >= n {
-					continue
+					return
 				}
 				if in[succ] == nil {
-					in[succ] = out
+					in[succ] = state
 					changed = true
-					continue
+					return
 				}
-				merged := intersectBoolSlices(in[succ], out)
+				merged := intersectBoolSlices(in[succ], state)
 				if !equalBoolSlices(merged, in[succ]) {
 					in[succ] = merged
 					changed = true
 				}
+			}
+
+			for _, succ := range successors(c.Code, ip) {
+				propagate(succ, out)
+			}
+
+			if c.Code[ip].Op() == TRAPBEGIN {
+				handlerOut := cloneBoolSlice(out)
+				errReg := c.Code[ip].A()
+				if errReg >= 0 && errReg < len(handlerOut) {
+					handlerOut[errReg] = true
+				}
+				propagate(ip+1+c.Code[ip].SBx(), handlerOut)
 			}
 		}
 	}

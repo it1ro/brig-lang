@@ -1,31 +1,33 @@
-== main arity=0 params=0 regs=7 consts=7 patterns=0 ==
-0000   0:0   LOADK       r3 k0 ; false
-0001   0:0   TRAPBEGIN   r2 handler -> 0008
-0002   0:0   GETGLOBAL   r4 k2 ; print
-0003   0:0   LOADK       r5 k3 ; body
-0004   4:9   CALL        r4 1 -> r6
-0005   4:9   LOADK       r1 k4 ; :ok
-0006   4:9   TRAPEND     
-0007   4:9   JMP         -> 0009
-0008   4:9   LOADK       r3 k1 ; true
-0009   4:9   TRAPBEGIN   r2 handler -> 0015
-0010   4:9   GETGLOBAL   r5 k2 ; print
-0011   4:9   LOADK       r6 k5 ; cleanup-2
-0012   6:16  CALL        r5 1 -> r4
-0013   6:16  TRAPEND     
-0014   6:16  JMP         -> 0016
-0015   6:16  LOADK       r3 k1 ; true
-0016   6:16  TRAPBEGIN   r2 handler -> 0022
-0017   6:16  GETGLOBAL   r5 k2 ; print
-0018   6:16  LOADK       r6 k6 ; cleanup-1
-0019   5:16  CALL        r5 1 -> r4
-0020   5:16  TRAPEND     
-0021   5:16  JMP         -> 0023
-0022   5:16  LOADK       r3 k1 ; true
-0023   5:16  JMPIF       r3 -> 0026
-0024   5:16  MAKEOK      r1 r1
-0025   5:16  JMP         -> 0027
-0026   5:16  MAKEERROR   r1 r2
-0027   5:16  GETGLOBAL   r2 k2 ; print
-0028   5:16  MOVE        r3 r1
-0029   8:5   TAILCALL    r2 1
+== main arity=0 params=0 regs=7 consts=8 patterns=0 ==
+0000   0:0   LOADK       r1 k2 ; ()
+0001   0:0   LOADK       r2 k2 ; ()
+0002   0:0   LOADK       r3 k0 ; false
+0003   0:0   TRAPBEGIN   r2 handler -> 0010
+0004   0:0   GETGLOBAL   r4 k3 ; print
+0005   0:0   LOADK       r5 k4 ; body
+0006   4:9   CALL        r4 1 -> r6
+0007   4:9   LOADK       r1 k5 ; :ok
+0008   4:9   TRAPEND     
+0009   4:9   JMP         -> 0011
+0010   4:9   LOADK       r3 k1 ; true
+0011   4:9   TRAPBEGIN   r2 handler -> 0017
+0012   4:9   GETGLOBAL   r5 k3 ; print
+0013   4:9   LOADK       r6 k6 ; cleanup-2
+0014   6:16  CALL        r5 1 -> r4
+0015   6:16  TRAPEND     
+0016   6:16  JMP         -> 0018
+0017   6:16  LOADK       r3 k1 ; true
+0018   6:16  TRAPBEGIN   r2 handler -> 0024
+0019   6:16  GETGLOBAL   r5 k3 ; print
+0020   6:16  LOADK       r6 k7 ; cleanup-1
+0021   5:16  CALL        r5 1 -> r4
+0022   5:16  TRAPEND     
+0023   5:16  JMP         -> 0025
+0024   5:16  LOADK       r3 k1 ; true
+0025   5:16  JMPIF       r3 -> 0028
+0026   5:16  MAKEOK      r1 r1
+0027   5:16  JMP         -> 0029
+0028   5:16  MAKEERROR   r1 r2
+0029   5:16  GETGLOBAL   r2 k3 ; print
+0030   5:16  MOVE        r3 r1
+0031   8:5   TAILCALL    r2 1

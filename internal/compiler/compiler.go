@@ -1,6 +1,6 @@
 // Package compiler — компиляция AST в регистровый байткод ВМ.
 //
-// Sprint 7, S7.2. Дизайн: docs/02-register-based-virtual-machine.md §7.
+// Sprint 7, S7.2 + S7.6. Дизайн: docs/02-register-based-virtual-machine.md §7.
 //
 // Аллокатор — bump-указатель со стековой дисциплиной (nextReg + releaseToMark).
 // Соглашение о вызовах (§3): callee в R[A], аргументы в R[A+1..A+B], результат
@@ -10,6 +10,7 @@ package compiler
 import (
 	"fmt"
 	"math"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -17,6 +18,11 @@ import (
 	"github.com/it1ro/brig-lang/internal/runtime"
 	"github.com/it1ro/brig-lang/internal/vm"
 )
+
+// Verify — если true, компилятор прогоняет vm.Verify по каждому чанку
+// после сборки модуля. Включается в тестах (verify_on_test.go) или
+// через BRIG_VERIFY=1 в cmd/brig/main.go.
+var Verify = false
 
 // ProgramImage — результат компиляции модуля.
 type ProgramImage struct {
@@ -167,11 +173,32 @@ func (fc *funcCompiler) resolveLocal(name string) (int, bool) {
 	return 0, false
 }
 
-func (fc *funcCompiler) resolveUpvalueIdx(name string) (int, bool) {
+// resolveUpvalue ищет name в цепочке parents, добавляя upvalue на каждом
+// промежуточном уровне (§7, D-4). Возвращает индекс upvalue в текущем
+// компиляторе.
+func (fc *funcCompiler) resolveUpvalue(name string) (int, bool) {
 	for i, uv := range fc.upvalues {
 		if uv.name == name {
 			return i, true
 		}
+	}
+	p := fc.parent
+	if p == nil {
+		return 0, false
+	}
+	if r, ok := p.resolveLocal(name); ok {
+		idx := len(fc.upvalues)
+		fc.upvalues = append(fc.upvalues, upvalueInfo{
+			name: name, isLocal: true, index: r,
+		})
+		return idx, true
+	}
+	if i, ok := p.resolveUpvalue(name); ok {
+		idx := len(fc.upvalues)
+		fc.upvalues = append(fc.upvalues, upvalueInfo{
+			name: name, isLocal: false, index: i,
+		})
+		return idx, true
 	}
 	return 0, false
 }
@@ -337,9 +364,9 @@ func (c *Compiler) Compile(prog *ast.Program) (image *ProgramImage, err error) {
 			continue
 		}
 		cl := clauses[0]
-		fn, err := c.compileFunction(fd.FnName(), cl.Params, cl.Body)
-		if err != nil {
-			return nil, fmt.Errorf("fn %s: %w", fd.FnName(), err)
+		fn, cerr := c.compileFunction(fd.FnName(), cl.Params, cl.Body)
+		if cerr != nil {
+			return nil, fmt.Errorf("fn %s: %w", fd.FnName(), cerr)
 		}
 		c.image.Functions[fd.FnName()] = fn
 		if fd.FnName() == "main" {
@@ -348,14 +375,36 @@ func (c *Compiler) Compile(prog *ast.Program) (image *ProgramImage, err error) {
 	}
 
 	if len(prog.Stmts) > 0 {
-		fn, err := c.compileBlock("__repl__", nil, prog.Stmts)
-		if err != nil {
-			return nil, err
+		fn, cerr := c.compileBlock("__repl__", nil, prog.Stmts)
+		if cerr != nil {
+			return nil, cerr
 		}
 		c.image.Functions["__repl__"] = fn
 		c.image.Main = fn
 	}
+
+	if Verify {
+		if verr := verifyImage(c.image); verr != nil {
+			return nil, verr
+		}
+	}
 	return c.image, nil
+}
+
+// verifyImage прогоняет vm.Verify по всем функциям модуля в
+// детерминированном порядке имён.
+func verifyImage(img *ProgramImage) error {
+	names := make([]string, 0, len(img.Functions))
+	for name := range img.Functions {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		if err := vm.Verify(img.Functions[name].Chunk); err != nil {
+			return fmt.Errorf("verify %s: %w", name, err)
+		}
+	}
+	return nil
 }
 
 func (c *Compiler) compileFunction(name string, params []string, body *ast.BlockStmt) (*vm.Function, error) {
@@ -489,7 +538,13 @@ func (c *Compiler) CompileReplLine(names []string, s ast.Stmt) (fn *vm.Function,
 	}
 
 	fc.chunk.NumRegs = fc.maxReg
-	return &vm.Function{Name: "__repl__", Arity: len(names), Chunk: fc.chunk}, newName, nil
+	fn = &vm.Function{Name: "__repl__", Arity: len(names), Chunk: fc.chunk}
+	if Verify {
+		if verr := vm.Verify(fn.Chunk); verr != nil {
+			return nil, "", fmt.Errorf("verify __repl__: %w", verr)
+		}
+	}
+	return fn, newName, nil
 }
 
 // ---- statements ----
@@ -688,8 +743,8 @@ func (fc *funcCompiler) compileBytes(body string, d dest) error {
 	return fc.loadConst(runtime.Bytes(b), d)
 }
 
-// resolveName — порядок разрешения (§7):
-// локаль → локальная fn (своя и предков) → upvalue → захват у parent → глобал.
+// compileVar — порядок разрешения (§7):
+// локаль → локальная fn (своя и предков) → upvalue → глобал.
 func (fc *funcCompiler) compileVar(name string, d dest) error {
 	if r, ok := fc.resolveLocal(name); ok {
 		return fc.loadVal(d, r)
@@ -702,20 +757,8 @@ func (fc *funcCompiler) compileVar(name string, d dest) error {
 			return fc.loadGlobal(d, mangled)
 		}
 	}
-	if idx, ok := fc.resolveUpvalueIdx(name); ok {
+	if idx, ok := fc.resolveUpvalue(name); ok {
 		return fc.loadUpval(d, idx)
-	}
-	if fc.parent != nil {
-		if idx, ok := fc.parent.resolveLocal(name); ok {
-			newIdx := len(fc.upvalues)
-			fc.upvalues = append(fc.upvalues, upvalueInfo{name: name, isLocal: true, index: idx})
-			return fc.loadUpval(d, newIdx)
-		}
-		if pidx, ok := fc.parent.resolveUpvalueIdx(name); ok {
-			newIdx := len(fc.upvalues)
-			fc.upvalues = append(fc.upvalues, upvalueInfo{name: name, isLocal: false, index: pidx})
-			return fc.loadUpval(d, newIdx)
-		}
 	}
 	return fc.loadGlobal(d, name)
 }
@@ -1321,6 +1364,17 @@ func (fc *funcCompiler) compileTrapWithEnsure(stmts []ast.Stmt, ensures []ast.Ex
 
 	falseIdx := fc.konst(runtime.Bool(false))
 	trueIdx := fc.konst(runtime.Bool(true))
+
+	// Преинициализация dst: тело пишет dst на body-пути, но handler-путь
+	// (BH) заходит в ENS без записи dst. Линейный def-assignment в
+	// vm.Verify видит пересечение состояний → dst "undefined" в
+	// MAKEOK. Значение на error-пути всё равно перезаписывается
+	// MAKEERROR, так что семантика не меняется.
+	unitIdx := fc.konst(runtime.Unit)
+	fc.emit(vm.ABx(vm.LOADK, dst, unitIdx))
+
+	fc.emit(vm.ABx(vm.LOADK, eReg, unitIdx))
+
 	fc.emit(vm.ABx(vm.LOADK, fReg, falseIdx))
 
 	fc.trapDepth++
