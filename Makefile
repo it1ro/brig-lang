@@ -12,7 +12,7 @@ VERSION ?= $(shell git describe --tags --always 2>/dev/null || echo dev)
 
 # `make` без цели: полный локальный прогон всего, что должно быть зелёным.
 # Добавлены цели Трека C: test-vm и test-compiler.
-all: fmt vet test lint build
+all: check-smallint fmt vet test lint build
 
 ## ---- Сборка ----
 build:
@@ -134,7 +134,9 @@ repl:
 	$(GO) run ./cmd/brig repl
 
 check-smallint:
-	@if grep -rn '\.Int\b' internal/ --include='*.go' | grep -v '_test\.go'; then \
-		echo "found direct .Int field access; use AsBig() instead"; \
+	@if grep -rn '\.Int\b' internal/ --include='*.go' \
+		| grep -v '_test\.go' \
+		| grep -vE '(runtime|big)\.Int'; then \
+		echo "found direct .Int access; use AsBig() instead"; \
 		exit 1; \
 	fi
