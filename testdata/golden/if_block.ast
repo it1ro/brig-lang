@@ -1,1 +1,1 @@
-(program )
+(program (fn main (clause (params) (block (if (var ready) (block (call (var start))) (else (block (call (var wait)))))))))

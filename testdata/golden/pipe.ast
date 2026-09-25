@@ -1,1 +1,1 @@
-(program )
+(program (fn main (clause (params) (block (|> (|> (var xs) (var map) (var f)) (var filter) (var g))))))

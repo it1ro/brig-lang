@@ -1,1 +1,1 @@
-(program  )
+(program (type Color (variant Red) (variant Green) (variant Blue)) (type Result2 <T E> (variant Ok 0: (type T)) (variant Error 0: (type E))))

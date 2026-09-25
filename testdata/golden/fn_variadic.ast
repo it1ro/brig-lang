@@ -1,1 +1,1 @@
-(program  )
+(program (fn log_all (clause (params ..args) (block (var args)))) (fn sum (clause (params x ..rest) (block (var x)))))

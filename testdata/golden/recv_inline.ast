@@ -1,1 +1,1 @@
-(program )
+(program (fn main (clause (params) (block (let x (recv (case (:value v) (var v)))) (var x)))))

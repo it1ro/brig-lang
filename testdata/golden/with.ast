@@ -1,1 +1,1 @@
-(program )
+(program (fn main (clause (params) (block (with (bind (Ok a) (call (var validate) (var x))) (bind (Ok b) (call (var transform) (var a))) (body (block (call (var Ok) (var b)))) (else (Error e) (call (var Error) (var e))))))))

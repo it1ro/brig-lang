@@ -1,1 +1,1 @@
-(program )
+(program (fn main (clause (params) (block (let result (trap (+ (lit 1) (lit 1)))) (var result)))))
