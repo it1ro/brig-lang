@@ -386,7 +386,7 @@ type RecvExpr interface {
 func (e *recvExpr) RecvBranches() []RecvBranchArg {
 	out := make([]RecvBranchArg, 0, len(e.branches))
 	for _, b := range e.branches {
-		out = append(out, RecvBranchArg{Pattern: b.pattern, Body: b.expr})
+		out = append(out, RecvBranchArg{Pattern: b.pattern, Guard: b.guard, Body: b.expr})
 	}
 	return out
 }

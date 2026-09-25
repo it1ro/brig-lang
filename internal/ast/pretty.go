@@ -141,6 +141,11 @@ func prettyExpr(buf *bytes.Buffer, e Expr, indent int) {
 			br := &n.branches[i]
 			buf.WriteString(" (case ")
 			prettyNode(buf, br.pattern, indent)
+			if br.guard != nil {
+				buf.WriteString(" (when ")
+				prettyNode(buf, br.guard, indent)
+				buf.WriteString(")")
+			}
 			buf.WriteString(" ")
 			prettyNode(buf, br.expr, indent)
 			buf.WriteString(")")

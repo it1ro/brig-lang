@@ -132,6 +132,11 @@ func walkExpr(v Visitor, e Expr) error {
 			if err := walkNode(v, br.pattern); err != nil {
 				return err
 			}
+			if br.guard != nil {
+				if err := walkNode(v, br.guard); err != nil {
+					return err
+				}
+			}
 			if err := walkNode(v, br.expr); err != nil {
 				return err
 			}

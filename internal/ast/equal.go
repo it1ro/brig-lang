@@ -136,6 +136,7 @@ func equalNodes(a, b Node) bool {
 		}
 		for i := range x.branches {
 			if !equalNodes(x.branches[i].pattern, y.branches[i].pattern) ||
+				!equalOptionalExpr(x.branches[i].guard, y.branches[i].guard) ||
 				!equalNodes(x.branches[i].expr, y.branches[i].expr) {
 				return false
 			}
