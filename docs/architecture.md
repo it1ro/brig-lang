@@ -1,3 +1,4 @@
+````markdown
 # Архитектура интерпретатора Brig
 
 Референсная реализация — **на Go** (решение v0.3.0, §13). Дизайн-инварианты:
@@ -7,7 +8,7 @@
 > **Осознанное отступление от §15.1.** Спецификация требует регистровую VM
 > (BEAM/Lua-style). Текущая реализация — **стековая**: вертикальный срез для
 > быстрой стабилизации семантики. Миграция на регистровую с полноценным
-> дизассемблером — отдельный спринт, см. `docs/ROADMAP.md`.
+> дизассемблером — отдельный спринт, см. `STATUS.md`.
 
 ---
 
@@ -18,18 +19,20 @@ graph TD
     SRC[".brig source"] --> LEX["internal/lexer<br/>токены + offside"]
     LEX --> PAR["internal/parser<br/>recursive descent"]
     PAR --> AST["internal/ast<br/>узлы + форматтер"]
-    AST --> COMP["internal/compiler<br/>AST → байткод"]
+    AST --> SEMA["internal/sema<br/>контекстный анализ (§F.3)"]
+    SEMA --> COMP["internal/compiler<br/>AST → байткод"]
     COMP --> VM["internal/vm<br/>стековая ВМ + scheduler"]
     VM --> OUT["значение / raise"]
-    AST -.-> RUN["internal/runtime<br/>Value, Kind, Equal"]
+    AST -.-> RUN["internal/runtime<br/>Value, Kind, Equal, Json"]
     COMP -.-> RUN
     VM -.-> RUN
-    VM -.-> PRE["vm/prelude.go<br/>встроенные функции"]
+    VM -.-> PRE["vm/prelude*.go<br/>встроенные функции"]
 ```
+````
 
 `internal/prelude/doc.go` — зарезервированный пустой пакет. Фактически
-прелюдия живёт в `internal/vm/prelude.go`, чтобы не плодить цикл
-`vm → prelude → vm`.
+прелюдия живёт в `internal/vm/prelude.go`, `prelude_json.go`,
+`prelude_test_fw.go`, чтобы не плодить цикл `vm → prelude → vm`.
 
 ---
 
@@ -39,6 +42,7 @@ graph TD
 | ---------- | ----------------- | --------------------------------------------- |
 | `lexer`    | текст `.brig`     | `[]Token` (`NEWLINE`/`INDENT`/`DEDENT`/`EOF`) |
 | `parser`   | `[]Token` + режим | `*ast.Program`                                |
+| `sema`     | AST               | диагностики (§F.3)                            |
 | `compiler` | AST               | `*ProgramImage` (map функций → `*vm.Chunk`)   |
 | `vm`       | `*ProgramImage`   | значение / `*ErrRaise` / `error`              |
 
@@ -68,7 +72,9 @@ graph TD
     V --> ACT["Акторы"]
     PRIM --> INT["Int<br/>small-int fast-path"]
     PRIM --> FLT["Float"]
+    PRIM --> DEC["Decimal<br/>(big.Rat, §3.1)"]
     PRIM --> STR["Str"]
+    PRIM --> BYT["Bytes<br/>(§3.2)"]
     PRIM --> ATM["Atom"]
     PRIM --> BOOL["Bool"]
     PRIM --> UNIT["Unit ()"]
@@ -76,6 +82,8 @@ graph TD
     COLL --> LST["List"]
     COLL --> VEC["Vector"]
     COLL --> MAP["Map"]
+    COLL --> SET["Set"]
+    COLL --> RNG["Range<br/>(§4.3)"]
     FN --> FVAL["Function<br/>(нативная или байткод)"]
     FN --> CLO["Closure<br/>(функция + захваты)"]
     ACT --> PID["Pid"]
@@ -101,6 +109,20 @@ IsSmall == false  ⇒   intBig != nil   (для Kind == KindInt)
 публичным, инвариант держался на дисциплине, `b.Int.Sign()` в арифметике
 падал на маленьких операндах. Инкапсуляция закрывает класс на уровне
 компилятора.
+
+### Decimal (§3.1)
+
+`Value.Dec *big.Rat`. Trailing zeros не хранятся — `dec"1.50"` и `dec"1.5"`
+эквивалентны (нормализация через `big.Rat`). Канонизация —
+`runtime.FormatDecimal` (минимальная десятичная форма для терминирующих
+дробей, `p/q` для нетерминирующих).
+
+Правила смешения (§7.4):
+
+- `Decimal × Decimal` и `Decimal × Int` — точно, через `big.Rat`.
+- `Decimal × Float` — `:type_error`. Для `==`/`!=` и `<`/`>`/`<=`/`>=`
+  ошибка catchable через `trap` (`checkMixedEq` / `checkMixedCmp` в
+  `internal/vm/vm.go`).
 
 ---
 
@@ -206,7 +228,8 @@ graph TD
 graph BT
     LEX["internal/lexer"] --> PAR["internal/parser"]
     PAR --> AST["internal/ast"]
-    AST --> COMP["internal/compiler"]
+    AST --> SEMA["internal/sema"]
+    SEMA --> COMP["internal/compiler"]
     AST --> RUN["internal/runtime"]
     COMP --> VM["internal/vm"]
     COMP --> RUN
@@ -242,7 +265,7 @@ Fuzz-сиды живут в `internal/*/testdata/fuzz/*/` и играют рол
 
 ## Статус реализации
 
-См. `docs/ROADMAP.md` — там актуальный чеклист спринтов. Здесь — только
+См. `STATUS.md` — там актуальный чеклист спринтов. Здесь — только
 крупные вехи.
 
 - [x] **Этап 1:** лексер (A3 + A5), fuzz, негативные тесты
@@ -252,14 +275,18 @@ Fuzz-сиды живут в `internal/*/testdata/fuzz/*/` и играют рол
       рекурсия, лямбды, TCO, `trap`/`ensure`
 - [x] **Этап 4.8:** акторы — spawn/send/recv/watch/unwatch/self/make_ref/
       mailbox_size, scheduler loop, HWM, `:down` с приоритетом
-- [ ] **Этап 4 (остаток):** `Range`, `Set`, `Vec`/`Map` как модули,
-      `Bytes`/`Regex`/`Decimal` (см. ROADMAP Sprint 5)
-- [ ] **Контекстный анализ (§F.3):** запрет `trap` в аргументах,
+- [x] **Этап 4 (остаток):** `Range`, `Set`, `Vec`/`Map` как модули,
+      `Bytes`; `Regex` — отложен (Should); `Decimal` — реализован (§3.1)
+- [x] **Контекстный анализ (§F.3):** запрет `trap` в аргументах,
       pipe-запрет акторных примитивов, info-диагностика shadowing
-- [ ] **REPL:** persistent VM, лексический снимок замыканий (N12)
+- [x] **REPL:** persistent VM, лексический снимок замыканий (N12)
 - [ ] **Регистровая VM:** миграция с полным дизассемблером (§15.1 Must)
 
 ---
 
 _Обновляется при значимых архитектурных изменениях. Для чеклиста задач
 использовать `STATUS.md`._
+
+```
+
+```
