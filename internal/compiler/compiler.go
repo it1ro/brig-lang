@@ -2,7 +2,7 @@
 //
 // Sprint 7, S7.2 + S7.6. Дизайн: docs/02-register-based-virtual-machine.md §7.
 //
-// Аллокатор — bump-указатель со регистровой дисциплиной (nextReg + releaseToMark).
+// Аллокатор — bump-указатель со стековой дисциплиной (nextReg + releaseToMark).
 // Соглашение о вызовах (§3): callee в R[A], аргументы в R[A+1..A+B], результат
 // в R[C]. Хвостовость — поле dest.tail; TAILCALL эмитится только вне trap.
 package compiler
