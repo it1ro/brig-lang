@@ -1,1 +1,1 @@
-(program )
+(program (fn main (clause (params) (block (let x (if (var ready) (call (var start)) (else (call (var wait))))) (var x)))))

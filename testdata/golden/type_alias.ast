@@ -1,1 +1,1 @@
-(program )
+(program (type UserId (alias Int)))

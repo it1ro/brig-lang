@@ -1,1 +1,1 @@
-(program         )
+(program (fn p_wildcard (clause (params _) (block (lit 1)))) (fn p_ident (clause (params x) (block (var x)))) (fn p_literal (clause (params 1) (block (lit 2)))) (fn p_ctor (clause (params Some(v)) (block (var v)))) (fn p_tuple (clause (params (a, b)) (block (var a)))) (fn p_list (clause (params [1, ..rest]) (block (var rest)))) (fn p_map (clause (params %{"a" => a}) (block (var a)))) (fn p_record (clause (params User{id: id}) (block (var id)))) (fn p_as (clause (params (:ok, _) as full) (block (var full)))))

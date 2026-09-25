@@ -28,16 +28,18 @@ func walkNode(v Visitor, node Node) error {
 		}
 		return nil
 
-	case Expr:
-		return walkExpr(v, n)
-	case Stmt:
-		return walkStmt(v, n)
+	case Decl:
+		return walkDecl(v, n)
 	case Pattern:
 		return walkPattern(v, n)
 	case Type:
 		return walkType(v, n)
-	case Decl:
-		return walkDecl(v, n)
+	case Expr:
+		// Expr раньше Stmt: BlockStmt реализует оба. Decl/Pattern/Type раньше
+		// Expr — у них тоже есть IsExpression(), иначе case Expr их глотает.
+		return walkExpr(v, n)
+	case Stmt:
+		return walkStmt(v, n)
 	}
 	return nil
 }

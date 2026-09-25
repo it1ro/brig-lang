@@ -1,1 +1,1 @@
-(program )
+(program (fn main (clause (params) (block (let t (call (var ()) (lit 1) (lit "a") (:ok))) (let l (call (var []) (lit 1) (lit 2) (lit 3))) (let v (call (var %[]) (lit 1) (lit 2) (lit 3))) (let m (call (var %{}) (=> (lit "a") (lit 1)) (=> (lit "b") (lit 2)))) (let r (call (var User{}) (: (var id) (lit 1)) (: (var name) (lit "a")))) (let u (lit ())) (call (var ()) (var t) (var l) (var v) (var m) (var r) (var u))))))

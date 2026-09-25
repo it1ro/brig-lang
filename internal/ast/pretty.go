@@ -32,16 +32,19 @@ func prettyNode(buf *bytes.Buffer, node Node, indent int) {
 			prettyNode(buf, s, indent)
 		}
 		buf.WriteString(")")
-	case Expr:
-		prettyExpr(buf, n, indent)
-	case Stmt:
-		prettyStmt(buf, n, indent)
+	case Decl:
+		prettyDecl(buf, n, indent)
 	case Pattern:
 		prettyPattern(buf, n, indent)
 	case Type:
 		prettyType(buf, n, indent)
-	case Decl:
-		prettyDecl(buf, n, indent)
+	case Expr:
+		// Expr раньше Stmt: BlockStmt реализует оба, рендер блока — в prettyExpr.
+		// Decl/Pattern/Type раньше Expr: у них тоже есть IsExpression(), и case Expr
+		// иначе перехватывает их и печатает пусто.
+		prettyExpr(buf, n, indent)
+	case Stmt:
+		prettyStmt(buf, n, indent)
 	default:
 		fmt.Fprintf(buf, "(unknown %T)", node)
 	}

@@ -1,1 +1,1 @@
-(program )
+(program (type User (record id: Int name: Str)))

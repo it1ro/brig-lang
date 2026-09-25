@@ -1,1 +1,1 @@
-(program )
+(program (fn main (clause (params) (block (let thunk (fn () (lit 42))) (call (var thunk))))))

@@ -1,1 +1,1 @@
-(program )
+(program (fn main (clause (params) (block (let f (lambda x (* (var x) (lit 2)))) (call (var f) (lit 3))))))

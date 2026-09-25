@@ -1,1 +1,1 @@
-(program )
+(program (fn main (clause (params) (block (let result (trap (body (block (call (var f1)) (call (var f2)))) (ensure (call (var close_f1))))) (var result)))))

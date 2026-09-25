@@ -1,1 +1,1 @@
-(program )
+(program (fn main (clause (params) (block (recv (case (:value v) (var v)) (case :done (:done)) (else msg (block (call (var log) (var msg)))) (after (lit 5000) (:timeout)))))))
