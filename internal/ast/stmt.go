@@ -12,9 +12,10 @@ type letBind struct {
 	value   Expr
 }
 
-func (e *letBind) IsExpression() bool { return false }
-func (e *letBind) IsStatement() bool  { return true }
-func (e *letBind) String() string     { return fmt.Sprintf("%s = %s", e.pattern, e.value) }
+// IsExpression сознательно нет: метод сделал бы *letBind реализацией Expr,
+// и Pretty/Walk выбрали бы case Expr раньше case Stmt (S-F13).
+func (e *letBind) IsStatement() bool { return true }
+func (e *letBind) String() string    { return fmt.Sprintf("%s = %s", e.pattern, e.value) }
 
 // exprStmt — просто expr.
 type exprStmt struct {
@@ -22,9 +23,8 @@ type exprStmt struct {
 	expr Expr
 }
 
-func (e *exprStmt) IsExpression() bool { return false }
-func (e *exprStmt) IsStatement() bool  { return true }
-func (e *exprStmt) String() string     { return e.expr.String() }
+func (e *exprStmt) IsStatement() bool { return true }
+func (e *exprStmt) String() string    { return e.expr.String() }
 
 // localFnDecl — локальная функция (одна или несколько клауз одного имени).
 type localFnDecl struct {
@@ -40,8 +40,7 @@ type localFnClause struct {
 	body   *BlockStmt
 }
 
-func (e *localFnDecl) IsExpression() bool { return false }
-func (e *localFnDecl) IsStatement() bool  { return true }
+func (e *localFnDecl) IsStatement() bool { return true }
 func (e *localFnDecl) String() string {
 	return fmt.Sprintf("local fn %s with %d clauses", e.name, len(e.clauses))
 }

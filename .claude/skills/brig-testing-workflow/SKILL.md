@@ -50,10 +50,10 @@ make update-golden
 `-update` без чтения diff'а сводит их ценность к нулю. Обновлённые golden —
 отдельный коммит `test(<scope>): regenerate golden files [T-NN]`.
 
-**Сейчас `.ast`-часть golden пустая:** 24 из 25 `*.ast` равны
-`(program )`, потому что `ast.Pretty` не печатает Decl (S-F13). До T-11
-(#9) защищает только `*.round.brig`; изменения AST проверять явными
-тестами.
+`*.ast` — вывод `ast.Pretty`. Decl, Pattern и Type в `prettyNode`/
+`walkNode` стоят раньше `Expr` (S-F13, T-11): у этих узлов есть
+`IsExpression()`, и `case Expr` выше них снова сделает `.ast` пустым.
+Пустой `(program )` допустим только у программы без decl и stmt.
 
 ## Bytecode-goldens (`testdata/bytecode/`)
 

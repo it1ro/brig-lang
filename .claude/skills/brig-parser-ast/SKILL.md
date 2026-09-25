@@ -75,11 +75,13 @@ description: >
   обязана сохранить это свойство. Известное нарушение:
   `fn f(x) when x == ")" -> 1` — `stripOuterParens` (`stmt.go:232`)
   считает скобки внутри строковых литералов (S-F12, T-20 #14).
-- **`ast.Pretty` и `ast.Walk` не видят Decl** (S-F13, T-11 #9): все Decl
-  реализуют `IsExpression()` (`decl.go:14,25,40,69`), и `case Expr`
-  срабатывает раньше `case Decl` (`pretty.go:35`, `visitor.go:31`). Итог —
-  24 из 25 `testdata/golden/*.ast` равны `(program )`: **до T-11
-  golden-тесты AST ничего не защищают**, а `Walk` пропускает декларации.
+- **`ast.Pretty` и `ast.Walk` выбирают интерфейс по порядку case.** Decl,
+  Pattern и Type стоят раньше `Expr`, потому что у них есть
+  `IsExpression()` и иначе `case Expr` перехватывает узел. `Expr` раньше
+  `Stmt`: `*BlockStmt` реализует оба, рендер блока живёт в `prettyExpr`.
+  У `*letBind`, `*exprStmt`, `*localFnDecl` метода `IsExpression` нет —
+  иначе тело `fn` печатается пустым `(block )`. Не возвращать этот метод
+  и не двигать `case Expr` выше Decl/Pattern/Type.
 - Round-trip на `ast.Equal` не видит того, что парсер выбросил в обоих
   проходах (guard в `recv` до T-02). Зелёный round-trip ≠ «узел сохранён».
 - `*tuplePattern` из одного элемента печатается с висячей запятой
@@ -99,8 +101,9 @@ description: >
    `compiler` будут молча пропускать новый узел.
 5. Обновить `equal.go` для round-trip тестов.
 6. Добавить golden-кейс в `testdata/golden/*.brig` +
-   `make update-golden`, diff прочитать и закоммитить отдельно. Пока T-11
-   не в `main`, `.ast`-часть golden бесполезна — нужен явный тест на узел.
+   `make update-golden`, diff прочитать и закоммитить отдельно.
+   `*.ast` печатает декларации и тела: пустой `(program )` допустим только
+   у программы без decl и stmt.
 7. Прогнать `go test ./internal/ast/... ./internal/parser/... -run
    RoundTrip` и полный `make test-roundtrip test-parser`.
 8. Если новая конструкция должна попасть в компилятор — сразу сообщить,
