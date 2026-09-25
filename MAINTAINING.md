@@ -152,16 +152,15 @@ flowchart LR
 
 ## 7. Особые случаи
 
-**Wave 0 (T-01…T-06) — на ветке `iter/regvm`, без PR.** Коммиты `<type>(<scope>): <subject> [T-NN]` идут прямо в `iter/regvm`; issue закрывается вручную: `gh issue close 1 --comment "Сделано в <sha> на iter/regvm"`. Ветка сейчас только локальная — работать на той машине, где она есть, или сначала `git push -u origin iter/regvm`. T-07 выполняет человек:
+**Wave 0 (T-01…T-06) — на ветке `iter/regvm`, без PR.** Коммиты `<type>(<scope>): <subject> [T-NN]` идут прямо в `iter/regvm`; issue закрывается вручную: `gh issue close 1 --comment "Сделано в <sha> на iter/regvm"`. Ветка есть на origin: `git fetch && git switch iter/regvm`. T-07 выполняет человек:
 
 ```bash
 git tag stack-vm-final main && git push origin stack-vm-final
-git switch main && git merge --squash iter/regvm
-git add AUDIT_REPORT.md CONTRIBUTING.md TASKS.md MAINTAINING.md
+git switch main && git merge --squash iter/regvm   # AUDIT_REPORT.md, TASKS.md и пр. уже в ветке
 git commit        # subject с [T-07], в body — список T-01…T-06
 make all && BRIG_VERIFY=1 go test ./...
 git tag regvm-merged && git push origin main regvm-merged
-git branch -D iter/regvm
+git branch -D iter/regvm && git push origin --delete iter/regvm
 ```
 
 **`t.Skip("blocked: T-NN")`.** T-10 добавляет тесты из §7 аудита; упавшие сейчас помечаются этим skip'ом. Задача T-NN обязана снять свой skip — `rg -n 'blocked: T-NN' internal` после неё пуст.

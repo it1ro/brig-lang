@@ -229,9 +229,9 @@ wave: 0-branch
 depends_on: T-01, T-02, T-03, T-04, T-05, T-06
 findings: []
 -->
-- **Файлы:** git (ветка `iter/regvm` — только локальная, на origin её нет); `AUDIT_REPORT.md`, `CONTRIBUTING.md`, `TASKS.md` (сейчас не закоммичены)
+- **Файлы:** git (ветка `iter/regvm` на origin); `AUDIT_REPORT.md`, `CONTRIBUTING.md`, `TASKS.md`, `MAINTAINING.md` уже закоммичены в `iter/regvm` и попадают в `main` squash-коммитом
 - **Тест-якорь:** `make all` и `BRIG_VERIFY=1 go test ./...` на `main` после merge
-- **DoD:** тег `stack-vm-final` стоит на `main` до merge (`41bbb70`) и запушен. В `main` один squash-коммит из `iter/regvm` с `[T-07]` в subject и списком T-01…T-06 в body. `AUDIT_REPORT.md`, `CONTRIBUTING.md`, `TASKS.md` есть в `main`. Тег `regvm-merged` стоит на squash-коммите и запушен. На `main` `make all` → 0, `BRIG_VERIFY=1 go test ./...` → 0. `iter/regvm` удалена.
+- **DoD:** тег `stack-vm-final` стоит на `main` до merge (`41bbb70`) и запушен. В `main` один squash-коммит из `iter/regvm` с `[T-07]` в subject и списком T-01…T-06 в body. `AUDIT_REPORT.md`, `CONTRIBUTING.md`, `TASKS.md` есть в `main`. Тег `regvm-merged` стоит на squash-коммите и запушен. На `main` `make all` → 0, `BRIG_VERIFY=1 go test ./...` → 0. `iter/regvm` удалена локально и на origin.
 - **НЕ делать:** merge-commit или rebase-merge (только squash, `CONTRIBUTING.md` §5); чинить что-либо в ходе merge; `push --force` в `main`; трогать doc-файлы.
 
 ### T-10 · Набор регресс-тестов из §7 аудита
