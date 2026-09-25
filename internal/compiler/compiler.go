@@ -733,51 +733,55 @@ func (fc *funcCompiler) compileInlineTrap(inner ast.Expr) error {
 
 // compileBlockTrap компилирует блочную форму trap с ensure-клаузами.
 //
-// Схема байткода (v0.4.7, A2):
+// Полная семантика §10.3:
+//   - ensure выполняются LIFO при любом выходе из тела;
+//   - если один ensure падает, остальные всё равно выполняются;
+//   - побеждает последняя ошибка.
 //
-//	TRAPBEGIN outer              ; ловит raise из ensures (в success и exception)
-//	  TRAPBEGIN body             ; ловит raise из тела
-//	    <body>
-//	  TRAPEND                    ; тело успешно
-//	  <ensure[N-1]> POP          ; LIFO
-//	  ...
-//	  <ensure[0]>   POP
-//	  MAKEOK                     ; Ok(v)
-//	  TRAPEND                    ; outer ok
-//	  JMP done
-//	body_handler:
-//	  SETLOCAL exc               ; сохраняем исходную ошибку
-//	  <ensure[N-1]> POP          ; LIFO (под outer)
-//	  ...
-//	  <ensure[0]>   POP
-//	  TRAPEND                    ; outer ok
-//	  GETLOCAL exc
-//	  MAKEERROR                  ; Error(exc)
+// Схема:
+//
+//	TRAPBEGIN outer
+//	  TRAPBEGIN body
+//	    <body>                      ; [v]
+//	  TRAPEND
+//	  SETLOCAL valueSlot            ; v сохранён
+//	  CONSTANT :no_error
+//	  SETLOCAL errSlot              ; err = no_error
+//	  JMP run_ensures
+//	body_handler:                   ; raise из тела
+//	  SETLOCAL errSlot              ; err = <raise value>
+//	run_ensures:                    ; общий путь для success и error
+//	  TRAPBEGIN eN
+//	    <ensure[N-1]> POP
+//	  TRAPEND
+//	  JMP okN
+//	  eN: SETLOCAL errSlot ; JMP okN
+//	  okN:
+//	  ... (для каждого ensure, LIFO)
+//	  ; финал
+//	  GETLOCAL errSlot
+//	  CONSTANT :no_error
+//	  EQ
+//	  JMPFALSE error_final
+//	  GETLOCAL valueSlot
+//	  MAKEOK
+//	  JMP final
+//	error_final:
+//	  GETLOCAL errSlot
+//	  MAKEERROR
+//	final:
+//	  TRAPEND                       ; outer
 //	  JMP done
 //	outer_handler:
-//	  MAKEERROR                  ; Error(ensure_raise_value)
+//	  MAKEERROR                      ; fallback
 //	done:
-//
-// Семантика §10.3 (упрощение среза):
-//   - если ensure падает, оставшиеся ensure НЕ выполняются;
-//   - побеждает последняя ошибка (упрощённая форма «последняя побеждает»).
-//     TODO(подэтап 4.9): полная семантика «оставшиеся ensure всё равно
-//     выполняются» — вместе с переработкой кадров под акторы.
-//
-// TCO-инвариант (§15.3, принцип #11): TCO внутри области активного ensure
-// должен быть отключён. В текущей стековой ВМ TCO вообще нет — формально
-// инвариант соблюдён; при миграции на регистровую ВМ это точка внимания.
-//
-// Dual-compile ensures (дважды: в success и exception путях) безопасен,
-// потому что ensure — выражение (не блок), локалы в родительской функции
-// не создаёт. Локальные fn в ensure невозможны по грамматике.
 func (fc *funcCompiler) compileBlockTrap(te ast.TrapExpr) error {
 	var stmts []ast.Stmt
 	switch body := te.TrapBody().(type) {
 	case *ast.BlockStmt:
 		stmts = body.Body()
 	case nil:
-		// пустое тело — валидно, вернёт ()
+		// пустое тело — вернёт ()
 	default:
 		stmts = []ast.Stmt{body}
 	}
@@ -798,7 +802,6 @@ func (fc *funcCompiler) compileBlockTrap(te ast.TrapExpr) error {
 
 		handlerAddr := len(vm.ChunkCode(fc.chunk))
 		fc.chunk.PatchOperand(beginPos, handlerAddr)
-
 		fc.emit(vm.OpMakeError, 0)
 
 		endAddr := len(vm.ChunkCode(fc.chunk))
@@ -806,13 +809,15 @@ func (fc *funcCompiler) compileBlockTrap(te ast.TrapExpr) error {
 		return nil
 	}
 
-	// --- Полный путь: с ensure ---
+	valueSlot := fc.allocTemp()
+	errSlot := fc.allocTemp()
+	noErrorIdx := fc.chunk.AddConstant(runtime.Atom("no_error"))
 
-	// outer — ловит raise из ensures.
+	// outer TRAPBEGIN — ловит raise из ensures в success-пути.
 	fc.emit(vm.OpTrapBegin, 0)
 	outerBegin := fc.chunk.OperandPos()
 
-	// body — ловит raise из тела.
+	// body TRAPBEGIN — ловит raise из тела.
 	fc.emit(vm.OpTrapBegin, 0)
 	bodyBegin := fc.chunk.OperandPos()
 
@@ -820,51 +825,79 @@ func (fc *funcCompiler) compileBlockTrap(te ast.TrapExpr) error {
 		return err
 	}
 
-	fc.emit(vm.OpTrapEnd, 0) // закрываем body
-
-	// Слот для сохранения исходной ошибки (используется в body_handler).
-	// Резервируем ПОСЛЕ компиляции тела, чтобы не пересечься с локалами тела.
-	excSlot := fc.allocTemp()
-
-	// Success-путь: ensures LIFO, затем Ok(v).
-	for i := len(ensures) - 1; i >= 0; i-- {
-		if err := fc.compileExpr(ensures[i]); err != nil {
-			return err
-		}
-		fc.emit(vm.OpPop, 0)
-	}
-	fc.emit(vm.OpMakeOk, 0)
-	fc.emit(vm.OpTrapEnd, 0) // закрываем outer
+	fc.emit(vm.OpTrapEnd, 0)          // закрываем body
+	fc.emit(vm.OpSetLocal, valueSlot) // v → valueSlot
+	fc.emit(vm.OpConstant, noErrorIdx)
+	fc.emit(vm.OpSetLocal, errSlot) // err = :no_error
 	fc.emit(vm.OpJump, 0)
-	successJump := fc.chunk.OperandPos()
+	bodyOkJump := fc.chunk.OperandPos()
 
 	// --- body_handler: raise из тела ---
 	bodyHandlerAddr := len(vm.ChunkCode(fc.chunk))
 	fc.chunk.PatchOperand(bodyBegin, bodyHandlerAddr)
+	// handleRaise положил ErrRaise.Value на стек — сохраняем в errSlot.
+	fc.emit(vm.OpSetLocal, errSlot)
 
-	fc.emit(vm.OpSetLocal, excSlot)
+	// --- run_ensures: сюда падает и success, и error ---
+	runEnsuresAddr := len(vm.ChunkCode(fc.chunk))
+	fc.chunk.PatchOperand(bodyOkJump, runEnsuresAddr)
+
+	// Ensures LIFO, каждый в своём мини-trap.
 	for i := len(ensures) - 1; i >= 0; i-- {
+		fc.emit(vm.OpTrapBegin, 0)
+		ensureBegin := fc.chunk.OperandPos()
+
 		if err := fc.compileExpr(ensures[i]); err != nil {
 			return err
 		}
 		fc.emit(vm.OpPop, 0)
+		fc.emit(vm.OpTrapEnd, 0)
+		fc.emit(vm.OpJump, 0)
+		ensureSkipJump := fc.chunk.OperandPos()
+
+		// ensure_handler: ошибка замещает errSlot.
+		ehAddr := len(vm.ChunkCode(fc.chunk))
+		fc.chunk.PatchOperand(ensureBegin, ehAddr)
+		fc.emit(vm.OpSetLocal, errSlot)
+
+		// skip.
+		afterAddr := len(vm.ChunkCode(fc.chunk))
+		fc.chunk.PatchOperand(ensureSkipJump, afterAddr)
 	}
-	fc.emit(vm.OpTrapEnd, 0) // закрываем outer (нормальное завершение handler)
-	fc.emit(vm.OpGetLocal, excSlot)
-	fc.emit(vm.OpMakeError, 0)
+
+	// Финал: проверяем errSlot.
+	fc.emit(vm.OpGetLocal, errSlot)
+	fc.emit(vm.OpConstant, noErrorIdx)
+	fc.emit(vm.OpEq, 0)
+	fc.emit(vm.OpJumpFalse, 0)
+	errorJump := fc.chunk.OperandPos()
+
+	// success path: valueSlot.
+	fc.emit(vm.OpGetLocal, valueSlot)
+	fc.emit(vm.OpMakeOk, 0)
 	fc.emit(vm.OpJump, 0)
-	bodyEndJump := fc.chunk.OperandPos()
+	endJump := fc.chunk.OperandPos()
 
-	// --- outer_handler: raise из ensures (в success или exception пути) ---
-	outerHandlerAddr := len(vm.ChunkCode(fc.chunk))
-	fc.chunk.PatchOperand(outerBegin, outerHandlerAddr)
-
-	// handleRaise уже снял outer и положил значение ошибки на стек.
+	// error_final.
+	errAddr := len(vm.ChunkCode(fc.chunk))
+	fc.chunk.PatchOperand(errorJump, errAddr)
+	fc.emit(vm.OpGetLocal, errSlot)
 	fc.emit(vm.OpMakeError, 0)
 
-	endAddr := len(vm.ChunkCode(fc.chunk))
-	fc.chunk.PatchOperand(successJump, endAddr)
-	fc.chunk.PatchOperand(bodyEndJump, endAddr)
+	// final.
+	finalAddr := len(vm.ChunkCode(fc.chunk))
+	fc.chunk.PatchOperand(endJump, finalAddr)
+	fc.emit(vm.OpTrapEnd, 0) // outer
+	fc.emit(vm.OpJump, 0)
+	doneJump := fc.chunk.OperandPos()
+
+	// outer_handler — недостижим при нормальной логике, fallback.
+	outerAddr := len(vm.ChunkCode(fc.chunk))
+	fc.chunk.PatchOperand(outerBegin, outerAddr)
+	fc.emit(vm.OpMakeError, 0)
+
+	doneAddr := len(vm.ChunkCode(fc.chunk))
+	fc.chunk.PatchOperand(doneJump, doneAddr)
 	return nil
 }
 
@@ -984,9 +1017,8 @@ func (fc *funcCompiler) compileRecv(re ast.RecvExpr) error {
 
 // compilePattern компилирует AST-паттерн в vm.CompiledPattern.
 //
-// ВАЖНО: `ast.PatternWildcard` — пустой интерфейс (только `Pattern`),
-// поэтому ему удовлетворяет ЛЮБОЙ паттерн. В type switch его надо
-// проверять ПОСЛЕДНИМ, иначе он перехватит Ident/Literal/Ctor/Tuple/As.
+// ВАЖНО: `ast.PatternWildcard` — пустой интерфейс, ему удовлетворяет
+// ЛЮБОЙ паттерн; в type switch его надо проверять ПОСЛЕДНИМ.
 func (fc *funcCompiler) compilePattern(pat ast.Pattern) (*vm.CompiledPattern, error) {
 	switch p := pat.(type) {
 	case ast.IdentPattern:
@@ -1010,9 +1042,7 @@ func (fc *funcCompiler) compilePattern(pat ast.Pattern) (*vm.CompiledPattern, er
 			subs = append(subs, sub)
 		}
 		return &vm.CompiledPattern{
-			Kind: vm.PatCtor,
-			Tag:  p.CtorName(),
-			Subs: subs,
+			Kind: vm.PatCtor, Tag: p.CtorName(), Subs: subs,
 		}, nil
 
 	case ast.PatternTuple:
@@ -1026,6 +1056,41 @@ func (fc *funcCompiler) compilePattern(pat ast.Pattern) (*vm.CompiledPattern, er
 		}
 		return &vm.CompiledPattern{Kind: vm.PatTuple, Subs: subs}, nil
 
+	case ast.PatternList:
+		subs := make([]*vm.CompiledPattern, 0, len(p.ListElems()))
+		for _, a := range p.ListElems() {
+			sub, err := fc.compilePattern(a)
+			if err != nil {
+				return nil, err
+			}
+			subs = append(subs, sub)
+		}
+		restSlot := -1
+		if p.ListHasRest() && p.ListRestName() != "" {
+			restSlot = fc.declareLocal(p.ListRestName())
+		}
+		return &vm.CompiledPattern{
+			Kind:     vm.PatList,
+			Subs:     subs,
+			HasRest:  p.ListHasRest(),
+			RestSlot: restSlot,
+		}, nil
+
+	case ast.PatternMapAccessor:
+		pairs := make([]vm.MapPatPair, 0, len(p.MapPairsAccessor()))
+		for _, pair := range p.MapPairsAccessor() {
+			key, err := fc.compileConstExpr(pair.Key)
+			if err != nil {
+				return nil, err
+			}
+			sub, err := fc.compilePattern(pair.Pat)
+			if err != nil {
+				return nil, err
+			}
+			pairs = append(pairs, vm.MapPatPair{Key: key, Value: sub})
+		}
+		return &vm.CompiledPattern{Kind: vm.PatMap, Pairs: pairs}, nil
+
 	case ast.PatternAs:
 		inner, err := fc.compilePattern(p.AsInner())
 		if err != nil {
@@ -1033,9 +1098,7 @@ func (fc *funcCompiler) compilePattern(pat ast.Pattern) (*vm.CompiledPattern, er
 		}
 		slot := fc.declareLocal(p.AsName())
 		return &vm.CompiledPattern{
-			Kind:   vm.PatAs,
-			Inner:  inner,
-			AsSlot: slot,
+			Kind: vm.PatAs, Inner: inner, AsSlot: slot,
 		}, nil
 
 	// PatternWildcard — catch-all, обязан быть последним.
@@ -1043,6 +1106,20 @@ func (fc *funcCompiler) compilePattern(pat ast.Pattern) (*vm.CompiledPattern, er
 		return &vm.CompiledPattern{Kind: vm.PatWildcard}, nil
 	}
 	return nil, fmt.Errorf("срез: неподдерживаемый паттерн %T", pat)
+}
+
+// compileConstExpr извлекает константу из простого литерального выражения.
+// Нужен для ключей map-паттернов.
+func (fc *funcCompiler) compileConstExpr(e ast.Expr) (runtime.Value, error) {
+	switch x := e.(type) {
+	case ast.LiteralExpr:
+		return parseLiteralValue(x.ValueStr())
+	case ast.AtomExpr:
+		return runtime.Atom(x.AtomName()), nil
+	case ast.GroupingExpr:
+		return fc.compileConstExpr(x.Inner())
+	}
+	return runtime.Unit, fmt.Errorf("map-паттерн: ключ должен быть литералом, got %T", e)
 }
 
 // parseLiteralValue превращает строку литерала в runtime.Value.
