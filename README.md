@@ -37,8 +37,6 @@ make ci-quick         # fmt-check + vet + focused tests + все examples
 make all              # полный прогон: check-smallint, fmt, vet, test, lint, build
 ```
 
-````
-
 Запуск программы:
 
 ```sh
@@ -121,9 +119,6 @@ III (changelog). Дизайн-код (design decisions) живёт там же.
 
 ---
 
-## Лицензия
+## Лицензия MIT
 
-См. `LICENSE` (если файла нет — уточните у мейнтейнера).
-````
-
-Author: Ilmir Karimov
+#### Author: Ilmir Karimov
