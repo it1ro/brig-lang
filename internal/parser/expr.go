@@ -934,8 +934,10 @@ func (p *parser) parseRecv() (ast.Expr, error) {
 		if err != nil {
 			return nil, err
 		}
+		var guard ast.Expr
 		if p.match(lexer.KW_WHEN) {
-			if _, err := p.parseExpr(); err != nil {
+			guard, err = p.parseExpr()
+			if err != nil {
 				return nil, err
 			}
 		}
@@ -947,7 +949,7 @@ func (p *parser) parseRecv() (ast.Expr, error) {
 			return nil, err
 		}
 		return ast.NewRecvExpr(
-			[]ast.RecvBranchArg{{Pattern: pat, Body: body}},
+			[]ast.RecvBranchArg{{Pattern: pat, Guard: guard, Body: body}},
 			ast.RecvClauseArg{},
 			start.Line, start.Col,
 		), nil
@@ -967,8 +969,10 @@ func (p *parser) parseRecv() (ast.Expr, error) {
 		if err != nil {
 			return nil, err
 		}
+		var guard ast.Expr
 		if p.match(lexer.KW_WHEN) {
-			if _, err := p.parseExpr(); err != nil {
+			guard, err = p.parseExpr()
+			if err != nil {
 				return nil, err
 			}
 		}
@@ -979,7 +983,7 @@ func (p *parser) parseRecv() (ast.Expr, error) {
 		if err != nil {
 			return nil, err
 		}
-		branches = append(branches, ast.RecvBranchArg{Pattern: pat, Body: body})
+		branches = append(branches, ast.RecvBranchArg{Pattern: pat, Guard: guard, Body: body})
 		p.skipNewlines()
 	}
 	if _, err := p.expect(lexer.DEDENT, "DEDENT"); err != nil {
