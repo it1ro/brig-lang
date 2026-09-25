@@ -306,9 +306,7 @@ func (s *Scheduler) runSlice(a *Actor) {
 	for reds > 0 {
 		if len(a.frames) == 0 {
 			a.status = actorDone
-			if a.result.Kind == 0 && a.result.Int == nil {
-				a.result = runtime.Unit
-			}
+			a.result = runtime.Unit
 			s.notifyWatchers(a, runtime.Atom("normal"))
 			return
 		}
@@ -918,11 +916,10 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 			if msVal.IsSmall {
 				ms = msVal.SmallInt
 			} else {
-				ms = msVal.Int.Int64()
+				ms = msVal.AsBig().Int64()
 			}
 			a.recvDeadline = time.Now().Add(time.Duration(ms) * time.Millisecond)
 			f.ip++
-
 		case OpRecvTake:
 			// EmitTwo: [op][a_hi][a_lo][b_hi][b_lo]. slot — первый операнд,
 			// after — второй. operand2 читает code[ip+3..ip+4] корректно.

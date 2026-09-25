@@ -505,3 +505,13 @@ fn main() ->
     print(result)
 `)
 }
+
+// internal/compiler/compiler_test.go
+func TestDivByZeroSmallInt(t *testing.T) {
+	runModule(t, `module Main
+fn main() ->
+    print(trap(1 div 0))
+    print(trap(1 rem 0))
+    print(trap(0 ** 0))
+`)
+}

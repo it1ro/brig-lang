@@ -207,3 +207,13 @@ fn main() ->
     send(pid, :stop)
 `)
 }
+
+// internal/vm/scheduler_test.go
+func TestRecvAfterSmallInt(t *testing.T) {
+	runModuleSync(t, `module Main
+fn main() ->
+    recv
+        :never -> :ok
+    after 1 -> :ok
+`)
+}

@@ -71,6 +71,8 @@ func TestRoundTripRepl(t *testing.T) {
 		"match v\n    Some(u) -> u\n    None -> 0\n",
 		"result = trap(1 + 1)\n",
 		"result = trap\n    f1()\nensure close_f1()\nresult\n",
+		"0 .A\n",
+		"x = 0 .A\n",
 	}
 	for _, src := range cases {
 		roundTrip(t, parser.ModeRepl, src)

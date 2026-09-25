@@ -228,7 +228,15 @@ func (p *printer) exprString(e Expr, indent int) string {
 		return lhs + " |> " + rhs + "(" + strings.Join(args, ", ") + ")"
 
 	case *memberExpr:
-		return p.exprString(v.obj, indent) + "." + v.name
+		lhs := p.exprString(v.obj, indent)
+		// 0 .A → "0.A" → lex error '1. requires digit after the dot',
+		// потому что scanNumber, прочитав "0", видит '.' и следующий
+		// символ не цифру. Для float ("1.5"), hex ("0xFF") и exponent
+		// ("1e5") scanNumber корректно завершается на '.', пробел не нужен.
+		if endsWithPlainIntLit(v.obj) {
+			return lhs + " ." + v.name
+		}
+		return lhs + "." + v.name
 
 	case *indexExpr:
 		return p.exprString(v.obj, indent) + "[" + p.exprString(v.index, indent) + "]"
@@ -607,4 +615,31 @@ func (p *printer) typeString(t Type) string {
 		return "{ " + strings.Join(parts, ", ") + " }"
 	}
 	return ""
+}
+
+// endsWithPlainIntLit: узел — decimal integer literal, возможно
+// под унарным минусом. Только в этом случае конкатенация с '.' даёт
+// ошибку лексера. Радикс-литералы (0x/0b/0o) и float (с '.' или 'e')
+// scanNumber заканчивает сам, пробел не нужен.
+func endsWithPlainIntLit(e Expr) bool {
+	switch x := e.(type) {
+	case *literalExpr:
+		return isDecimalInt(x.value)
+	case *unaryExpr:
+		return x.op == "-" && endsWithPlainIntLit(x.expr)
+	}
+	return false
+}
+
+func isDecimalInt(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if (c < '0' || c > '9') && c != '_' {
+			return false
+		}
+	}
+	return true
 }

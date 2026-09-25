@@ -229,7 +229,7 @@ func InstallPrelude(vm *VM) {
 			if a.IsSmall {
 				return runtime.Float(float64(a.SmallInt)), nil
 			}
-			f, _ := new(big.Float).SetInt(a.Int).Float64()
+			f, _ := new(big.Float).SetInt(a.AsBig()).Float64()
 			return runtime.Float(f), nil
 		case runtime.KindStr:
 			s := strings.TrimSpace(a.Str)

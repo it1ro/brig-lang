@@ -132,3 +132,9 @@ check:
 
 repl:
 	$(GO) run ./cmd/brig repl
+
+check-smallint:
+	@if grep -rn '\.Int\b' internal/ --include='*.go' | grep -v '_test\.go'; then \
+		echo "found direct .Int field access; use AsBig() instead"; \
+		exit 1; \
+	fi

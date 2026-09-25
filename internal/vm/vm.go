@@ -162,15 +162,27 @@ func intDiv(a, b runtime.Value) (runtime.Value, error) {
 			return runtime.Unit, &ErrRaise{Val: runtime.Tuple(
 				runtime.Atom("division_by_zero"), runtime.Unit)}
 		}
-		// MinInt64 / -1 overflows int64; fall through to big.
 		if a.IsSmall && !(a.SmallInt == math.MinInt64 && b.SmallInt == -1) {
 			return runtime.Int(a.SmallInt / b.SmallInt), nil
 		}
-	} else if b.Int.Sign() == 0 {
+	} else if b.AsBig().Sign() == 0 {
 		return runtime.Unit, &ErrRaise{Val: runtime.Tuple(
 			runtime.Atom("division_by_zero"), runtime.Unit)}
 	}
 	return runtime.IntBig(new(big.Int).Quo(a.AsBig(), b.AsBig())), nil
+}
+
+func neg(a runtime.Value) (runtime.Value, error) {
+	switch a.Kind {
+	case runtime.KindInt:
+		if a.IsSmall && a.SmallInt != math.MinInt64 {
+			return runtime.Int(-a.SmallInt), nil
+		}
+		return runtime.IntBig(new(big.Int).Neg(a.AsBig())), nil
+	case runtime.KindFloat:
+		return runtime.Float(-a.Float), nil
+	}
+	return runtime.Unit, fmt.Errorf("(:type_error, (:neg, %s))", a.Inspect())
 }
 
 func rem(a, b runtime.Value) (runtime.Value, error) {
@@ -183,11 +195,9 @@ func rem(a, b runtime.Value) (runtime.Value, error) {
 				runtime.Atom("division_by_zero"), runtime.Unit)}
 		}
 		if a.IsSmall {
-			// Go's % and big.Int.Rem both truncate toward zero;
-			// MinInt64 % -1 == 0, no overflow.
 			return runtime.Int(a.SmallInt % b.SmallInt), nil
 		}
-	} else if b.Int.Sign() == 0 {
+	} else if b.AsBig().Sign() == 0 {
 		return runtime.Unit, &ErrRaise{Val: runtime.Tuple(
 			runtime.Atom("division_by_zero"), runtime.Unit)}
 	}
@@ -204,19 +214,6 @@ func pow(a, b runtime.Value) (runtime.Value, error) {
 	return runtime.Float(math.Pow(numToFloat(a), numToFloat(b))), nil
 }
 
-func neg(a runtime.Value) (runtime.Value, error) {
-	switch a.Kind {
-	case runtime.KindInt:
-		if a.IsSmall && a.SmallInt != math.MinInt64 {
-			return runtime.Int(-a.SmallInt), nil
-		}
-		return runtime.IntBig(new(big.Int).Neg(a.AsBig())), nil
-	case runtime.KindFloat:
-		return runtime.Float(-a.Float), nil
-	}
-	return runtime.Unit, fmt.Errorf("(:type_error, (:neg, %s))", a.Inspect())
-}
-
 func bothNum(a, b runtime.Value) bool {
 	return (a.Kind == runtime.KindInt || a.Kind == runtime.KindFloat) &&
 		(b.Kind == runtime.KindInt || b.Kind == runtime.KindFloat)
@@ -229,7 +226,7 @@ func numToFloat(v runtime.Value) float64 {
 	if v.IsSmall {
 		return float64(v.SmallInt)
 	}
-	f, _ := new(big.Float).SetInt(v.Int).Float64()
+	f, _ := new(big.Float).SetInt(v.AsBig()).Float64()
 	return f
 }
 

@@ -110,7 +110,7 @@ type Value struct {
 	Bool       bool
 	SmallInt   int64
 	IsSmall    bool
-	Int        *big.Int
+	intBig     *big.Int
 	Float      float64
 	Str        string
 	Atom       string
@@ -143,7 +143,7 @@ func IntBig(b *big.Int) Value {
 	if b.IsInt64() {
 		return Int(b.Int64())
 	}
-	return Value{Kind: KindInt, Int: b}
+	return Value{Kind: KindInt, intBig: b}
 }
 
 // AsBig возвращает big.Int представление (аллоцирует, если small).
@@ -154,7 +154,7 @@ func (v Value) AsBig() *big.Int {
 	if v.IsSmall {
 		return big.NewInt(v.SmallInt)
 	}
-	return v.Int
+	return v.intBig
 }
 
 // Float создаёт число с плавающей точкой.
@@ -209,7 +209,7 @@ func (v Value) Inspect() string {
 		if v.IsSmall {
 			return strconv.FormatInt(v.SmallInt, 10)
 		}
-		return v.Int.String()
+		return v.intBig.String()
 	case KindFloat:
 		return fmt.Sprintf("%v", v.Float)
 	case KindStr:
@@ -360,7 +360,7 @@ func numToFloat(v Value) float64 {
 	if v.IsSmall {
 		return float64(v.SmallInt)
 	}
-	f, _ := new(big.Float).SetInt(v.Int).Float64()
+	f, _ := new(big.Float).SetInt(v.intBig).Float64()
 	return f
 }
 
