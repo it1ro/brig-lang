@@ -4,6 +4,7 @@ package runtime
 import (
 	"fmt"
 	"math/big"
+	"strconv"
 	"strings"
 )
 
@@ -78,14 +79,14 @@ type FuncValue struct {
 	Arity    int
 	IsNative bool
 	Native   NativeFunc
-	Body     Code // *vm.Chunk; nil для нативных
+	Body     Code
 }
 
 // ClosureValue — замыкание: функция + захваченные переменные.
 type ClosureValue struct {
 	Name     string
 	Arity    int
-	Func     Code // *vm.Chunk
+	Func     Code
 	Captures []Value
 }
 
@@ -98,10 +99,17 @@ type VariantValue struct {
 // MapEntry — пара ключ/значение в иммутабельной мапе.
 type MapEntry struct{ Key, Val Value }
 
-// Value — любое значение Брига.
+// Value — любое значение Brig.
+//
+// Small-int fast-path: IsSmall==true означает, что целое представлено
+// в SmallInt (int64), а Int == nil. IsSmall==false + Kind==KindInt
+// означает, что Int != nil (big.Int). Все конструкторы соблюдают
+// этот инвариант.
 type Value struct {
 	Kind       Kind
 	Bool       bool
+	SmallInt   int64
+	IsSmall    bool
 	Int        *big.Int
 	Float      float64
 	Str        string
@@ -125,11 +133,29 @@ var Unit = Value{Kind: KindUnit}
 // Bool создаёт булево значение.
 func Bool(b bool) Value { return Value{Kind: KindBool, Bool: b} }
 
-// Int создаёт целое из int64.
-func Int(v int64) Value { return Value{Kind: KindInt, Int: big.NewInt(v)} }
+// Int создаёт целое; влезает в int64 — использует small-int fast-path.
+func Int(v int64) Value {
+	return Value{Kind: KindInt, SmallInt: v, IsSmall: true}
+}
 
-// IntBig создаёт целое из big.Int.
-func IntBig(v *big.Int) Value { return Value{Kind: KindInt, Int: v} }
+// IntBig создаёт целое из big.Int; при возможности конвертирует в small.
+func IntBig(b *big.Int) Value {
+	if b.IsInt64() {
+		return Int(b.Int64())
+	}
+	return Value{Kind: KindInt, Int: b}
+}
+
+// AsBig возвращает big.Int представление (аллоцирует, если small).
+func (v Value) AsBig() *big.Int {
+	if v.Kind != KindInt {
+		return nil
+	}
+	if v.IsSmall {
+		return big.NewInt(v.SmallInt)
+	}
+	return v.Int
+}
 
 // Float создаёт число с плавающей точкой.
 func Float(f float64) Value { return Value{Kind: KindFloat, Float: f} }
@@ -180,6 +206,9 @@ func (v Value) Inspect() string {
 		}
 		return "false"
 	case KindInt:
+		if v.IsSmall {
+			return strconv.FormatInt(v.SmallInt, 10)
+		}
 		return v.Int.String()
 	case KindFloat:
 		return fmt.Sprintf("%v", v.Float)
@@ -251,7 +280,10 @@ func Equal(a, b Value) bool {
 	case KindBool:
 		return a.Bool == b.Bool
 	case KindInt:
-		return a.Int.Cmp(b.Int) == 0
+		if a.IsSmall && b.IsSmall {
+			return a.SmallInt == b.SmallInt
+		}
+		return a.AsBig().Cmp(b.AsBig()) == 0
 	case KindFloat:
 		return a.Float == b.Float
 	case KindStr:
@@ -325,6 +357,9 @@ func numToFloat(v Value) float64 {
 	if v.Kind == KindFloat {
 		return v.Float
 	}
+	if v.IsSmall {
+		return float64(v.SmallInt)
+	}
 	f, _ := new(big.Float).SetInt(v.Int).Float64()
 	return f
 }
@@ -376,23 +411,13 @@ func cmpErr(a, b Value) error {
 }
 
 // Code — маркер скомпилированного байткода.
-// Реализуется *vm.Chunk. Интерфейс объявлен в runtime, чтобы
-// FuncValue.Body был типобезопасным без циклического импорта
-// runtime → vm. vm импортирует runtime и реализует Code.
 type Code interface {
 	IsBrigCode()
 }
 
 // ---- Сериализация (§14.8, §13.1) ----
 
-// Serialize проверяет сериализуемость значения для передачи между
-// нодами. Функции, замыкания, Pid, Ref не сериализуемы (§14.8).
-// Для передачи поведения между распределёнными акторами используйте
-// MFA-дескриптор (§13.1): { module, function, args }.
-//
-// В shared-heap модели (§15.1) функции передаются по ссылке без
-// сериализации — Serialize вызывается только при выходе за пределы
-// общего хипа.
+// Serialize проверяет сериализуемость значения для передачи между нодами.
 func Serialize(v Value) error {
 	return serializeValue(v, 0)
 }
@@ -457,10 +482,7 @@ func serializeValue(v Value, depth int) error {
 	return nil
 }
 
-// MFA — сериализуемый дескриптор функции для передачи между акторами
-// (§13.1). Запись { module: Str, function: Str, args: List }, не кортеж.
-// В shared-heap модели функции передаются напрямую; MFA нужен для
-// распределённых акторов, где замыкание невозможно передать по ссылке.
+// MFA — сериализуемый дескриптор функции для передачи между акторами (§13.1).
 func MFA(module, function string, args []Value) Value {
 	return Map([]MapEntry{
 		{Key: Atom("module"), Val: Str(module)},
