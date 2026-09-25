@@ -50,6 +50,22 @@
 - *(vm)* Update prelude
 - *(vm)* Update scheduler
 - *(vm)* Update vm
+- *(parser)* Add descending literal range error and litIntValue
+- *(ast)* Add RangeExpr accessor interface
+- *(compiler)* Compile RangeExpr and IndexExpr, add Sprint 5.1 tests
+- *(runtime)* Add Range and Set kinds and value support
+- *(vm)* Add OpRange, OpIndex, prelude list materialize, scheduler step
+- *(cli)* Update main commands with sema and version
+- *(cli)* Implement persistent REPL loop
+- *(ast)* Add PipeExpr and RangeExpr accessors
+- *(compiler)* Integrate sema pipeline and compile updates
+- *(runtime)* Update Range and Set value kinds
+- *(vm)* Add Range and Index opcodes, clean dead ops
+- *(vm)* Update prelude for list materialize and set
+- *(vm)* Add OpRange and OpIndex scheduler steps
+- *(vm)* Increase max locals and add persistent VM support
+- *(repl)* Add persistent REPL module
+- *(sema)* Add semantic analysis pipeline
 
 ### 🐛 Bug Fixes
 
@@ -98,11 +114,18 @@
 - Regenerate changelog
 - Add actors example
 - Regenerate changelog
+- Regenerate changelog
+- Add status file
+- Update architecture notes
+- Add range example (Sprint 5.1)
+- Add centered logo with 100px height to readme
+- Add bytes example
 
 ### 🚜 Refactor
 
 - Rename to Dreki; splink -> spawn_linked
 - Rename language to Brig
+- *(vm)* Remove dead OpDefineLocalFn from chunk operand
 
 ### 🧪 Testing
 
@@ -117,6 +140,8 @@
 - *(compiler)* Update compiler tests
 - *(vm)* Update scheduler tests
 - *(compiler)* Update compiler tests
+- *(compiler)* Add Sprint 5.1 and 6.1 test cases
+- *(sema)* Add semantic analysis tests
 
 ### ⚙️ Miscellaneous Tasks
 
