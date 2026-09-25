@@ -320,3 +320,31 @@ func (e *recvExpr) RecvElseName() string { return e.elseName }
 func (e *recvExpr) RecvElseBody() Expr   { return e.elseBody }
 func (e *recvExpr) RecvAfterTime() Expr  { return e.afterTime }
 func (e *recvExpr) RecvAfterBody() Expr  { return e.afterBody }
+
+// --- v0.4.8: list/map patterns ---
+
+// PatternList — аксессор к listPattern.
+type PatternList interface {
+	Pattern
+	ListElems() []Pattern
+	ListHasRest() bool
+	ListRestName() string
+}
+
+func (p *listPattern) ListElems() []Pattern { return p.patterns }
+func (p *listPattern) ListHasRest() bool    { return p.hasRest }
+func (p *listPattern) ListRestName() string { return p.restName }
+
+// PatternMapAccessor — аксессор к mapPattern.
+type PatternMapAccessor interface {
+	Pattern
+	MapPairsAccessor() []MapPairArg
+}
+
+func (p *mapPattern) MapPairsAccessor() []MapPairArg {
+	out := make([]MapPairArg, 0, len(p.pairs))
+	for _, pair := range p.pairs {
+		out = append(out, MapPairArg{Key: pair.key, Pat: pair.pat})
+	}
+	return out
+}
