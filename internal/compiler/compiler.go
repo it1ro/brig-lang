@@ -1064,15 +1064,18 @@ func isPreludeModule(name string) bool {
 
 // ---- collections ----
 
-// compileSeq: элементы в последовательные регистры, затем ctor.
-// Регистр i-го элемента — base+i (I-2 для литералов).
+// compileSeq: элементы в последовательные регистры от base (первый
+// элемент задаёт base), затем ctor. Окно чтения ctor — base..base+n-1.
 func (fc *funcCompiler) compileSeq(elems []ast.Expr, op vm.OpCode, d dest) error {
 	mark := fc.nextReg
 	dst := fc.destReg(d)
 
-	base := fc.allocReg()
+	base := 0
 	for i, e := range elems {
 		r := fc.allocReg()
+		if i == 0 {
+			base = r
+		}
 		if r != base+i {
 			fc.fail("seq: elem %d in r%d, want r%d", i, r, base+i)
 		}
@@ -1080,23 +1083,28 @@ func (fc *funcCompiler) compileSeq(elems []ast.Expr, op vm.OpCode, d dest) error
 			return err
 		}
 	}
+	// Пустая коллекция: base не читается (C=0), значение не важно.
 	fc.emit(vm.ABC(op, dst, base, len(elems)))
 	fc.finish(d, dst)
 	fc.releaseToMark(mark)
 	return nil
 }
 
-// compileMap: пары k,v в последовательных регистрах, затем MAP.
+// compileMap: пары k,v в последовательных регистрах от base (первая
+// пара задаёт base), затем MAP. Окно чтения — base..base+2n-1.
 func (fc *funcCompiler) compileMap(elems []ast.Expr, d dest) error {
 	mark := fc.nextReg
 	dst := fc.destReg(d)
 
-	base := fc.allocReg()
+	base := 0
 	n := 0
 	for _, e := range elems {
 		pair, ok := e.(ast.BinaryExpr)
 		if !ok || pair.OpStr() != "=>" {
 			return fmt.Errorf("срез: элемент мапы должен быть парой =>")
+		}
+		if n == 0 {
+			base = fc.nextReg
 		}
 		kReg := fc.allocReg()
 		if err := fc.compileExpr(pair.Left(), val(kReg)); err != nil {
