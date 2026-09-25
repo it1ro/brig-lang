@@ -28,6 +28,8 @@ const (
 	KindVariant
 	KindPid
 	KindRef
+	KindRange // Sprint 5.1 (§4.3)
+	KindSet   // Sprint 5.2 (§4.6)
 )
 
 func (k Kind) String() string {
@@ -62,6 +64,10 @@ func (k Kind) String() string {
 		return "Pid"
 	case KindRef:
 		return "Ref"
+	case KindRange:
+		return "Range"
+	case KindSet:
+		return "Set"
 	}
 	return "unknown"
 }
@@ -106,6 +112,9 @@ type MapEntry struct{ Key, Val Value }
 // в SmallInt (int64), а Int == nil. IsSmall==false + Kind==KindInt
 // означает, что Int != nil (big.Int). Все конструкторы соблюдают
 // этот инвариант.
+//
+// Range (Sprint 5.1): границы хранятся как int64; при построении
+// диапазона с big-int границами VM возбуждает :range_error.
 type Value struct {
 	Kind       Kind
 	Bool       bool
@@ -119,11 +128,14 @@ type Value struct {
 	List       []Value
 	Vector     []Value
 	Map        []MapEntry
+	Set        []Value
 	Func       *FuncValue
 	ClosureVal *ClosureValue
 	Variant    *VariantValue
 	Pid        int
 	Ref        int
+	RangeStart int64
+	RangeEnd   int64
 }
 
 // ---- конструкторы ----
@@ -175,6 +187,14 @@ func List(vs ...Value) Value { return Value{Kind: KindList, List: vs} }
 
 // Vector создаёт вектор.
 func Vector(vs ...Value) Value { return Value{Kind: KindVector, Vector: vs} }
+
+// Set создаёт множество (Sprint 5.2, §4.6).
+func Set(vs ...Value) Value { return Value{Kind: KindSet, Set: vs} }
+
+// Range создаёт диапазон (Sprint 5.1, §4.3).
+func Range(start, end int64) Value {
+	return Value{Kind: KindRange, RangeStart: start, RangeEnd: end}
+}
 
 // Func создаёт значение-функцию.
 func Func(f *FuncValue) Value { return Value{Kind: KindFunction, Func: f} }
@@ -233,6 +253,11 @@ func (v Value) Inspect() string {
 			parts[i] = inspectLit(e.Key) + " => " + inspectLit(e.Val)
 		}
 		return "%{" + strings.Join(parts, ", ") + "}"
+	case KindSet:
+		return "set(" + inspectJoin(v.Set) + ")"
+	case KindRange:
+		return strconv.FormatInt(v.RangeStart, 10) + " to " +
+			strconv.FormatInt(v.RangeEnd, 10)
 	case KindFunction:
 		return fmt.Sprintf("#<function %s/%d>", v.Func.Name, v.Func.Arity)
 	case KindClosure:
@@ -291,6 +316,8 @@ func Equal(a, b Value) bool {
 		return a.Str == b.Str
 	case KindAtom:
 		return a.Atom == b.Atom
+	case KindRange:
+		return a.RangeStart == b.RangeStart && a.RangeEnd == b.RangeEnd
 	case KindTuple:
 		if len(a.Tuple) != len(b.Tuple) {
 			return false
@@ -313,6 +340,23 @@ func Equal(a, b Value) bool {
 			found := false
 			for _, be := range b.Map {
 				if Equal(ae.Key, be.Key) && Equal(ae.Val, be.Val) {
+					found = true
+					break
+				}
+			}
+			if !found {
+				return false
+			}
+		}
+		return true
+	case KindSet:
+		if len(a.Set) != len(b.Set) {
+			return false
+		}
+		for _, ae := range a.Set {
+			found := false
+			for _, be := range b.Set {
+				if Equal(ae, be) {
 					found = true
 					break
 				}
@@ -403,8 +447,55 @@ func Compare(a, b Value) (int, error) {
 			bi = 1
 		}
 		return ai - bi, nil
+	case KindRange:
+		if b.Kind != KindRange {
+			return 0, cmpErr(a, b)
+		}
+		if a.RangeStart != b.RangeStart {
+			return cmpInt64(a.RangeStart, b.RangeStart), nil
+		}
+		return cmpInt64(a.RangeEnd, b.RangeEnd), nil
+	case KindSet:
+		if b.Kind != KindSet {
+			return 0, cmpErr(a, b)
+		}
+		if len(a.Set) != len(b.Set) {
+			return cmpInt(len(a.Set), len(b.Set)), nil
+		}
+		for i := range a.Set {
+			c, err := Compare(a.Set[i], b.Set[i])
+			if err != nil {
+				return 0, err
+			}
+			if c != 0 {
+				return c, nil
+			}
+		}
+		return 0, nil
 	}
 	return 0, cmpErr(a, b)
+}
+
+func cmpInt64(a, b int64) int {
+	switch {
+	case a < b:
+		return -1
+	case a > b:
+		return 1
+	default:
+		return 0
+	}
+}
+
+func cmpInt(a, b int) int {
+	switch {
+	case a < b:
+		return -1
+	case a > b:
+		return 1
+	default:
+		return 0
+	}
 }
 
 func cmpErr(a, b Value) error {
@@ -460,6 +551,12 @@ func serializeValue(v Value, depth int) error {
 		}
 	case KindVector:
 		for _, e := range v.Vector {
+			if err := serializeValue(e, depth+1); err != nil {
+				return err
+			}
+		}
+	case KindSet:
+		for _, e := range v.Set {
 			if err := serializeValue(e, depth+1); err != nil {
 				return err
 			}
