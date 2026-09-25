@@ -51,7 +51,7 @@ description: >
 |---|---|---|
 | Параметры и guard `fn` | Хранятся строками (`pat.String()`, `normalizeGuardString`, `stmt.go:90-146,190-199`) — AST не выражает параметр-паттерн | T-50 (#33) |
 | Интерполяция `\(...)` | STRING → `LiteralExpr` (`expr.go:401-405`), выражение в AST не попадает, `"a \(1 +) b"` принимается | T-53 (#36) |
-| `ensure` | Форма из грамматики (`ensure NEWLINE INDENT`) не парсится; гибрид `ensure expr` + блок принимается, блок молча выбрасывается (`expr.go:887-906`) | T-03 (#3) |
+| `ensure` | Только `ensure expr`; блочная форма и гибрид `ensure expr`+блок — ошибка парсинга (S-F5 закрыт T-03 #3). Реализация блочной формы — out of scope | — |
 | `stmt_list` | NEWLINE между стейтментами не обязателен (`stmt.go:13-26`): `x = 1 y = 2` — две строки | T-21 (#15) |
 | `sep ::= NEWLINE` | В args/params/tuple не поддержан (в list/map/record — да) | T-24 (#18) |
 | Паттерн `()`, порядок bind/stmt в `with` | Ошибка парсинга | T-24 (#18) |
@@ -80,8 +80,7 @@ description: >
   24 из 25 `testdata/golden/*.ast` равны `(program )`: **до T-11
   golden-тесты AST ничего не защищают**, а `Walk` пропускает декларации.
 - Round-trip на `ast.Equal` не видит того, что парсер выбросил в обоих
-  проходах (guard в `recv`, блок `ensure`). Зелёный round-trip ≠ «узел
-  сохранён».
+  проходах (guard в `recv` до T-02). Зелёный round-trip ≠ «узел сохранён».
 - `*tuplePattern` из одного элемента печатается с висячей запятой
   `(x,)` — без неё `(x)` перепарсится как grouping/identPat и потеряет
   узел при round-trip (см. FIX-B в changelog v0.4.7). Аналогичная ловушка
