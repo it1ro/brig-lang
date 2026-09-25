@@ -1,0 +1,12 @@
+module Main
+
+fn main() ->
+    print(Json.encode(42))
+    print(Json.encode("hi, brig"))
+    print(Json.encode([1, 2, 3]))
+    print(Json.encode(%{ "a" => 1, "b" => 2 }))
+    print(Json.encode(Some(42)))
+    print(Json.encode(None))
+
+    parsed = Json.decode("{\"x\": 1, \"y\": [true, false]}")
+    print(parsed)
