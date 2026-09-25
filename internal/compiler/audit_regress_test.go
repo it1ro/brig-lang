@@ -175,7 +175,6 @@ fn main() -> assert(outer(41) == 42)
 
 // §3.1: Int — произвольной точности; литерал за пределами int64 — Int (T-22).
 func TestAuditBigIntLiteral(t *testing.T) {
-	t.Skip("blocked: T-22")
 	if err := runModuleErr(t, `module Main
 fn main() -> assert(99999999999999999999 - 99999999999999999998 == 1)
 `); err != nil {
@@ -185,11 +184,28 @@ fn main() -> assert(99999999999999999999 - 99999999999999999998 == 1)
 
 // brig.ebnf int_lit ::= dec_digits: `010` — десятичное 10, не восьмеричное (T-22).
 func TestAuditLeadingZeroIsDecimal(t *testing.T) {
-	t.Skip("blocked: T-22")
 	if err := runModuleErr(t, `module Main
 fn main() -> assert(010 == 10)
 `); err != nil {
 		t.Errorf("leading-zero literal: %v", err)
+	}
+}
+
+// S-F7 / T-22: base по префиксу; иначе 10; произвольная точность Int.
+func TestIntLiteralBases(t *testing.T) {
+	if err := runModuleErr(t, `module Main
+fn main() ->
+    assert(010 == 10)
+    assert(08 == 8)
+    assert(0x10 == 16)
+    assert(0b1010 == 10)
+    assert(0o10 == 8)
+    assert(1_000 == 1000)
+    assert(to_str(99999999999999999999) == "99999999999999999999")
+    assert(-9223372036854775808 + 9223372036854775807 == -1)
+    assert(to_str(-9223372036854775808) == "-9223372036854775808")
+`); err != nil {
+		t.Errorf("int literal bases: %v", err)
 	}
 }
 
