@@ -7,6 +7,7 @@ package ast
 //
 // v0.4.7: добавлен TrapExpr.
 // v0.4.8: добавлены RecvExpr и Pattern* (нужны компилятору акторов).
+// v0.4.9: добавлен RangeExpr (Sprint 5.1).
 // RecvBranchArg уже объявлен в construct.go — здесь не дублируется.
 
 // --- выражения ---
@@ -142,6 +143,19 @@ type RegexExpr interface {
 }
 
 func (e *regexExpr) ValueStr() string { return e.value }
+
+// RangeExpr — доступ к диапазону `start to end` (Sprint 5.1).
+//
+// Методы названы RangeStart/RangeEnd, а не Start/End: Node уже
+// предоставляет End() int, конфликт с End() Expr невозможен.
+type RangeExpr interface {
+	Expr
+	RangeStart() Expr
+	RangeEnd() Expr
+}
+
+func (e *rangeExpr) RangeStart() Expr { return e.start }
+func (e *rangeExpr) RangeEnd() Expr   { return e.end }
 
 // LambdaShort — доступ к короткой лямбде.
 type LambdaShort interface {
