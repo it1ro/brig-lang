@@ -3,7 +3,7 @@
 // Подкоманды:
 //   - check — парсинг + контекстный анализ без исполнения;
 //   - run   — полный пайплайн: парсер → sema → компилятор → регистровая ВМ;
-//   - repl  — отладочный цикл (токены лексера);
+//   - repl  — persistent REPL (§11.4, N12);
 //   - version / help.
 //
 // Переменные окружения:
@@ -24,7 +24,7 @@ import (
 
 const version = "0.1.0-dev"
 
-// Exit codes (см. скилл brig-cli):
+// Exit codes:
 //
 //	0 — ok
 //	1 — ошибка парсинга / семантической проверки
@@ -203,7 +203,7 @@ func runFile(args []string) {
 	}
 }
 
-// runRepl: отладочный REPL — по строке выводит токены лексера.
+// runRepl: persistent REPL (§11.4, N12).
 func runRepl(args []string) {
 	if len(args) != 0 {
 		fmt.Fprintln(os.Stderr, "brig repl: аргументы не принимаются")
