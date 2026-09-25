@@ -2,6 +2,7 @@
 //
 // Подэтап 4.8: акторы с явным scheduler loop (§12, §15.2).
 // Sprint 6.2: RunMainWithArgs для persistent REPL.
+// Sprint 5.4: Decimal (§3.1) — арифметика + негативные кейсы Decimal×Float.
 package vm
 
 import (
@@ -13,7 +14,6 @@ import (
 )
 
 // maxLocals — потолок числа локальных слотов на кадр функции.
-// Sprint 6.2: увеличен с 64 до 256 + проверка в compiler.declareLocal.
 const maxLocals = 256
 
 // MaxLocals — экспортируемая версия для compiler.declareLocal.
@@ -88,9 +88,39 @@ func (vm *VM) RunMainWithArgs(mainFn runtime.Value, args []runtime.Value) (runti
 	return vm.scheduler.RunMainWithArgs(mainFn, args)
 }
 
-// ---- арифметика (§7.3) ----
+// ---- арифметика (§7.3, §7.4) ----
+
+// numToRat возвращает big.Rat для Int/Decimal. Float и прочее — false.
+func numToRat(v runtime.Value) (*big.Rat, bool) {
+	switch v.Kind {
+	case runtime.KindDecimal:
+		return v.Dec, true
+	case runtime.KindInt:
+		return new(big.Rat).SetInt(v.AsBig()), true
+	}
+	return nil, false
+}
+
+// decArithErr — :type_error как catchable raise (для trap).
+//
+// `op` передаётся без ведущего двоеточия (`"add"`, а не `":add"`):
+// runtime.Atom сам добавляет ":" при печати, и `Atom(":add")`
+// давал бы `::add` в Inspect().
+func decArithErr(a, b runtime.Value, op string) error {
+	return &ErrRaise{Val: runtime.Tuple(
+		runtime.Atom("type_error"),
+		runtime.Tuple(runtime.Atom(op), runtime.Tuple(a, b)))}
+}
 
 func add(a, b runtime.Value) (runtime.Value, error) {
+	if a.Kind == runtime.KindDecimal || b.Kind == runtime.KindDecimal {
+		ar, ok1 := numToRat(a)
+		br, ok2 := numToRat(b)
+		if !ok1 || !ok2 {
+			return runtime.Unit, decArithErr(a, b, "add")
+		}
+		return runtime.Decimal(new(big.Rat).Add(ar, br)), nil
+	}
 	if a.Kind == runtime.KindStr && b.Kind == runtime.KindStr {
 		return runtime.Str(a.Str + b.Str), nil
 	}
@@ -118,6 +148,14 @@ func add(a, b runtime.Value) (runtime.Value, error) {
 }
 
 func sub(a, b runtime.Value) (runtime.Value, error) {
+	if a.Kind == runtime.KindDecimal || b.Kind == runtime.KindDecimal {
+		ar, ok1 := numToRat(a)
+		br, ok2 := numToRat(b)
+		if !ok1 || !ok2 {
+			return runtime.Unit, decArithErr(a, b, "sub")
+		}
+		return runtime.Decimal(new(big.Rat).Sub(ar, br)), nil
+	}
 	if !bothNum(a, b) {
 		return runtime.Unit, arithErr(a, b, ":sub")
 	}
@@ -136,6 +174,14 @@ func sub(a, b runtime.Value) (runtime.Value, error) {
 }
 
 func mul(a, b runtime.Value) (runtime.Value, error) {
+	if a.Kind == runtime.KindDecimal || b.Kind == runtime.KindDecimal {
+		ar, ok1 := numToRat(a)
+		br, ok2 := numToRat(b)
+		if !ok1 || !ok2 {
+			return runtime.Unit, decArithErr(a, b, "mul")
+		}
+		return runtime.Decimal(new(big.Rat).Mul(ar, br)), nil
+	}
 	if !bothNum(a, b) {
 		return runtime.Unit, arithErr(a, b, ":mul")
 	}
@@ -151,7 +197,29 @@ func mul(a, b runtime.Value) (runtime.Value, error) {
 	return runtime.IntBig(new(big.Int).Mul(a.AsBig(), b.AsBig())), nil
 }
 
+// div — оператор `/`.
+//
+// §7.3 буквально: «`/` всегда возвращает `Float`». Осознанное
+// расширение для Decimal: если хотя бы один операнд — Decimal и ни
+// один — Float, возвращаем Decimal, чтобы сохранить точность
+// (иначе `dec"1" / dec"2"` теряет смысл «точной десятичной
+// арифметики»). Decimal×Float — :type_error (§7.4).
 func div(a, b runtime.Value) (runtime.Value, error) {
+	if a.Kind == runtime.KindDecimal || b.Kind == runtime.KindDecimal {
+		if a.Kind == runtime.KindFloat || b.Kind == runtime.KindFloat {
+			return runtime.Unit, decArithErr(a, b, "div")
+		}
+		ar, ok1 := numToRat(a)
+		br, ok2 := numToRat(b)
+		if !ok1 || !ok2 {
+			return runtime.Unit, decArithErr(a, b, "div")
+		}
+		if br.Sign() == 0 {
+			return runtime.Unit, &ErrRaise{Val: runtime.Tuple(
+				runtime.Atom("division_by_zero"), runtime.Unit)}
+		}
+		return runtime.Decimal(new(big.Rat).Quo(ar, br)), nil
+	}
 	if !bothNum(a, b) {
 		return runtime.Unit, arithErr(a, b, ":div")
 	}
@@ -163,6 +231,9 @@ func div(a, b runtime.Value) (runtime.Value, error) {
 }
 
 func intDiv(a, b runtime.Value) (runtime.Value, error) {
+	if a.Kind == runtime.KindDecimal || b.Kind == runtime.KindDecimal {
+		return runtime.Unit, decArithErr(a, b, "div")
+	}
 	if a.Kind != runtime.KindInt || b.Kind != runtime.KindInt {
 		return runtime.Unit, arithErr(a, b, ":div")
 	}
@@ -183,6 +254,8 @@ func intDiv(a, b runtime.Value) (runtime.Value, error) {
 
 func neg(a runtime.Value) (runtime.Value, error) {
 	switch a.Kind {
+	case runtime.KindDecimal:
+		return runtime.Decimal(new(big.Rat).Neg(a.Dec)), nil
 	case runtime.KindInt:
 		if a.IsSmall && a.SmallInt != math.MinInt64 {
 			return runtime.Int(-a.SmallInt), nil
@@ -195,6 +268,9 @@ func neg(a runtime.Value) (runtime.Value, error) {
 }
 
 func rem(a, b runtime.Value) (runtime.Value, error) {
+	if a.Kind == runtime.KindDecimal || b.Kind == runtime.KindDecimal {
+		return runtime.Unit, decArithErr(a, b, "rem")
+	}
 	if a.Kind != runtime.KindInt || b.Kind != runtime.KindInt {
 		return runtime.Unit, arithErr(a, b, ":rem")
 	}
@@ -213,7 +289,33 @@ func rem(a, b runtime.Value) (runtime.Value, error) {
 	return runtime.IntBig(new(big.Int).Rem(a.AsBig(), b.AsBig())), nil
 }
 
+// pow — `**`. Для Decimal базы и целочисленного (Int или Decimal-целого)
+// показателя — точное возведение: (p/q)^n = p^n / q^n. Для остальных
+// сочетаний — Float. Decimal×Float → :type_error.
 func pow(a, b runtime.Value) (runtime.Value, error) {
+	if a.Kind == runtime.KindDecimal || b.Kind == runtime.KindDecimal {
+		if a.Kind == runtime.KindFloat || b.Kind == runtime.KindFloat {
+			return runtime.Unit, decArithErr(a, b, "pow")
+		}
+		if a.Kind == runtime.KindDecimal && b.Kind == runtime.KindInt {
+			exp := b.AsBig()
+			if !exp.IsInt64() {
+				return runtime.Unit, decArithErr(a, b, "pow")
+			}
+			n := exp.Int64()
+			if n < 0 {
+				// (p/q)^-n = (q/p)^n
+				inv := new(big.Rat).Inv(a.Dec)
+				if inv == nil {
+					return runtime.Unit, &ErrRaise{Val: runtime.Tuple(
+						runtime.Atom("division_by_zero"), runtime.Unit)}
+				}
+				return runtime.Decimal(ratIntPow(inv, -n)), nil
+			}
+			return runtime.Decimal(ratIntPow(a.Dec, n)), nil
+		}
+		return runtime.Unit, decArithErr(a, b, "pow")
+	}
 	if !bothNum(a, b) {
 		return runtime.Unit, arithErr(a, b, ":pow")
 	}
@@ -221,6 +323,14 @@ func pow(a, b runtime.Value) (runtime.Value, error) {
 		return runtime.IntBig(new(big.Int).Exp(a.AsBig(), b.AsBig(), nil)), nil
 	}
 	return runtime.Float(math.Pow(numToFloat(a), numToFloat(b))), nil
+}
+
+// ratIntPow — r^n для n >= 0.
+func ratIntPow(r *big.Rat, n int64) *big.Rat {
+	out := new(big.Rat)
+	num := new(big.Int).Exp(r.Num(), big.NewInt(n), nil)
+	den := new(big.Int).Exp(r.Denom(), big.NewInt(n), nil)
+	return out.SetFrac(num, den)
 }
 
 func bothNum(a, b runtime.Value) bool {
@@ -241,4 +351,34 @@ func numToFloat(v runtime.Value) float64 {
 
 func arithErr(a, b runtime.Value, op string) error {
 	return fmt.Errorf("(:type_error, (%s, (%s, %s)))", op, a.Inspect(), b.Inspect())
+}
+
+// checkMixedEq — жёсткая проверка Decimal×Float для оператора == / !=
+// (§7.4: ошибка). Возвращает catchable *ErrRaise.
+//
+// В остальных контекстах (Equal из pattern-match, коллекции) та же
+// пара даёт false — так безопаснее для нестроковых использований.
+func checkMixedEq(a, b runtime.Value) error {
+	if (a.Kind == runtime.KindDecimal && b.Kind == runtime.KindFloat) ||
+		(a.Kind == runtime.KindFloat && b.Kind == runtime.KindDecimal) {
+		return &ErrRaise{Val: runtime.Tuple(
+			runtime.Atom("type_error"),
+			runtime.Tuple(runtime.Atom("eq"), runtime.Tuple(a, b)))}
+	}
+	return nil
+}
+
+// checkMixedCmp — жёсткая проверка Decimal×Float для операторов
+// сравнения < > <= >= (§7.4: ошибка). Возвращает catchable *ErrRaise.
+//
+// Нужна до вызова runtime.Compare, потому что последний возвращает
+// обычную error (без обёртки ErrRaise), и handleRaise её не ловит.
+func checkMixedCmp(a, b runtime.Value) error {
+	if (a.Kind == runtime.KindDecimal && b.Kind == runtime.KindFloat) ||
+		(a.Kind == runtime.KindFloat && b.Kind == runtime.KindDecimal) {
+		return &ErrRaise{Val: runtime.Tuple(
+			runtime.Atom("type_error"),
+			runtime.Tuple(runtime.Atom("compare"), runtime.Tuple(a, b)))}
+	}
+	return nil
 }

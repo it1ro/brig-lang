@@ -434,6 +434,9 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 			aa, _ := pop()
 			r, err := add(aa, b)
 			if err != nil {
+				if handleRaise(err) {
+					continue
+				}
 				return fail(err)
 			}
 			push(r)
@@ -444,6 +447,9 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 			aa, _ := pop()
 			r, err := sub(aa, b)
 			if err != nil {
+				if handleRaise(err) {
+					continue
+				}
 				return fail(err)
 			}
 			push(r)
@@ -454,6 +460,9 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 			aa, _ := pop()
 			r, err := mul(aa, b)
 			if err != nil {
+				if handleRaise(err) {
+					continue
+				}
 				return fail(err)
 			}
 			push(r)
@@ -503,6 +512,9 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 			aa, _ := pop()
 			r, err := pow(aa, b)
 			if err != nil {
+				if handleRaise(err) {
+					continue
+				}
 				return fail(err)
 			}
 			push(r)
@@ -515,6 +527,9 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 			}
 			r, err := neg(aa)
 			if err != nil {
+				if handleRaise(err) {
+					continue
+				}
 				return fail(err)
 			}
 			push(r)
@@ -534,6 +549,12 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 		case OpEq, OpNeq:
 			b, _ := pop()
 			aa, _ := pop()
+			if err := checkMixedEq(aa, b); err != nil {
+				if handleRaise(err) {
+					continue
+				}
+				return fail(err)
+			}
 			eq := runtime.Equal(aa, b)
 			if op == OpNeq {
 				eq = !eq
@@ -544,6 +565,12 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 		case OpLt, OpGt, OpLe, OpGe:
 			b, _ := pop()
 			aa, _ := pop()
+			if err := checkMixedCmp(aa, b); err != nil {
+				if handleRaise(err) {
+					continue
+				}
+				return fail(err)
+			}
 			c, err := runtime.Compare(aa, b)
 			if err != nil {
 				return fail(err)
