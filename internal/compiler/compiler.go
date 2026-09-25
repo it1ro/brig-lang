@@ -1,10 +1,9 @@
 // Package compiler — компиляция AST в стековый байткод ВМ.
 //
-// Трек α: локальные функции (hoisting + манглированные имена),
-// замыкания (capture-by-value), лямбды, взаимная рекурсия.
 // v0.4.7: trap/ensure (§10.2, §10.3).
 // v0.4.8: акторы — spawn/send/recv/watch + OpMatchLocal (§12).
-// v0.4.9: Range (§4.3), Index (§4.4/§4.5), модули Vec/Map (§4.4/§4.5).
+// v0.4.9: Range (§4.3), Index (§4.4/§4.5), модули Vec/Map (§4.4/§4.5),
+// Bytes (§3.2).
 package compiler
 
 import (
@@ -76,13 +75,13 @@ type upvalueInfo struct {
 
 // funcCompiler — состояние компиляции одной функции.
 type funcCompiler struct {
-	compiler *Compiler     // обратная ссылка для доступа к ProgramImage
-	parent   *funcCompiler // объемлющая область (nil для top-level)
-	prefix   string        // префикс для манглирования: "main$"
+	compiler *Compiler
+	parent   *funcCompiler
+	prefix   string
 	chunk    *vm.Chunk
 	locals   []string
 	scopes   []map[string]int
-	localFns map[string]string // имя в исходнике → манглированное имя
+	localFns map[string]string
 	upvalues []upvalueInfo
 	line     int
 }
@@ -98,8 +97,15 @@ func (c *Compiler) newFuncCompiler(parent *funcCompiler) *funcCompiler {
 	}
 }
 
+// declareLocal — резервирует локальный слот. Проверяет границу maxLocals
+// (Sprint 6.2): превышение — ошибка компиляции, а не внутренняя ошибка ВМ.
 func (fc *funcCompiler) declareLocal(name string) int {
 	idx := len(fc.locals)
+	if idx >= vm.MaxLocals {
+		panic(fmt.Sprintf(
+			"compiler: function %q declares more than %d locals (last: %q)",
+			fc.prefix, vm.MaxLocals, name))
+	}
 	fc.locals = append(fc.locals, name)
 	fc.scopes[len(fc.scopes)-1][name] = idx
 	return idx
@@ -114,11 +120,15 @@ func (fc *funcCompiler) resolveLocal(name string) (int, bool) {
 	return 0, false
 }
 
-// allocTemp резервирует анонимный локальный слот под временное значение.
-// Используется trap/recv.
+// allocTemp — резервирует анонимный слот. Та же проверка границы.
 func (fc *funcCompiler) allocTemp() int {
 	idx := len(fc.locals)
-	fc.locals = append(fc.locals, "") // анонимный слот
+	if idx >= vm.MaxLocals {
+		panic(fmt.Sprintf(
+			"compiler: function %q declares more than %d locals (temp)",
+			fc.prefix, vm.MaxLocals))
+	}
+	fc.locals = append(fc.locals, "")
 	return idx
 }
 
@@ -175,7 +185,6 @@ func (c *Compiler) compileBlock(name string, params []string, stmts []ast.Stmt) 
 // ---- стейтменты ----
 
 func (fc *funcCompiler) compileStmts(stmts []ast.Stmt) error {
-	// Фаза 1: hoisting — собираем имена локальных функций.
 	for _, s := range stmts {
 		if lfd, ok := s.(ast.LocalFnDecl); ok {
 			name := lfd.FnName()
@@ -184,7 +193,6 @@ func (fc *funcCompiler) compileStmts(stmts []ast.Stmt) error {
 		}
 	}
 
-	// Фаза 2: компиляция в порядке следования.
 	for i, s := range stmts {
 		if i > 0 {
 			fc.emit(vm.OpPop, 0)
@@ -220,25 +228,16 @@ func (fc *funcCompiler) compileStmt(s ast.Stmt) error {
 	return fmt.Errorf("срез: неподдерживаемый стейтмент %T", s)
 }
 
-// compileLocalFn компилирует локальную функцию.
-//
-// Стратегия: функция компилируется как отдельный *vm.Function
-// с манглированным именем (prefix + name) и регистрируется в
-// ProgramImage. При запуске модуля все функции из ProgramImage
-// попадают в глобальную таблицу ВМ, что обеспечивает:
-//   - взаимную рекурсию (обе функции видны через OpGetGlobal);
-//   - простую рекурсию (функция видит себя через OpGetGlobal).
 func (fc *funcCompiler) compileLocalFn(decl ast.LocalFnDecl) error {
 	name := decl.FnName()
 	clauses := decl.Clauses()
 	if len(clauses) == 0 {
 		return fmt.Errorf("local fn %s: нет клозов", name)
 	}
-	cl := clauses[0] // срез: первый клоз
+	cl := clauses[0]
 
 	mangled := fc.localFns[name]
 
-	// Компилируем тело как отдельную функцию.
 	child := fc.compiler.newFuncCompiler(fc)
 	child.prefix = mangled + "$"
 
@@ -255,17 +254,14 @@ func (fc *funcCompiler) compileLocalFn(decl ast.LocalFnDecl) error {
 	child.emit(vm.OpReturn, 0)
 
 	fn := &vm.Function{Name: mangled, Arity: arity, Chunk: child.chunk}
-
-	// Регистрируем в ProgramImage → попадёт в глобалы при запуске.
 	fc.compiler.image.Functions[mangled] = fn
 
-	// В родительской функции: сохраняем как локальную переменную.
 	idx := fc.declareLocal(name)
 	fnVal := vm.FuncValue(fn)
 	fnIdx := fc.chunk.AddConstant(fnVal)
 	fc.emit(vm.OpConstant, fnIdx)
 	fc.emit(vm.OpSetLocal, idx)
-	fc.emitUnit() // let-стейтмент оставляет ()
+	fc.emitUnit()
 
 	return nil
 }
@@ -284,7 +280,7 @@ func (fc *funcCompiler) compileExpr(e ast.Expr) error {
 	case ast.DecimalExpr:
 		return fmt.Errorf("срез: decimal не реализован")
 	case ast.BytesExpr:
-		return fmt.Errorf("срез: bytes не реализован")
+		return fc.compileBytesLiteral(ex.ValueStr())
 	case ast.RegexExpr:
 		return fmt.Errorf("срез: regex не реализован")
 	case ast.VariableExpr:
@@ -350,6 +346,84 @@ func (fc *funcCompiler) compileLiteral(lit string) error {
 	return fmt.Errorf("срез: неподдерживаемый литерал %q", lit)
 }
 
+// compileBytesLiteral декодирует body байтового литерала (текст между
+// кавычками, escape-последовательности сохранены лексером as-is, см.
+// lexer.scanBytes) и грузит как константу типа Bytes (§3.2, A4.2).
+func (fc *funcCompiler) compileBytesLiteral(body string) error {
+	b, err := decodeBytesBody(body)
+	if err != nil {
+		return fmt.Errorf("bytes literal: %w", err)
+	}
+	idx := fc.chunk.AddConstant(runtime.Bytes(b))
+	fc.emit(vm.OpConstant, idx)
+	return nil
+}
+
+// decodeBytesBody разворачивает escape-последовательности Bytes
+// (§C.3): \n \t \r \0 \\ \" \xHH. Лексер уже проверил корректность,
+// но сканер возвращает raw-тело без декодирования.
+func decodeBytesBody(s string) ([]byte, error) {
+	out := make([]byte, 0, len(s))
+	for i := 0; i < len(s); {
+		c := s[i]
+		if c != '\\' {
+			out = append(out, c)
+			i++
+			continue
+		}
+		if i+1 >= len(s) {
+			return nil, fmt.Errorf("trailing backslash")
+		}
+		esc := s[i+1]
+		switch esc {
+		case 'n':
+			out = append(out, 0x0A)
+			i += 2
+		case 't':
+			out = append(out, 0x09)
+			i += 2
+		case 'r':
+			out = append(out, 0x0D)
+			i += 2
+		case '0':
+			out = append(out, 0x00)
+			i += 2
+		case '\\':
+			out = append(out, 0x5C)
+			i += 2
+		case '"':
+			out = append(out, 0x22)
+			i += 2
+		case 'x':
+			if i+3 >= len(s) {
+				return nil, fmt.Errorf("\\xHH requires two hex digits")
+			}
+			hi := hexVal(s[i+2])
+			lo := hexVal(s[i+3])
+			if hi < 0 || lo < 0 {
+				return nil, fmt.Errorf("\\xHH requires two hex digits")
+			}
+			out = append(out, byte(hi<<4|lo))
+			i += 4
+		default:
+			return nil, fmt.Errorf("invalid escape \\%c", esc)
+		}
+	}
+	return out, nil
+}
+
+func hexVal(c byte) int {
+	switch {
+	case c >= '0' && c <= '9':
+		return int(c - '0')
+	case c >= 'a' && c <= 'f':
+		return int(c-'a') + 10
+	case c >= 'A' && c <= 'F':
+		return int(c-'A') + 10
+	}
+	return -1
+}
+
 // compileRangeExpr компилирует `start to end` в OpRange (Sprint 5.1).
 func (fc *funcCompiler) compileRangeExpr(re ast.RangeExpr) error {
 	if err := fc.compileExpr(re.RangeStart()); err != nil {
@@ -362,9 +436,7 @@ func (fc *funcCompiler) compileRangeExpr(re ast.RangeExpr) error {
 	return nil
 }
 
-// compileIndexExpr компилирует `obj[idx]` в OpIndex (Sprint 5.3).
-// Для List/Vector/Str/Tuple — прямая индексация, raise на OOB.
-// Для Map — Option (§4.5).
+// compileIndexExpr компилирует `obj[idx]` в OpIndex (Sprint 5.3, 5.4).
 func (fc *funcCompiler) compileIndexExpr(ie ast.IndexExpr) error {
 	if err := fc.compileExpr(ie.Obj()); err != nil {
 		return err
@@ -376,19 +448,11 @@ func (fc *funcCompiler) compileIndexExpr(ie ast.IndexExpr) error {
 	return nil
 }
 
-// compileVar разрешает переменную в порядке приоритета:
-//  1. собственные локалы → OpGetLocal
-//  2. локальные функции (свои или родителя) → OpGetGlobal(mangled)
-//  3. уже захваченные upvalues → OpGetUpvalue
-//  4. локалы родителя → захват (upvalue) + OpGetUpvalue
-//  5. глобалы → OpGetGlobal(name)
 func (fc *funcCompiler) compileVar(name string) error {
-	// 1. Собственные локалы.
 	if idx, ok := fc.resolveLocal(name); ok {
 		fc.emit(vm.OpGetLocal, idx)
 		return nil
 	}
-	// 2. Локальные функции (манглированные имена).
 	if mangled, ok := fc.localFns[name]; ok {
 		gidx := fc.chunk.AddConstant(runtime.Str(mangled))
 		fc.emit(vm.OpGetGlobal, gidx)
@@ -401,14 +465,12 @@ func (fc *funcCompiler) compileVar(name string) error {
 			return nil
 		}
 	}
-	// 3. Уже захваченные upvalues.
 	for i, uv := range fc.upvalues {
 		if uv.name == name {
 			fc.emit(vm.OpGetUpvalue, i)
 			return nil
 		}
 	}
-	// 4. Локалы родителя → захват.
 	if fc.parent != nil {
 		if idx, ok := fc.parent.resolveLocal(name); ok {
 			uvIdx := len(fc.upvalues)
@@ -419,7 +481,6 @@ func (fc *funcCompiler) compileVar(name string) error {
 			return nil
 		}
 	}
-	// 5. Глобал.
 	gidx := fc.chunk.AddConstant(runtime.Str(name))
 	fc.emit(vm.OpGetGlobal, gidx)
 	return nil
@@ -427,14 +488,6 @@ func (fc *funcCompiler) compileVar(name string) error {
 
 // ---- лямбды и замыкания ----
 
-// compileLambda компилирует лямбду как замыкание.
-//
-// Байткод в родителе:
-//
-//	CONSTANT fnIdx
-//	GETLOCAL x          # захват 0
-//	GETUPVALUE y        # захват 1 (если вложенная)
-//	MAKECLOSURE 2
 func (fc *funcCompiler) compileLambda(name string, params []string, body ast.Expr) error {
 	child := fc.compiler.newFuncCompiler(fc)
 	child.prefix = fc.prefix + "lambda$"
@@ -535,7 +588,6 @@ func (fc *funcCompiler) compileBinary(b ast.BinaryExpr) error {
 	return nil
 }
 
-// compileAndOr — and/or с коротким замыканием.
 func (fc *funcCompiler) compileAndOr(b ast.BinaryExpr, isAnd bool) error {
 	if err := fc.compileExpr(b.Left()); err != nil {
 		return err
@@ -566,13 +618,11 @@ func (fc *funcCompiler) compileAndOr(b ast.BinaryExpr, isAnd bool) error {
 func (fc *funcCompiler) compileCall(call ast.CallExpr) error {
 	callee := call.Callee()
 
-	// v0.4.9 (Sprint 5.3): модульный dispatch для Vec.* / Map.*.
-	// `Vec.push(v, x)` парсится как CallExpr с callee = MemberExpr,
-	// obj = VariableExpr("Vec"). Диспатчим в глобал "Vec.push".
+	// Модульный dispatch для Vec.* / Map.* / Str.* / Bytes.*.
 	if me, ok := callee.(ast.MemberExpr); ok {
 		if obj, ok := me.Obj().(ast.VariableExpr); ok {
 			mod := obj.Name()
-			if mod == "Vec" || mod == "Map" {
+			if isPreludeModule(mod) {
 				fullName := mod + "." + me.MemberName()
 				gidx := fc.chunk.AddConstant(runtime.Str(fullName))
 				fc.emit(vm.OpGetGlobal, gidx)
@@ -631,7 +681,6 @@ func (fc *funcCompiler) compileCall(call ast.CallExpr) error {
 			fc.emit(vm.OpMap, n)
 			return nil
 
-		// ---- v0.4.8: actor primitives ----
 		case "spawn":
 			if len(call.Args()) != 1 {
 				return fmt.Errorf("spawn требует 1 аргумент (fn)")
@@ -715,6 +764,16 @@ func (fc *funcCompiler) compileCall(call ast.CallExpr) error {
 	return nil
 }
 
+// isPreludeModule — имена Upper-модулей прелюдии, для которых compileCall
+// выполняет dispatch по имени "Mod.func" (Vec/Map/Str/Bytes).
+func isPreludeModule(name string) bool {
+	switch name {
+	case "Vec", "Map", "Str", "Bytes":
+		return true
+	}
+	return false
+}
+
 // ---- if ----
 
 func (fc *funcCompiler) compileIf(ie ast.IfExpr) error {
@@ -749,9 +808,8 @@ func (fc *funcCompiler) compileBranchBody(body ast.Expr) error {
 	return fc.compileExpr(body)
 }
 
-// ---- trap / ensure (v0.4.7, §10.2/§10.3) ----
+// ---- trap / ensure ----
 
-// compileTrap различает инлайн-форму trap(expr) и блочную.
 func (fc *funcCompiler) compileTrap(te ast.TrapExpr) error {
 	if inline := te.TrapInline(); inline != nil {
 		return fc.compileInlineTrap(inline)
@@ -759,8 +817,6 @@ func (fc *funcCompiler) compileTrap(te ast.TrapExpr) error {
 	return fc.compileBlockTrap(te)
 }
 
-// compileInlineTrap: trap(expr) — синтаксический сахар для блочной формы
-// с одним стейтментом expr и без ensure (§10.2).
 func (fc *funcCompiler) compileInlineTrap(inner ast.Expr) error {
 	fc.emit(vm.OpTrapBegin, 0)
 	beginPos := fc.chunk.OperandPos()
@@ -784,25 +840,17 @@ func (fc *funcCompiler) compileInlineTrap(inner ast.Expr) error {
 	return nil
 }
 
-// compileBlockTrap компилирует блочную форму trap с ensure-клаузами.
-//
-// Полная семантика §10.3:
-//   - ensure выполняются LIFO при любом выходе из тела;
-//   - если один ensure падает, остальные всё равно выполняются;
-//   - побеждает последняя ошибка.
 func (fc *funcCompiler) compileBlockTrap(te ast.TrapExpr) error {
 	var stmts []ast.Stmt
 	switch body := te.TrapBody().(type) {
 	case *ast.BlockStmt:
 		stmts = body.Body()
 	case nil:
-		// пустое тело — вернёт ()
 	default:
 		stmts = []ast.Stmt{body}
 	}
 	ensures := te.TrapEnsures()
 
-	// --- Быстрый путь: без ensure ---
 	if len(ensures) == 0 {
 		fc.emit(vm.OpTrapBegin, 0)
 		beginPos := fc.chunk.OperandPos()
@@ -828,11 +876,9 @@ func (fc *funcCompiler) compileBlockTrap(te ast.TrapExpr) error {
 	errSlot := fc.allocTemp()
 	noErrorIdx := fc.chunk.AddConstant(runtime.Atom("no_error"))
 
-	// outer TRAPBEGIN — ловит raise из ensures в success-пути.
 	fc.emit(vm.OpTrapBegin, 0)
 	outerBegin := fc.chunk.OperandPos()
 
-	// body TRAPBEGIN — ловит raise из тела.
 	fc.emit(vm.OpTrapBegin, 0)
 	bodyBegin := fc.chunk.OperandPos()
 
@@ -840,24 +886,20 @@ func (fc *funcCompiler) compileBlockTrap(te ast.TrapExpr) error {
 		return err
 	}
 
-	fc.emit(vm.OpTrapEnd, 0)          // закрываем body
-	fc.emit(vm.OpSetLocal, valueSlot) // v → valueSlot
+	fc.emit(vm.OpTrapEnd, 0)
+	fc.emit(vm.OpSetLocal, valueSlot)
 	fc.emit(vm.OpConstant, noErrorIdx)
-	fc.emit(vm.OpSetLocal, errSlot) // err = :no_error
+	fc.emit(vm.OpSetLocal, errSlot)
 	fc.emit(vm.OpJump, 0)
 	bodyOkJump := fc.chunk.OperandPos()
 
-	// --- body_handler: raise из тела ---
 	bodyHandlerAddr := len(vm.ChunkCode(fc.chunk))
 	fc.chunk.PatchOperand(bodyBegin, bodyHandlerAddr)
-	// handleRaise положил ErrRaise.Value на стек — сохраняем в errSlot.
 	fc.emit(vm.OpSetLocal, errSlot)
 
-	// --- run_ensures: сюда падает и success, и error ---
 	runEnsuresAddr := len(vm.ChunkCode(fc.chunk))
 	fc.chunk.PatchOperand(bodyOkJump, runEnsuresAddr)
 
-	// Ensures LIFO, каждый в своём мини-trap.
 	for i := len(ensures) - 1; i >= 0; i-- {
 		fc.emit(vm.OpTrapBegin, 0)
 		ensureBegin := fc.chunk.OperandPos()
@@ -870,43 +912,36 @@ func (fc *funcCompiler) compileBlockTrap(te ast.TrapExpr) error {
 		fc.emit(vm.OpJump, 0)
 		ensureSkipJump := fc.chunk.OperandPos()
 
-		// ensure_handler: ошибка замещает errSlot.
 		ehAddr := len(vm.ChunkCode(fc.chunk))
 		fc.chunk.PatchOperand(ensureBegin, ehAddr)
 		fc.emit(vm.OpSetLocal, errSlot)
 
-		// skip.
 		afterAddr := len(vm.ChunkCode(fc.chunk))
 		fc.chunk.PatchOperand(ensureSkipJump, afterAddr)
 	}
 
-	// Финал: проверяем errSlot.
 	fc.emit(vm.OpGetLocal, errSlot)
 	fc.emit(vm.OpConstant, noErrorIdx)
 	fc.emit(vm.OpEq, 0)
 	fc.emit(vm.OpJumpFalse, 0)
 	errorJump := fc.chunk.OperandPos()
 
-	// success path: valueSlot.
 	fc.emit(vm.OpGetLocal, valueSlot)
 	fc.emit(vm.OpMakeOk, 0)
 	fc.emit(vm.OpJump, 0)
 	endJump := fc.chunk.OperandPos()
 
-	// error_final.
 	errAddr := len(vm.ChunkCode(fc.chunk))
 	fc.chunk.PatchOperand(errorJump, errAddr)
 	fc.emit(vm.OpGetLocal, errSlot)
 	fc.emit(vm.OpMakeError, 0)
 
-	// final.
 	finalAddr := len(vm.ChunkCode(fc.chunk))
 	fc.chunk.PatchOperand(endJump, finalAddr)
-	fc.emit(vm.OpTrapEnd, 0) // outer
+	fc.emit(vm.OpTrapEnd, 0)
 	fc.emit(vm.OpJump, 0)
 	doneJump := fc.chunk.OperandPos()
 
-	// outer_handler — недостижим при нормальной логике, fallback.
 	outerAddr := len(vm.ChunkCode(fc.chunk))
 	fc.chunk.PatchOperand(outerBegin, outerAddr)
 	fc.emit(vm.OpMakeError, 0)
@@ -916,9 +951,8 @@ func (fc *funcCompiler) compileBlockTrap(te ast.TrapExpr) error {
 	return nil
 }
 
-// ---- v0.4.8: recv (§12.4) ----
+// ---- recv ----
 
-// compileRecv компилирует recv-выражение.
 func (fc *funcCompiler) compileRecv(re ast.RecvExpr) error {
 	msgSlot := fc.allocTemp()
 
@@ -933,7 +967,6 @@ func (fc *funcCompiler) compileRecv(re ast.RecvExpr) error {
 		fc.emit(vm.OpRecvTimer, 0)
 	}
 
-	// OpRecvTake <msgSlot> <afterAddr>
 	if hasAfter {
 		fc.chunk.EmitTwo(vm.OpRecvTake, msgSlot, 0, fc.line)
 	} else {
@@ -941,7 +974,6 @@ func (fc *funcCompiler) compileRecv(re ast.RecvExpr) error {
 	}
 	afterOperandPos := fc.chunk.Operand2Pos()
 
-	// Ветки.
 	var endJumps []int
 	for _, br := range re.RecvBranches() {
 		cp, err := fc.compilePattern(br.Pattern)
@@ -950,21 +982,17 @@ func (fc *funcCompiler) compileRecv(re ast.RecvExpr) error {
 		}
 		patIdx := fc.chunk.AddPattern(cp)
 
-		// MATCHLOCAL msgSlot patIdx
 		fc.chunk.EmitTwo(vm.OpMatchLocal, msgSlot, patIdx, fc.line)
 
 		if err := fc.compileBranchBody(br.Body); err != nil {
 			return err
 		}
-		// JMP end
 		fc.emit(vm.OpJump, 0)
 		endJumps = append(endJumps, fc.chunk.OperandPos())
 
-		// FailAddr = текущий адрес (начало следующей ветки).
 		cp.FailAddr = len(vm.ChunkCode(fc.chunk))
 	}
 
-	// Ни одна ветка не подошла → else или raise.
 	var noMatchEnd int
 	if re.RecvElseBody() != nil {
 		if err := fc.compileBranchBody(re.RecvElseBody()); err != nil {
@@ -973,7 +1001,6 @@ func (fc *funcCompiler) compileRecv(re ast.RecvExpr) error {
 		fc.emit(vm.OpJump, 0)
 		noMatchEnd = fc.chunk.OperandPos()
 	} else {
-		// raise(:recv_clause, msg)
 		idx := fc.chunk.AddConstant(runtime.Atom("recv_clause"))
 		fc.emit(vm.OpConstant, idx)
 		fc.emit(vm.OpGetLocal, msgSlot)
@@ -981,14 +1008,12 @@ func (fc *funcCompiler) compileRecv(re ast.RecvExpr) error {
 		fc.emit(vm.OpRaise, 0)
 	}
 
-	// afterAddr — здесь.
 	afterAddr := len(vm.ChunkCode(fc.chunk))
 	if hasAfter {
 		if err := fc.compileBranchBody(afterBody); err != nil {
 			return err
 		}
 	} else {
-		// no after: raise(:recv_clause, msg) — недостижимо, но валидно.
 		idx := fc.chunk.AddConstant(runtime.Atom("recv_clause"))
 		fc.emit(vm.OpConstant, idx)
 		fc.emit(vm.OpGetLocal, msgSlot)
@@ -996,12 +1021,10 @@ func (fc *funcCompiler) compileRecv(re ast.RecvExpr) error {
 		fc.emit(vm.OpRaise, 0)
 	}
 
-	// Патчим afterAddr у OpRecvTake.
 	if hasAfter {
 		fc.chunk.PatchOperand(afterOperandPos, afterAddr)
 	}
 
-	// Патчим все JMP end.
 	endAddr := len(vm.ChunkCode(fc.chunk))
 	for _, pos := range endJumps {
 		fc.chunk.PatchOperand(pos, endAddr)
@@ -1012,12 +1035,8 @@ func (fc *funcCompiler) compileRecv(re ast.RecvExpr) error {
 	return nil
 }
 
-// ---- v0.4.8: компиляция паттернов ----
+// ---- компиляция паттернов ----
 
-// compilePattern компилирует AST-паттерн в vm.CompiledPattern.
-//
-// ВАЖНО: `ast.PatternWildcard` — пустой интерфейс, ему удовлетворяет
-// ЛЮБОЙ паттерн; в type switch его надо проверять ПОСЛЕДНИМ.
 func (fc *funcCompiler) compilePattern(pat ast.Pattern) (*vm.CompiledPattern, error) {
 	switch p := pat.(type) {
 	case ast.IdentPattern:
@@ -1100,15 +1119,12 @@ func (fc *funcCompiler) compilePattern(pat ast.Pattern) (*vm.CompiledPattern, er
 			Kind: vm.PatAs, Inner: inner, AsSlot: slot,
 		}, nil
 
-	// PatternWildcard — catch-all, обязан быть последним.
 	case ast.PatternWildcard:
 		return &vm.CompiledPattern{Kind: vm.PatWildcard}, nil
 	}
 	return nil, fmt.Errorf("срез: неподдерживаемый паттерн %T", pat)
 }
 
-// compileConstExpr извлекает константу из простого литерального выражения.
-// Нужен для ключей map-паттернов.
 func (fc *funcCompiler) compileConstExpr(e ast.Expr) (runtime.Value, error) {
 	switch x := e.(type) {
 	case ast.LiteralExpr:
@@ -1121,7 +1137,6 @@ func (fc *funcCompiler) compileConstExpr(e ast.Expr) (runtime.Value, error) {
 	return runtime.Unit, fmt.Errorf("map-паттерн: ключ должен быть литералом, got %T", e)
 }
 
-// parseLiteralValue превращает строку литерала в runtime.Value.
 func parseLiteralValue(s string) (runtime.Value, error) {
 	switch s {
 	case "()":
@@ -1147,4 +1162,49 @@ func parseLiteralValue(s string) (runtime.Value, error) {
 		return runtime.Float(f), nil
 	}
 	return runtime.Unit, fmt.Errorf("неизвестный литерал %q", s)
+}
+
+// Image возвращает собранный ProgramImage (для REPL, Sprint 6.2).
+func (c *Compiler) Image() *ProgramImage { return c.image }
+
+// CompileReplLine компилирует одну REPL-строку как
+//
+//	fn (<names...>) -> <stmt>
+//
+// где `names` — все видимые в REPL имена в порядке появления. Параметры
+// становятся локалами этой функции; лямбды внутри тела захватывают их
+// как upvalues (closure snapshot, N12, §11.4).
+//
+// Возвращает скомпилированную функцию, имя нового связывания (пусто,
+// если стейтмент — выражение), и ошибку.
+func (c *Compiler) CompileReplLine(names []string, s ast.Stmt) (*vm.Function, string, error) {
+	fc := c.newFuncCompiler(nil)
+	fc.prefix = "__repl__$"
+
+	for _, n := range names {
+		fc.declareLocal(n)
+	}
+
+	var newName string
+	switch st := s.(type) {
+	case ast.LetBind:
+		ip, ok := st.Pat().(ast.IdentPattern)
+		if !ok {
+			return nil, "", fmt.Errorf("repl: only simple `name = expr` bindings are supported")
+		}
+		newName = ip.IdentName()
+		if err := fc.compileExpr(st.Val()); err != nil {
+			return nil, "", err
+		}
+	case ast.ExprStmt:
+		if err := fc.compileExpr(st.ExprValue()); err != nil {
+			return nil, "", err
+		}
+	default:
+		return nil, "", fmt.Errorf("repl: unsupported statement %T", s)
+	}
+
+	fc.emit(vm.OpReturn, 0)
+	fn := &vm.Function{Name: "__repl__", Arity: len(names), Chunk: fc.chunk}
+	return fn, newName, nil
 }
