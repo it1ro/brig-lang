@@ -7,192 +7,206 @@ import (
 	"github.com/it1ro/brig-lang/internal/runtime"
 )
 
-const maxOperand = 1<<16 - 1
+// MaxRegs — лимит регистров на функцию (§1). 8 бит на поле A/B/C.
+const MaxRegs = 256
 
-// Chunk — последовательность инструкций одной функции.
+// Instr — 4-байтная инструкция регистровой ВМ (§1).
+//
+// Раскладка (старшие биты слева):
+//
+//	 31      24 23      16 15       8 7        0
+//	+----------+----------+----------+----------+
+//	|    C     |    B     |    A     |    op    |   ABC
+//	+----------+----------+----------+----------+
+//	|      Bx / sBx       |    A     |    op    |   ABx / AsBx
+//	+---------------------+----------+----------+
+//
+// sBx знаковый; target = ip + 1 + sBx.
+type Instr uint32
+
+// Op — опкод (младшие 8 бит).
+func (i Instr) Op() OpCode { return OpCode(i) }
+
+// A — 8-битное поле A.
+func (i Instr) A() int { return int(i >> 8 & 0xFF) }
+
+// B — 8-битное поле B.
+func (i Instr) B() int { return int(i >> 16 & 0xFF) }
+
+// C — 8-битное поле C.
+func (i Instr) C() int { return int(i >> 24) }
+
+// Bx — 16-битное беззнаковое поле (A/B).
+func (i Instr) Bx() int { return int(i >> 16) }
+
+// SBx — 16-битное знаковое поле (A/B).
+func (i Instr) SBx() int { return int(int16(i >> 16)) }
+
+// ABC собирает инструкцию формата ABC.
+func ABC(op OpCode, a, b, c int) Instr {
+	return Instr(op) | Instr(a)<<8 | Instr(b)<<16 | Instr(c)<<24
+}
+
+// ABx собирает инструкцию формата ABx.
+func ABx(op OpCode, a, bx int) Instr {
+	return Instr(op) | Instr(a)<<8 | Instr(bx)<<16
+}
+
+// AsBx собирает инструкцию формата AsBx.
+func AsBx(op OpCode, a, sbx int) Instr {
+	return Instr(op) | Instr(a)<<8 | Instr(uint16(int16(sbx)))<<16
+}
+
+// SrcPos — позиция в исходнике (Sprint 7, §9).
+type SrcPos struct {
+	Line, Col int32
+}
+
+// Chunk — код, константы и паттерны одной функции (§2, §8).
+//
+// Размер regs для кадра — NumRegs (high-water mark аллокатора).
+// Constants адресуются Bx (16 бит, до 65 536). Patterns — Bx.
 type Chunk struct {
-	Code      []byte
+	Code      []Instr
 	Constants []runtime.Value
-	Patterns  []*CompiledPattern // пул скомпилированных паттернов (v0.4.8)
-	Lines     []int
+	Patterns  []*CompiledPattern
+	Pos       []SrcPos
+	NumRegs   int
+	NumParams int
+	Variadic  bool
 }
 
 // NewChunk создаёт пустой чанк.
 func NewChunk() *Chunk { return &Chunk{} }
 
-// Emit пишет одну инструкцию с одним 16-битным операндом.
-func (c *Chunk) Emit(op OpCode, operand, line int) {
-	if hasOperand(op) && (operand < 0 || operand > maxOperand) {
-		panic(fmt.Sprintf("vm: operand %d out of 16-bit range for %s", operand, op))
-	}
-	c.Code = append(c.Code, byte(op))
-	c.Lines = append(c.Lines, line)
-	if hasOperand(op) {
-		c.Code = append(c.Code, byte(operand>>8), byte(operand))
-		c.Lines = append(c.Lines, 0, 0)
-	}
+// Emit добавляет инструкцию с позицией; возвращает её индекс.
+func (c *Chunk) Emit(i Instr, pos SrcPos) int {
+	c.Code = append(c.Code, i)
+	c.Pos = append(c.Pos, pos)
+	return len(c.Code) - 1
 }
 
-// EmitTwo пишет инструкцию с двумя 16-битными операндами
-// (OpRecvTake, OpMatchLocal). 5 байт: [op][a_hi][a_lo][b_hi][b_lo].
-func (c *Chunk) EmitTwo(op OpCode, a, b, line int) {
-	if a < 0 || a > maxOperand || b < 0 || b > maxOperand {
-		panic(fmt.Sprintf("vm: operand out of 16-bit range for %s", op))
+// PatchJump пишет sBx = target-(at+1) в инструкцию at, сохраняя A/op.
+// Форма знаковая; target = at + 1 + sBx.
+func (c *Chunk) PatchJump(at, target int) error {
+	if at < 0 || at >= len(c.Code) {
+		return fmt.Errorf("patch: at %d out of range", at)
 	}
-	c.Code = append(c.Code, byte(op))
-	c.Lines = append(c.Lines, line)
-	c.Code = append(c.Code, byte(a>>8), byte(a))
-	c.Lines = append(c.Lines, 0, 0)
-	c.Code = append(c.Code, byte(b>>8), byte(b))
-	c.Lines = append(c.Lines, 0, 0)
+	sbx := target - (at + 1)
+	if sbx < -32768 || sbx > 32767 {
+		return fmt.Errorf("patch: sBx %d out of int16 range", sbx)
+	}
+	old := c.Code[at]
+	c.Code[at] = AsBx(old.Op(), old.A(), sbx)
+	return nil
 }
 
-// AddConstant кладёт значение в пул констант.
+// AddConstant добавляет константу; возвращает её индекс.
 func (c *Chunk) AddConstant(v runtime.Value) int {
 	c.Constants = append(c.Constants, v)
 	return len(c.Constants) - 1
 }
 
-// AddPattern кладёт паттерн в пул паттернов.
+// AddPattern добавляет паттерн; возвращает его индекс.
 func (c *Chunk) AddPattern(p *CompiledPattern) int {
 	c.Patterns = append(c.Patterns, p)
 	return len(c.Patterns) - 1
 }
 
-// OperandPos — позиция операнда последней записанной инструкции.
-func (c *Chunk) OperandPos() int {
-	if len(c.Code) < 2 {
-		panic("vm: OperandPos on empty chunk")
-	}
-	return len(c.Code) - 2
-}
-
-// Operand2Pos — позиция второго операнда последней EmitTwo-инструкции.
-func (c *Chunk) Operand2Pos() int {
-	if len(c.Code) < 2 {
-		panic("vm: Operand2Pos on empty chunk")
-	}
-	return len(c.Code) - 2
-}
-
-// PatchOperand записывает 16-битный операнд по байтовой позиции.
-func (c *Chunk) PatchOperand(pos, value int) {
-	if value < 0 || value > maxOperand {
-		panic(fmt.Sprintf("vm: patch target %d out of 16-bit range", value))
-	}
-	if pos < 0 || pos+1 >= len(c.Code) {
-		panic(fmt.Sprintf("vm: patch position %d out of range", pos))
-	}
-	c.Code[pos] = byte(value >> 8)
-	c.Code[pos+1] = byte(value)
-}
-
-// ChunkCode возвращает слайс байтов кода.
-func ChunkCode(c *Chunk) []byte { return c.Code }
-
-// LineAt — номер строки источника для позиции инструкции.
+// LineAt — строка источника для инструкции ip (совместимость).
 func (c *Chunk) LineAt(ip int) int {
-	if ip < 0 || ip >= len(c.Lines) {
+	if ip < 0 || ip >= len(c.Pos) {
 		return 0
 	}
-	return c.Lines[ip]
+	return int(c.Pos[ip].Line)
 }
 
-// hasOperand — опкод несёт один 16-битный операнд.
-//
-// Sprint 6.2: удалены мёртвые OpDefineLocalFn (см. opcodes.go).
-func hasOperand(op OpCode) bool {
-	switch op {
-	case OpConstant, OpGetLocal, OpSetLocal, OpGetGlobal, OpSetGlobal,
-		OpCall, OpJump, OpJumpFalse, OpJumpTrue,
-		OpTuple, OpList, OpVector, OpMap,
-		OpMakeClosure, OpGetUpvalue, OpSetUpvalue,
-		OpTrapBegin, OpSpawn:
-		return true
+// PosAt — позиция инструкции ip.
+func (c *Chunk) PosAt(ip int) SrcPos {
+	if ip < 0 || ip >= len(c.Pos) {
+		return SrcPos{}
 	}
-	return false
+	return c.Pos[ip]
 }
 
-// opSize — полная длина инструкции в байтах.
-//
-//lint:ignore U1000
-func opSize(op OpCode) int {
-	switch op {
-	case OpRecvTake, OpMatchLocal:
-		return 5
-	}
-	if hasOperand(op) {
-		return 3
-	}
-	return 1
-}
-
-// Function — скомпилированная функция.
-type Function struct {
-	Name  string
-	Arity int
-	Chunk *Chunk
-}
-
-// Disassemble печатает чанк.
+// Disassemble печатает чанк в человекочитаемом виде (§9).
 func (c *Chunk) Disassemble(name string) string {
 	var sb strings.Builder
-	fmt.Fprintf(&sb, "== %s ==\n", name)
-	for ip := 0; ip < len(c.Code); {
-		ip = c.disInstr(&sb, ip)
+	extra := ""
+	if c.Variadic {
+		extra = " variadic"
 	}
-	if len(c.Patterns) > 0 {
-		sb.WriteString("  patterns:\n")
-		for i, p := range c.Patterns {
-			fmt.Fprintf(&sb, "    [%d] %s (fail=%d)\n", i, FormatCompiledPattern(p), p.FailAddr)
-		}
+	fmt.Fprintf(&sb,
+		"== %s params=%d%s regs=%d consts=%d patterns=%d ==\n",
+		name, c.NumParams, extra, c.NumRegs, len(c.Constants), len(c.Patterns))
+	for ip := range c.Code {
+		c.disInstr(&sb, ip)
 	}
 	return sb.String()
 }
 
-func (c *Chunk) disInstr(sb *strings.Builder, ip int) int {
-	op := OpCode(c.Code[ip])
-	line := c.LineAt(ip)
-	fmt.Fprintf(sb, "%04d %4d %-12s", ip, line, op)
+func (c *Chunk) disInstr(sb *strings.Builder, ip int) {
+	in := c.Code[ip]
+	pos := c.PosAt(ip)
+	fmt.Fprintf(sb, "%04d %3d:%-3d %-11s", ip, pos.Line, pos.Col, in.Op())
 
-	switch op {
-	case OpRecvTake:
-		slot := int(c.Code[ip+1])<<8 | int(c.Code[ip+2])
-		after := int(c.Code[ip+3])<<8 | int(c.Code[ip+4])
-		fmt.Fprintf(sb, "slot=%d after=%04d\n", slot, after)
-		return ip + 5
-	case OpMatchLocal:
-		slot := int(c.Code[ip+1])<<8 | int(c.Code[ip+2])
-		pi := int(c.Code[ip+3])<<8 | int(c.Code[ip+4])
-		fmt.Fprintf(sb, "slot=%d pattern=%d\n", slot, pi)
-		return ip + 5
-	}
-
-	if hasOperand(op) {
-		operand := int(c.Code[ip+1])<<8 | int(c.Code[ip+2])
-		switch op {
-		case OpConstant, OpGetGlobal, OpSetGlobal:
-			fmt.Fprintf(sb, "%4d (%s)", operand, c.Constants[operand].Inspect())
-		case OpCall, OpTuple, OpList, OpVector:
-			fmt.Fprintf(sb, "%4d args/elems", operand)
-		case OpMap:
-			fmt.Fprintf(sb, "%4d pairs", operand)
-		case OpJump, OpJumpFalse, OpJumpTrue, OpTrapBegin:
-			fmt.Fprintf(sb, "-> %04d", operand)
-		case OpSpawn:
-			if operand == 1 {
-				fmt.Fprintf(sb, "linked")
-			} else {
-				fmt.Fprintf(sb, "unlinked")
-			}
-		default:
-			fmt.Fprintf(sb, "%4d", operand)
+	switch in.Op() {
+	case LOADK, GETGLOBAL, SETGLOBAL:
+		k := in.Bx()
+		fmt.Fprintf(sb, "r%d k%d ; %s", in.A(), k, c.Constants[k].Inspect())
+	case MOVE, GETUPVAL, NEG, NOT, MAKEOK, MAKEERROR, WATCH, UNWATCH, MAILBOXSIZE:
+		fmt.Fprintf(sb, "r%d r%d", in.A(), in.B())
+	case ADD, SUB, MUL, DIV, INTDIV, REM, POW,
+		EQ, NEQ, LT, GT, LE, GE, RANGE, INDEX:
+		fmt.Fprintf(sb, "r%d r%d r%d", in.A(), in.B(), in.C())
+	case JMP:
+		fmt.Fprintf(sb, "-> %04d", ip+1+in.SBx())
+	case JMPIFNOT, JMPIF:
+		fmt.Fprintf(sb, "r%d -> %04d", in.A(), ip+1+in.SBx())
+	case CALL:
+		fmt.Fprintf(sb, "r%d %d -> r%d", in.A(), in.B(), in.C())
+	case TAILCALL:
+		fmt.Fprintf(sb, "r%d %d", in.A(), in.B())
+	case RETURN, RAISE, SELF, MAKEREF, RECVTIMER:
+		fmt.Fprintf(sb, "r%d", in.A())
+	case TUPLE, LIST, VECTOR:
+		fmt.Fprintf(sb, "r%d <- r%d..r%d", in.A(), in.B(), in.B()+in.C()-1)
+	case MAP:
+		fmt.Fprintf(sb, "r%d <- r%d..r%d", in.A(), in.B(), in.B()+2*in.C()-1)
+	case MAKECLOSURE:
+		fmt.Fprintf(sb, "r%d <- r%d +%d", in.A(), in.B(), in.C())
+	case TRAPBEGIN:
+		fmt.Fprintf(sb, "r%d handler -> %04d", in.A(), ip+1+in.SBx())
+	case TRAPEND, YIELD:
+		// без операндов
+	case SPAWN:
+		if in.C() == 1 {
+			fmt.Fprintf(sb, "r%d <- spawn(r%d) linked", in.A(), in.B())
+		} else {
+			fmt.Fprintf(sb, "r%d <- spawn(r%d)", in.A(), in.B())
 		}
-		sb.WriteByte('\n')
-		return ip + 3
+	case SEND:
+		fmt.Fprintf(sb, "r%d <- send(r%d, r%d)", in.A(), in.B(), in.C())
+	case RECVTAKE:
+		if in.SBx() != 0 {
+			fmt.Fprintf(sb, "r%d after -> %04d", in.A(), ip+1+in.SBx())
+		} else {
+			fmt.Fprintf(sb, "r%d", in.A())
+		}
+	case MATCHLOCAL:
+		fmt.Fprintf(sb, "r%d p%d ; %s",
+			in.A(), in.Bx(), FormatCompiledPattern(c.Patterns[in.Bx()]))
+	default:
+		fmt.Fprintf(sb, "?%d", in.Op())
 	}
 	sb.WriteByte('\n')
-	return ip + 1
+}
+
+// Function — скомпилированная функция (§2).
+type Function struct {
+	Name  string
+	Arity int
+	Chunk *Chunk
 }
 
 // IsBrigCode реализует runtime.Code.
