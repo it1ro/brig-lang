@@ -68,6 +68,13 @@ const (
 	OpSpawn
 	OpSend
 	OpSelf
+
+	// v0.4.9 (Sprint 5.1–5.3).
+	//
+	// OpRange — pop end, pop start, push Range.
+	OpRange
+	// OpIndex — pop idx, pop obj; push obj[idx] или Option для Map.
+	OpIndex
 )
 
 func (op OpCode) String() string {
@@ -102,6 +109,8 @@ func (op OpCode) String() string {
 		OpRecvTake:      "RECVTAKE",
 		OpMatchLocal:    "MATCHLOCAL",
 		OpYield:         "YIELD",
+		OpRange:         "RANGE",
+		OpIndex:         "INDEX",
 	}
 	if n, ok := names[op]; ok {
 		return n

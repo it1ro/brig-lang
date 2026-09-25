@@ -734,6 +734,44 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 			push(runtime.Map(entries))
 			f.ip += 3
 
+		case OpRange:
+			endV, err := pop()
+			if err != nil {
+				return fail(err)
+			}
+			startV, err := pop()
+			if err != nil {
+				return fail(err)
+			}
+			r, err := vmMakeRange(startV, endV)
+			if err != nil {
+				if handleRaise(err) {
+					continue
+				}
+				return fail(err)
+			}
+			push(r)
+			f.ip++
+
+		case OpIndex:
+			idx, err := pop()
+			if err != nil {
+				return fail(err)
+			}
+			obj, err := pop()
+			if err != nil {
+				return fail(err)
+			}
+			r, err := vmIndex(obj, idx)
+			if err != nil {
+				if handleRaise(err) {
+					continue
+				}
+				return fail(err)
+			}
+			push(r)
+			f.ip++
+
 		case OpRaise:
 			v, err := pop()
 			if err != nil {
@@ -985,6 +1023,99 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 	}
 
 	return fail(fmt.Errorf("internal: fell off end of %s", f.fn.Name))
+}
+
+// ---- helpers for OpRange / OpIndex (Sprint 5.1, 5.3) ----
+
+func vmMakeRange(startV, endV runtime.Value) (runtime.Value, error) {
+	if startV.Kind != runtime.KindInt || endV.Kind != runtime.KindInt {
+		return runtime.Unit, fmt.Errorf("(:type_error, (:range, (%s, %s)))",
+			startV.Inspect(), endV.Inspect())
+	}
+	sb := startV.AsBig()
+	eb := endV.AsBig()
+	if !sb.IsInt64() || !eb.IsInt64() {
+		// Границы не влезают в int64 — контейнированный :range_error.
+		return runtime.Unit, &ErrRaise{Val: runtime.Tuple(
+			runtime.Atom("range_error"),
+			runtime.Tuple(startV, endV))}
+	}
+	return runtime.Range(sb.Int64(), eb.Int64()), nil
+}
+
+func vmIndex(obj, idx runtime.Value) (runtime.Value, error) {
+	switch obj.Kind {
+	case runtime.KindList:
+		i, err := indexToInt(idx)
+		if err != nil {
+			return runtime.Unit, err
+		}
+		if i < 0 || i >= int64(len(obj.List)) {
+			return runtime.Unit, &ErrRaise{Val: runtime.Tuple(
+				runtime.Atom("index_out_of_bounds"),
+				runtime.Tuple(idx, runtime.Int(int64(len(obj.List)))))}
+		}
+		return obj.List[i], nil
+
+	case runtime.KindVector:
+		i, err := indexToInt(idx)
+		if err != nil {
+			return runtime.Unit, err
+		}
+		if i < 0 || i >= int64(len(obj.Vector)) {
+			return runtime.Unit, &ErrRaise{Val: runtime.Tuple(
+				runtime.Atom("index_out_of_bounds"),
+				runtime.Tuple(idx, runtime.Int(int64(len(obj.Vector)))))}
+		}
+		return obj.Vector[i], nil
+
+	case runtime.KindStr:
+		i, err := indexToInt(idx)
+		if err != nil {
+			return runtime.Unit, err
+		}
+		runes := []rune(obj.Str)
+		if i < 0 || i >= int64(len(runes)) {
+			return runtime.Unit, &ErrRaise{Val: runtime.Tuple(
+				runtime.Atom("index_out_of_bounds"),
+				runtime.Tuple(idx, runtime.Int(int64(len(runes)))))}
+		}
+		return runtime.Str(string(runes[i])), nil
+
+	case runtime.KindTuple:
+		i, err := indexToInt(idx)
+		if err != nil {
+			return runtime.Unit, err
+		}
+		if i < 0 || i >= int64(len(obj.Tuple)) {
+			return runtime.Unit, &ErrRaise{Val: runtime.Tuple(
+				runtime.Atom("index_out_of_bounds"),
+				runtime.Tuple(idx, runtime.Int(int64(len(obj.Tuple)))))}
+		}
+		return obj.Tuple[i], nil
+
+	case runtime.KindMap:
+		for _, e := range obj.Map {
+			if runtime.Equal(e.Key, idx) {
+				return runtime.Variant("Some", e.Val), nil
+			}
+		}
+		return runtime.Variant("None"), nil
+	}
+	return runtime.Unit, fmt.Errorf("(:type_error, (:index, %s))", obj.Inspect())
+}
+
+func indexToInt(v runtime.Value) (int64, error) {
+	if v.Kind != runtime.KindInt {
+		return 0, fmt.Errorf("(:type_error, (:index_key, %s))", v.Inspect())
+	}
+	if v.IsSmall {
+		return v.SmallInt, nil
+	}
+	if !v.AsBig().IsInt64() {
+		return 0, fmt.Errorf("(:type_error, (:index_key, %s))", v.Inspect())
+	}
+	return v.AsBig().Int64(), nil
 }
 
 // ---- callSync ----

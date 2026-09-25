@@ -13,6 +13,8 @@ import (
 //
 // Акторные примитивы (spawn/send/recv/watch/...) реализованы опкодами
 // ВМ (см. compileCall в compiler.go) — не как глобалы.
+//
+// Sprint 5.1–5.3: list материализует Range, добавлены set(), Vec.*, Map.*.
 func InstallPrelude(vm *VM) {
 	globals := vm.globals
 	def := func(name string, arity int, fn runtime.NativeFunc) {
@@ -66,6 +68,8 @@ func InstallPrelude(vm *VM) {
 			return runtime.Int(int64(len(a.Vector))), nil
 		case runtime.KindMap:
 			return runtime.Int(int64(len(a.Map))), nil
+		case runtime.KindSet:
+			return runtime.Int(int64(len(a.Set))), nil
 		case runtime.KindStr:
 			return runtime.Int(int64(len(a.Str))), nil
 		case runtime.KindTuple:
@@ -74,8 +78,32 @@ func InstallPrelude(vm *VM) {
 		return runtime.Unit, fmt.Errorf("(:type_error, (:len, %s))", args[0].Inspect())
 	})
 
+	// list(...) — вариадический конструктор. Особый случай: единственный
+	// аргумент-диапазон материализуется в список (§4.3).
 	def("list", -1, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+		if len(args) == 1 && args[0].Kind == runtime.KindRange {
+			return materializeRange(args[0])
+		}
 		return runtime.List(args...), nil
+	})
+
+	// set(...) — конструктор множества (Sprint 5.2, §4.6). Дедуплицирует
+	// по структурному равенству, сохраняя порядок первого появления.
+	def("set", -1, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+		out := make([]runtime.Value, 0, len(args))
+		for _, a := range args {
+			found := false
+			for _, e := range out {
+				if runtime.Equal(a, e) {
+					found = true
+					break
+				}
+			}
+			if !found {
+				out = append(out, a)
+			}
+		}
+		return runtime.Set(out...), nil
 	})
 
 	def("map", 2, func(c runtime.Caller, args []runtime.Value) (runtime.Value, error) {
@@ -194,6 +222,110 @@ func InstallPrelude(vm *VM) {
 		return acc, nil
 	})
 
+	// ---- Vec module (§4.4) ----
+
+	def("Vec.push", 2, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+		if args[0].Kind != runtime.KindVector {
+			return runtime.Unit, fmt.Errorf("(:type_error, (:Vec.push, %s))", args[0].Inspect())
+		}
+		out := make([]runtime.Value, 0, len(args[0].Vector)+1)
+		out = append(out, args[0].Vector...)
+		out = append(out, args[1])
+		return runtime.Vector(out...), nil
+	})
+
+	def("Vec.set", 3, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+		if args[0].Kind != runtime.KindVector {
+			return runtime.Unit, fmt.Errorf("(:type_error, (:Vec.set, %s))", args[0].Inspect())
+		}
+		i, ok := smallIdx(args[1])
+		if !ok || i < 0 || i >= int64(len(args[0].Vector)) {
+			return runtime.Unit, &ErrRaise{Val: runtime.Tuple(
+				runtime.Atom("index_out_of_bounds"),
+				runtime.Tuple(args[1], runtime.Int(int64(len(args[0].Vector)))))}
+		}
+		out := make([]runtime.Value, len(args[0].Vector))
+		copy(out, args[0].Vector)
+		out[i] = args[2]
+		return runtime.Vector(out...), nil
+	})
+
+	def("Vec.get", 2, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+		if args[0].Kind != runtime.KindVector {
+			return runtime.Unit, fmt.Errorf("(:type_error, (:Vec.get, %s))", args[0].Inspect())
+		}
+		i, ok := smallIdx(args[1])
+		if !ok || i < 0 || i >= int64(len(args[0].Vector)) {
+			return runtime.Variant("None"), nil
+		}
+		return runtime.Variant("Some", args[0].Vector[i]), nil
+	})
+
+	def("Vec.len", 1, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+		if args[0].Kind != runtime.KindVector {
+			return runtime.Unit, fmt.Errorf("(:type_error, (:Vec.len, %s))", args[0].Inspect())
+		}
+		return runtime.Int(int64(len(args[0].Vector))), nil
+	})
+
+	// ---- Map module (§4.5) ----
+
+	def("Map.put", 3, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+		if args[0].Kind != runtime.KindMap {
+			return runtime.Unit, fmt.Errorf("(:type_error, (:Map.put, %s))", args[0].Inspect())
+		}
+		out := make([]runtime.MapEntry, 0, len(args[0].Map)+1)
+		found := false
+		for _, e := range args[0].Map {
+			if runtime.Equal(e.Key, args[1]) {
+				out = append(out, runtime.MapEntry{Key: args[1], Val: args[2]})
+				found = true
+			} else {
+				out = append(out, e)
+			}
+		}
+		if !found {
+			out = append(out, runtime.MapEntry{Key: args[1], Val: args[2]})
+		}
+		return runtime.Map(out), nil
+	})
+
+	def("Map.get", 2, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+		if args[0].Kind != runtime.KindMap {
+			return runtime.Unit, fmt.Errorf("(:type_error, (:Map.get, %s))", args[0].Inspect())
+		}
+		for _, e := range args[0].Map {
+			if runtime.Equal(e.Key, args[1]) {
+				return runtime.Variant("Some", e.Val), nil
+			}
+		}
+		return runtime.Variant("None"), nil
+	})
+
+	def("Map.remove", 2, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+		if args[0].Kind != runtime.KindMap {
+			return runtime.Unit, fmt.Errorf("(:type_error, (:Map.remove, %s))", args[0].Inspect())
+		}
+		out := make([]runtime.MapEntry, 0, len(args[0].Map))
+		for _, e := range args[0].Map {
+			if !runtime.Equal(e.Key, args[1]) {
+				out = append(out, e)
+			}
+		}
+		return runtime.Map(out), nil
+	})
+
+	def("Map.keys", 1, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+		if args[0].Kind != runtime.KindMap {
+			return runtime.Unit, fmt.Errorf("(:type_error, (:Map.keys, %s))", args[0].Inspect())
+		}
+		out := make([]runtime.Value, 0, len(args[0].Map))
+		for _, e := range args[0].Map {
+			out = append(out, e.Key)
+		}
+		return runtime.List(out...), nil
+	})
+
 	// ---- Конверсии ----
 
 	def("to_str", 1, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
@@ -284,4 +416,28 @@ func InstallPrelude(vm *VM) {
 		}
 		return runtime.Unit, nil
 	})
+}
+
+// materializeRange превращает Range в List (§4.3). Убывающий диапазон
+// (в т.ч. вычисленный в рантайме) → raise((:range_error, (start, end))).
+func materializeRange(r runtime.Value) (runtime.Value, error) {
+	s, e := r.RangeStart, r.RangeEnd
+	if s > e {
+		return runtime.Unit, &ErrRaise{Val: runtime.Tuple(
+			runtime.Atom("range_error"),
+			runtime.Tuple(runtime.Int(s), runtime.Int(e)))}
+	}
+	out := make([]runtime.Value, 0, e-s+1)
+	for i := s; i <= e; i++ {
+		out = append(out, runtime.Int(i))
+	}
+	return runtime.List(out...), nil
+}
+
+// smallIdx извлекает int64 из small-int значения. Для big-int возвращает false.
+func smallIdx(v runtime.Value) (int64, bool) {
+	if v.Kind != runtime.KindInt || !v.IsSmall {
+		return 0, false
+	}
+	return v.SmallInt, true
 }
