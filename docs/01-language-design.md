@@ -2413,7 +2413,7 @@ info: <file>:<line>:<col>: <message>
 - [x] Сохранить этот документ как `docs/01-language-design.md` (v0.4.7).
 - [x] Применить патчи в `brig.ebnf`, `internal/parser/{expr,stmt}.go`, `internal/ast/format.go`, `internal/examples/examples.go`, `internal/lexer/lexer.go`.
 - [x] Обновить golden-файлы: `make update-golden`.
-- [x] Прогнать `make check-examples` → 65/65 ok.
+- [x] Прогнать `make check-examples` → `checked 62, failed 0`.
 - [x] Прогнать `make ci-quick` → зелёный.
 - [x] Прогнать `make all` → зелёный.
 - [x] Прогнать `make test-race` → зелёный.

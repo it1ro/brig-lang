@@ -20,7 +20,7 @@
 | `internal/prelude`   | ✅     | `print/log/…` + Range/Set/Vec/Map/Bytes/Decimal/Json/Test                  |
 | `internal/repl`      | ✅     | Persistent REPL (§11.4, N12)                                               |
 | `cmd/brig`           | ✅     | `check`, `run`, `run --dump-bytecode`, `repl`; `BRIG_VERIFY=1`             |
-| `cmd/check-examples` | ✅     | 65/65 блоков дизайн-дока                                                   |
+| `cmd/check-examples` | ✅     | `checked 62, failed 0` блоков дизайн-дока                                  |
 | CI / Makefile        | ✅     | `check-smallint` в `all`; CI workflow → `make all`                         |
 
 **Сделано в акторах (§12):** spawn / spawn_linked / send / self / make_ref /
@@ -142,7 +142,7 @@ watch / unwatch / mailbox_size / recv (+ else/after) / HWM / `:down` с
 - [x] Поля `vm.tests` и `vm.currentGroup` в структуре `VM`
 - [x] `Test` в `isPreludeModule`
 - [x] `internal/compiler/test_framework_test.go`
-- [x] `examples/test_demo.brig`
+- [ ] `examples/test_demo.brig` — файла нет; покрыто `internal/compiler/test_framework_test.go`
 
 ---
 
@@ -266,8 +266,8 @@ watch / unwatch / mailbox_size / recv (+ else/after) / HWM / `:down` с
   блокирует Must.
 - **Не добавлять правила в `check-smallint` без необходимости.** Сначала
   стабилизировать, потом расширять.
-- **Не переписывать `check-examples`.** 65/65 зелёный, документация
-  синхронизирована.
+- **Не переписывать `check-examples`.** `checked 62, failed 0` зелёный,
+  документация синхронизирована.
 - **Не менять AST-формы в рамках S7.x.** Миграция — только байткод и VM;
   AST, parser, sema, compiler — фиксированы.
 

@@ -276,7 +276,7 @@ findings: []
 -->
 - **Файлы:** .claude/skills/brig-compiler/SKILL.md, .claude/skills/brig-vm/SKILL.md, .claude/skills/brig-overview/SKILL.md, .claude/skills/brig-parser-ast/SKILL.md, .claude/skills/brig-testing-workflow/SKILL.md
 - **Тест-якорь:** `rg`-проверки из DoD (существующая команда)
-- **DoD:** каждое расхождение из таблицы «Шаг 0» аудита исправлено: brig-compiler не утверждает, что проверка `trapDepth` существует (ссылка на T-31), «предки» → «только прямой родитель» (T-35), `and`/`or` → CALL (T-82); brig-vm различает pid, «никогда не существовавший» и «завершившийся» (T-40), указывает потерю `val` в `:down` (T-40) и что Verify не моделирует MATCHLOCAL/after (T-36); brig-overview — иерархия источников как в AUDIT_PROMPT. `rg -n '65' .claude/skills` не находит «65/65» и «65 блоков». `rg -n 'brig-cli' .claude/skills` пуст.
+- **DoD:** каждое расхождение из таблицы «Шаг 0» аудита исправлено: brig-compiler не утверждает, что проверка `trapDepth` существует (ссылка на T-31), «предки» → «только прямой родитель» (T-35), `and`/`or` → CALL (T-82); brig-vm различает pid, «никогда не существовавший» и «завершившийся» (T-40), указывает потерю `val` в `:down` (T-40) и что Verify не моделирует MATCHLOCAL/after (T-36); brig-overview — иерархия источников как в AUDIT_PROMPT. `rg -n '65' .claude/skills` не находит claim про 65 checked-блоков. `rg -n 'brig-cli' .claude/skills` пуст.
 - **НЕ делать:** править `docs/` (T-60); менять код; создавать несуществующие skills `brig-cli/docs/sync/test`.
 
 ### T-13 · Verify: A-F1 — однопоточный scheduler
@@ -697,9 +697,9 @@ wave: 5-docs
 depends_on: T-12
 findings: [A-F8]
 -->
-- **Файлы:** docs/architecture.md (дубли README/STATUS после ~287, `check-smallint` в `ci-quick`), docs/02-register-based-virtual-machine.md (шапка-черновик, K-8), docs/01-language-design.md §12.4 vs `brig.ebnf` `after_clause`, STATUS.md (65/65, REPL ✅, `examples/test_demo.brig`, CI → make all), cmd/brig/main.go:6, 25, 203, Makefile (`ebnf-check`)
+- **Файлы:** docs/architecture.md (дубли README/STATUS после ~287, `check-smallint` в `ci-quick`), docs/02-register-based-virtual-machine.md (шапка-черновик, K-8), docs/01-language-design.md §12.4 vs `brig.ebnf` `after_clause`, STATUS.md (ложный claim «65 блоков», REPL ✅, `examples/test_demo.brig`, CI → make all), cmd/brig/main.go:6, 25, 203, Makefile (`ebnf-check`)
 - **Тест-якорь:** `rg`-проверки из DoD; `check-examples` (существует)
-- **DoD:** все 6 пунктов §8 и ложные claims §5 исправлены: `rg -n 'Я не компилировал' docs` пуст; `rg -n 'regeneration from §16 pending' Makefile` пуст; `rg -n 'токены лексера\|brig-cli' cmd/brig/main.go` пуст; `rg -n '65/65' .` пуст; в architecture.md нет вставленных копий README/STATUS. Пробелы A-F8 (pipe `|>`, record-литералы, `link`, `Sys.args()`, `mailbox_size()` без аргументов) перечислены в doc 02 рядом с K-8. §12.4 vs `brig.ebnf` согласованы в пользу источника выше по иерархии; если иерархия не решает — вопрос автору в комментарии issue, пункт остаётся открытым. `check-examples` → `failed 0`.
+- **DoD:** все 6 пунктов §8 и ложные claims §5 исправлены: `rg -n 'Я не компилировал' docs` пуст; `rg -n 'regeneration from §16 pending' Makefile` пуст; `rg -n 'токены лексера\|brig-cli' cmd/brig/main.go` пуст; `rg` по claim «65 checked» / литералу 65-slash-65 пуст; в architecture.md нет вставленных копий README/STATUS. Пробелы A-F8 (pipe `|>`, record-литералы, `link`, `Sys.args()`, `mailbox_size()` без аргументов) перечислены в doc 02 рядом с K-8. §12.4 vs `brig.ebnf` согласованы в пользу источника выше по иерархии; если иерархия не решает — вопрос автору в комментарии issue, пункт остаётся открытым. `check-examples` → `failed 0`.
 - **НЕ делать:** менять код или семантику; менять skills (T-12); решать design decisions T-90…T-93.
 
 ### T-61 · Закрыть TASKS.md и AUDIT_REPORT.md ссылками
