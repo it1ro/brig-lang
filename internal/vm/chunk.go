@@ -112,6 +112,8 @@ func hasOperand(op OpCode) bool {
 }
 
 // opSize — полная длина инструкции в байтах.
+//
+//lint:ignore U1000
 func opSize(op OpCode) int {
 	switch op {
 	case OpRecvTake, OpMatchLocal:
