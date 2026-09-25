@@ -5,6 +5,7 @@ import (
 	"math/big"
 	"os"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/it1ro/brig-lang/internal/runtime"
 )
@@ -14,7 +15,8 @@ import (
 // Акторные примитивы (spawn/send/recv/watch/...) реализованы опкодами
 // ВМ (см. compileCall в compiler.go) — не как глобалы.
 //
-// Sprint 5.1–5.3: list материализует Range, добавлены set(), Vec.*, Map.*.
+// Sprint 5.1–5.4: list материализует Range, добавлены set(), Vec.*, Map.*,
+// Bytes.to_str, Str.to_bytes.
 func InstallPrelude(vm *VM) {
 	globals := vm.globals
 	def := func(name string, arity int, fn runtime.NativeFunc) {
@@ -71,7 +73,11 @@ func InstallPrelude(vm *VM) {
 		case runtime.KindSet:
 			return runtime.Int(int64(len(a.Set))), nil
 		case runtime.KindStr:
-			return runtime.Int(int64(len(a.Str))), nil
+			// §4.8: Str — по кодпоинтам.
+			return runtime.Int(int64(utf8.RuneCountInString(a.Str))), nil
+		case runtime.KindBytes:
+			// §3.2: Bytes — по байтам.
+			return runtime.Int(int64(len(a.Bytes))), nil
 		case runtime.KindTuple:
 			return runtime.Int(int64(len(a.Tuple))), nil
 		}
@@ -324,6 +330,30 @@ func InstallPrelude(vm *VM) {
 			out = append(out, e.Key)
 		}
 		return runtime.List(out...), nil
+	})
+
+	// ---- Bytes module (§3.2, A4.2) ----
+
+	// Bytes.to_str(b) — декодирует байты в UTF-8 строку. Невалидный
+	// UTF-8 → raise(:invalid_utf8, b) (§C.6).
+	def("Bytes.to_str", 1, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+		if args[0].Kind != runtime.KindBytes {
+			return runtime.Unit, fmt.Errorf("(:type_error, (:Bytes.to_str, %s))", args[0].Inspect())
+		}
+		s := string(args[0].Bytes)
+		if !utf8.ValidString(s) {
+			return runtime.Unit, &ErrRaise{Val: runtime.Tuple(
+				runtime.Atom("invalid_utf8"), args[0])}
+		}
+		return runtime.Str(s), nil
+	})
+
+	// Str.to_bytes(s) — всегда успешно, возвращает UTF-8-байты (§C.6).
+	def("Str.to_bytes", 1, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+		if args[0].Kind != runtime.KindStr {
+			return runtime.Unit, fmt.Errorf("(:type_error, (:Str.to_bytes, %s))", args[0].Inspect())
+		}
+		return runtime.Bytes([]byte(args[0].Str)), nil
 	})
 
 	// ---- Конверсии ----
