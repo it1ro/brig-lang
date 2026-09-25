@@ -32,10 +32,11 @@ description: >
   v0.4.6). См. `parseTrap` в `expr.go`.
 - **`recv`**: `else`/`after` — клаузы на том же отступе, что сам `recv`,
   порядок фиксирован (`else` перед `after`), не более одной каждой. `else`
-  требует `LOWER_IDENT` имени (нет `else _ ->`). **Guard ветки разбирается
-  и выбрасывается** (`expr.go:937-941`, `:970-974`; в `RecvBranchArg` нет
-  поля Guard — S-F3, T-02 #2). Отвергать guard в парсере нельзя: doc 01
-  (строка ~1084) содержит `when has_pending(...)`, `check-examples` упадёт.
+  требует `LOWER_IDENT` имени (нет `else _ ->`). **Guard ветки** живёт в
+  `RecvBranchArg.Guard`; `Format` печатает `when <guard>`. Компилятор
+  fail-fast, пока guard не компилируется (S-F3, T-02 #2; компиляция T-52
+  #35). Отвергать guard в парсере нельзя: doc 01 (строка ~1084) содержит
+  `when has_pending(...)`, `check-examples` упадёт.
 - **Guard из одного идентификатора** (`fn f(x) when x -> 1`,
   `n when ok -> …`) уходит в `tryLambda` (`expr.go:34`) и даёт
   `expected '->'` — guard надо разбирать через `parseOr()` (S-F4, T-20 #14).
