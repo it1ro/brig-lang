@@ -1499,6 +1499,9 @@ func (fc *funcCompiler) compileRecv(re ast.RecvExpr, d dest) error {
 
 	var endJumps []int
 	for _, br := range re.RecvBranches() {
+		if br.Guard != nil {
+			fc.fail("recv: guard в ветке не реализован (S-F3)")
+		}
 		fc.pushScope()
 
 		cp, err := fc.compilePattern(br.Pattern)

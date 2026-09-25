@@ -96,6 +96,23 @@ fn main() ->
 	}
 }
 
+// S-F3: guard в ветках recv не должен молча игнорироваться компилятором.
+// Compile обязан вернуть ошибку, а не матчить ветку по паттерну без
+// проверки условия (T-02).
+func TestAuditRecvGuardRejected(t *testing.T) {
+	src := `module Main
+fn main() ->
+    recv (:msg) when true -> :ok
+`
+	err := compileSrc(t, src)
+	if err == nil {
+		t.Fatalf("Compile: want error containing %q, got nil", "guard")
+	}
+	if !strings.Contains(err.Error(), "guard") {
+		t.Fatalf("Compile: want error containing %q, got %v", "guard", err)
+	}
+}
+
 func TestAuditSimpleParamsStillCompile(t *testing.T) {
 	src := `module Main
 fn head(a, ..rest) -> a
