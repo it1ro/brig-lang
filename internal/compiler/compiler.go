@@ -4,6 +4,7 @@
 // замыкания (capture-by-value), лямбды, взаимная рекурсия.
 // v0.4.7: trap/ensure (§10.2, §10.3).
 // v0.4.8: акторы — spawn/send/recv/watch + OpMatchLocal (§12).
+// v0.4.9: Range (§4.3), Index (§4.4/§4.5), модули Vec/Map (§4.4/§4.5).
 package compiler
 
 import (
@@ -302,6 +303,10 @@ func (fc *funcCompiler) compileExpr(e ast.Expr) error {
 		return fc.compileTrap(ex)
 	case ast.RecvExpr:
 		return fc.compileRecv(ex)
+	case ast.RangeExpr:
+		return fc.compileRangeExpr(ex)
+	case ast.IndexExpr:
+		return fc.compileIndexExpr(ex)
 	case ast.LambdaShort:
 		return fc.compileLambda("", []string{ex.ParamName()}, ex.Body())
 	case ast.LambdaEmpty:
@@ -343,6 +348,32 @@ func (fc *funcCompiler) compileLiteral(lit string) error {
 		return nil
 	}
 	return fmt.Errorf("срез: неподдерживаемый литерал %q", lit)
+}
+
+// compileRangeExpr компилирует `start to end` в OpRange (Sprint 5.1).
+func (fc *funcCompiler) compileRangeExpr(re ast.RangeExpr) error {
+	if err := fc.compileExpr(re.RangeStart()); err != nil {
+		return err
+	}
+	if err := fc.compileExpr(re.RangeEnd()); err != nil {
+		return err
+	}
+	fc.emit(vm.OpRange, 0)
+	return nil
+}
+
+// compileIndexExpr компилирует `obj[idx]` в OpIndex (Sprint 5.3).
+// Для List/Vector/Str/Tuple — прямая индексация, raise на OOB.
+// Для Map — Option (§4.5).
+func (fc *funcCompiler) compileIndexExpr(ie ast.IndexExpr) error {
+	if err := fc.compileExpr(ie.Obj()); err != nil {
+		return err
+	}
+	if err := fc.compileExpr(ie.Index()); err != nil {
+		return err
+	}
+	fc.emit(vm.OpIndex, 0)
+	return nil
 }
 
 // compileVar разрешает переменную в порядке приоритета:
@@ -534,6 +565,28 @@ func (fc *funcCompiler) compileAndOr(b ast.BinaryExpr, isAnd bool) error {
 
 func (fc *funcCompiler) compileCall(call ast.CallExpr) error {
 	callee := call.Callee()
+
+	// v0.4.9 (Sprint 5.3): модульный dispatch для Vec.* / Map.*.
+	// `Vec.push(v, x)` парсится как CallExpr с callee = MemberExpr,
+	// obj = VariableExpr("Vec"). Диспатчим в глобал "Vec.push".
+	if me, ok := callee.(ast.MemberExpr); ok {
+		if obj, ok := me.Obj().(ast.VariableExpr); ok {
+			mod := obj.Name()
+			if mod == "Vec" || mod == "Map" {
+				fullName := mod + "." + me.MemberName()
+				gidx := fc.chunk.AddConstant(runtime.Str(fullName))
+				fc.emit(vm.OpGetGlobal, gidx)
+				for _, a := range call.Args() {
+					if err := fc.compileExpr(a); err != nil {
+						return err
+					}
+				}
+				fc.emit(vm.OpCall, len(call.Args()))
+				return nil
+			}
+		}
+	}
+
 	if ve, ok := callee.(ast.VariableExpr); ok {
 		switch ve.Name() {
 		case "()":
@@ -737,44 +790,6 @@ func (fc *funcCompiler) compileInlineTrap(inner ast.Expr) error {
 //   - ensure выполняются LIFO при любом выходе из тела;
 //   - если один ensure падает, остальные всё равно выполняются;
 //   - побеждает последняя ошибка.
-//
-// Схема:
-//
-//	TRAPBEGIN outer
-//	  TRAPBEGIN body
-//	    <body>                      ; [v]
-//	  TRAPEND
-//	  SETLOCAL valueSlot            ; v сохранён
-//	  CONSTANT :no_error
-//	  SETLOCAL errSlot              ; err = no_error
-//	  JMP run_ensures
-//	body_handler:                   ; raise из тела
-//	  SETLOCAL errSlot              ; err = <raise value>
-//	run_ensures:                    ; общий путь для success и error
-//	  TRAPBEGIN eN
-//	    <ensure[N-1]> POP
-//	  TRAPEND
-//	  JMP okN
-//	  eN: SETLOCAL errSlot ; JMP okN
-//	  okN:
-//	  ... (для каждого ensure, LIFO)
-//	  ; финал
-//	  GETLOCAL errSlot
-//	  CONSTANT :no_error
-//	  EQ
-//	  JMPFALSE error_final
-//	  GETLOCAL valueSlot
-//	  MAKEOK
-//	  JMP final
-//	error_final:
-//	  GETLOCAL errSlot
-//	  MAKEERROR
-//	final:
-//	  TRAPEND                       ; outer
-//	  JMP done
-//	outer_handler:
-//	  MAKEERROR                      ; fallback
-//	done:
 func (fc *funcCompiler) compileBlockTrap(te ast.TrapExpr) error {
 	var stmts []ast.Stmt
 	switch body := te.TrapBody().(type) {
@@ -904,22 +919,6 @@ func (fc *funcCompiler) compileBlockTrap(te ast.TrapExpr) error {
 // ---- v0.4.8: recv (§12.4) ----
 
 // compileRecv компилирует recv-выражение.
-//
-// Схема:
-//
-//	[<after-ms>] RECVTIMER              ; только если after задан
-//	RECVTAKE msgSlot afterAddr           ; afterAddr = 0xFFFF если no after
-//	MATCHLOCAL msgSlot p1                ; p1.FailAddr → next1
-//	  <body1>
-//	  JMP end
-//	next1: MATCHLOCAL msgSlot p2 ...
-//	  ...
-//	nextN:
-//	  <else body или raise(:recv_clause, msg)>
-//	  JMP end
-//	afterAddr:
-//	  <after body или raise(:recv_clause, msg)>
-//	end:
 func (fc *funcCompiler) compileRecv(re ast.RecvExpr) error {
 	msgSlot := fc.allocTemp()
 

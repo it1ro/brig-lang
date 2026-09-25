@@ -506,7 +506,6 @@ fn main() ->
 `)
 }
 
-// internal/compiler/compiler_test.go
 func TestDivByZeroSmallInt(t *testing.T) {
 	runModule(t, `module Main
 fn main() ->
@@ -524,5 +523,144 @@ fn main() ->
     print("hi")
     print(true)
     print(())
+`)
+}
+
+// ---- v0.4.9: Sprint 5.1 Range (§4.3) ----
+
+func TestRangeMaterialize(t *testing.T) {
+	runModule(t, `module Main
+fn main() ->
+    assert(list(1 to 5) == [1, 2, 3, 4, 5])
+    assert(list(1 to 1) == [1])
+`)
+}
+
+func TestRangeEquality(t *testing.T) {
+	runModule(t, `module Main
+fn main() ->
+    a = 1
+    b = 5
+    c = 2
+    assert((a to b) == (a to b))
+    assert((a to b) != (c to b))
+`)
+}
+
+func TestRangeError(t *testing.T) {
+	// Вычисляемые границы: a > b, но литерал не диагностируется
+	// парсером — должен сработать runtime :range_error в list().
+	runModule(t, `module Main
+fn main() ->
+    a = 5
+    b = 1
+    result = trap(list(a to b))
+    print(result)
+`)
+}
+
+// ---- v0.4.9: Sprint 5.2 Set (§4.6) ----
+
+func TestSetBasics(t *testing.T) {
+	runModule(t, `module Main
+fn main() ->
+    s = set(1, 2, 2, 3, 1)
+    assert(len(s) == 3)
+    s2 = set(3, 2, 1)
+    assert(s == s2)
+`)
+}
+
+// ---- v0.4.9: Sprint 5.3 Vec/Map modules (§4.4, §4.5) ----
+
+func TestVecPush(t *testing.T) {
+	runModule(t, `module Main
+fn main() ->
+    v = %[1, 2]
+    v2 = Vec.push(v, 3)
+    assert(len(v2) == 3)
+    assert(v2[2] == 3)
+`)
+}
+
+func TestVecSet(t *testing.T) {
+	runModule(t, `module Main
+fn main() ->
+    v = %[1, 2, 3]
+    v2 = Vec.set(v, 1, 99)
+    assert(v2[1] == 99)
+    assert(v2[0] == 1)
+`)
+}
+
+func TestVecGet(t *testing.T) {
+	runModule(t, `module Main
+fn main() ->
+    v = %[10, 20, 30]
+    assert(Vec.get(v, 1) == Some(20))
+    assert(Vec.get(v, 99) == None)
+`)
+}
+
+func TestVecLen(t *testing.T) {
+	runModule(t, `module Main
+fn main() ->
+    assert(Vec.len(%[1, 2, 3, 4]) == 4)
+`)
+}
+
+func TestMapGetPut(t *testing.T) {
+	runModule(t, `module Main
+fn main() ->
+    m = %{}
+    m2 = Map.put(m, "a", 1)
+    assert(Map.get(m2, "a") == Some(1))
+    assert(Map.get(m2, "b") == None)
+`)
+}
+
+func TestMapRemove(t *testing.T) {
+	runModule(t, `module Main
+fn main() ->
+    m = %{ "a" => 1, "b" => 2 }
+    m2 = Map.remove(m, "a")
+    assert(Map.get(m2, "a") == None)
+    assert(Map.get(m2, "b") == Some(2))
+`)
+}
+
+func TestMapKeys(t *testing.T) {
+	runModule(t, `module Main
+fn main() ->
+    m = %{ "a" => 1, "b" => 2 }
+    ks = Map.keys(m)
+    assert(len(ks) == 2)
+`)
+}
+
+func TestMapIndex(t *testing.T) {
+	runModule(t, `module Main
+fn main() ->
+    m = %{"a" => 1, "b" => 2}
+    assert(m["a"] == Some(1))
+    assert(m["z"] == None)
+`)
+}
+
+func TestVecIndex(t *testing.T) {
+	runModule(t, `module Main
+fn main() ->
+    v = %[10, 20, 30]
+    assert(v[0] == 10)
+    assert(v[2] == 30)
+`)
+}
+
+func TestListIndexOutOfBounds(t *testing.T) {
+	runModule(t, `module Main
+fn main() ->
+    xs = [1, 2, 3]
+    result = trap(xs[99])
+    print(result)
 `)
 }
