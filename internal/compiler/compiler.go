@@ -504,6 +504,8 @@ func (c *Compiler) CompileReplLine(names []string, s ast.Stmt) (fn *vm.Function,
 		}
 	}()
 
+	c.image = &ProgramImage{Functions: make(map[string]*vm.Function)}
+
 	fc := c.newFuncCompiler(nil)
 	fc.prefix = "__repl__$"
 	fc.chunk.NumParams = len(names)
