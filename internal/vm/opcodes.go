@@ -4,6 +4,7 @@ package vm
 type OpCode byte
 
 const (
+	// OpConstant — загрузить константу.
 	OpConstant OpCode = iota
 	OpPop
 	OpDup
@@ -37,14 +38,14 @@ const (
 	OpMap
 	OpRaise
 
-	// Трек α (замыкания, локальные функции).
+	// OpMakeClosure — создать замыкание.
 	OpMakeClosure
 	OpGetUpvalue
 	OpSetUpvalue
 	OpCloseUpvalue
 	OpDefineLocalFn
 
-	// v0.4.7 (A2): trap / ensure (§10.2, §10.3).
+	// OpTrapBegin — начать блок trap.
 	OpTrapBegin
 	OpTrapEnd
 	OpMakeOk
@@ -55,6 +56,7 @@ const (
 	//	OpSpawn <linked>            — pop fn; spawn; push pid
 	//	OpSend                      — pop msg; pop pid; send; push Result<(),Atom>
 	//	OpSelf                      — push self pid
+	// OpMakeRef — создать новую ссылку (ref).
 	OpMakeRef // push fresh ref
 	OpWatch   // pop pid; watch; push ref
 	OpUnwatch // pop ref; unwatch; push ()
