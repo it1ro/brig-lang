@@ -2,6 +2,9 @@ package vm
 
 import (
 	"fmt"
+	"math/big"
+	"os"
+	"strings"
 
 	"github.com/it1ro/brig-lang/internal/runtime"
 )
@@ -18,7 +21,9 @@ func InstallPrelude(vm *VM) {
 		})
 	}
 
-	def("print", -1, func(c runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+	// ---- I/O ----
+
+	def("print", -1, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		line := ""
 		for i, a := range args {
 			if i > 0 {
@@ -29,7 +34,7 @@ func InstallPrelude(vm *VM) {
 		fmt.Println(line)
 		return runtime.Unit, nil
 	})
-	def("eprint", -1, func(c runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+	def("eprint", -1, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		for i, a := range args {
 			if i > 0 {
 				fmt.Print(" ")
@@ -39,8 +44,21 @@ func InstallPrelude(vm *VM) {
 		fmt.Println()
 		return runtime.Unit, nil
 	})
+	def("log", -1, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+		line := ""
+		for i, a := range args {
+			if i > 0 {
+				line += " "
+			}
+			line += a.Inspect()
+		}
+		fmt.Println("log:", line)
+		return runtime.Unit, nil
+	})
 
-	def("len", 1, func(c runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+	// ---- Коллекции ----
+
+	def("len", 1, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		switch a := args[0]; a.Kind {
 		case runtime.KindList:
 			return runtime.Int(int64(len(a.List))), nil
@@ -56,11 +74,7 @@ func InstallPrelude(vm *VM) {
 		return runtime.Unit, fmt.Errorf("(:type_error, (:len, %s))", args[0].Inspect())
 	})
 
-	def("to_str", 1, func(c runtime.Caller, args []runtime.Value) (runtime.Value, error) {
-		return runtime.Str(args[0].Inspect()), nil
-	})
-
-	def("list", -1, func(c runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+	def("list", -1, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		return runtime.List(args...), nil
 	})
 
@@ -80,6 +94,91 @@ func InstallPrelude(vm *VM) {
 		return runtime.List(out...), nil
 	})
 
+	def("filter", 2, func(c runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+		f, xs := args[0], args[1]
+		if xs.Kind != runtime.KindList {
+			return runtime.Unit, fmt.Errorf("(:type_error, (:filter, %s))", xs.Inspect())
+		}
+		out := make([]runtime.Value, 0, len(xs.List))
+		for _, e := range xs.List {
+			r, err := c.Call(f, []runtime.Value{e})
+			if err != nil {
+				return runtime.Unit, err
+			}
+			if r.Kind != runtime.KindBool {
+				return runtime.Unit, fmt.Errorf(
+					"(:type_error, (:filter_predicate, %s))", r.Inspect())
+			}
+			if r.Bool {
+				out = append(out, e)
+			}
+		}
+		return runtime.List(out...), nil
+	})
+
+	def("find", 2, func(c runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+		f, xs := args[0], args[1]
+		if xs.Kind != runtime.KindList {
+			return runtime.Unit, fmt.Errorf("(:type_error, (:find, %s))", xs.Inspect())
+		}
+		for _, e := range xs.List {
+			r, err := c.Call(f, []runtime.Value{e})
+			if err != nil {
+				return runtime.Unit, err
+			}
+			if r.Kind != runtime.KindBool {
+				return runtime.Unit, fmt.Errorf(
+					"(:type_error, (:find_predicate, %s))", r.Inspect())
+			}
+			if r.Bool {
+				return runtime.Variant("Some", e), nil
+			}
+		}
+		return runtime.Variant("None"), nil
+	})
+
+	def("all", 2, func(c runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+		f, xs := args[0], args[1]
+		if xs.Kind != runtime.KindList {
+			return runtime.Unit, fmt.Errorf("(:type_error, (:all, %s))", xs.Inspect())
+		}
+		for _, e := range xs.List {
+			r, err := c.Call(f, []runtime.Value{e})
+			if err != nil {
+				return runtime.Unit, err
+			}
+			if r.Kind != runtime.KindBool {
+				return runtime.Unit, fmt.Errorf(
+					"(:type_error, (:all_predicate, %s))", r.Inspect())
+			}
+			if !r.Bool {
+				return runtime.Bool(false), nil
+			}
+		}
+		return runtime.Bool(true), nil
+	})
+
+	def("any", 2, func(c runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+		f, xs := args[0], args[1]
+		if xs.Kind != runtime.KindList {
+			return runtime.Unit, fmt.Errorf("(:type_error, (:any, %s))", xs.Inspect())
+		}
+		for _, e := range xs.List {
+			r, err := c.Call(f, []runtime.Value{e})
+			if err != nil {
+				return runtime.Unit, err
+			}
+			if r.Kind != runtime.KindBool {
+				return runtime.Unit, fmt.Errorf(
+					"(:type_error, (:any_predicate, %s))", r.Inspect())
+			}
+			if r.Bool {
+				return runtime.Bool(true), nil
+			}
+		}
+		return runtime.Bool(false), nil
+	})
+
 	def("fold", 3, func(c runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		f, acc, xs := args[0], args[1], args[2]
 		if xs.Kind != runtime.KindList {
@@ -95,21 +194,85 @@ func InstallPrelude(vm *VM) {
 		return acc, nil
 	})
 
+	// ---- Конверсии ----
+
+	def("to_str", 1, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+		return runtime.Str(args[0].Inspect()), nil
+	})
+
+	def("to_int", 1, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+		a := args[0]
+		switch a.Kind {
+		case runtime.KindInt:
+			return a, nil
+		case runtime.KindFloat:
+			return runtime.Int(int64(a.Float)), nil
+		case runtime.KindStr:
+			s := strings.TrimSpace(a.Str)
+			var n int64
+			if _, err := fmt.Sscanf(s, "%d", &n); err != nil {
+				return runtime.Unit, &ErrRaise{Val: runtime.Tuple(
+					runtime.Atom("badarg"), a)}
+			}
+			return runtime.Int(n), nil
+		}
+		return runtime.Unit, &ErrRaise{Val: runtime.Tuple(
+			runtime.Atom("badarg"), a)}
+	})
+
+	def("to_float", 1, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+		a := args[0]
+		switch a.Kind {
+		case runtime.KindFloat:
+			return a, nil
+		case runtime.KindInt:
+			if a.IsSmall {
+				return runtime.Float(float64(a.SmallInt)), nil
+			}
+			f, _ := new(big.Float).SetInt(a.Int).Float64()
+			return runtime.Float(f), nil
+		case runtime.KindStr:
+			s := strings.TrimSpace(a.Str)
+			var f float64
+			if _, err := fmt.Sscanf(s, "%f", &f); err != nil {
+				return runtime.Unit, &ErrRaise{Val: runtime.Tuple(
+					runtime.Atom("badarg"), a)}
+			}
+			return runtime.Float(f), nil
+		}
+		return runtime.Unit, &ErrRaise{Val: runtime.Tuple(
+			runtime.Atom("badarg"), a)}
+	})
+
+	// ---- Sys ----
+
+	def("sys_args", 0, func(_ runtime.Caller, _ []runtime.Value) (runtime.Value, error) {
+		out := make([]runtime.Value, 0, len(os.Args))
+		for _, a := range os.Args {
+			out = append(out, runtime.Str(a))
+		}
+		return runtime.List(out...), nil
+	})
+
+	// ---- Встроенные варианты (§10.1) ----
+
 	globals["None"] = runtime.Variant("None")
-	def("Some", 1, func(c runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+	def("Some", 1, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		return runtime.Variant("Some", args...), nil
 	})
-	def("Ok", 1, func(c runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+	def("Ok", 1, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		return runtime.Variant("Ok", args...), nil
 	})
-	def("Error", 1, func(c runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+	def("Error", 1, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		return runtime.Variant("Error", args...), nil
 	})
 
-	def("raise", 1, func(c runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+	// ---- Эффекты ----
+
+	def("raise", 1, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		return runtime.Unit, &ErrRaise{Val: args[0]}
 	})
-	def("assert", 1, func(c runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+	def("assert", 1, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		if args[0].Kind != runtime.KindBool {
 			return runtime.Unit, &ErrRaise{Val: runtime.Tuple(
 				runtime.Atom("type_error"),
