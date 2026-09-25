@@ -1,28 +1,21 @@
-# Skills для Claude Code — проект Brig
+# Skills для агентов — проект Brig
 
-Набор skill-файлов, разбитых по подсистемам компилятора/VM языка Brig
-(`lexer → parser → ast → sema → compiler → vm`). Каждый skill описывает
-локальные инварианты подсистемы, типичные ошибки и чек-лист перед коммитом,
-чтобы Claude Code не переоткрывал контекст заново в каждой сессии и не
-нарушал задокументированные гарантии.
+Skill-файлы, разбитые по подсистемам компилятора/VM языка Brig
+(`lexer → parser → ast → sema → compiler → vm`), плюс протокол рабочей
+сессии. Каждый skill описывает локальные инварианты, известные дефекты со
+ссылками на issues и чек-лист перед коммитом, чтобы агент не
+переоткрывал контекст в каждой сессии.
 
-## Установка
-
-Скопируйте папки в `.claude/skills/` корня репозитория `brig`:
-
-```sh
-cp -r brig-overview brig-lexer brig-parser-ast brig-sema brig-compiler brig-vm brig-testing-workflow \
-    /path/to/brig/.claude/skills/
-```
-
-Claude Code подхватывает `SKILL.md` из `.claude/skills/<name>/SKILL.md`
-автоматически по релевантности задачи (см. описание в каждом файле).
+Claude Code и Cursor подхватывают `.claude/skills/<name>/SKILL.md`
+автоматически по полю `description`. Как запускать агентов на задачах с
+доски — `MAINTAINING.md` в корне репозитория.
 
 ## Состав
 
 | Skill | Когда триггерится |
 |---|---|
-| `brig-overview` | Любая задача — общие принципы §0, источники истины, структура репо |
+| `brig-workflow` | Начало и конец любой задачи с доски: issue, ветка, коммиты `[T-NN]`, PR, статусы, новые issues |
+| `brig-overview` | Любая задача — принципы §0, источники истины, структура репо, где искать известные findings |
 | `brig-lexer` | Правки `internal/lexer/*`, офсайд-алгоритм, escape-последовательности |
 | `brig-parser-ast` | Правки `internal/parser/*`, `internal/ast/*`, грамматика `brig.ebnf` |
 | `brig-sema` | Правки `internal/sema/*`, контекстный анализ §F.3 |
@@ -30,11 +23,23 @@ Claude Code подхватывает `SKILL.md` из `.claude/skills/<name>/SKIL
 | `brig-vm` | Правки `internal/vm/*`, scheduler, опкоды, `vm.Verify` |
 | `brig-testing-workflow` | Любая задача, требующая прогона тестов/golden/bytecode |
 
-## Рекомендация по моделям
+## Актуальность
 
-- **Opus** — дизайн новой семантики, отладка нарушений инвариантов, ревью
-  диффов по `compiler.go` / `scheduler.go` / `verify.go`.
-- **Sonnet** — реализация по уже согласованному плану, prelude-функции,
-  типовые тесты.
-- **Haiku** — навигация по кодовой базе, мелкая косметика, обновление
-  `STATUS.md`/`CHANGELOG.md`.
+Skills описывают состояние `iter/regvm` @ `8ab58cf` по `AUDIT_REPORT.md`.
+Известные дефекты помечены `T-NN (#issue)`. Задача, которая снимает такое
+ограничение, правит соответствующую строку skill в том же PR:
+`rg -n 'T-NN' .claude/skills`.
+
+## Модели
+
+Модель задачи задаёт поле **Model** на доске (`sonnet` / `opus` /
+`human`); для Effort L — только она.
+
+- **opus** — дизайн семантики, инварианты компилятора и Verify, крупные
+  full-fix (`compiler.go`, `scheduler.go`, `verify.go`).
+- **sonnet** — реализация по готовому DoD, fail-fast, тесты, docs.
+- **human** — design decisions и merge integration-ветки; агенту не
+  отдаются.
+
+`CHANGELOG.md` вручную не правится — он генерируется `make changelog`
+(git-cliff).
