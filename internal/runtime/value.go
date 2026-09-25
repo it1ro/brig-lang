@@ -2,6 +2,7 @@
 package runtime
 
 import (
+	"bytes"
 	"fmt"
 	"math/big"
 	"strconv"
@@ -30,6 +31,7 @@ const (
 	KindRef
 	KindRange // Sprint 5.1 (§4.3)
 	KindSet   // Sprint 5.2 (§4.6)
+	KindBytes // Sprint 5.4 (§3.2)
 )
 
 func (k Kind) String() string {
@@ -68,6 +70,8 @@ func (k Kind) String() string {
 		return "Range"
 	case KindSet:
 		return "Set"
+	case KindBytes:
+		return "Bytes"
 	}
 	return "unknown"
 }
@@ -115,6 +119,9 @@ type MapEntry struct{ Key, Val Value }
 //
 // Range (Sprint 5.1): границы хранятся как int64; при построении
 // диапазона с big-int границами VM возбуждает :range_error.
+//
+// Bytes (Sprint 5.4, §3.2): иммутабельная последовательность байт;
+// escape-последовательности раскодируются компилятором.
 type Value struct {
 	Kind       Kind
 	Bool       bool
@@ -136,6 +143,7 @@ type Value struct {
 	Ref        int
 	RangeStart int64
 	RangeEnd   int64
+	Bytes      []byte
 }
 
 // ---- конструкторы ----
@@ -194,6 +202,14 @@ func Set(vs ...Value) Value { return Value{Kind: KindSet, Set: vs} }
 // Range создаёт диапазон (Sprint 5.1, §4.3).
 func Range(start, end int64) Value {
 	return Value{Kind: KindRange, RangeStart: start, RangeEnd: end}
+}
+
+// Bytes создаёт байтовую строку (Sprint 5.4, §3.2). Копирует входной
+// слайс, чтобы гарантировать иммутабельность значения.
+func Bytes(b []byte) Value {
+	buf := make([]byte, len(b))
+	copy(buf, b)
+	return Value{Kind: KindBytes, Bytes: buf}
 }
 
 // Func создаёт значение-функцию.
@@ -258,6 +274,8 @@ func (v Value) Inspect() string {
 	case KindRange:
 		return strconv.FormatInt(v.RangeStart, 10) + " to " +
 			strconv.FormatInt(v.RangeEnd, 10)
+	case KindBytes:
+		return inspectBytes(v.Bytes)
 	case KindFunction:
 		return fmt.Sprintf("#<function %s/%d>", v.Func.Name, v.Func.Arity)
 	case KindClosure:
@@ -273,6 +291,37 @@ func (v Value) Inspect() string {
 		return fmt.Sprintf("#<ref %d>", v.Ref)
 	}
 	return fmt.Sprintf("<%v>", v.Kind)
+}
+
+// inspectBytes печатает байтовое значение в канонической форме b"..."
+// с escape-последовательностями (A4.2).
+func inspectBytes(b []byte) string {
+	var sb strings.Builder
+	sb.WriteString(`b"`)
+	for _, c := range b {
+		switch c {
+		case '\n':
+			sb.WriteString(`\n`)
+		case '\t':
+			sb.WriteString(`\t`)
+		case '\r':
+			sb.WriteString(`\r`)
+		case 0:
+			sb.WriteString(`\0`)
+		case '\\':
+			sb.WriteString(`\\`)
+		case '"':
+			sb.WriteString(`\"`)
+		default:
+			if c >= 0x20 && c < 0x7F {
+				sb.WriteByte(c)
+			} else {
+				fmt.Fprintf(&sb, `\x%02x`, c)
+			}
+		}
+	}
+	sb.WriteByte('"')
+	return sb.String()
 }
 
 func inspectLit(v Value) string {
@@ -318,6 +367,8 @@ func Equal(a, b Value) bool {
 		return a.Atom == b.Atom
 	case KindRange:
 		return a.RangeStart == b.RangeStart && a.RangeEnd == b.RangeEnd
+	case KindBytes:
+		return bytes.Equal(a.Bytes, b.Bytes)
 	case KindTuple:
 		if len(a.Tuple) != len(b.Tuple) {
 			return false
@@ -409,7 +460,7 @@ func numToFloat(v Value) float64 {
 	return f
 }
 
-// ---- сравнение (§7.4, упрощённо) ----
+// ---- сравнение (§7.4) ----
 
 // Compare возвращает -1/0/+1.
 func Compare(a, b Value) (int, error) {
@@ -455,6 +506,11 @@ func Compare(a, b Value) (int, error) {
 			return cmpInt64(a.RangeStart, b.RangeStart), nil
 		}
 		return cmpInt64(a.RangeEnd, b.RangeEnd), nil
+	case KindBytes:
+		if b.Kind != KindBytes {
+			return 0, cmpErr(a, b)
+		}
+		return bytes.Compare(a.Bytes, b.Bytes), nil
 	case KindSet:
 		if b.Kind != KindSet {
 			return 0, cmpErr(a, b)
