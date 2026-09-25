@@ -32,12 +32,29 @@ description: >
   v0.4.6). См. `parseTrap` в `expr.go`.
 - **`recv`**: `else`/`after` — клаузы на том же отступе, что сам `recv`,
   порядок фиксирован (`else` перед `after`), не более одной каждой. `else`
-  требует `LOWER_IDENT` имени (нет `else _ ->`).
+  требует `LOWER_IDENT` имени (нет `else _ ->`). **Guard ветки разбирается
+  и выбрасывается** (`expr.go:937-941`, `:970-974`; в `RecvBranchArg` нет
+  поля Guard — S-F3, T-02 #2). Отвергать guard в парсере нельзя: doc 01
+  (строка ~1084) содержит `when has_pending(...)`, `check-examples` упадёт.
+- **Guard из одного идентификатора** (`fn f(x) when x -> 1`,
+  `n when ok -> …`) уходит в `tryLambda` (`expr.go:34`) и даёт
+  `expected '->'` — guard надо разбирать через `parseOr()` (S-F4, T-20 #14).
 - **`if`-сахар**: `if...then...else` — только целиком, с обеими ветками.
   Блочная форма `if`/`else` — на одном отступе (якорь — токен `if`).
 - **Record vs constructor**: `Red` (без `{`) — значение-конструктор
   варианта; `Red{...}` — record-литерал. Не путать при парсинге
   `UPPER_IDENT`.
+
+## Известные расхождения с `brig.ebnf` (каждое — свой issue)
+
+| Что | Сейчас | Issue |
+|---|---|---|
+| Параметры и guard `fn` | Хранятся строками (`pat.String()`, `normalizeGuardString`, `stmt.go:90-146,190-199`) — AST не выражает параметр-паттерн | T-50 (#33) |
+| Интерполяция `\(...)` | STRING → `LiteralExpr` (`expr.go:401-405`), выражение в AST не попадает, `"a \(1 +) b"` принимается | T-53 (#36) |
+| `ensure` | Форма из грамматики (`ensure NEWLINE INDENT`) не парсится; гибрид `ensure expr` + блок принимается, блок молча выбрасывается (`expr.go:887-906`) | T-03 (#3) |
+| `stmt_list` | NEWLINE между стейтментами не обязателен (`stmt.go:13-26`): `x = 1 y = 2` — две строки | T-21 (#15) |
+| `sep ::= NEWLINE` | В args/params/tuple не поддержан (в list/map/record — да) | T-24 (#18) |
+| Паттерн `()`, порядок bind/stmt в `with` | Ошибка парсинга | T-24 (#18) |
 
 ## AST-инкапсуляция (`internal/ast`)
 
@@ -54,7 +71,17 @@ description: >
   ломаться непредсказуемо.
 - `Format(n Node)` должен быть идемпотентным: `format(parse(format(x))) ==
   format(x)` — есть тест `TestFormatIdempotent`. Любая правка форматтера
-  обязана сохранить это свойство.
+  обязана сохранить это свойство. Известное нарушение:
+  `fn f(x) when x == ")" -> 1` — `stripOuterParens` (`stmt.go:232`)
+  считает скобки внутри строковых литералов (S-F12, T-20 #14).
+- **`ast.Pretty` и `ast.Walk` не видят Decl** (S-F13, T-11 #9): все Decl
+  реализуют `IsExpression()` (`decl.go:14,25,40,69`), и `case Expr`
+  срабатывает раньше `case Decl` (`pretty.go:35`, `visitor.go:31`). Итог —
+  24 из 25 `testdata/golden/*.ast` равны `(program )`: **до T-11
+  golden-тесты AST ничего не защищают**, а `Walk` пропускает декларации.
+- Round-trip на `ast.Equal` не видит того, что парсер выбросил в обоих
+  проходах (guard в `recv`, блок `ensure`). Зелёный round-trip ≠ «узел
+  сохранён».
 - `*tuplePattern` из одного элемента печатается с висячей запятой
   `(x,)` — без неё `(x)` перепарсится как grouping/identPat и потеряет
   узел при round-trip (см. FIX-B в changelog v0.4.7). Аналогичная ловушка
@@ -72,7 +99,8 @@ description: >
    `compiler` будут молча пропускать новый узел.
 5. Обновить `equal.go` для round-trip тестов.
 6. Добавить golden-кейс в `testdata/golden/*.brig` +
-   `make update-golden`.
+   `make update-golden`, diff прочитать и закоммитить отдельно. Пока T-11
+   не в `main`, `.ast`-часть golden бесполезна — нужен явный тест на узел.
 7. Прогнать `go test ./internal/ast/... ./internal/parser/... -run
    RoundTrip` и полный `make test-roundtrip test-parser`.
 8. Если новая конструкция должна попасть в компилятор — сразу сообщить,
@@ -86,8 +114,9 @@ description: >
   сохранить эту устойчивость к висячим `NEWLINE` после вложенных блоков.
 - `normalizeGuardString` в `parser/stmt.go` снимает один уровень внешних
   скобок у guard-выражения — без этого round-trip guard'ов
-  `n > 0` → `(n > 0)` → `((n > 0))` расходится. При добавлении новых мест
-  со строковыми guard'ами эту нормализацию нужно применять так же.
+  `n > 0` → `(n > 0)` → `((n > 0))` расходится. Это костыль строкового
+  guard'а: T-50 (#33) переводит guard в `ast.Expr` и удаляет его. Новых
+  мест со строковыми guard'ами не добавлять.
 - `modeByMeta` в `internal/examples/examples.go` использует регексп с `\b`,
   чтобы `invalid_foo` не матчился как `invalid` — не убирать границу
   слова при правке меток fenced-блоков в докстрингах.
