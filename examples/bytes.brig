@@ -1,0 +1,18 @@
+module Main
+
+fn main() ->
+    greeting = b"hi"
+    print(len(greeting))
+
+    s = Bytes.to_str(greeting)
+    print(s)
+
+    raw = b"\x89PNG"
+    print(len(raw))
+
+    back = Str.to_bytes("ok")
+    print(len(back))
+
+    # Невалидный UTF-8: Bytes.to_str бросает :invalid_utf8.
+    result = trap(Bytes.to_str(b"\x89"))
+    print(result)
