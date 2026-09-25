@@ -135,7 +135,7 @@ func mul(a, b runtime.Value) (runtime.Value, error) {
 	}
 	if a.IsSmall && b.IsSmall {
 		r := a.SmallInt * b.SmallInt
-		if a.SmallInt == 0 || (r/a.SmallInt == b.SmallInt && !(a.SmallInt == -1 && b.SmallInt == math.MinInt64) && !(b.SmallInt == -1 && a.SmallInt == math.MinInt64)) {
+		if a.SmallInt == 0 || (r/a.SmallInt == b.SmallInt && !(a.SmallInt == -1 && b.SmallInt == math.MinInt64) && !(b.SmallInt == -1 && a.SmallInt == math.MinInt64)) { //lint:ignore QF1001
 			return runtime.Int(r), nil
 		}
 	}
@@ -162,7 +162,7 @@ func intDiv(a, b runtime.Value) (runtime.Value, error) {
 			return runtime.Unit, &ErrRaise{Val: runtime.Tuple(
 				runtime.Atom("division_by_zero"), runtime.Unit)}
 		}
-		if a.IsSmall && !(a.SmallInt == math.MinInt64 && b.SmallInt == -1) {
+		if a.IsSmall && !(a.SmallInt == math.MinInt64 && b.SmallInt == -1) { //lint:ignore QF1001
 			return runtime.Int(a.SmallInt / b.SmallInt), nil
 		}
 	} else if b.AsBig().Sign() == 0 {
