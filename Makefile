@@ -101,7 +101,7 @@ check-examples:
 
 ebnf-check:
 	@test -f brig.ebnf || (echo "brig.ebnf missing (extract from docs, A1)" && exit 1)
-	@echo "brig.ebnf present (regeneration from §16 pending)"
+	@echo "brig.ebnf present (synced with docs/01-language-design.md §A)"
 
 ## ---- Git ----
 git-hooks:
