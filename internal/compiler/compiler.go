@@ -338,7 +338,7 @@ func (fc *funcCompiler) compileLiteral(lit string) error {
 		return nil
 	}
 	if strings.HasPrefix(lit, "\"") && strings.HasSuffix(lit, "\"") {
-		s := lit[1 : len(lit)-1]
+		s := decodeStrBody(lit[1 : len(lit)-1])
 		idx := fc.chunk.AddConstant(runtime.Str(s))
 		fc.emit(vm.OpConstant, idx)
 		return nil
@@ -1153,7 +1153,7 @@ func parseLiteralValue(s string) (runtime.Value, error) {
 		return runtime.Atom(s[1:]), nil
 	}
 	if s[0] == '"' && s[len(s)-1] == '"' {
-		return runtime.Str(s[1 : len(s)-1]), nil
+		return runtime.Str(decodeStrBody(s[1 : len(s)-1])), nil
 	}
 	if strings.HasPrefix(s, `dec"`) && strings.HasSuffix(s, `"`) {
 		r, err := runtime.ParseDecimal(s[4 : len(s)-1])
@@ -1227,4 +1227,73 @@ func (fc *funcCompiler) compileDecimalLiteral(body string) error {
 	idx := fc.chunk.AddConstant(runtime.Decimal(r))
 	fc.emit(vm.OpConstant, idx)
 	return nil
+}
+
+// decodeStrBody разворачивает escape-последовательности Str (§C.1):
+// \n \t \r \0 \\ \" \u{H...H}. Лексер (scanString) сохраняет тело
+// как есть, включая backslash-последовательности — их декодирует
+// компилятор на этапе загрузки константы.
+//
+// Интерполяция \(...) оставляется как есть: она обрабатывается на
+// отдельном этапе (не реализовано в MVP, см. TODO issue #1 в дизайне).
+func decodeStrBody(s string) string {
+	var sb strings.Builder
+	for i := 0; i < len(s); {
+		c := s[i]
+		if c != '\\' || i+1 >= len(s) {
+			sb.WriteByte(c)
+			i++
+			continue
+		}
+		esc := s[i+1]
+		switch esc {
+		case 'n':
+			sb.WriteByte('\n')
+			i += 2
+		case 't':
+			sb.WriteByte('\t')
+			i += 2
+		case 'r':
+			sb.WriteByte('\r')
+			i += 2
+		case '0':
+			sb.WriteByte(0)
+			i += 2
+		case '\\':
+			sb.WriteByte('\\')
+			i += 2
+		case '"':
+			sb.WriteByte('"')
+			i += 2
+		case 'u':
+			if i+2 >= len(s) || s[i+2] != '{' {
+				sb.WriteByte(c)
+				i++
+				continue
+			}
+			j := i + 3
+			for j < len(s) && s[j] != '}' {
+				j++
+			}
+			if j >= len(s) {
+				sb.WriteByte(c)
+				i++
+				continue
+			}
+			var cp uint64
+			if _, err := fmt.Sscanf(s[i+3:j], "%x", &cp); err == nil && cp <= 0x10FFFF {
+				sb.WriteRune(rune(cp))
+			}
+			i = j + 1
+		case '(':
+			// Интерполяция — оставляем как есть.
+			sb.WriteByte(c)
+			sb.WriteByte(esc)
+			i += 2
+		default:
+			sb.WriteByte(c)
+			i++
+		}
+	}
+	return sb.String()
 }

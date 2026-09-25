@@ -799,3 +799,32 @@ fn main() ->
     assert(dec"1.5" >= dec"1.5")
 `)
 }
+
+func TestStringEscapes(t *testing.T) {
+	runModule(t, `module Main
+fn main() ->
+    s = "a\nb\tc\rd\\e\"f"
+    assert(len(s) == 11)
+    assert(s[1] == "\n")
+    assert(s[3] == "\t")
+    assert(s[5] == "\r")
+    assert(s[7] == "\\")
+    assert(s[9] == "\"")
+`)
+}
+
+func TestStringUnicodeEscape(t *testing.T) {
+	runModule(t, `module Main
+fn main() ->
+    s = "\u{41}\u{42}\u{43}"
+    assert(s == "ABC")
+`)
+}
+
+func TestJsonDecodeEscapedString(t *testing.T) {
+	runModule(t, `module Main
+fn main() ->
+    result = Json.decode("{\"x\": 1}")
+    print(result)
+`)
+}
