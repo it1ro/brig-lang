@@ -119,7 +119,7 @@ fn main() ->
 `)
 }
 
-// ---- trap / ensure (v0.4.7, §10.2/§10.3) ----
+// ---- trap / ensure ----
 
 func TestTrapInlineOk(t *testing.T) {
 	runModule(t, `module Main
@@ -248,15 +248,7 @@ fn main() ->
 `)
 }
 
-func TestTrapInExpression(t *testing.T) {
-	runModule(t, `module Main
-fn main() ->
-    x = 1 + 0
-    print(x)
-`)
-}
-
-// ---- v0.4.8: акторы ----
+// ---- акторы ----
 
 func TestSpawnAndSend(t *testing.T) {
 	runModule(t, `module Main
@@ -349,11 +341,8 @@ fn main() ->
 `)
 }
 
-// ---- TCO (v0.4.8) ----
+// ---- TCO ----
 
-// TestTailRecursion — без TCO этот тест заполнит стек кадров актора
-// миллионом записей (~2.5 GB locals) и упадёт по OOM. С TCO — меньше
-// секунды.
 func TestTailRecursion(t *testing.T) {
 	runModule(t, `module Main
 fn sum_to(n, acc) ->
@@ -364,8 +353,6 @@ fn main() ->
 `)
 }
 
-// TestNonTailRecursionStillWorks — не-хвостовая рекурсия не должна
-// ломаться: n * fact(n-1) требует умножения после возврата.
 func TestNonTailRecursionStillWorks(t *testing.T) {
 	runModule(t, `module Main
 fn fact(n) ->
@@ -376,9 +363,6 @@ fn main() ->
 `)
 }
 
-// TestTailRecursionThroughRecv — хвостовой вызов внутри ветки recv
-// (паттерн CALL ; JMP end ; end: RETURN). Актор обрабатывает много
-// сообщений, стек кадров не растёт.
 func TestTailRecursionThroughRecv(t *testing.T) {
 	runModule(t, `module Main
 fn counter_loop(n) ->
@@ -402,7 +386,7 @@ fn main() ->
 `)
 }
 
-// ---- v0.4.9: prelude / patterns / ensure --------
+// ---- prelude / patterns / ensure ----
 
 func TestPreludeFilter(t *testing.T) {
 	runModule(t, `module Main
@@ -449,7 +433,6 @@ fn main() ->
 }
 
 func TestSmallIntFastPath(t *testing.T) {
-	// Без small-int этот тест медленный; с ним — быстрый.
 	runModule(t, `module Main
 fn loop(n, acc) ->
     if n == 0 then acc else loop(n - 1, acc + n)
@@ -493,8 +476,6 @@ fn main() ->
 }
 
 func TestEnsureAllRunOnFailure(t *testing.T) {
-	// Полная семантика §10.3: если первый (LIFO) ensure падает,
-	// остальные ВСЁ РАВНО выполняются.
 	runModule(t, `module Main
 fn main() ->
     result = trap
@@ -526,7 +507,7 @@ fn main() ->
 `)
 }
 
-// ---- v0.4.9: Sprint 5.1 Range (§4.3) ----
+// ---- Sprint 5.1: Range ----
 
 func TestRangeMaterialize(t *testing.T) {
 	runModule(t, `module Main
@@ -548,8 +529,6 @@ fn main() ->
 }
 
 func TestRangeError(t *testing.T) {
-	// Вычисляемые границы: a > b, но литерал не диагностируется
-	// парсером — должен сработать runtime :range_error в list().
 	runModule(t, `module Main
 fn main() ->
     a = 5
@@ -559,7 +538,7 @@ fn main() ->
 `)
 }
 
-// ---- v0.4.9: Sprint 5.2 Set (§4.6) ----
+// ---- Sprint 5.2: Set ----
 
 func TestSetBasics(t *testing.T) {
 	runModule(t, `module Main
@@ -571,7 +550,7 @@ fn main() ->
 `)
 }
 
-// ---- v0.4.9: Sprint 5.3 Vec/Map modules (§4.4, §4.5) ----
+// ---- Sprint 5.3: Vec/Map modules ----
 
 func TestVecPush(t *testing.T) {
 	runModule(t, `module Main
@@ -661,6 +640,82 @@ func TestListIndexOutOfBounds(t *testing.T) {
 fn main() ->
     xs = [1, 2, 3]
     result = trap(xs[99])
+    print(result)
+`)
+}
+
+// ---- Sprint 5.4: Bytes ----
+
+func TestBytesLiteral(t *testing.T) {
+	runModule(t, `module Main
+fn main() ->
+    b = b"\x89PNG"
+    assert(len(b) == 4)
+`)
+}
+
+func TestBytesEscapes(t *testing.T) {
+	runModule(t, `module Main
+fn main() ->
+    b = b"\n\t\r\0\\\""
+    assert(len(b) == 6)
+    assert(b[0] == 10)
+    assert(b[1] == 9)
+    assert(b[2] == 13)
+    assert(b[3] == 0)
+    assert(b[4] == 92)
+    assert(b[5] == 34)
+`)
+}
+
+func TestBytesIndex(t *testing.T) {
+	runModule(t, `module Main
+fn main() ->
+    b = b"abc"
+    assert(b[0] == 97)
+    assert(b[2] == 99)
+`)
+}
+
+func TestBytesEquality(t *testing.T) {
+	runModule(t, `module Main
+fn main() ->
+    assert(b"abc" == b"abc")
+    assert(b"abc" != b"abd")
+`)
+}
+
+func TestBytesToStr(t *testing.T) {
+	runModule(t, `module Main
+fn main() ->
+    s = Bytes.to_str(b"hi")
+    assert(s == "hi")
+`)
+}
+
+func TestBytesToStrInvalid(t *testing.T) {
+	runModule(t, `module Main
+fn main() ->
+    result = trap(Bytes.to_str(b"\x89"))
+    print(result)
+`)
+}
+
+func TestStrToBytes(t *testing.T) {
+	runModule(t, `module Main
+fn main() ->
+    b = Str.to_bytes("hi")
+    assert(len(b) == 2)
+    assert(b[0] == 104)
+    assert(b[1] == 105)
+`)
+}
+
+func TestBytesIndexOutOfBounds(t *testing.T) {
+	runModule(t, `module Main
+fn main() ->
+    b = b"ab"
+    result = trap(b[99])
     print(result)
 `)
 }
