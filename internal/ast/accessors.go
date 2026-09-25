@@ -11,6 +11,7 @@ package ast
 
 // --- выражения ---
 
+// BinaryExpr — доступ к бинарному выражению.
 type BinaryExpr interface {
 	Expr
 	OpStr() string
@@ -22,6 +23,7 @@ func (e *binaryExpr) OpStr() string { return e.op }
 func (e *binaryExpr) Left() Expr    { return e.left }
 func (e *binaryExpr) Right() Expr   { return e.right }
 
+// UnaryExpr — доступ к унарному выражению.
 type UnaryExpr interface {
 	Expr
 	OpStr() string
@@ -31,6 +33,7 @@ type UnaryExpr interface {
 func (e *unaryExpr) OpStr() string { return e.op }
 func (e *unaryExpr) Operand() Expr { return e.expr }
 
+// GroupingExpr — доступ к группированному выражению.
 type GroupingExpr interface {
 	Expr
 	Inner() Expr
@@ -38,6 +41,7 @@ type GroupingExpr interface {
 
 func (e *groupingExpr) Inner() Expr { return e.expr }
 
+// LiteralExpr — доступ к литеральному выражению.
 type LiteralExpr interface {
 	Expr
 	ValueStr() string
@@ -45,6 +49,7 @@ type LiteralExpr interface {
 
 func (e *literalExpr) ValueStr() string { return e.value }
 
+// VariableExpr — доступ к переменной выражению.
 type VariableExpr interface {
 	Expr
 	Name() string
@@ -52,6 +57,7 @@ type VariableExpr interface {
 
 func (e *variableExpr) Name() string { return e.name }
 
+// CallExpr — доступ к вызову функции.
 type CallExpr interface {
 	Expr
 	Callee() Expr
@@ -61,6 +67,7 @@ type CallExpr interface {
 func (e *callExpr) Callee() Expr { return e.callee }
 func (e *callExpr) Args() []Expr { return e.args }
 
+// MemberExpr — доступ к выражению выбора полей/атрибутов.
 type MemberExpr interface {
 	Expr
 	Obj() Expr
@@ -70,6 +77,7 @@ type MemberExpr interface {
 func (e *memberExpr) Obj() Expr          { return e.obj }
 func (e *memberExpr) MemberName() string { return e.name }
 
+// IndexExpr — доступ к индексному выражению.
 type IndexExpr interface {
 	Expr
 	Obj() Expr
@@ -79,6 +87,7 @@ type IndexExpr interface {
 func (e *indexExpr) Obj() Expr   { return e.obj }
 func (e *indexExpr) Index() Expr { return e.index }
 
+// IfExpr — доступ к условному выражению if.
 type IfExpr interface {
 	Expr
 	Cond() Expr
@@ -98,6 +107,7 @@ func (e *ifExpr) ElseIf() []IfBranch {
 	return out
 }
 
+// AtomExpr — доступ к атому выражения.
 type AtomExpr interface {
 	Expr
 	AtomName() string
@@ -105,6 +115,7 @@ type AtomExpr interface {
 
 func (e *atomExpr) AtomName() string { return e.ident }
 
+// DecimalExpr — доступ к десятичному литералу.
 type DecimalExpr interface {
 	Expr
 	ValueStr() string
@@ -112,6 +123,7 @@ type DecimalExpr interface {
 
 func (e *decimalExpr) ValueStr() string { return e.value }
 
+// BytesExpr — доступ к байтовому литералу.
 type BytesExpr interface {
 	Expr
 	ValueStr() string
@@ -119,6 +131,7 @@ type BytesExpr interface {
 
 func (e *bytesExpr) ValueStr() string { return e.value }
 
+// RegexExpr — доступ к регулярному выражению.
 type RegexExpr interface {
 	Expr
 	ValueStr() string
@@ -126,6 +139,7 @@ type RegexExpr interface {
 
 func (e *regexExpr) ValueStr() string { return e.value }
 
+// LambdaShort — доступ к короткой лямбде.
 type LambdaShort interface {
 	Expr
 	ParamName() string
@@ -135,6 +149,7 @@ type LambdaShort interface {
 func (e *lambdaShortExpr) ParamName() string { return e.param }
 func (e *lambdaShortExpr) Body() Expr        { return e.body }
 
+// LambdaEmpty — доступ к лямбде с пустыми параметрами.
 type LambdaEmpty interface {
 	Expr
 	Body() Expr
@@ -142,20 +157,24 @@ type LambdaEmpty interface {
 
 func (e *lambdaEmptyExpr) Body() Expr { return e.body }
 
+// LambdaFull — доступ к полной лямбде.
 type LambdaFull interface {
 	Expr
 	ParamNames() []string
 	BlockBody() *BlockStmt
 }
 
-func (e *lambdaFullExpr) ParamNames() []string  { return e.params }
+func (e *lambdaFullExpr) ParamNames() []string { return e.params }
+
+// BlockBody возвращает тело блока полной лямбды.
 func (e *lambdaFullExpr) BlockBody() *BlockStmt { return e.body }
 
-// BlockStmt уже экспортирован; даём доступ к стейтментам.
+// Body возвращает стейтменты блока.
 func (b *BlockStmt) Body() []Stmt { return b.stmts }
 
 // --- стейтменты ---
 
+// LetBind — доступ к привязке let.
 type LetBind interface {
 	Stmt
 	Pat() Pattern
@@ -165,6 +184,7 @@ type LetBind interface {
 func (s *letBind) Pat() Pattern { return s.pattern }
 func (s *letBind) Val() Expr    { return s.value }
 
+// ExprStmt — доступ к выражению-стейтменту.
 type ExprStmt interface {
 	Stmt
 	ExprValue() Expr
@@ -172,6 +192,7 @@ type ExprStmt interface {
 
 func (s *exprStmt) ExprValue() Expr { return s.expr }
 
+// LocalFnDecl — доступ к локальной декларации функции.
 type LocalFnDecl interface {
 	Stmt
 	FnName() string
@@ -191,6 +212,7 @@ func (s *localFnDecl) Clauses() []LocalFnClauseArg {
 
 // --- паттерны ---
 
+// IdentPattern — доступ к идентификатору-паттерну.
 type IdentPattern interface {
 	Pattern
 	IdentName() string
@@ -198,6 +220,7 @@ type IdentPattern interface {
 
 func (p *identPat) IdentName() string { return p.name }
 
+// LiteralPattern — доступ к литеральному паттерну.
 type LiteralPattern interface {
 	Pattern
 	ValueStr() string
@@ -210,6 +233,7 @@ type PatternWildcard interface {
 	Pattern
 }
 
+// PatternCtor — доступ к конструкторному паттерну.
 type PatternCtor interface {
 	Pattern
 	CtorName() string
@@ -225,6 +249,7 @@ func (p *constructorPat) CtorArgs() []Pattern {
 	return out
 }
 
+// PatternTuple — доступ к кортежному паттерну.
 type PatternTuple interface {
 	Pattern
 	TupleElems() []Pattern
@@ -232,6 +257,7 @@ type PatternTuple interface {
 
 func (p *tuplePattern) TupleElems() []Pattern { return p.patterns }
 
+// PatternAs — доступ к паттерну as.
 type PatternAs interface {
 	Pattern
 	AsInner() Pattern
@@ -243,6 +269,7 @@ func (p *asPat) AsName() string   { return p.ident }
 
 // --- декларации ---
 
+// FuncDecl — доступ к декларации функции.
 type FuncDecl interface {
 	Decl
 	FnName() string
