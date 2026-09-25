@@ -1,6 +1,9 @@
 package parser
 
 import (
+	"strconv"
+	"strings"
+
 	"github.com/it1ro/brig-lang/internal/ast"
 	"github.com/it1ro/brig-lang/internal/lexer"
 )
@@ -173,6 +176,9 @@ func (p *parser) parsePipeRHS() (ast.Expr, []ast.Expr, error) {
 }
 
 // range_expr ::= add_expr [ "to" add_expr ]  (non-assoc)
+//
+// §4.3: убывающий литеральный range (`1 to 0`, `5 to 1`) — ошибка
+// парсинга. При вычисляемых границах — runtime :range_error.
 func (p *parser) parseRange() (ast.Expr, error) {
 	left, err := p.parseAdd()
 	if err != nil {
@@ -184,12 +190,48 @@ func (p *parser) parseRange() (ast.Expr, error) {
 		if err != nil {
 			return nil, err
 		}
+		if lv, lok := litIntValue(left); lok {
+			if rv, rok := litIntValue(right); rok && lv > rv {
+				return nil, p.errf("descending literal range %d to %d", lv, rv)
+			}
+		}
 		left = ast.NewRangeExpr(left, right, t.Line, t.Col)
 		if p.at(lexer.KW_TO) {
 			return nil, p.errf("'to' is non-associative")
 		}
 	}
 	return left, nil
+}
+
+// litIntValue возвращает int64 для литерального целого (возможно, под
+// унарным минусом). Второе значение — true, если выражение является
+// целочисленным литералом.
+func litIntValue(e ast.Expr) (int64, bool) {
+	switch x := e.(type) {
+	case ast.LiteralExpr:
+		s := x.ValueStr()
+		if s == "" {
+			return 0, false
+		}
+		for i := 0; i < len(s); i++ {
+			c := s[i]
+			if (c < '0' || c > '9') && c != '_' {
+				return 0, false
+			}
+		}
+		n, err := strconv.ParseInt(strings.ReplaceAll(s, "_", ""), 10, 64)
+		if err != nil {
+			return 0, false
+		}
+		return n, true
+	case ast.UnaryExpr:
+		if x.OpStr() == "-" {
+			if inner, ok := litIntValue(x.Operand()); ok {
+				return -inner, true
+			}
+		}
+	}
+	return 0, false
 }
 
 // add_expr ::= mul_expr { ( "+" | "-" ) mul_expr }
@@ -813,9 +855,6 @@ func (p *parser) parseWith() (ast.Expr, error) {
 //	trap_expr ::= "trap" "(" expr ")"
 //	            | "trap" NEWLINE INDENT trap_item+ DEDENT
 //	trap_item ::= stmt | ensure_clause
-//
-// Ensure-клауза — это trap_item внутри INDENT-блока; она попадает в
-// trapExpr.ensures в текстовом порядке (runtime выполняет LIFO).
 func (p *parser) parseTrap() (ast.Expr, error) {
 	start := p.advance() // trap
 
@@ -853,8 +892,6 @@ func (p *parser) parseTrap() (ast.Expr, error) {
 			}
 			ensures = append(ensures, ast.EnsureArg{Expr: e})
 			// Опциональное блочное тело ensure: NEWLINE INDENT stmt_list DEDENT.
-			// Само тело сейчас не сохраняется в AST (ensureClause содержит
-			// только expr); сохраняем текущее поведение парсера.
 			if p.at(lexer.NEWLINE) && p.peek(1).Type == lexer.INDENT {
 				p.advance() // NEWLINE
 				p.advance() // INDENT
