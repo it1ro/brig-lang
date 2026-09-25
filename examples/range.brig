@@ -1,0 +1,15 @@
+module Main
+
+fn main() ->
+    print(list(1 to 5))
+    print(list(1 to 1))
+
+    a = 2
+    b = 7
+    print(list(a to b))
+
+    # Вычисляемый убывающий диапазон: runtime :range_error.
+    lo = 5
+    hi = 1
+    result = trap(list(lo to hi))
+    print(result)
