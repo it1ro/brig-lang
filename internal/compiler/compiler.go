@@ -364,6 +364,9 @@ func (c *Compiler) Compile(prog *ast.Program) (image *ProgramImage, err error) {
 			continue
 		}
 		cl := clauses[0]
+		if cerr := checkSimpleFn(len(clauses), cl.Guard, cl.Params); cerr != nil {
+			return nil, fmt.Errorf("fn %s: %w", fd.FnName(), cerr)
+		}
 		fn, cerr := c.compileFunction(fd.FnName(), cl.Params, cl.Body)
 		if cerr != nil {
 			return nil, fmt.Errorf("fn %s: %w", fd.FnName(), cerr)
@@ -450,6 +453,42 @@ func (c *Compiler) compileBlock(name string, params []string, stmts []ast.Stmt) 
 	fc.chunk.NumRegs = fc.maxReg
 
 	return &vm.Function{Name: name, Arity: len(params), Chunk: fc.chunk}, nil
+}
+
+// checkSimpleFn отвергает то, что компилятор не умеет, вместо того чтобы
+// молча взять clauses[0] и связать строку паттерна как имя (S-F2).
+func checkSimpleFn(nClauses int, guard string, params []string) error {
+	if nClauses > 1 {
+		return fmt.Errorf("срез: мультиклозные fn не реализованы (%d клозов)", nClauses)
+	}
+	if guard != "" {
+		return fmt.Errorf("срез: guard `when %s` в fn не реализован", guard)
+	}
+	for _, p := range params {
+		if !isIdentParam(strings.TrimPrefix(p, "..")) {
+			return fmt.Errorf("срез: параметр-паттерн %q не реализован", p)
+		}
+	}
+	return nil
+}
+
+// isIdentParam: параметры хранятся как pat.String(), поэтому IdentPattern
+// опознаётся по форме строки — LOWER_IDENT, не совпадающий с литералами
+// true/false.
+func isIdentParam(p string) bool {
+	if p == "" || p[0] < 'a' || p[0] > 'z' || p == "true" || p == "false" {
+		return false
+	}
+	for i := 1; i < len(p); i++ {
+		c := p[i]
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9', c == '_':
+		case c == '?' && i == len(p)-1:
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func (fc *funcCompiler) compileBody(name string, params []string, body *ast.BlockStmt) error {
@@ -609,6 +648,9 @@ func (fc *funcCompiler) compileLocalFn(decl ast.LocalFnDecl, d dest) error {
 		return fmt.Errorf("local fn %s: нет клозов", name)
 	}
 	cl := clauses[0]
+	if err := checkSimpleFn(len(clauses), cl.Guard, cl.Params); err != nil {
+		return fmt.Errorf("local fn %s: %w", name, err)
+	}
 	mangled, ok := fc.localFns[name]
 	if !ok {
 		mangled = fc.prefix + name
