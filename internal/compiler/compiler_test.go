@@ -515,3 +515,14 @@ fn main() ->
     print(trap(0 ** 0))
 `)
 }
+
+func TestLiteralDispatch(t *testing.T) {
+	runModule(t, `module Main
+fn main() ->
+    print(1)
+    print(1.5)
+    print("hi")
+    print(true)
+    print(())
+`)
+}

@@ -357,3 +357,11 @@ type atomExpr struct {
 func (e *atomExpr) IsExpression() bool { return true }
 func (e *atomExpr) IsStatement() bool  { return false }
 func (e *atomExpr) String() string     { return ":" + e.ident }
+
+// Sealed-маркеры для литеральных интерфейсов. Без них type switch
+// по ast.LiteralExpr / ast.BytesExpr / ast.RegexExpr / ast.DecimalExpr
+// неоднозначен: method set у всех четырёх идентичен.
+func (e *literalExpr) literalMarker() {}
+func (e *decimalExpr) decimalMarker() {}
+func (e *bytesExpr) bytesMarker()     {}
+func (e *regexExpr) regexMarker()     {}

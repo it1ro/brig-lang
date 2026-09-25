@@ -45,6 +45,7 @@ func (e *groupingExpr) Inner() Expr { return e.expr }
 type LiteralExpr interface {
 	Expr
 	ValueStr() string
+	literalMarker()
 }
 
 func (e *literalExpr) ValueStr() string { return e.value }
@@ -119,6 +120,7 @@ func (e *atomExpr) AtomName() string { return e.ident }
 type DecimalExpr interface {
 	Expr
 	ValueStr() string
+	decimalMarker()
 }
 
 func (e *decimalExpr) ValueStr() string { return e.value }
@@ -127,6 +129,7 @@ func (e *decimalExpr) ValueStr() string { return e.value }
 type BytesExpr interface {
 	Expr
 	ValueStr() string
+	bytesMarker()
 }
 
 func (e *bytesExpr) ValueStr() string { return e.value }
@@ -135,6 +138,7 @@ func (e *bytesExpr) ValueStr() string { return e.value }
 type RegexExpr interface {
 	Expr
 	ValueStr() string
+	regexMarker()
 }
 
 func (e *regexExpr) ValueStr() string { return e.value }
