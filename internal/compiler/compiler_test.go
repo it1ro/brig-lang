@@ -401,3 +401,107 @@ fn main() ->
     send(pid, :stop)
 `)
 }
+
+// ---- v0.4.9: prelude / patterns / ensure --------
+
+func TestPreludeFilter(t *testing.T) {
+	runModule(t, `module Main
+fn main() ->
+    xs = [1, 2, 3, 4, 5]
+    ys = filter(x -> x rem 2 == 0, xs)
+    print(ys)
+`)
+}
+
+func TestPreludeFind(t *testing.T) {
+	runModule(t, `module Main
+fn main() ->
+    xs = [1, 2, 3]
+    print(find(x -> x == 2, xs))
+    print(find(x -> x == 99, xs))
+`)
+}
+
+func TestPreludeAllAny(t *testing.T) {
+	runModule(t, `module Main
+fn main() ->
+    print(all(x -> x > 0, [1, 2, 3]))
+    print(all(x -> x > 0, [1, -2, 3]))
+    print(any(x -> x > 2, [1, 2, 3]))
+    print(any(x -> x > 9, [1, 2, 3]))
+`)
+}
+
+func TestPreludeToIntToFloat(t *testing.T) {
+	runModule(t, `module Main
+fn main() ->
+    print(to_int("42"))
+    print(to_float("3.14"))
+    print(to_int(7))
+`)
+}
+
+func TestPreludeLog(t *testing.T) {
+	runModule(t, `module Main
+fn main() ->
+    log("hi")
+`)
+}
+
+func TestSmallIntFastPath(t *testing.T) {
+	// Без small-int этот тест медленный; с ним — быстрый.
+	runModule(t, `module Main
+fn loop(n, acc) ->
+    if n == 0 then acc else loop(n - 1, acc + n)
+fn main() ->
+    print(loop(100000, 0))
+`)
+}
+
+func TestRecvListPattern(t *testing.T) {
+	runModule(t, `module Main
+fn worker() ->
+    x = recv
+        [1, ..rest] -> rest
+        _ -> :no_match
+    print(x)
+
+fn main() ->
+    pid = spawn(worker)
+    send(pid, [1, 2, 3])
+    recv
+        :never -> :never
+    after 50 -> :ok
+`)
+}
+
+func TestRecvMapPattern(t *testing.T) {
+	runModule(t, `module Main
+fn worker() ->
+    x = recv
+        %{ "a" => v } -> v
+        _ -> :no_match
+    print(x)
+
+fn main() ->
+    pid = spawn(worker)
+    send(pid, %{ "a" => 42 })
+    recv
+        :never -> :never
+    after 50 -> :ok
+`)
+}
+
+func TestEnsureAllRunOnFailure(t *testing.T) {
+	// Полная семантика §10.3: если первый (LIFO) ensure падает,
+	// остальные ВСЁ РАВНО выполняются.
+	runModule(t, `module Main
+fn main() ->
+    result = trap
+        print("body")
+        ensure print("cleanup-1")
+        ensure raise(:cleanup_failed)
+        :ok
+    print(result)
+`)
+}
