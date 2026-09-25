@@ -64,7 +64,9 @@ func (r *REPL) Eval(src string) (runtime.Value, error) {
 		if d.Severity == sema.SeverityInfo {
 			sev = "info"
 		}
-		fmt.Fprintf(r.out, "%s: <repl>:%d:%d: %s\n", sev, d.Line, d.Col, d.Message)
+		if _, err := fmt.Fprintf(r.out, "%s: <repl>:%d:%d: %s\n", sev, d.Line, d.Col, d.Message); err != nil {
+			return runtime.Unit, err
+		}
 	}
 	if semaRes.HasErrors() {
 		return runtime.Unit, fmt.Errorf("sema: %d error(s)", countErrors(semaRes))

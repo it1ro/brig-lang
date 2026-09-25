@@ -9,8 +9,8 @@ import (
 // PatternKind — вид скомпилированного паттерна.
 type PatternKind int
 
+// Виды скомпилированных паттернов. PatWildcard — паттерн `_` (любой элемент).
 const (
-	// PatWildcard — паттерн `_` (любой элемент).
 	PatWildcard PatternKind = iota
 	PatIdent
 	PatLiteral

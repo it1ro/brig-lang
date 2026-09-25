@@ -40,7 +40,7 @@ description: >
 
 ## Финиш
 
-1. Прогон по `brig-testing-workflow`: минимум `make all` и `BRIG_VERIFY=1 go test ./...` — оба 0. Пока T-06 (#6, lint) не в `main`, `make all` красный из-за `golangci-lint` — это не повод пропускать остальные цели.
+1. Прогон по `brig-testing-workflow`: минимум `make all` и `BRIG_VERIFY=1 go test ./...` — оба 0.
 2. `rg -n 'blocked: T-NN' internal` — пусто для своего T-NN.
 3. `rg -n 'T-NN' .claude/skills` — строки skills, описывающие ограничение, которое задача сняла, поправить в том же PR (skills — рабочие заметки агента, а не doc-файлы).
 4. `gofmt -l .` пуст; `git status` чист от временных `.brig`, `bin/`, `coverage.out`.

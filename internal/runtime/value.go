@@ -12,8 +12,8 @@ import (
 // Kind — тег типа значения.
 type Kind int
 
+// Значения Kind — теги вариантов Value (§3, §4). KindUnit — тег типа unit ().
 const (
-	// KindUnit — тег типа unit ()
 	KindUnit Kind = iota
 	KindBool
 	KindInt

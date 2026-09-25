@@ -101,8 +101,9 @@ func TestPatchJumpBackward(t *testing.T) {
 	c.Emit(ABC(RETURN, 0, 0, 0), SrcPos{})
 	c.Emit(ABC(RETURN, 1, 0, 0), SrcPos{})
 
-	if err := c.PatchJump(0, -0); err == nil {
-		// target = -0 = 0; sBx = 0 - 1 = -1 (допустимо)
+	// target = -0 = 0; sBx = 0 - 1 = -1 (допустимо).
+	if err := c.PatchJump(0, -0); err != nil {
+		t.Errorf("PatchJump(0, -0): unexpected error: %v", err)
 	}
 	// Реальный backward: target = 0 из ip=2.
 	c.Emit(AsBx(JMP, 0, 0), SrcPos{}) // at 3

@@ -411,7 +411,7 @@ func (c *Compiler) compileFunction(name string, params []string, body *ast.Block
 	fc := c.newFuncCompiler(nil)
 	fc.prefix = name + "$"
 
-	if err := fc.compileBody(name, params, body); err != nil {
+	if err := fc.compileBody(params, body); err != nil {
 		return nil, err
 	}
 	fc.chunk.NumRegs = fc.maxReg
@@ -452,7 +452,7 @@ func (c *Compiler) compileBlock(name string, params []string, stmts []ast.Stmt) 
 	return &vm.Function{Name: name, Arity: len(params), Chunk: fc.chunk}, nil
 }
 
-func (fc *funcCompiler) compileBody(name string, params []string, body *ast.BlockStmt) error {
+func (fc *funcCompiler) compileBody(params []string, body *ast.BlockStmt) error {
 	variadic := false
 	for i, p := range params {
 		if strings.HasPrefix(p, "..") {
