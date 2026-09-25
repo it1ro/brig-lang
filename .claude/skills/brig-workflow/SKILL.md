@@ -25,8 +25,9 @@ description: >
 ## Старт
 
 1. Статус карточки → **In Progress** (`gh project item-edit`; функции `board_set` — в `MAINTAINING.md` §3).
-2. Ветка от свежего `main`: `<type>/<T-NN>-<slug>`, `type` — из таблицы `CONTRIBUTING.md` §4 (`fix`, `feat`, `test`, `docs`, `refactor`, `chore`, `perf`, `build`).
+2. **Каждая задача — в своём git worktree**, одна или несколько параллельно: исключений нет (кроме п. 3). Создать от свежего `origin/main`: `git worktree add -b <type>/<T-NN>-<slug> <path> origin/main`. `type` — из таблицы `CONTRIBUTING.md` §4 (`fix`, `feat`, `test`, `docs`, `refactor`, `chore`, `perf`, `build`).
 3. **Исключение — Wave 0 (label `wave-0-branch`, T-01…T-06):** работа идёт прямо в `iter/regvm`, без отдельной ветки и PR; T-07 (merge) делает человек.
+4. **Одна задача = один worktree** (своя ветка и свой каталог). Несколько задач в одном дереве не вести. Основной checkout репозитория — не рабочее дерево задачи. Чужой worktree не трогать.
 
 ## Работа
 
