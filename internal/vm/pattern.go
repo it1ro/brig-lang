@@ -15,38 +15,41 @@ const (
 	PatLiteral
 	PatCtor
 	PatTuple
+	PatList
+	PatMap
 	PatAs
 )
 
+// MapPatPair — пара ключ-паттерн для PatMap.
+type MapPatPair struct {
+	Key   runtime.Value
+	Value *CompiledPattern
+}
+
 // CompiledPattern — паттерн, готовый к исполнению OpMatchLocal.
-//
-// FailAddr — адрес перехода в байткоде при неудаче. Для MVP паттерны
-// не шарятся между точками матчинга, поэтому FailAddr можно
-// зашивать в сам паттерн.
 type CompiledPattern struct {
 	Kind PatternKind
 
-	// PatIdent: слот в locals для связывания.
-	Slot int
-
-	// PatLiteral: значение для сравнения.
-	Lit runtime.Value
-
-	// PatCtor / PatTuple: тег (пустой для tuple), подпаттерны.
-	Tag  string
+	Slot int           // PatIdent
+	Lit  runtime.Value // PatLiteral
+	Tag  string        // PatCtor
 	Subs []*CompiledPattern
 
-	// PatAs: слот для целого + подпаттерн.
+	// PatList
+	HasRest  bool
+	RestSlot int // -1 если rest без имени
+
+	// PatMap
+	Pairs []MapPatPair
+
+	// PatAs
 	AsSlot int
 	Inner  *CompiledPattern
 
-	// Адрес перехода при неудаче.
 	FailAddr int
 }
 
 // MatchPattern пытается сопоставить v с p, записывая связывания в locals.
-// При неудаче возвращает false; locals могут содержать частичные
-// связывания — не полагайтесь на них.
 func MatchPattern(v runtime.Value, p *CompiledPattern, locals []runtime.Value) bool {
 	if p == nil {
 		return false
@@ -103,6 +106,49 @@ func MatchPattern(v runtime.Value, p *CompiledPattern, locals []runtime.Value) b
 			}
 		}
 		return true
+
+	case PatList:
+		if v.Kind != runtime.KindList {
+			return false
+		}
+		if p.HasRest {
+			if len(v.List) < len(p.Subs) {
+				return false
+			}
+		} else if len(v.List) != len(p.Subs) {
+			return false
+		}
+		for i, sub := range p.Subs {
+			if !MatchPattern(v.List[i], sub, locals) {
+				return false
+			}
+		}
+		if p.HasRest && p.RestSlot >= 0 && p.RestSlot < len(locals) {
+			rest := v.List[len(p.Subs):]
+			locals[p.RestSlot] = runtime.List(rest...)
+		}
+		return true
+
+	case PatMap:
+		if v.Kind != runtime.KindMap {
+			return false
+		}
+		for _, pair := range p.Pairs {
+			found := false
+			for _, entry := range v.Map {
+				if runtime.Equal(entry.Key, pair.Key) {
+					if !MatchPattern(entry.Val, pair.Value, locals) {
+						return false
+					}
+					found = true
+					break
+				}
+			}
+			if !found {
+				return false
+			}
+		}
+		return true
 	}
 	return false
 }
@@ -143,6 +189,33 @@ func FormatCompiledPattern(p *CompiledPattern) string {
 			s += FormatCompiledPattern(sub)
 		}
 		return s + ")"
+	case PatList:
+		s := "["
+		for i, sub := range p.Subs {
+			if i > 0 {
+				s += ", "
+			}
+			s += FormatCompiledPattern(sub)
+		}
+		if p.HasRest {
+			if len(p.Subs) > 0 {
+				s += ", "
+			}
+			s += ".."
+			if p.RestSlot >= 0 {
+				s += fmt.Sprintf("$%d", p.RestSlot)
+			}
+		}
+		return s + "]"
+	case PatMap:
+		s := "%{"
+		for i, pair := range p.Pairs {
+			if i > 0 {
+				s += ", "
+			}
+			s += pair.Key.Inspect() + " => " + FormatCompiledPattern(pair.Value)
+		}
+		return s + "}"
 	}
 	return "?"
 }
