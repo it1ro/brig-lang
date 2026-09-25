@@ -130,25 +130,53 @@ func (c *Chunk) PosAt(ip int) SrcPos {
 }
 
 // Disassemble печатает чанк в человекочитаемом виде (§9).
+//
+// Без arity: Chunk не знает arity. Для вывода заголовка с arity
+// используйте Function.Disassemble.
 func (c *Chunk) Disassemble(name string) string {
 	var sb strings.Builder
+	c.writeHeader(&sb, name, -1)
+	c.disBody(&sb)
+	return sb.String()
+}
+
+// Disassemble печатает функцию: заголовок с arity + тело чанка (§9).
+// Отличие от Chunk.Disassemble — заголовок содержит arity
+// (соответствует примеру из §9 дизайна).
+func (fn *Function) Disassemble() string {
+	var sb strings.Builder
+	fn.Chunk.writeHeader(&sb, fn.Name, fn.Arity)
+	fn.Chunk.disBody(&sb)
+	return sb.String()
+}
+
+func (c *Chunk) writeHeader(sb *strings.Builder, name string, arity int) {
 	extra := ""
 	if c.Variadic {
 		extra = " variadic"
 	}
-	fmt.Fprintf(&sb,
+	if arity >= 0 {
+		fmt.Fprintf(sb,
+			"== %s arity=%d params=%d%s regs=%d consts=%d patterns=%d ==\n",
+			name, arity, c.NumParams, extra,
+			c.NumRegs, len(c.Constants), len(c.Patterns))
+		return
+	}
+	fmt.Fprintf(sb,
 		"== %s params=%d%s regs=%d consts=%d patterns=%d ==\n",
 		name, c.NumParams, extra, c.NumRegs, len(c.Constants), len(c.Patterns))
+}
+
+func (c *Chunk) disBody(sb *strings.Builder) {
 	for ip := range c.Code {
-		c.disInstr(&sb, ip)
+		c.disInstr(sb, ip)
 	}
-	return sb.String()
 }
 
 func (c *Chunk) disInstr(sb *strings.Builder, ip int) {
 	in := c.Code[ip]
 	pos := c.PosAt(ip)
-	fmt.Fprintf(sb, "%04d %3d:%-3d %-11s", ip, pos.Line, pos.Col, in.Op())
+	fmt.Fprintf(sb, "%04d %3d:%-3d %-12s", ip, pos.Line, pos.Col, in.Op())
 
 	switch in.Op() {
 	case LOADK, GETGLOBAL, SETGLOBAL:

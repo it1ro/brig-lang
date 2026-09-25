@@ -1,0 +1,9 @@
+== main arity=0 params=0 regs=4 consts=4 patterns=0 ==
+0000   0:0   LOADK       r1 k0 ; 2
+0001   0:0   LOADK       r2 k1 ; 3
+0002   0:0   LOADK       r3 k2 ; 4
+0003   3:15  MUL         r2 r2 r3
+0004   3:11  ADD         r1 r1 r2
+0005   3:11  GETGLOBAL   r2 k3 ; print
+0006   3:11  MOVE        r3 r1
+0007   4:5   TAILCALL    r2 1

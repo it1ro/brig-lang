@@ -5,7 +5,7 @@ BIN     ?= bin
 VERSION ?= $(shell git describe --tags --always 2>/dev/null || echo dev)
 
 .PHONY: all build test test-race lint fmt vet check-examples ebnf-check \
-	git-hooks changelog fuzz update-golden clean \
+	git-hooks changelog fuzz update-golden update-bytecode clean \
 	test-roundtrip test-ast test-parser test-lexer test-one \
 	test-vm test-compiler run run-hello \
 	fmt-check cover cover-html ci-quick check repl
@@ -140,3 +140,6 @@ check-smallint:
 		echo "found direct .Int access; use AsBig() instead"; \
 		exit 1; \
 	fi
+
+update-bytecode:
+	$(GO) test ./internal/compiler/ -run=TestBytecodeGolden -update-bytecode

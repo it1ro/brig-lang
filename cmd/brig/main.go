@@ -10,6 +10,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/it1ro/brig-lang/internal/compiler"
@@ -159,8 +160,13 @@ func runFile(args []string) {
 	}
 
 	if dump {
-		for name, fn := range img.Functions {
-			fmt.Print(fn.Chunk.Disassemble(name))
+		names := make([]string, 0, len(img.Functions))
+		for name := range img.Functions {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		for _, name := range names {
+			fmt.Print(img.Functions[name].Disassemble())
 		}
 		return
 	}
