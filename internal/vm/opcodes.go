@@ -1,6 +1,11 @@
 package vm
 
 // OpCode — инструкция стековой ВМ.
+//
+// Sprint 6.2: удалены мёртвые OpCloseUpvalue / OpDefineLocalFn —
+// компилятор их не эмитит, VM падала на них как "not implemented".
+// Если понадобятся для upvalue-by-ref в будущем, вводятся заново
+// вместе с реализацией в stepFrame.
 type OpCode byte
 
 const (
@@ -42,8 +47,6 @@ const (
 	OpMakeClosure
 	OpGetUpvalue
 	OpSetUpvalue
-	OpCloseUpvalue
-	OpDefineLocalFn
 
 	// OpTrapBegin — начать блок trap.
 	OpTrapBegin
@@ -51,29 +54,21 @@ const (
 	OpMakeOk
 	OpMakeError
 
-	// v0.4.8 (подэтап 4.8): акторы (§12).
-	//
-	//	OpSpawn <linked>            — pop fn; spawn; push pid
-	//	OpSend                      — pop msg; pop pid; send; push Result<(),Atom>
-	//	OpSelf                      — push self pid
-	// OpMakeRef — создать новую ссылку (ref).
-	OpMakeRef // push fresh ref
-	OpWatch   // pop pid; watch; push ref
-	OpUnwatch // pop ref; unwatch; push ()
+	// v0.4.8: акторы (§12).
+	OpMakeRef
+	OpWatch
+	OpUnwatch
 	OpMailboxSize
-	OpRecvTimer // pop ms; set recv deadline
-	OpRecvTake  // <slot> <afterAddr>; take msg into slot, or block/after
+	OpRecvTimer
+	OpRecvTake
 	OpMatchLocal
 	OpYield
 	OpSpawn
 	OpSend
 	OpSelf
 
-	// v0.4.9 (Sprint 5.1–5.3).
-	//
-	// OpRange — pop end, pop start, push Range.
+	// v0.4.9 (Sprint 5.1–5.3): Range, Index.
 	OpRange
-	// OpIndex — pop idx, pop obj; push obj[idx] или Option для Map.
 	OpIndex
 )
 
@@ -92,25 +87,24 @@ func (op OpCode) String() string {
 		OpTuple: "TUPLE", OpList: "LIST", OpVector: "VECTOR",
 		OpMap: "MAP", OpRaise: "RAISE",
 		OpMakeClosure: "MAKECLOSURE", OpGetUpvalue: "GETUPVAL",
-		OpSetUpvalue: "SETUPVAL", OpCloseUpvalue: "CLOSEUPVAL",
-		OpDefineLocalFn: "DEFLOCALFN",
-		OpTrapBegin:     "TRAPBEGIN",
-		OpTrapEnd:       "TRAPEND",
-		OpMakeOk:        "MAKEOK",
-		OpMakeError:     "MAKEERROR",
-		OpSpawn:         "SPAWN",
-		OpSend:          "SEND",
-		OpSelf:          "SELF",
-		OpMakeRef:       "MAKEREF",
-		OpWatch:         "WATCH",
-		OpUnwatch:       "UNWATCH",
-		OpMailboxSize:   "MAILBOXSIZE",
-		OpRecvTimer:     "RECVTIMER",
-		OpRecvTake:      "RECVTAKE",
-		OpMatchLocal:    "MATCHLOCAL",
-		OpYield:         "YIELD",
-		OpRange:         "RANGE",
-		OpIndex:         "INDEX",
+		OpSetUpvalue:  "SETUPVAL",
+		OpTrapBegin:   "TRAPBEGIN",
+		OpTrapEnd:     "TRAPEND",
+		OpMakeOk:      "MAKEOK",
+		OpMakeError:   "MAKEERROR",
+		OpSpawn:       "SPAWN",
+		OpSend:        "SEND",
+		OpSelf:        "SELF",
+		OpMakeRef:     "MAKEREF",
+		OpWatch:       "WATCH",
+		OpUnwatch:     "UNWATCH",
+		OpMailboxSize: "MAILBOXSIZE",
+		OpRecvTimer:   "RECVTIMER",
+		OpRecvTake:    "RECVTAKE",
+		OpMatchLocal:  "MATCHLOCAL",
+		OpYield:       "YIELD",
+		OpRange:       "RANGE",
+		OpIndex:       "INDEX",
 	}
 	if n, ok := names[op]; ok {
 		return n
