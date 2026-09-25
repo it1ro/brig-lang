@@ -10,6 +10,7 @@ package compiler
 import (
 	"fmt"
 	"math"
+	"math/big"
 	"sort"
 	"strconv"
 	"strings"
@@ -1830,13 +1831,57 @@ func parseLiteralValue(s string) (runtime.Value, error) {
 		}
 		return runtime.Decimal(r), nil
 	}
-	if i, err := strconv.ParseInt(strings.ReplaceAll(s, "_", ""), 0, 64); err == nil {
-		return runtime.Int(i), nil
+	// Int: base by prefix (0x/0b/0o → 16/2/8, else 10). Arbitrary precision (§3.1, S-F7).
+	if v, ok := parseIntLiteral(s); ok {
+		return v, nil
 	}
 	if f, err := strconv.ParseFloat(s, 64); err == nil {
 		return runtime.Float(f), nil
 	}
 	return runtime.Unit, fmt.Errorf("неизвестный литерал %q", s)
+}
+
+// parseIntLiteral разбирает целочисленный литерал по префиксу основания.
+// Underscores допускаются (лексер уже проверил позиции). Не-int строки → ok=false.
+func parseIntLiteral(s string) (runtime.Value, bool) {
+	clean := strings.ReplaceAll(s, "_", "")
+	if clean == "" {
+		return runtime.Unit, false
+	}
+	base := 10
+	body := clean
+	neg := false
+	if body[0] == '+' || body[0] == '-' {
+		neg = body[0] == '-'
+		body = body[1:]
+		if body == "" {
+			return runtime.Unit, false
+		}
+	}
+	if len(body) >= 2 && body[0] == '0' {
+		switch body[1] {
+		case 'x', 'X':
+			base = 16
+			body = body[2:]
+		case 'b', 'B':
+			base = 2
+			body = body[2:]
+		case 'o', 'O':
+			base = 8
+			body = body[2:]
+		}
+	}
+	if body == "" {
+		return runtime.Unit, false
+	}
+	n := new(big.Int)
+	if _, ok := n.SetString(body, base); !ok {
+		return runtime.Unit, false
+	}
+	if neg {
+		n.Neg(n)
+	}
+	return runtime.IntBig(n), true
 }
 
 func decodeStrBody(s string) string {

@@ -1094,6 +1094,9 @@ func (s *Scheduler) callSync(fn runtime.Value, args []runtime.Value) (runtime.Va
 			caller.regs[caller.callDst] = tmp.result
 
 		case stepFailed:
+			if s.tryUnwindRaise(tmp) {
+				continue
+			}
 			return runtime.Unit, tmp.err
 
 		case stepBlock:

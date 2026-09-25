@@ -84,11 +84,9 @@ description: >
 - `callSync` — синхронный вызов вне обычного scheduler-цикла (используется
   прелюдией через `runtime.Caller`); он **не может** заходить в `recv` на
   пустом ящике — это должно фейлиться явной ошибкой
-  (`"recv in synchronous call context"`), не зависать. **Два run-loop
-  расходятся в семантике raise:** при `stepFailed` `callSync`
-  (`scheduler.go:1096-1097`) сразу возвращает ошибку без
-  `tryUnwindRaise` — `map(fn (x) -> trap(g(x)), xs)` с raise в `g` валит
-  актор (A-F5, T-34 #23).
+  (`"recv in synchronous call context"`), не зависать. При `stepFailed`
+  вызывает `tryUnwindRaise` так же, как `runSlice` — `trap` в колбэке
+  прелюдии ловит raise из вложенного кадра (`map(fn (x) -> trap(g(x)), xs)`).
 - Таймеры (I-F14, **confirmed** T-15 #13): большой `ms` в `RECVTIMER`
   молча переполняет `time.Duration` (`MaxInt64` → −1ms; якорь
   `TestVerifyIF14HugeTimerMs`); `wakeExpired` обходит `map` — порядок в
