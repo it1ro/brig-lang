@@ -268,3 +268,30 @@ func FuzzLex(f *testing.F) {
 		_, _ = Lex(data)
 	})
 }
+
+// TestLexSF11 — S-F11 / T-23: числовые литералы и ATOM/COLON после ')'.
+func TestLexSF11(t *testing.T) {
+	t.Run("0x_1 rejects underscore after radix", func(t *testing.T) {
+		_, err := Lex("0x_1")
+		if err == nil {
+			t.Fatal(`Lex("0x_1"): want error, got nil`)
+		}
+		if !strings.Contains(err.Error(), "underscore") {
+			t.Fatalf(`Lex("0x_1") error %q: want substring "underscore"`, err)
+		}
+	})
+	t.Run("0b102 rejects invalid binary digit", func(t *testing.T) {
+		_, err := Lex("0b102")
+		if err == nil {
+			t.Fatal(`Lex("0b102"): want error, got nil`)
+		}
+		if !strings.Contains(err.Error(), "invalid digit") && !strings.Contains(err.Error(), "digit") {
+			t.Fatalf(`Lex("0b102") error %q: want digit-related message`, err)
+		}
+	})
+	t.Run("colon after RPAREN is COLON not ATOM", func(t *testing.T) {
+		// Probe p/z4.brig: f():x — после ')' ':' эмитируется как COLON (§1.5).
+		eqTypes(t, "f():x",
+			LOWER_IDENT, LPAREN, RPAREN, COLON, LOWER_IDENT, NEWLINE, EOF)
+	})
+}
