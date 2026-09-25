@@ -89,9 +89,11 @@ description: >
   (`scheduler.go:1096-1097`) сразу возвращает ошибку без
   `tryUnwindRaise` — `map(fn (x) -> trap(g(x)), xs)` с raise в `g` валит
   актор (A-F5, T-34 #23).
-- Таймеры (I-F14, `[inferred]`, проверка T-15 #13): большой `ms` в
-  `RECVTIMER` может молча усекаться (`scheduler.go:888-894`), `wakeExpired`
-  обходит map — порядок в `ready` недетерминирован.
+- Таймеры (I-F14, **confirmed** T-15 #13): большой `ms` в `RECVTIMER`
+  молча переполняет `time.Duration` (`MaxInt64` → −1ms; якорь
+  `TestVerifyIF14HugeTimerMs`); `wakeExpired` обходит `map` — порядок в
+  `ready` недетерминирован (§15.4; 20× `uniq -c` даёт >1 строки). Фикс —
+  Wave 3 follow-ups из T-15; модель scheduler не менять (A-F1, T-90).
 - Равенство: `PatLiteral` использует `runtime.Equal` (паттерн `1` матчит
   `1.0`), Int×Float сравниваются через float64, Decimal×Float по-разному в
   `==` и в `INDEX`/`Map`/паттернах. Открытый design decision #43 (I-F8) —
