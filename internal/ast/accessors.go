@@ -7,7 +7,8 @@ package ast
 //
 // v0.4.7: добавлен TrapExpr.
 // v0.4.8: добавлены RecvExpr и Pattern* (нужны компилятору акторов).
-// v0.4.9: добавлен RangeExpr (Sprint 5.1).
+// v0.4.9: добавлены RangeExpr (Sprint 5.1) и Pipe/Match/With
+// (нужны контекстному анализу Sprint 6.1).
 // RecvBranchArg уже объявлен в construct.go — здесь не дублируется.
 
 // --- выражения ---
@@ -156,6 +157,35 @@ type RangeExpr interface {
 
 func (e *rangeExpr) RangeStart() Expr { return e.start }
 func (e *rangeExpr) RangeEnd() Expr   { return e.end }
+
+// PipeExpr — доступ к pipe-выражению (§7.5). Нужен контекстному
+// анализу для запрета акторных примитивов в pipe RHS.
+type PipeExpr interface {
+	Expr
+	PipeLHS() Expr
+	PipeRHS() Expr
+	PipeArgs() []Expr
+}
+
+func (e *pipeExpr) PipeLHS() Expr    { return e.expr }
+func (e *pipeExpr) PipeRHS() Expr    { return e.callee }
+func (e *pipeExpr) PipeArgs() []Expr { return e.args }
+
+// MatchExpr — доступ к match-выражению.
+type MatchExpr interface {
+	Expr
+	MatchSubject() Expr
+	MatchBranches() []MatchBranchArg
+}
+
+func (e *matchExpr) MatchSubject() Expr { return e.expr }
+func (e *matchExpr) MatchBranches() []MatchBranchArg {
+	out := make([]MatchBranchArg, 0, len(e.branches))
+	for _, b := range e.branches {
+		out = append(out, MatchBranchArg{Pattern: b.pattern, Body: b.expr})
+	}
+	return out
+}
 
 // LambdaShort — доступ к короткой лямбде.
 type LambdaShort interface {
@@ -365,6 +395,32 @@ func (e *recvExpr) RecvElseName() string { return e.elseName }
 func (e *recvExpr) RecvElseBody() Expr   { return e.elseBody }
 func (e *recvExpr) RecvAfterTime() Expr  { return e.afterTime }
 func (e *recvExpr) RecvAfterBody() Expr  { return e.afterBody }
+
+// WithExpr — доступ к with-выражению.
+type WithExpr interface {
+	Expr
+	WithItems() []WithItemArg
+	WithBody() *BlockStmt
+	WithElseBranches() []WithElseArg
+}
+
+func (e *withExpr) WithItems() []WithItemArg {
+	out := make([]WithItemArg, 0, len(e.items))
+	for _, it := range e.items {
+		out = append(out, WithItemArg{Pattern: it.pattern, Expr: it.expr})
+	}
+	return out
+}
+
+func (e *withExpr) WithBody() *BlockStmt { return e.body }
+
+func (e *withExpr) WithElseBranches() []WithElseArg {
+	out := make([]WithElseArg, 0, len(e.elseBranches))
+	for _, eb := range e.elseBranches {
+		out = append(out, WithElseArg{Pattern: eb.pattern, Body: eb.body})
+	}
+	return out
+}
 
 // --- v0.4.8: list/map patterns ---
 
