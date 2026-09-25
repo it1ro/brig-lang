@@ -885,22 +885,22 @@ func (p *parser) parseTrap() (ast.Expr, error) {
 	p.skipNewlines()
 	for !p.at(lexer.DEDENT) && !p.at(lexer.EOF) {
 		if p.at(lexer.KW_ENSURE) {
-			p.advance()
+			ensureTok := p.advance()
+			// ensure NEWLINE INDENT … — грамматика допускает, MVP нет (S-F5).
+			if p.at(lexer.NEWLINE) && p.peek(1).Type == lexer.INDENT {
+				return nil, &Error{
+					Line: ensureTok.Line, Col: ensureTok.Col,
+					Msg: "block form of ensure is not supported in MVP",
+				}
+			}
 			e, err := p.parseExpr()
 			if err != nil {
 				return nil, err
 			}
 			ensures = append(ensures, ast.EnsureArg{Expr: e})
-			// Опциональное блочное тело ensure: NEWLINE INDENT stmt_list DEDENT.
+			// ensure expr NEWLINE INDENT … раньше молча выбрасывал блок (S-F5).
 			if p.at(lexer.NEWLINE) && p.peek(1).Type == lexer.INDENT {
-				p.advance() // NEWLINE
-				p.advance() // INDENT
-				if _, err := p.parseStmtList(lexer.DEDENT); err != nil {
-					return nil, err
-				}
-				if _, err := p.expect(lexer.DEDENT, "DEDENT"); err != nil {
-					return nil, err
-				}
+				return nil, p.errf("ensure does not accept a block after an expression")
 			}
 			p.skipNewlines()
 			continue
