@@ -1,5 +1,7 @@
 # Аудит Brig — отчёт
 
+Работы по отчёту: план и статусы — [`TASKS.md`](TASKS.md), доска — [GitHub Projects](https://github.com/users/it1ro/projects/5). Ссылки на issues по каждому finding — в §4.
+
 Проведён по `AUDIT_PROMPT.md`. Пробные программы и тесты, на которые ссылаются теги `[verified: …]`, лежали во временной копии репозитория и в репозиторий не добавлялись.
 
 ## 1. Шапка
@@ -301,45 +303,45 @@
 
 ## 4. Сводная таблица
 
-| ID | Слой | Sev | Кратко |
-|---|---|---|---|
-| S-F1 | Синт | blocker | Интерполяция не разбирается, печатается сырой текст |
-| S-F2 | Синт | blocker | Параметры/guard строками → мультиклоз/guard/паттерны молча неверны |
-| S-F3 | Синт | major | Guard в `recv` выбрасывается парсером |
-| S-F4 | Синт | major | `when ident ->` разбирается как лямбда |
-| S-F5 | Синт | major | Блок `ensure`: ошибка или молча теряется |
-| S-F6 | Синт | major | Нет обязательного NEWLINE между стейтментами |
-| S-F7 | Синт | major | `010`=8, `08`→Float, большой Int→Float |
-| S-F8 | Синт | minor | NEWLINE-sep в args/params/tuple |
-| S-F9 | Синт | minor | Паттерн `()` |
-| S-F10 | Синт | minor | Порядок bind/stmt в `with` |
-| S-F11 | Синт | minor | Лексер: `0x_1`, `0b102`, ATOM после `)` |
-| S-F12 | Синт | minor | Guard с `")"` — round-trip не идемпотентен |
-| S-F13 | Синт | major | `Pretty`/`Walk` не видят Decl, golden `.ast` пустые |
-| A-F1 | Арх | major | «1 актор = 1 goroutine» vs однопоточный loop |
-| A-F2 | Арх | major | `trapDepth`/I-1/I-3 не проверяются |
-| A-F3 | Арх | major | K-2 truthiness vs строгий Bool (тир 1) |
-| A-F4 | Арх | major | type_error то ловится, то нет |
-| A-F5 | Арх | major | `callSync` без unwind — trap в колбэке не работает |
-| A-F6 | Арх | minor | Разрешение и манглинг локальных fn |
-| A-F7 | Арх | minor | Коды выхода; тесты в обход sema |
-| A-F8 | Арх | minor | Пробелы вне K-8 (pipe, record, link, Sys.args) |
-| I-F1 | Реал | major | Verify: нет рёбер MATCHLOCAL/after |
-| I-F2 | Реал | major | Нет тестов на три слоя TCO-под-trap |
-| I-F3 | Реал | major | `and`/`or` не хвостовые |
-| I-F5 | Реал | major | Область видимости и регистрация `ensure` |
-| I-F6 | Реал | nit | Преинициализация `dst` — не дыра |
-| I-F7 | Реал | major | Захват в локальной fn → падение в рантайме |
-| I-F8 | Реал | major | Равенство: паттерны неточны, Decimal×Float, 2^53 |
-| I-F9 | Реал | major | Мёртвые акторы: `watch` висит, `send` → `:busy` |
-| I-F10 | Реал | major | `:down` теряет значение raise |
-| I-F13 | Реал | minor | JSON: `$bytes`, Inf, 1.0 |
-| I-F14 | Реал | minor | Таймеры: усечение и недетерминизм |
-| I-F15 | Реал | minor | Неполная проверка позиции trap |
-| O-F1 | Прочее | blocker | REPL — паника |
-| O-F2 | Прочее | major | Тесты без утверждений |
-| O-F3 | Прочее | minor | lint rc=1 |
-| O-F4 | Прочее | minor | Позиции `0:0` |
+| ID | Слой | Sev | Кратко | Issue |
+|---|---|---|---|---|
+| S-F1 | Синт | blocker | Интерполяция не разбирается, печатается сырой текст | [#4](https://github.com/it1ro/brig-lang/issues/4), [#36](https://github.com/it1ro/brig-lang/issues/36), [#37](https://github.com/it1ro/brig-lang/issues/37) |
+| S-F2 | Синт | blocker | Параметры/guard строками → мультиклоз/guard/паттерны молча неверны | [#1](https://github.com/it1ro/brig-lang/issues/1), [#33](https://github.com/it1ro/brig-lang/issues/33), [#34](https://github.com/it1ro/brig-lang/issues/34) |
+| S-F3 | Синт | major | Guard в `recv` выбрасывается парсером | [#2](https://github.com/it1ro/brig-lang/issues/2), [#35](https://github.com/it1ro/brig-lang/issues/35) |
+| S-F4 | Синт | major | `when ident ->` разбирается как лямбда | [#14](https://github.com/it1ro/brig-lang/issues/14) |
+| S-F5 | Синт | major | Блок `ensure`: ошибка или молча теряется | [#3](https://github.com/it1ro/brig-lang/issues/3) |
+| S-F6 | Синт | major | Нет обязательного NEWLINE между стейтментами | [#15](https://github.com/it1ro/brig-lang/issues/15) |
+| S-F7 | Синт | major | `010`=8, `08`→Float, большой Int→Float | [#16](https://github.com/it1ro/brig-lang/issues/16) |
+| S-F8 | Синт | minor | NEWLINE-sep в args/params/tuple | [#18](https://github.com/it1ro/brig-lang/issues/18) |
+| S-F9 | Синт | minor | Паттерн `()` | [#18](https://github.com/it1ro/brig-lang/issues/18) |
+| S-F10 | Синт | minor | Порядок bind/stmt в `with` | [#18](https://github.com/it1ro/brig-lang/issues/18) |
+| S-F11 | Синт | minor | Лексер: `0x_1`, `0b102`, ATOM после `)` | [#17](https://github.com/it1ro/brig-lang/issues/17) |
+| S-F12 | Синт | minor | Guard с `")"` — round-trip не идемпотентен | [#14](https://github.com/it1ro/brig-lang/issues/14) |
+| S-F13 | Синт | major | `Pretty`/`Walk` не видят Decl, golden `.ast` пустые | [#9](https://github.com/it1ro/brig-lang/issues/9) |
+| A-F1 | Арх | major | «1 актор = 1 goroutine» vs однопоточный loop | [#11](https://github.com/it1ro/brig-lang/issues/11); `design-decision` [#40](https://github.com/it1ro/brig-lang/issues/40) |
+| A-F2 | Арх | major | `trapDepth`/I-1/I-3 не проверяются | [#20](https://github.com/it1ro/brig-lang/issues/20), [#21](https://github.com/it1ro/brig-lang/issues/21), [#22](https://github.com/it1ro/brig-lang/issues/22) |
+| A-F3 | Арх | major | K-2 truthiness vs строгий Bool (тир 1) | `design-decision` [#41](https://github.com/it1ro/brig-lang/issues/41) |
+| A-F4 | Арх | major | type_error то ловится, то нет | `design-decision` [#42](https://github.com/it1ro/brig-lang/issues/42) |
+| A-F5 | Арх | major | `callSync` без unwind — trap в колбэке не работает | [#23](https://github.com/it1ro/brig-lang/issues/23) |
+| A-F6 | Арх | minor | Разрешение и манглинг локальных fn | [#24](https://github.com/it1ro/brig-lang/issues/24), [#94](https://github.com/it1ro/brig-lang/issues/94) |
+| A-F7 | Арх | minor | Коды выхода; тесты в обход sema | [#12](https://github.com/it1ro/brig-lang/issues/12), [#57](https://github.com/it1ro/brig-lang/issues/57), [#58](https://github.com/it1ro/brig-lang/issues/58) |
+| A-F8 | Арх | minor | Пробелы вне K-8 (pipe, record, link, Sys.args) | [#38](https://github.com/it1ro/brig-lang/issues/38) |
+| I-F1 | Реал | major | Verify: нет рёбер MATCHLOCAL/after | [#25](https://github.com/it1ro/brig-lang/issues/25), [#92](https://github.com/it1ro/brig-lang/issues/92) |
+| I-F2 | Реал | major | Нет тестов на три слоя TCO-под-trap | [#8](https://github.com/it1ro/brig-lang/issues/8) |
+| I-F3 | Реал | major | `and`/`or` не хвостовые | `design-decision` [#41](https://github.com/it1ro/brig-lang/issues/41) (T-82 ждёт решения) |
+| I-F5 | Реал | major | Область видимости и регистрация `ensure` | [#26](https://github.com/it1ro/brig-lang/issues/26) |
+| I-F6 | Реал | nit | Преинициализация `dst` — не дыра | `no-op` |
+| I-F7 | Реал | major | Захват в локальной fn → падение в рантайме | [#27](https://github.com/it1ro/brig-lang/issues/27), [#28](https://github.com/it1ro/brig-lang/issues/28) |
+| I-F8 | Реал | major | Равенство: паттерны неточны, Decimal×Float, 2^53 | `design-decision` [#43](https://github.com/it1ro/brig-lang/issues/43) |
+| I-F9 | Реал | major | Мёртвые акторы: `watch` висит, `send` → `:busy` | [#29](https://github.com/it1ro/brig-lang/issues/29) |
+| I-F10 | Реал | major | `:down` теряет значение raise | [#29](https://github.com/it1ro/brig-lang/issues/29) |
+| I-F13 | Реал | minor | JSON: `$bytes`, Inf, 1.0 | [#31](https://github.com/it1ro/brig-lang/issues/31) |
+| I-F14 | Реал | minor | Таймеры: усечение и недетерминизм | [#13](https://github.com/it1ro/brig-lang/issues/13), [#60](https://github.com/it1ro/brig-lang/issues/60), [#61](https://github.com/it1ro/brig-lang/issues/61) |
+| I-F15 | Реал | minor | Неполная проверка позиции trap | [#32](https://github.com/it1ro/brig-lang/issues/32) |
+| O-F1 | Прочее | blocker | REPL — паника | [#5](https://github.com/it1ro/brig-lang/issues/5) |
+| O-F2 | Прочее | major | Тесты без утверждений | [#19](https://github.com/it1ro/brig-lang/issues/19) |
+| O-F3 | Прочее | minor | lint rc=1 | [#6](https://github.com/it1ro/brig-lang/issues/6) |
+| O-F4 | Прочее | minor | Позиции `0:0` | [#30](https://github.com/it1ro/brig-lang/issues/30) |
 
 ## 5. Проверка claim'ов STATUS.md / CHANGELOG / architecture.md
 
