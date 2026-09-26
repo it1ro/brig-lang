@@ -150,7 +150,7 @@ func bindArgs(regs []runtime.Value, ch *Chunk, args []runtime.Value) {
 func spreadArgs(args []runtime.Value) ([]runtime.Value, error) {
 	last := args[len(args)-1]
 	if last.Kind != runtime.KindList {
-		return nil, fmt.Errorf("(:type_error, (:spread, %s))", last.Inspect())
+		return nil, typeErr("spread", last)
 	}
 	out := make([]runtime.Value, 0, len(args)-1+len(last.List))
 	out = append(out, args[:len(args)-1]...)
@@ -1176,8 +1176,7 @@ func recvTimerDuration(ms int64) (time.Duration, bool) {
 
 func vmMakeRange(startV, endV runtime.Value) (runtime.Value, error) {
 	if startV.Kind != runtime.KindInt || endV.Kind != runtime.KindInt {
-		return runtime.Unit, fmt.Errorf("(:type_error, (:range, (%s, %s)))",
-			startV.Inspect(), endV.Inspect())
+		return runtime.Unit, typeErr("range", runtime.Tuple(startV, endV))
 	}
 	sb := startV.AsBig()
 	eb := endV.AsBig()
@@ -1260,7 +1259,7 @@ func vmIndex(obj, idx runtime.Value) (runtime.Value, error) {
 		}
 		return runtime.Variant("None"), nil
 	}
-	return runtime.Unit, fmt.Errorf("(:type_error, (:index, %s))", obj.Inspect())
+	return runtime.Unit, typeErr("index", obj)
 }
 
 // ---- helpers for RECORD / GETFIELD (T-73, §4.7) ----
@@ -1306,7 +1305,7 @@ func vmMakeRecord(shape runtime.Value, vals []runtime.Value) (runtime.Value, err
 		}
 		src := vals[i]
 		if src.Kind != runtime.KindRecord {
-			return runtime.Unit, fmt.Errorf("(:type_error, (:record_spread, %s))", src.Inspect())
+			return runtime.Unit, typeErr("record_spread", src)
 		}
 		for _, f := range src.Record.Fields {
 			if typ != "" && !isDeclared(f.Name) {
@@ -1340,7 +1339,7 @@ func vmGetField(obj, name runtime.Value) (runtime.Value, error) {
 		return runtime.Unit, fmt.Errorf("internal: GETFIELD: field name %s", name.Inspect())
 	}
 	if obj.Kind != runtime.KindRecord {
-		return runtime.Unit, fmt.Errorf("(:type_error, (:field, (%s, %s)))", name.Str, obj.Inspect())
+		return runtime.Unit, typeErr("field", runtime.Tuple(name, obj))
 	}
 	if v, ok := obj.Record.Get(name.Str); ok {
 		return v, nil
@@ -1352,13 +1351,13 @@ func vmGetField(obj, name runtime.Value) (runtime.Value, error) {
 
 func indexToInt(v runtime.Value) (int64, error) {
 	if v.Kind != runtime.KindInt {
-		return 0, fmt.Errorf("(:type_error, (:index_key, %s))", v.Inspect())
+		return 0, typeErr("index_key", v)
 	}
 	if v.IsSmall {
 		return v.SmallInt, nil
 	}
 	if !v.AsBig().IsInt64() {
-		return 0, fmt.Errorf("(:type_error, (:index_key, %s))", v.Inspect())
+		return 0, typeErr("index_key", v)
 	}
 	return v.AsBig().Int64(), nil
 }
