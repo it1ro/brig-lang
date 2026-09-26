@@ -41,7 +41,8 @@ $ ./scripts/import_monitors.brig list.csv --api http://edge-01:8080
 | `lib/lookout_web/plugs.brig` | плаг = `Conn -> Conn` |
 | `lib/lookout_web/controllers/…` | HTML/JSON, ошибки через fallback |
 | `lib/lookout_web/controllers/api/monitor_controller.brig` | **SSE как `recv`-цикл** |
-| `lib/lookout_web/templates/**/*.html.bt` | компилируемые шаблоны с авто-экранированием |
+| `lib/lookout_web/templates/**/*.html.bt` | шаблоны `.bt` (15): параметры, `:if`/`:else`, лэйаут |
+| `lib/lookout_web/components/*.html.bt` | компоненты `<StatusBadge>` (`:case`/`:of`) и `<Field>` |
 | `priv/migrations/…` | миграции модулями |
 | `test/…` | юнит-тесты домена и in-memory интеграционные тесты |
 | `scripts/import_monitors.brig` | серверный скрипт на shebang, общий код с приложением |

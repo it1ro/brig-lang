@@ -1,0 +1,9 @@
+{# Компонент <StatusBadge status={…} />: выбор по паттернам через :case / :of.
+   NEEDS: шаблоны .bt (15) #}
+{params status: Atom}
+
+<span class={"badge badge-\(to_str(status))"} :case={status}>
+  <b :of={:up}>работает</b>
+  <b :of={:down}>упал</b>
+  <i :of={_}>неизвестно</i>
+</span>

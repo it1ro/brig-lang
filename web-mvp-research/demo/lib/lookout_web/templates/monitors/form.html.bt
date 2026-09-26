@@ -1,21 +1,15 @@
-{# Форма с ошибками changeset'а и CSRF-токеном (плаг Csrf.protect кладёт его в assigns).
-    NEEDS: компилируемые шаблоны (03/L10), Form-хелперы (06) #}
+{# Форма с ошибками changeset'а; csrf_token кладёт плаг Csrf.protect.
+   Повторяющиеся поля — компонент <Field>.
+   NEEDS: шаблоны .bt (15), Form-хелперы (06) #}
+{params changeset: Changeset, csrf_token: Str}
+{import LookoutWeb.Components}
+
 <form method="post" action={Router.path(MonitorController.create)}>
-  <input type="hidden" name="_csrf" value={assigns.csrf_token}>
+  <input type="hidden" name="_csrf" value={csrf_token}>
 
-  <label>Имя
-    <input name="monitor[name]" value={Form.value(assigns.changeset, :name)}>
-  </label>
-  <small :for={e <- Form.errors(assigns.changeset, :name)} class="error">{e}</small>
-
-  <label>URL
-    <input name="monitor[url]" value={Form.value(assigns.changeset, :url)}>
-  </label>
-  <small :for={e <- Form.errors(assigns.changeset, :url)} class="error">{e}</small>
-
-  <label>Интервал, мс
-    <input name="monitor[interval_ms]" type="number" value={Form.value(assigns.changeset, :interval_ms)}>
-  </label>
+  <Field form={changeset} name={:name} label="Имя" />
+  <Field form={changeset} name={:url} label="URL" />
+  <Field form={changeset} name={:interval_ms} label="Интервал, мс" type="number" />
 
   <button>Сохранить</button>
 </form>
