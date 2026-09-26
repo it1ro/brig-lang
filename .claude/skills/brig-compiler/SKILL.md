@@ -119,7 +119,7 @@ K-8 объявляет эти фичи вне рамок, но сейчас ча
 
 | Что | Что происходит сейчас | Issue |
 |---|---|---|
-| Мультиклозные `fn`, параметры-паттерны, guard `fn` | Fail-fast (T-01, #1): `checkSimpleFn` в `Compile`/`compileLocalFn` даёт `срез: …` (CLI exit 1, T-45); параметр опознаётся по строке `pat.String()` (`isIdentParam`). Лямбды `fn (…) ->` не проверяются | полная реализация T-50 (#33), T-51 (#34) |
+| Мультиклозные `fn`, параметры-паттерны, guard `fn` | Fail-fast (T-01, #1): `checkSimpleFn` в `Compile`/`compileLocalFn` даёт `срез: …` (CLI exit 1, T-45); параметр опознаётся по строке `pat.String()` (`isIdentParam`). Полные лямбды `fn (…) ->`: `checkLambdaParams` отвергает параметр-паттерн и `..name` (T-44, #50) | полная реализация T-50 (#33), T-51 (#34) |
 | `when`-guard в `recv` | Парсер выбрасывает guard, матчится не та ветка | fail-fast T-02 (#2); компиляция T-52 (#35) |
 | Интерполяция `"\(x)"` | AST — `InterpExpr` (T-53); `compileExpr` fail-fast `"string interpolation is not implemented yet"` | компиляция concat/`to_str` T-54 (#37) |
 | Локальная `fn` с захватом | Fail-fast (T-38, #27): `compileLocalFn` → `срез: локальная fn … с захватом не реализована` при `len(child.upvalues)>0` | лифтинг T-39 (#28) |

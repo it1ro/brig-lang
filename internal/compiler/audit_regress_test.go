@@ -278,6 +278,37 @@ fn main() ->
 	}
 }
 
+// T-44: полная лямбда `fn (…) ->` с параметром-паттерном или `..name`
+// обязана дать ошибку компиляции, а не связать паттерн как имя.
+func TestAuditLambdaPatternParamsFailFast(t *testing.T) {
+	err := compileSrc(t, `module Main
+fn main() ->
+    f = fn (0) -> "zero"
+    print(f(5))
+    g = fn (a, ..rest) -> rest
+    print(g(1, 2, 3))
+`)
+	if err == nil {
+		t.Fatal("Compile: want error for pattern param, got nil")
+	}
+	if !strings.Contains(err.Error(), "срез:") {
+		t.Fatalf("want срез: error, got %v", err)
+	}
+
+	err = compileSrc(t, `module Main
+fn main() ->
+    g = fn (a, ..rest) -> rest
+    print(g(1, 2, 3))
+`)
+	if err == nil {
+		t.Fatal("Compile: want error for variadic lambda param, got nil")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "срез:") || !strings.Contains(msg, "..rest") {
+		t.Fatalf("want variadic срез error mentioning ..rest, got %v", err)
+	}
+}
+
 // §4.8: pattern matching чисел — точный (1.0 не матчит паттерн 1) (T-84).
 func TestAuditLiteralPatternIsExact(t *testing.T) {
 	t.Skip("blocked: T-84")
