@@ -414,8 +414,7 @@ func checkMixedEq(a, b runtime.Value) error {
 // checkMixedCmp — жёсткая проверка Decimal×Float для операторов
 // сравнения < > <= >= (§7.4: ошибка). Возвращает catchable *ErrRaise.
 //
-// Нужна до вызова runtime.Compare, потому что последний возвращает
-// обычную error (без обёртки ErrRaise), и handleRaise её не ловит.
+// Даёт ту же форму raise, что и ошибка runtime.Compare в LT/GT/LE/GE.
 func checkMixedCmp(a, b runtime.Value) error {
 	if (a.Kind == runtime.KindDecimal && b.Kind == runtime.KindFloat) ||
 		(a.Kind == runtime.KindFloat && b.Kind == runtime.KindDecimal) {
