@@ -36,6 +36,7 @@
 2. `exit`, `spawn_watched`, реестр, `Global` (R3–R5, R13).
 3. `await(ref)` (R12), `Timer` (R6), `Time` (R7).
    Бюджет «хода» и счётчики на актор (11/M1–M2), `--memory-limit` (11/M3).
+   `Telemetry` с событиями VM, `Term` (16).
 4. `File`, `Proc`, `Stdin` (R2) → **скриптинг-ниша закрыта**
    (shebang, режим `script` Q-script).
 5. `Supervisor`, `Server` (`call`/`reply`) на Brig.
@@ -47,7 +48,8 @@
 ## Фаза 3. Сеть
 
 1. `Tcp` (pull-режим, владение, iodata), `Tls`.
-2. Фейковые часы + in-memory транспорт (R9), `brig test --simulate --seed` (B4).
+2. Фейковые часы + in-memory транспорт (R9), `brig test --simulate --seed` (B4),
+   `Test.isolated` на экземплярах рантайма (16).
 3. Эталон: echo-сервер под супервизором; нагрузочный тест (без утечек, без
    блокировки планировщика, graceful shutdown). Замеры памяти Z1–Z5 (11),
    включая `--copy-on-send`.
@@ -72,6 +74,7 @@ run-loop не блокируется.
 8. Официальные пакеты первой волны: `Postgres`, `Mailer` (D2).
 9. Лаунчер `calmar` (`brig install brig.dev/calmar`): `calmar new` (и `--api`), `calmar server`
    (на `brig run --watch`), `calmar db migrate`; `brig build` (payload с зависимостями).
+10. `brig task` и `tasks/`; команды релиза `start`/`console`/`eval` (16).
 
 **Выход:** demo/`lookout` собирается `brig build` в один файл и работает.
 

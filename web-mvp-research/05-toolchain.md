@@ -13,6 +13,7 @@
 | `brig fmt` | форматтер (AST-форматтер уже есть) | M |
 | `brig build [--target os/arch] [-o out]` | self-contained приложение | M |
 | `brig console` | REPL с загруженным приложением (как `iex -S mix`) | S |
+| `brig task NAME [args]`, `brig task --list` | задачи проекта из `tasks/` и задачи зависимостей (`calmar.routes`) — аналог rake (16) | M |
 | `brig fix` | автомиграция исходников при ломающих изменениях 0.x (первая — `fn` → `pub fn`) (B5) | M |
 | `brig cert dev` | локальный доверенный сертификат для разработки (как mkcert) (B1) | S |
 | `brig test --simulate --seed N` | детерминированное симуляционное тестирование (B4) | S |
@@ -22,8 +23,9 @@
 | `brig doc` | документация из `@doc` | N |
 
 Всё — подкоманды одного файла. Никаких `brig-lsp`, `brig-fmt` рядом.
-Команды фреймворка (`calmar new|server|gen|routes|db`) — у пакета Calmar,
-устанавливаемого через `brig install` (10).
+Команды фреймворка (`calmar new|server|gen|routes|db`) — задачи пакета Calmar;
+`calmar …` — лаунчер-сахар над `brig task calmar.…` (10, 16). У собранного
+приложения — `./app start|console|eval` и задачи с `release: true` (16).
 
 ## Self-contained сборка приложения
 

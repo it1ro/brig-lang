@@ -196,6 +196,7 @@ lookout/
 ├── lib/lookout_web/…        # веб: роутер, контроллеры, шаблоны, плаги
 ├── priv/{static,migrations}/
 ├── scripts/                 # серверные скрипты на том же коде
+├── tasks/                   # задачи проекта: brig task db.seed (16)
 └── test/
 ```
 

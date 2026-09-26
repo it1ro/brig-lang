@@ -46,6 +46,7 @@ $ ./scripts/import_monitors.brig list.csv --api http://edge-01:8080
 | `priv/migrations/…` | миграции модулями |
 | `test/…` | юнит-тесты домена и in-memory интеграционные тесты |
 | `scripts/import_monitors.brig` | серверный скрипт на shebang, общий код с приложением |
+| `tasks/db/seed.brig` | задача проекта `brig task db.seed` — аналог rake (16) |
 
 ## Чем это лучше аналога на Rails/Phoenix/Go
 
