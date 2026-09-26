@@ -7,6 +7,47 @@ import (
 	"github.com/it1ro/brig-lang/internal/ast"
 )
 
+// S-F4: guard из одного идентификатора не должен уходить в tryLambda
+// (AUDIT_REPORT.md:73-77). Пробы fn_guard_ident / recv_guard_ident.
+func TestParseGuardSingleIdent(t *testing.T) {
+	cases := []struct {
+		name string
+		mode Mode
+		src  string
+	}{
+		{"fn_guard_ident", ModeModule, "module M\nfn f(x) when x -> 1\n"},
+		{"recv_guard_ident", ModeRepl, "x = recv n when ok -> n\n"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := Parse(tc.mode, tc.src); err != nil {
+				t.Fatalf("Parse(%v, %q): %v", tc.mode, tc.src, err)
+			}
+		})
+	}
+}
+
+// S-F12: stripOuterParens не должен считать скобки внутри строковых
+// литералов (AUDIT_REPORT.md:123-126). Проба guard_paren_string.
+func TestRoundTripGuardParenString(t *testing.T) {
+	src := "module M\nfn f(x) when x == \")\" -> 1\n"
+	prog1, err := ParseProgram(ModeModule, src)
+	if err != nil {
+		t.Fatalf("first parse: %v", err)
+	}
+	f1 := ast.Format(prog1)
+	prog2, err := ParseProgram(ModeModule, f1)
+	if err != nil {
+		t.Fatalf("second parse: %v\nformatted:\n%s", err, f1)
+	}
+	f2 := ast.Format(prog2)
+	equal := ast.Equal(prog1, prog2)
+	idempotent := f1 == f2
+	if !equal || !idempotent {
+		t.Fatalf("EQUAL=%v IDEMPOTENT=%v\n--- f1 ---\n%s\n--- f2 ---\n%s", equal, idempotent, f1, f2)
+	}
+}
+
 // S-F3: guard в ветках recv разбирается и выбрасывается (AUDIT_REPORT.md:67-71).
 // RecvBranchArg должен сохранять Guard, Format должен его печатать, а
 // повторный парсинг форматированного вывода должен давать эквивалентный AST.
