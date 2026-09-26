@@ -159,6 +159,30 @@ fn main() ->
 `)
 }
 
+// A-F6 (T-56): локаль промежуточной лямбды затеняет локальную fn
+// внешней fn и для вложенной лямбды — как значение и как callee.
+func TestLocalFnShadowedAtIntermediateLevel(t *testing.T) {
+	runModule(t, `module Main
+fn f() ->
+    fn g() -> 1
+    h = fn () ->
+        g = 5
+        k = fn () -> g
+        k()
+    h()
+fn call() ->
+    fn g(x) -> x
+    h = fn () ->
+        g = x -> x * 10
+        k = fn () -> g(2)
+        k()
+    h()
+fn main() ->
+    assert(f() == 5)
+    assert(call() == 20)
+`)
+}
+
 // S-F3 (T-52): ложный guard ветки recv переводит к следующей ветке
 // (§12.4). Guard видит связывания паттерна и внешние локали; ветка с
 // guard в хвостовой позиции остаётся TAILCALL.
