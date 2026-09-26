@@ -79,6 +79,7 @@ func TestDecimalFloatPattern(t *testing.T) {
 		{"lit-dec-vs-float", `dec"1"`, "1.0"},
 		{"lit-float-vs-dec", "1.0", `dec"1"`},
 		{"map-key-dec-vs-float", `%{dec"1" => :a}`, `%{1.0 => _}`},
+		{"map-key-float-vs-dec-lit", `%{1.0 => :a}`, `%{dec"1" => _}`},
 		{"tuple-nested", `(dec"1", 2)`, "(1.0, 2)"},
 	}
 	for _, c := range cases {
@@ -90,5 +91,14 @@ func TestDecimalFloatPattern(t *testing.T) {
 				t.Errorf("%v", err)
 			}
 		})
+	}
+}
+
+func TestDecimalMapPatternKeyHit(t *testing.T) {
+	src := "module Main\nfn main() ->\n    send(self(), %{dec\"1\" => :a})\n" +
+		"    r = recv\n        %{dec\"1\" => _} -> :hit\n        _ -> :other\n" +
+		"    assert(r == :hit)\n"
+	if err := runModuleErr(t, src); err != nil {
+		t.Errorf("%v", err)
 	}
 }
