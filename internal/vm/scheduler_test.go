@@ -100,6 +100,45 @@ fn main() ->
 `)
 }
 
+// TestWatchDeadActorGetsDown — watch на уже завершившийся актор даёт :noproc (I-F9 / T-40).
+func TestWatchDeadActorGetsDown(t *testing.T) {
+	runModuleSync(t, `module Main
+fn quick() -> :done
+
+fn main() ->
+    p = spawn(quick)
+    r1 = watch(p)
+    gone = recv
+        (:down, _, _) -> ()
+    r2 = watch(p)
+    reason = recv
+        (:down, _, why) -> why
+    assert(reason == :noproc)
+`)
+}
+
+// TestSendToDeadActor — send на мёртвый pid → Ok(()), без :busy; mailbox_size = 0 (I-F9 / T-40).
+func TestSendToDeadActor(t *testing.T) {
+	runModuleSync(t, `module Main
+fn quick() -> :done
+
+fn flood(p, n) ->
+    if n == 0 then mailbox_size(p) else send_one(p, n)
+
+fn send_one(p, n) ->
+    assert(send(p, :x) == Ok(()))
+    flood(p, n - 1)
+
+fn main() ->
+    p = spawn(quick)
+    r1 = watch(p)
+    gone = recv
+        (:down, _, _) -> ()
+    n = flood(p, 100)
+    assert(n == 0)
+`)
+}
+
 // TestSchedulerRecvElse — else-клауза при несовпадении паттерна.
 func TestSchedulerRecvElse(t *testing.T) {
 	runModuleSync(t, `module Main

@@ -211,7 +211,6 @@ fn main() ->
 
 // §12 / doc 02 §6: наблюдатель получает значение raise в причине :down (T-40).
 func TestAuditDownReasonCarriesRaiseValue(t *testing.T) {
-	t.Skip("blocked: T-40")
 	if err := runModuleErr(t, `module Main
 fn boom() -> raise(:boom)
 fn main() ->
