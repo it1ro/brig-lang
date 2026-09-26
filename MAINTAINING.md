@@ -7,8 +7,8 @@
 | Что | Где | Зачем |
 |---|---|---|
 | Доска | [github.com/users/it1ro/projects/5](https://github.com/users/it1ro/projects/5), `gh project view 5 --owner it1ro --web` | Единственный список задач и их статусов |
-| Задачи с DoD | issues `it1ro/brig-lang` с label `audit` (findings аудита) или `spec-gap` (пробелы относительно спеки §16; уровень §16 — label `must`) | Body issue = блок задачи из `TASKS.md` |
-| План целиком | `TASKS.md` | Проекция доски без статусов: волны 0–6, зависимости, DoD, design decisions и ждущие их задачи |
+| Задачи с DoD | issues `it1ro/brig-lang` с label `audit` (findings аудита) или `spec-gap` (пробелы относительно спеки §16; уровень §16 — label `must`) | Body issue — источник DoD (файлы, тест-якорь, DoD, «НЕ делать») |
+| План целиком | `TASKS.md` | Карта плана без статусов и DoD: волны 0–6, зависимости, ссылки на issues, design decisions |
 | Находки | `AUDIT_REPORT.md` | Описание каждого finding (S-F*, A-F*, I-F*, O-F*) и пробных программ |
 | Правила | `CONTRIBUTING.md` | Ветки, коммиты, PR, DoR/DoD, правила для LLM-сессий |
 | Контекст для агентов | `.claude/skills/*/SKILL.md` | Инварианты подсистем и протокол сессии (`brig-workflow`) |
@@ -181,7 +181,7 @@ git branch -D iter/regvm && git push origin --delete iter/regvm
 
 **Verification (T-13…T-15).** Результат — комментарий с выводом команд. Подтвердилось — новый issue по строке таблицы «Verification needed» в `TASKS.md`. Не подтвердилось — label `false-positive`, issue закрыт.
 
-**Design decision принят.** Записать вариант в issue (#40–#43) и закрыть. Задачи из таблицы «Задачи, ждущие решения» в `TASKS.md` уже заведены (#105–#112) и стоят в Blocked: у каждой, чьи блокеры закрыты, прочитать DoD — если выбранный вариант её отменяет, закрыть как won't-fix, иначе перевести в Todo.
+**Design decision принят.** Записать вариант в issue (#40–#43) и закрыть. Задачи, ждущие решения (#105–#112, см. `TASKS.md`), уже заведены и стоят в Blocked: у каждой, чьи блокеры закрыты, прочитать DoD — если выбранный вариант её отменяет, закрыть как won't-fix, иначе перевести в Todo.
 
 **Новый issue, найденный по пути:**
 
