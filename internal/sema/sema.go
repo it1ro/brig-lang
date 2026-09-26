@@ -178,6 +178,8 @@ func (c *checker) checkDecl(d ast.Decl) {
 	for _, cl := range fd.FuncClauses() {
 		c.pushScope()
 		c.checkParams(cl.Params, d)
+		// Guard видит параметры клоза (T-57).
+		c.checkExpr(cl.Guard)
 		if cl.Body != nil {
 			// Тело fn — BlockStmt, но params уже связаны в текущей
 			// области. Чтобы не отбрасывать их, проверяем stmts
@@ -241,6 +243,7 @@ func (c *checker) checkStmt(s ast.Stmt) {
 		for _, cl := range x.Clauses() {
 			c.pushScope()
 			c.checkParams(cl.Params, s)
+			c.checkExpr(cl.Guard)
 			if cl.Body != nil {
 				c.checkBlockBody(cl.Body)
 			}

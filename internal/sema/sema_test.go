@@ -372,3 +372,27 @@ fn main() ->
         (:v, n) when (n |> send(1)) -> n
 `, "send")
 }
+
+// T-57: guard клоза fn (объявления и локальной fn) — обычное выражение
+// §F.3, видит параметры клоза; trap и акторный примитив в pipe в нём
+// запрещены.
+func TestFnGuardChecked(t *testing.T) {
+	wantOK(t, `module Main
+fn f(n) when n > 0 -> n
+fn g(x) ->
+    fn h(n) when n > x -> n
+    h(1)
+`)
+	wantErr(t, "module Main\nfn f(n) when trap(n) -> n\n", "trap is not allowed")
+	wantErr(t, "module Main\nfn f(n) when (n |> send(1)) -> n\n", "send")
+	wantErr(t, `module Main
+fn g() ->
+    fn h(n) when trap(n) -> n
+    h(1)
+`, "trap is not allowed")
+	wantErr(t, `module Main
+fn g() ->
+    fn h(n) when (n |> send(1)) -> n
+    h(1)
+`, "send")
+}

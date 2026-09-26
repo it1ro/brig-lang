@@ -40,7 +40,8 @@ Message}`; `SeverityError` блокирует компиляцию, `SeverityInf
 Sema обходит выражения внутри `InterpExpr` (`checkExpr`, S-F1 / T-53).
 Guard'ы `recv` есть в AST (`RecvBranchArg.Guard`, S-F3 / T-02); `Walk`
 их обходит, sema проверяет их `checkExpr` в области ветки — после
-связываний паттерна (T-52). Guard'ы `fn`-клозов sema пока не обходит. Тесты компилятора через `runModule`/`runModuleErr` прогоняют
+связываний паттерна (T-52). Guard'ы клозов `fn` и локальных fn —
+так же, после связывания параметров клоза (T-57). Тесты компилятора через `runModule`/`runModuleErr` прогоняют
 `sema.Check` после parse (T-46 #58) — программа, которую отверг бы
 `brig check`, падает и в этих хелперах.
 
