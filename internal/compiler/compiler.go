@@ -986,6 +986,8 @@ func (fc *funcCompiler) compileExpr(e ast.Expr, d dest) (err error) {
 		return fc.compileIf(ex, d)
 	case ast.TrapExpr:
 		return fc.compileTrap(ex, d)
+	case ast.MatchExpr:
+		return fc.compileMatch(ex, d)
 	case ast.RecvExpr:
 		return fc.compileRecv(ex, d)
 	case ast.RangeExpr:
@@ -1955,6 +1957,64 @@ func (fc *funcCompiler) compileTrapLetBind(st ast.LetBind, d dest, letRegs map[s
 	}
 	fc.bindLocal(name, r)
 	return fc.loadUnit(d)
+}
+
+// ---- match (§8.3) ----
+
+// compileMatch: субъект в регистр, ветки по порядку — MATCHLOCAL+JMP к
+// следующей ветке (схема веток recv). Ветки наследуют d (d.tail → хвостовые).
+// Ни одна ветка не подошла — raise (:case_clause, val) (§10.4).
+func (fc *funcCompiler) compileMatch(me ast.MatchExpr, d dest) error {
+	pos := posOf(me)
+	mark := fc.nextReg
+
+	sReg, err := fc.operand(me.MatchSubject())
+	if err != nil {
+		return err
+	}
+
+	var endJumps []int
+	for _, br := range me.MatchBranches() {
+		brMark := fc.nextReg
+		fc.pushScope()
+
+		cp, err := fc.compilePattern(br.Pattern)
+		if err != nil {
+			fc.popScope()
+			return err
+		}
+		patIdx := fc.chunk.AddPattern(cp)
+
+		fc.pos = posOf(br.Pattern)
+		fc.emit(vm.ABx(vm.MATCHLOCAL, sReg, patIdx))
+		jFail := fc.emitJump(vm.JMP, 0)
+
+		if err := fc.compileBranch(br.Body, d); err != nil {
+			fc.popScope()
+			return err
+		}
+		if !d.tail {
+			endJumps = append(endJumps, fc.emitJump(vm.JMP, 0))
+		}
+
+		fc.patchHere(jFail)
+		fc.popScope()
+		fc.releaseToMark(brMark)
+	}
+
+	fc.pos = pos
+	w0 := fc.allocReg()
+	w1 := fc.allocReg()
+	fc.emit(vm.ABx(vm.LOADK, w0, fc.konst(runtime.Atom("case_clause"))))
+	fc.emit(vm.ABC(vm.MOVE, w1, sReg, 0))
+	fc.emit(vm.ABC(vm.TUPLE, w0, w0, 2))
+	fc.emit(vm.ABC(vm.RAISE, w0, 0, 0))
+
+	for _, j := range endJumps {
+		fc.patchHere(j)
+	}
+	fc.releaseToMark(mark)
+	return nil
 }
 
 // ---- recv (§7) ----
