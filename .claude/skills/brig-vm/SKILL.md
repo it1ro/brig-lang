@@ -55,12 +55,13 @@ description: >
 
 - **1 актор = 1 запись `*Actor` + список `frames`.** Планировщик — явный
   run-loop (`runSlice`, `scheduler.go:313-428`), не горутины: реализация
-  однопоточная, кооперативная, через `reds`-счётчик редукций. Спека §15.2
-  и `architecture.md:148` говорят «1 актор = 1 goroutine» — расхождение
-  не задокументировано. Это открытый design decision #40 (A-F1);
-  T-13 (#11) подтвердил: `TestVerifyAF1SingleGoroutineScheduler` —
-  spawn 100 акторов даёт рост `NumGoroutine` ≪ 100. Модель
-  планировщика не менять.
+  однопоточная, кооперативная, через `reds`-счётчик редукций. Решено: C
+  (#40) — спека §15.2 фиксирует только гарантии G1–G4 (FIFO в паре,
+  `:down` впереди и вне HWM, fairness, порядок таймеров), модель потоков —
+  деталь реализации; эталон — этот run-loop, эволюция — N:M, не
+  goroutine-per-actor. `TestVerifyAF1SingleGoroutineScheduler` —
+  spawn 100 акторов даёт рост `NumGoroutine` ≪ 100. Не переписывать
+  scheduler на goroutine-per-actor; fairness `callSync` — T-58 (#144).
 - **Мёртвые акторы удаляются из `s.actors`** при `actorDone`/`actorFailed`
   через `reapActor` (кроме `mainPid`; I-F9, T-40 #29). Поэтому `watch` на
   завершившийся pid даёт немедленный `:down` с `:noproc`, `send` →
@@ -93,8 +94,7 @@ description: >
   `wakeExpired` будит истёкших в порядке `(recvDeadline, timerSeq)`
   (T-48 #61; `timerSeq` взводится в `RECVTIMER` из `s.nextSeq`) — не
   возвращать обход `map` напрямую в `ready` (§15.4); якорь
-  `TestWakeExpiredDeterministicOrder`. Модель scheduler не менять
-  (A-F1, T-90).
+  `TestWakeExpiredDeterministicOrder`. Модель scheduler: решено C (#40).
 - Равенство: `PatLiteral` использует `runtime.Equal` (паттерн `1` матчит
   `1.0`), Int×Float сравниваются через float64, Decimal×Float по-разному в
   `==` и в `INDEX`/`Map`/паттернах. Открытый design decision #43 (I-F8) —
