@@ -359,6 +359,31 @@ func (e *atomExpr) IsExpression() bool { return true }
 func (e *atomExpr) IsStatement() bool  { return false }
 func (e *atomExpr) String() string     { return ":" + e.ident }
 
+// interpExpr — строковая интерполяция "a \(x) b" (S-F1 / T-53).
+// parts имеет len(exprs)+1 элементов; plain-строка без \(...) остаётся literalExpr.
+type interpExpr struct {
+	posEnd
+	parts []string
+	exprs []Expr
+}
+
+func (e *interpExpr) IsExpression() bool { return true }
+func (e *interpExpr) IsStatement() bool  { return false }
+func (e *interpExpr) String() string {
+	var buf bytes.Buffer
+	buf.WriteByte('"')
+	for i, part := range e.parts {
+		buf.WriteString(part)
+		if i < len(e.exprs) {
+			buf.WriteString(`\(`)
+			buf.WriteString(e.exprs[i].String())
+			buf.WriteByte(')')
+		}
+	}
+	buf.WriteByte('"')
+	return buf.String()
+}
+
 // Sealed-маркеры для литеральных интерфейсов. Без них type switch
 // по ast.LiteralExpr / ast.BytesExpr / ast.RegexExpr / ast.DecimalExpr
 // неоднозначен: method set у всех четырёх идентичен.

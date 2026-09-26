@@ -37,7 +37,7 @@ Message}`; `SeverityError` блокирует компиляцию, `SeverityInf
 6. Shadowing имён прелюдии/встроенных вариантов (`Some`, `Ok`, `Error`,
    `None`, `map`, `filter`, ...) — **info**, не ошибка.
 
-Sema не видит выражений внутри интерполяции (парсер их не строит, S-F1).
+Sema обходит выражения внутри `InterpExpr` (`checkExpr`, S-F1 / T-53).
 Guard'ы `recv` есть в AST (`RecvBranchArg.Guard`, S-F3 / T-02); `Walk`
 их обходит. Тесты компилятора через `runModule`/`runModuleErr` прогоняют
 `sema.Check` после parse (T-46 #58) — программа, которую отверг бы

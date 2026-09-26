@@ -56,6 +56,23 @@ func equalNodes(a, b Node) bool {
 		y, ok := b.(*literalExpr)
 		return ok && x.value == y.value
 
+	case *interpExpr:
+		y, ok := b.(*interpExpr)
+		if !ok || len(x.parts) != len(y.parts) || len(x.exprs) != len(y.exprs) {
+			return false
+		}
+		for i := range x.parts {
+			if x.parts[i] != y.parts[i] {
+				return false
+			}
+		}
+		for i := range x.exprs {
+			if !equalNodes(x.exprs[i], y.exprs[i]) {
+				return false
+			}
+		}
+		return true
+
 	case *variableExpr:
 		y, ok := b.(*variableExpr)
 		return ok && x.name == y.name

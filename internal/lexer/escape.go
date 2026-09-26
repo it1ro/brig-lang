@@ -109,3 +109,54 @@ func isDigitForBase(c byte, base int) bool {
 	}
 	return isDecDigit(c)
 }
+
+// SplitInterp splits a Str literal body (without surrounding quotes) into
+// literal parts and interpolation expression sources (§C.2).
+//
+// For a plain string with no \(...\), parts is a single-element slice with
+// the whole body and exprs is empty.
+// When exprs is non-empty, len(parts) == len(exprs)+1.
+// Escaped \\( stays inside a literal part and does not open an interpolation.
+func SplitInterp(body string) (parts []string, exprs []string, err error) {
+	n := len(body)
+	partStart := 0
+	i := 0
+	for i < n {
+		if body[i] != '\\' {
+			i++
+			continue
+		}
+		if i+1 >= n {
+			break
+		}
+		esc := body[i+1]
+		switch esc {
+		case 'n', 't', 'r', '0', '\\', '"':
+			i += 2
+		case 'u':
+			end, e := scanUnicodeEscape(body, i, 1)
+			if e != nil {
+				return nil, nil, e
+			}
+			i = end
+		case '(':
+			parts = append(parts, body[partStart:i])
+			open := i + 1 // index of '('
+			end, e := scanInterpolation(body, open, 1)
+			if e != nil {
+				return nil, nil, e
+			}
+			exprs = append(exprs, body[open+1:end-1])
+			partStart = end
+			i = end
+		default:
+			// Invalid escapes are rejected by scanString before SplitInterp runs.
+			i++
+		}
+	}
+	if len(exprs) == 0 {
+		return []string{body}, nil, nil
+	}
+	parts = append(parts, body[partStart:])
+	return parts, exprs, nil
+}
