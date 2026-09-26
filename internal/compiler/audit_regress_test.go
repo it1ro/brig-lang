@@ -243,7 +243,6 @@ fn main() ->
 
 // §10.3: ensure видит локали тела, объявленные до него (T-37).
 func TestAuditEnsureSeesBodyLocals(t *testing.T) {
-	t.Skip("blocked: T-37")
 	if err := runModuleErr(t, `module Main
 fn main() ->
     r = trap
