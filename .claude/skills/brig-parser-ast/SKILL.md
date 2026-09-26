@@ -50,7 +50,7 @@ description: >
 
 | Что | Сейчас | Issue |
 |---|---|---|
-| Параметры и guard `fn` | `Params []ast.Pattern`, `Guard ast.Expr` (T-50 #33). Variadic — `SpreadPattern` (`..name`). Мультиклозы/guard/не-ident паттерны — fail-fast компилятора до T-51 | T-51 (#34) |
+| Параметры и guard `fn` | `Params []ast.Pattern`, `Guard ast.Expr` (T-50 #33). Variadic — `SpreadPattern` (`..name`). Мультиклозы, guard и паттерны параметров компилирует `compileClauses` (T-51) | ✓ T-51 (#34) |
 | `ensure` | Только `ensure expr`; блочная форма и гибрид `ensure expr`+блок — ошибка парсинга (S-F5 закрыт T-03 #3). Реализация блочной формы — out of scope | — |
 | `stmt_list` | NEWLINE между стейтментами обязателен (S-F6 закрыт T-21 #15): после `parseStmt` — NEWLINE/DEDENT/EOF/`until` | — |
 

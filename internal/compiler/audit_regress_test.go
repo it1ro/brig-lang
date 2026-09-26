@@ -61,20 +61,101 @@ fn main() ->
 `)
 }
 
-// S-F2 / T-51: ни один клоз не подошёл — (:function_clause, args...).
+// S-F2 / T-51: ни один клоз не подошёл — (:function_clause, args), §6.1.
 func TestFunctionClauseRaise(t *testing.T) {
 	runModule(t, `module Main
 fn fact(0) -> 1
 fn fact(n) when n > 0 -> n * fact(n - 1)
 fn is_zero(0) -> true
+fn both(0, 0) -> :zero
 fn main() ->
     fn positive(n) when n > 0 -> "positive"
     missed = trap(fact(-1))
-    assert(missed == Error((:function_clause, -1)))
+    assert(missed == Error((:function_clause, [-1])))
     notZero = trap(is_zero(5))
-    assert(notZero == Error((:function_clause, 5)))
+    assert(notZero == Error((:function_clause, [5])))
     neg = trap(positive(-5))
-    assert(neg == Error((:function_clause, -5)))
+    assert(neg == Error((:function_clause, [-5])))
+    pair = trap(both(0, 7))
+    assert(pair == Error((:function_clause, [0, 7])))
+`)
+}
+
+// T-51: guard видит имена из паттернов параметров; variadic-мультиклоз.
+func TestMultiClausePatternGuardAndVariadic(t *testing.T) {
+	runModule(t, `module Main
+fn order((a, b)) when a > b -> :desc
+fn order((a, b)) -> :asc
+fn count(0, ..rest) -> 0
+fn count(n, ..rest) -> n + len(rest)
+fn main() ->
+    assert(order((2, 1)) == :desc)
+    assert(order((1, 2)) == :asc)
+    assert(count(0, 1, 2) == 0)
+    assert(count(5, 1, 2) == 7)
+`)
+}
+
+// T-51: клозы разной арности — ошибка компиляции без двойного префикса.
+func TestMultiClauseArityMismatch(t *testing.T) {
+	err := compileSrc(t, `module Main
+fn f(0) -> 1
+fn f(a, b) -> 2
+fn main() ->
+    print(f(0))
+`)
+	if err == nil {
+		t.Fatal("Compile: want arity mismatch error, got nil")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "арност") {
+		t.Fatalf("Compile: want error about арность, got %q", msg)
+	}
+	if strings.Count(msg, "fn f:") != 1 {
+		t.Fatalf("Compile: want single `fn f:` prefix, got %q", msg)
+	}
+}
+
+// T-51: захваты локальных fn, включая взаимную рекурсию в обоих порядках
+// объявления и транзитивный захват через другую локальную fn.
+func TestLocalFnRecursiveCapture(t *testing.T) {
+	runModule(t, `module Main
+fn parity_a(k, n) ->
+    fn ev(0) -> true
+    fn ev(m) -> od(m - 1)
+    fn od(0) -> false
+    fn od(m) -> k and ev(m - 1)
+    ev(n)
+fn parity_b(k, n) ->
+    fn od(0) -> false
+    fn od(m) -> k and ev(m - 1)
+    fn ev(0) -> true
+    fn ev(m) -> od(m - 1)
+    ev(n)
+fn outer(base) ->
+    fn add(n) -> base + n
+    fn twice(n) -> add(add(n))
+    twice(1)
+fn main() ->
+    assert(parity_a(true, 4) == true)
+    assert(parity_a(true, 3) == false)
+    assert(parity_b(true, 4) == true)
+    assert(parity_b(true, 3) == false)
+    assert(outer(10) == 21)
+`)
+}
+
+// T-51: захват ищется по разрешённому имени, а не по строке: параметр
+// лямбды `go` затеняет локальную fn `go` с захватом.
+func TestLocalFnCaptureShadowedByParam(t *testing.T) {
+	runModule(t, `module Main
+fn f(k) ->
+    fn go(0) -> k
+    fn go(n) -> go(n - 1)
+    h = fn (go) -> go(1)
+    h(x -> x * 10) + go(3)
+fn main() ->
+    assert(f(7) == 17)
 `)
 }
 
@@ -144,7 +225,6 @@ fn main() -> loop(3)
 
 // §6.5: канонический пример локальной fn с захватом `base` (T-39).
 func TestAuditLocalFnCapturesEnclosingParam(t *testing.T) {
-	t.Skip("blocked: T-39")
 	if err := runModuleErr(t, `module Main
 fn outer(base) ->
     fn helper(n) -> base + n
@@ -155,26 +235,41 @@ fn main() -> assert(outer(41) == 42)
 	}
 }
 
-// I-F7: локальная fn с захватом — ошибка компиляции, не runtime
-// `internal: upvalue` (T-38 fail-fast; полная реализация — T-39).
-// Probe: p/t1_localfn_capture.brig
+// I-F7: локальная fn с захватом вне позиции вызова (как значение, в
+// spawn) — ошибка компиляции, а не арность в рантайме (T-51; значение
+// с захватом — T-39).
 func TestLocalFnCaptureFailsFast(t *testing.T) {
-	err := compileSrc(t, `module Main
+	cases := map[string]string{
+		"value": `module Main
 fn outer(base) ->
     fn helper(n) -> base + n
-    helper(1)
+    h = helper
+    h(1)
 fn main() ->
     print(outer(41))
-`)
-	if err == nil {
-		t.Fatal("Compile: want error for local fn with capture, got nil")
+`,
+		"spawn": `module Main
+fn outer(base) ->
+    fn helper() -> print(base)
+    spawn(helper)
+fn main() ->
+    outer(41)
+`,
 	}
-	msg := err.Error()
-	if strings.Contains(msg, "internal: upvalue") {
-		t.Fatalf("Compile: want compile-time error, got runtime-style %q", msg)
-	}
-	if !strings.Contains(msg, "захват") {
-		t.Fatalf("Compile: want error mentioning захват, got %v", err)
+	for name, src := range cases {
+		t.Run(name, func(t *testing.T) {
+			err := compileSrc(t, src)
+			if err == nil {
+				t.Fatal("Compile: want error for capturing local fn as value, got nil")
+			}
+			msg := err.Error()
+			if strings.Contains(msg, "internal: upvalue") {
+				t.Fatalf("Compile: want compile-time error, got runtime-style %q", msg)
+			}
+			if !strings.Contains(msg, "захват") {
+				t.Fatalf("Compile: want error mentioning захват, got %v", err)
+			}
+		})
 	}
 }
 
