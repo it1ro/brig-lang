@@ -2734,6 +2734,34 @@ func (fc *funcCompiler) compilePattern(pat ast.Pattern) (*vm.CompiledPattern, er
 		}
 		return &vm.CompiledPattern{Kind: vm.PatMap, Pairs: pairs}, nil
 
+	case ast.PatternRecord:
+		at := posOf(p)
+		var declared []string
+		if t := p.RecordType(); t != "" {
+			fs, ok := fc.compiler.records[t]
+			if !ok {
+				return nil, &Error{Line: int(at.Line), Col: int(at.Col), Msg: "неизвестный тип записи " + t}
+			}
+			declared = fs
+		}
+		fields := make([]vm.RecordPatField, 0, len(p.RecordFields()))
+		seen := map[string]bool{}
+		for _, f := range p.RecordFields() {
+			if seen[f.Name] {
+				return nil, &Error{Line: int(at.Line), Col: int(at.Col), Msg: "повторное поле " + f.Name + " в паттерне записи"}
+			}
+			seen[f.Name] = true
+			if p.RecordType() != "" && !slices.Contains(declared, f.Name) {
+				return nil, &Error{Line: int(at.Line), Col: int(at.Col), Msg: "неизвестное поле " + f.Name + " в типе " + p.RecordType()}
+			}
+			sub, err := fc.compilePattern(f.Pat)
+			if err != nil {
+				return nil, err
+			}
+			fields = append(fields, vm.RecordPatField{Name: f.Name, Value: sub})
+		}
+		return &vm.CompiledPattern{Kind: vm.PatRecord, Tag: p.RecordType(), Fields: fields}, nil
+
 	case ast.PatternAs:
 		inner, err := fc.compilePattern(p.AsInner())
 		if err != nil {

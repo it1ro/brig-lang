@@ -475,6 +475,23 @@ func (p *listPattern) ListElems() []Pattern { return p.patterns }
 func (p *listPattern) ListHasRest() bool    { return p.hasRest }
 func (p *listPattern) ListRestName() string { return p.restName }
 
+// PatternRecord — аксессор к recordPattern (§9.6). RecordType() == "" —
+// анонимный паттерн.
+type PatternRecord interface {
+	Pattern
+	RecordType() string
+	RecordFields() []FieldPatArg
+}
+
+func (r *recordPattern) RecordType() string { return r.typ }
+func (r *recordPattern) RecordFields() []FieldPatArg {
+	out := make([]FieldPatArg, 0, len(r.fields))
+	for _, f := range r.fields {
+		out = append(out, FieldPatArg{Name: f.name, Pat: f.pat})
+	}
+	return out
+}
+
 // PatternMapAccessor — аксессор к mapPattern.
 type PatternMapAccessor interface {
 	Pattern

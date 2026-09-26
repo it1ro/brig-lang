@@ -324,6 +324,10 @@ func (c *checker) checkPatternBinding(pat ast.Pattern, kind string) {
 		for _, pair := range p.MapPairsAccessor() {
 			c.checkPatternBinding(pair.Pat, kind)
 		}
+	case ast.PatternRecord:
+		for _, f := range p.RecordFields() {
+			c.checkPatternBinding(f.Pat, kind)
+		}
 	case ast.PatternAs:
 		c.checkPatternBinding(p.AsInner(), kind)
 		if name := p.AsName(); name != "" {
@@ -356,6 +360,10 @@ func (c *checker) checkPattern(pat ast.Pattern) {
 	case ast.PatternMapAccessor:
 		for _, pair := range p.MapPairsAccessor() {
 			c.checkPattern(pair.Pat)
+		}
+	case ast.PatternRecord:
+		for _, f := range p.RecordFields() {
+			c.checkPattern(f.Pat)
 		}
 	case ast.PatternAs:
 		c.checkPattern(p.AsInner())
