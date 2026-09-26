@@ -380,6 +380,12 @@ func (p *parser) parseArgs() ([]ast.Expr, error) {
 			}
 			continue
 		}
+		if p.match(lexer.NEWLINE) {
+			if p.at(lexer.RPAREN) {
+				break
+			}
+			continue
+		}
 		break
 	}
 	if _, err := p.expect(lexer.RPAREN, "')'"); err != nil {
@@ -465,10 +471,20 @@ func (p *parser) parseParenOrTuple() (ast.Expr, error) {
 		return nil, err
 	}
 	if p.at(lexer.COMMA) {
-		// tuple
+		// tuple_literal ::= "(" expr "," [ expr { sep expr } ] [ sep ] ")"
+		// Первый разделитель после первого expr обязан быть "," (§A);
+		// дальше sep ::= "," | NEWLINE (S-F8).
 		elems := []ast.Expr{first}
-		for p.match(lexer.COMMA) {
-			if p.at(lexer.RPAREN) {
+		for {
+			if p.match(lexer.COMMA) {
+				if p.at(lexer.RPAREN) {
+					break
+				}
+			} else if p.match(lexer.NEWLINE) {
+				if p.at(lexer.RPAREN) {
+					break
+				}
+			} else {
 				break
 			}
 			e, err := p.parseExpr()
@@ -782,7 +798,10 @@ func (p *parser) parseBranchBody() (ast.Expr, error) {
 	return p.parseExpr()
 }
 
-// with_expr ::= "with" NEWLINE INDENT (bind_stmt | stmt)+ DEDENT [ with_else ]
+// with_expr ::= "with" NEWLINE INDENT with_item_list DEDENT [ with_else ]
+// with_item ::= bind_stmt | stmt — в любом порядке (S-F10).
+// AST хранит binds и body раздельно (как trap: stmts + ensures); Format
+// печатает binds первыми — порядок чередования в исходнике не сохраняется.
 func (p *parser) parseWith() (ast.Expr, error) {
 	start := p.advance() // with
 	if _, err := p.expect(lexer.NEWLINE, "NEWLINE after with"); err != nil {
@@ -792,27 +811,28 @@ func (p *parser) parseWith() (ast.Expr, error) {
 		return nil, err
 	}
 	var items []ast.WithItemArg
+	var stmts []ast.Stmt
 	p.skipNewlines()
-	// bind_stmt+ (pattern "<-" expr)
 	for !p.at(lexer.DEDENT) && !p.at(lexer.EOF) {
 		save := p.pos
 		pat, err := p.parsePattern()
-		if err != nil || !p.at(lexer.OP_LARROW) {
-			p.pos = save
-			break
+		if err == nil && p.at(lexer.OP_LARROW) {
+			p.advance() // <-
+			e, err := p.parseExpr()
+			if err != nil {
+				return nil, err
+			}
+			items = append(items, ast.WithItemArg{Pattern: pat, Expr: e})
+			p.skipNewlines()
+			continue
 		}
-		p.advance() // <-
-		e, err := p.parseExpr()
+		p.pos = save
+		s, err := p.parseStmt()
 		if err != nil {
 			return nil, err
 		}
-		items = append(items, ast.WithItemArg{Pattern: pat, Expr: e})
+		stmts = append(stmts, s)
 		p.skipNewlines()
-	}
-	// body_stmt+ — оставшиеся стейтменты до DEDENT.
-	stmts, err := p.parseStmtList(lexer.DEDENT)
-	if err != nil {
-		return nil, err
 	}
 	if _, err := p.expect(lexer.DEDENT, "DEDENT"); err != nil {
 		return nil, err
