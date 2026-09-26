@@ -797,9 +797,8 @@ func (p *parser) parseBranchBody() (ast.Expr, error) {
 }
 
 // with_expr ::= "with" NEWLINE INDENT with_item_list DEDENT [ with_else ]
-// with_item ::= bind_stmt | stmt — в любом порядке (S-F10).
-// AST хранит binds и body раздельно (как trap: stmts + ensures); Format
-// печатает binds первыми — порядок чередования в исходнике не сохраняется.
+// binds идут только в начале, затем непустое тело (S-F10, решение T-95 A);
+// bind после statement — ошибка парсинга.
 func (p *parser) parseWith() (ast.Expr, error) {
 	start := p.advance() // with
 	if _, err := p.expect(lexer.NEWLINE, "NEWLINE after with"); err != nil {
@@ -813,8 +812,16 @@ func (p *parser) parseWith() (ast.Expr, error) {
 	p.skipNewlines()
 	for !p.at(lexer.DEDENT) && !p.at(lexer.EOF) {
 		save := p.pos
+		startTok := p.cur()
 		pat, err := p.parsePattern()
 		if err == nil && p.at(lexer.OP_LARROW) {
+			if len(stmts) > 0 {
+				return nil, &Error{
+					Line: startTok.Line, Col: startTok.Col,
+					Msg: "with: bind `<-` after a body statement is not allowed (§8.2); " +
+						"all binds must come first — use `x <- expr` or `_ <- expr` for effects",
+				}
+			}
 			p.advance() // <-
 			e, err := p.parseExpr()
 			if err != nil {
@@ -831,6 +838,12 @@ func (p *parser) parseWith() (ast.Expr, error) {
 		}
 		stmts = append(stmts, s)
 		p.skipNewlines()
+	}
+	if len(stmts) == 0 {
+		return nil, &Error{
+			Line: start.Line, Col: start.Col,
+			Msg: "with: body is required after `<-` binds (§8.2)",
+		}
 	}
 	if _, err := p.expect(lexer.DEDENT, "DEDENT"); err != nil {
 		return nil, err

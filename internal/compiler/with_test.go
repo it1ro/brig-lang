@@ -115,3 +115,30 @@ fn main() ->
 	}
 	runModule(t, src)
 }
+
+// T-88 (T-95 A): идиома `_ <- expr` для эффектов между binds — эффекты
+// исполняются в текстовом порядке и не исполняются после несовпавшего bind.
+func TestWithDiscardBindEffectsOrder(t *testing.T) {
+	runModule(t, `module Main
+fn note(tag) -> Ok(send(self(), tag))
+
+fn run(x) ->
+    with
+        Ok(a) <- x
+        _ <- note(:first)
+        Ok(b) <- Ok(a + 1)
+        _ <- note(:second)
+        b
+
+fn main() ->
+    assert(run(Ok(1)) == 2)
+    assert(mailbox_size() == 2)
+    m1 = recv
+        v -> v
+    m2 = recv
+        v -> v
+    assert((m1, m2) == (:first, :second))
+    assert(run(Error(:e)) == Error(:e))
+    assert(mailbox_size() == 0)
+`)
+}
