@@ -7,7 +7,7 @@
 | Что | Где | Зачем |
 |---|---|---|
 | Доска | [github.com/users/it1ro/projects/5](https://github.com/users/it1ro/projects/5), `gh project view 5 --owner it1ro --web` | Единственный список задач и их статусов |
-| Задачи с DoD | issues `it1ro/brig-lang` с label `audit` (findings аудита) или `spec-gap` (пробелы относительно спеки §16) | Body issue = блок задачи из `TASKS.md` |
+| Задачи с DoD | issues `it1ro/brig-lang` с label `audit` (findings аудита) или `spec-gap` (пробелы относительно спеки §16; уровень §16 — label `must`) | Body issue = блок задачи из `TASKS.md` |
 | План целиком | `TASKS.md` | Проекция доски без статусов: волны 0–6, зависимости, DoD, design decisions и ждущие их задачи |
 | Находки | `AUDIT_REPORT.md` | Описание каждого finding (S-F*, A-F*, I-F*, O-F*) и пробных программ |
 | Правила | `CONTRIBUTING.md` | Ветки, коммиты, PR, DoR/DoD, правила для LLM-сессий |
@@ -18,7 +18,7 @@
 
 ## 2. Доска: поля и статусы
 
-Поля: **Priority** (P0…P3), **Task type** (fail-fast, full-fix, test-infra, docs, merge, feature), **Effort** — размер задачи (small / medium / large), **Model** — исполнитель (`sonnet · рутина`, `opus · сложное`, `human · вручную`), **Wave** (0-branch … 6-must), **Sprint** (итерации по 2 недели с понедельника 2026-09-28). Поле называется `Task type`, а не `Type`: имя `Type` GitHub зарезервировал под встроенные issue types. В опциях Model код стоит до ` · `; в тексте и в `board_set` достаточно кода (`Model opus`).
+Поля: **Priority** (P0…P3), **Task type** (fail-fast, full-fix, test-infra, docs, merge, feature), **Effort** — размер задачи (small / medium / large), **Model** — исполнитель (`sonnet · рутина`, `opus · сложное`, `human · вручную`), **Wave** (0…6; смысл волны — в описании опции и label `wave-N`), **Sprint** (итерации по 2 недели с понедельника 2026-09-28). Поле называется `Task type`, а не `Type`: имя `Type` GitHub зарезервировал под встроенные issue types. В опциях Model код стоит до ` · `; в тексте и в `board_set` достаточно кода (`Model opus`).
 
 | Статус | Значит | Кто переводит |
 |---|---|---|
@@ -175,7 +175,7 @@ git branch -D iter/regvm && git push origin --delete iter/regvm
 
 ```bash
 gh issue create --repo it1ro/brig-lang --title "T-NN · <имя>" --body-file body.md \
-  --label "<audit|spec-gap>,<task type>,<P>,wave-<wave>,<model>"
+  --label "<audit|spec-gap>,<task type>,<P>,wave-<N>,<model>[,must]"
 gh project item-add 5 --owner it1ro --url <url>
 board_set <N> Priority <P>; board_set <N> "Task type" <type>; board_set <N> Effort <small|medium|large>
 board_set <N> Model <model>; board_set <N> Wave <wave>; board_set <N> Status Todo
@@ -191,7 +191,7 @@ board_set <N> Model <model>; board_set <N> Wave <wave>; board_set <N> Status Tod
 
 ```bash
 gh project view 5 --owner it1ro --web                                   # доска
-gh issue list --repo it1ro/brig-lang --label wave-0-branch --state open  # волна
+gh issue list --repo it1ro/brig-lang --label wave-0 --state open         # волна
 gh issue list --repo it1ro/brig-lang --label design-decision            # ждут решения
 gh issue list --repo it1ro/brig-lang --label verification               # проверки
 board_set <N> Status "In Progress"                                      # статус

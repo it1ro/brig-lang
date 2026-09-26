@@ -26,7 +26,7 @@ description: >
 
 1. Статус карточки → **In Progress** (`gh project item-edit`; функции `board_set` — в `MAINTAINING.md` §3).
 2. Ветка от свежего `main`: `<type>/<T-NN>-<slug>`, `type` — из таблицы `CONTRIBUTING.md` §4 (`fix`, `feat`, `test`, `docs`, `refactor`, `chore`, `perf`, `build`).
-3. **Исключение — Wave 0 (label `wave-0-branch`, T-01…T-06):** работа идёт прямо в `iter/regvm`, без отдельной ветки и PR; T-07 (merge) делает человек.
+3. **Исключение — Wave 0 (label `wave-0`, T-01…T-06):** работа идёт прямо в `iter/regvm`, без отдельной ветки и PR; T-07 (merge) делает человек.
 
 ## Работа
 
@@ -52,7 +52,7 @@ description: >
 
 - Title `T-NN · <имя>`; T-NN — следующий свободный номер в десятке волны (занятые — `TASKS.md`, `PROMPT_SETUP_KANBAN.log.md`).
 - Body по образцу блоков `TASKS.md`: meta-комментарий (priority, type, effort, model, wave, depends_on, findings), **Файлы**, **Тест-якорь** (существующий или «создать»), бинарный **DoD** (команда → результат, без «улучшить»), **НЕ делать** (≥3 пункта). Зависимости — первыми строками `> Blocked by #M`.
-- Labels: `<audit|spec-gap>,<task type>,<P>,wave-<wave>,<model>`, плюс `blocker` для P0. Task type `feature` — реализация фичи из спеки (label `feature`, ветка `feat/`).
+- Labels: `<audit|spec-gap>,<task type>,<P>,wave-<N>,<model>`, плюс `blocker` для P0 и `must` для Must-пробела §16. Task type `feature` — реализация фичи из спеки (label `feature`, ветка `feat/`).
 - Добавить на доску (`gh project item-add 5 --owner it1ro --url <url>`) и заполнить Priority, Task type, Effort, Model, Wave, Status. Sprint не ставить.
 
 ## Что уже известно (не переоткрывать)

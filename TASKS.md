@@ -165,7 +165,7 @@ priority: P0
 type: fail-fast
 effort: small
 model: sonnet
-wave: 0-branch
+wave: 0
 depends_on: —
 findings: [S-F2]
 -->
@@ -181,7 +181,7 @@ priority: P1
 type: fail-fast
 effort: medium
 model: sonnet
-wave: 0-branch
+wave: 0
 depends_on: —
 findings: [S-F3]
 -->
@@ -197,7 +197,7 @@ priority: P1
 type: fail-fast
 effort: small
 model: sonnet
-wave: 0-branch
+wave: 0
 depends_on: —
 findings: [S-F5]
 -->
@@ -213,7 +213,7 @@ priority: P0
 type: fail-fast
 effort: small
 model: sonnet
-wave: 0-branch
+wave: 0
 depends_on: —
 findings: [S-F1]
 -->
@@ -229,7 +229,7 @@ priority: P0
 type: full-fix
 effort: small
 model: sonnet
-wave: 0-branch
+wave: 0
 depends_on: —
 findings: [O-F1]
 -->
@@ -245,7 +245,7 @@ priority: P0
 type: test-infra
 effort: small
 model: sonnet
-wave: 0-branch
+wave: 0
 depends_on: —
 findings: [O-F3]
 -->
@@ -261,7 +261,7 @@ priority: P0
 type: merge
 effort: small
 model: human
-wave: 0-branch
+wave: 0
 depends_on: T-01, T-02, T-03, T-04, T-05, T-06
 findings: []
 -->
@@ -277,7 +277,7 @@ priority: P0
 type: test-infra
 effort: medium
 model: sonnet
-wave: 1-test-infra
+wave: 1
 depends_on: T-07
 findings: [I-F2]
 -->
@@ -293,7 +293,7 @@ priority: P1
 type: test-infra
 effort: medium
 model: sonnet
-wave: 1-test-infra
+wave: 1
 depends_on: T-10
 findings: [S-F13]
 -->
@@ -309,7 +309,7 @@ priority: P2
 type: docs
 effort: small
 model: sonnet
-wave: 1-test-infra
+wave: 1
 depends_on: T-11
 findings: []
 -->
@@ -325,7 +325,7 @@ priority: P2
 type: test-infra
 effort: small
 model: sonnet
-wave: 1-test-infra
+wave: 1
 depends_on: T-07
 findings: [A-F1]
 extra_labels: verification
@@ -342,7 +342,7 @@ priority: P2
 type: test-infra
 effort: small
 model: sonnet
-wave: 1-test-infra
+wave: 1
 depends_on: T-07
 findings: [A-F7]
 extra_labels: verification
@@ -359,7 +359,7 @@ priority: P2
 type: test-infra
 effort: small
 model: sonnet
-wave: 1-test-infra
+wave: 1
 depends_on: T-07
 findings: [I-F14]
 extra_labels: verification
@@ -376,7 +376,7 @@ priority: P1
 type: full-fix
 effort: small
 model: sonnet
-wave: 2-small
+wave: 2
 depends_on: T-11
 findings: [S-F4, S-F12]
 -->
@@ -392,7 +392,7 @@ priority: P1
 type: full-fix
 effort: small
 model: sonnet
-wave: 2-small
+wave: 2
 depends_on: T-11
 findings: [S-F6]
 -->
@@ -408,7 +408,7 @@ priority: P1
 type: full-fix
 effort: small
 model: sonnet
-wave: 2-small
+wave: 2
 depends_on: T-10
 findings: [S-F7]
 -->
@@ -424,7 +424,7 @@ priority: P2
 type: full-fix
 effort: small
 model: sonnet
-wave: 2-small
+wave: 2
 depends_on: T-10
 findings: [S-F11]
 -->
@@ -440,7 +440,7 @@ priority: P3
 type: full-fix
 effort: medium
 model: sonnet
-wave: 2-small
+wave: 2
 depends_on: T-11
 findings: [S-F8, S-F9, S-F10]
 -->
@@ -456,7 +456,7 @@ priority: P1
 type: test-infra
 effort: medium
 model: sonnet
-wave: 3-major
+wave: 3
 depends_on: T-10
 findings: [O-F2]
 -->
@@ -472,7 +472,7 @@ priority: P1
 type: full-fix
 effort: small
 model: sonnet
-wave: 3-major
+wave: 3
 depends_on: T-10
 findings: [A-F2]
 -->
@@ -488,7 +488,7 @@ priority: P2
 type: full-fix
 effort: medium
 model: opus
-wave: 3-major
+wave: 3
 depends_on: T-10
 findings: [A-F2]
 -->
@@ -504,7 +504,7 @@ priority: P2
 type: full-fix
 effort: medium
 model: opus
-wave: 3-major
+wave: 3
 depends_on: T-10
 findings: [A-F2]
 -->
@@ -520,7 +520,7 @@ priority: P1
 type: full-fix
 effort: small
 model: sonnet
-wave: 3-major
+wave: 3
 depends_on: T-10
 findings: [A-F5]
 -->
@@ -536,7 +536,7 @@ priority: P2
 type: full-fix
 effort: medium
 model: sonnet
-wave: 3-major
+wave: 3
 depends_on: T-10
 findings: [A-F6]
 -->
@@ -552,7 +552,7 @@ priority: P1
 type: full-fix
 effort: large
 model: opus
-wave: 3-major
+wave: 3
 depends_on: T-10
 findings: [I-F1]
 -->
@@ -568,7 +568,7 @@ priority: P1
 type: full-fix
 effort: medium
 model: opus
-wave: 3-major
+wave: 3
 depends_on: T-30
 findings: [I-F5]
 -->
@@ -584,7 +584,7 @@ priority: P1
 type: fail-fast
 effort: small
 model: sonnet
-wave: 3-major
+wave: 3
 depends_on: T-10
 findings: [I-F7]
 -->
@@ -600,7 +600,7 @@ priority: P2
 type: full-fix
 effort: large
 model: opus
-wave: 3-major
+wave: 3
 depends_on: T-35, T-38
 findings: [I-F7]
 -->
@@ -616,7 +616,7 @@ priority: P1
 type: full-fix
 effort: medium
 model: sonnet
-wave: 3-major
+wave: 3
 depends_on: T-10
 findings: [I-F9, I-F10]
 -->
@@ -632,7 +632,7 @@ priority: P2
 type: full-fix
 effort: small
 model: sonnet
-wave: 3-major
+wave: 3
 depends_on: T-10
 findings: [O-F4]
 -->
@@ -648,7 +648,7 @@ priority: P2
 type: full-fix
 effort: medium
 model: sonnet
-wave: 3-major
+wave: 3
 depends_on: T-10
 findings: [I-F13]
 -->
@@ -664,7 +664,7 @@ priority: P2
 type: full-fix
 effort: small
 model: sonnet
-wave: 3-major
+wave: 3
 depends_on: T-10
 findings: [I-F15]
 -->
@@ -680,7 +680,7 @@ priority: P1
 type: full-fix
 effort: large
 model: opus
-wave: 4-blockers
+wave: 4
 depends_on: T-11, T-20
 findings: [S-F2]
 -->
@@ -696,7 +696,7 @@ priority: P1
 type: full-fix
 effort: large
 model: opus
-wave: 4-blockers
+wave: 4
 depends_on: T-36, T-50
 findings: [S-F2]
 -->
@@ -712,7 +712,7 @@ priority: P1
 type: full-fix
 effort: medium
 model: opus
-wave: 4-blockers
+wave: 4
 depends_on: T-02, T-51
 findings: [S-F3]
 -->
@@ -728,7 +728,7 @@ priority: P1
 type: full-fix
 effort: large
 model: opus
-wave: 4-blockers
+wave: 4
 depends_on: T-11, T-23
 findings: [S-F1]
 -->
@@ -744,7 +744,7 @@ priority: P1
 type: full-fix
 effort: medium
 model: sonnet
-wave: 4-blockers
+wave: 4
 depends_on: T-53
 findings: [S-F1]
 -->
@@ -760,7 +760,7 @@ priority: P2
 type: docs
 effort: medium
 model: sonnet
-wave: 5-docs
+wave: 5
 depends_on: T-12
 findings: [A-F8]
 -->
@@ -777,7 +777,7 @@ priority: P3
 type: docs
 effort: small
 model: sonnet
-wave: 5-docs
+wave: 5
 depends_on: T-60
 findings: []
 -->
@@ -793,7 +793,7 @@ priority: P2
 type: docs
 effort: medium
 model: sonnet
-wave: 5-docs
+wave: 5
 depends_on: T-91, T-92, T-93
 findings: [A-F3, A-F4, I-F8]
 -->
@@ -809,7 +809,7 @@ priority: P2
 type: docs
 effort: small
 model: sonnet
-wave: 5-docs
+wave: 5
 depends_on: T-61
 findings: []
 -->
@@ -825,7 +825,7 @@ priority: P1
 type: feature
 effort: medium
 model: opus
-wave: 6-must
+wave: 6
 depends_on: —
 findings: [K-8]
 -->
@@ -841,7 +841,7 @@ priority: P1
 type: feature
 effort: medium
 model: opus
-wave: 6-must
+wave: 6
 depends_on: T-70
 findings: [K-8]
 -->
@@ -857,7 +857,7 @@ priority: P2
 type: feature
 effort: small
 model: sonnet
-wave: 6-must
+wave: 6
 depends_on: —
 findings: [A-F8]
 -->
@@ -873,7 +873,7 @@ priority: P1
 type: feature
 effort: large
 model: opus
-wave: 6-must
+wave: 6
 depends_on: —
 findings: [A-F8]
 -->
@@ -889,7 +889,7 @@ priority: P1
 type: feature
 effort: medium
 model: sonnet
-wave: 6-must
+wave: 6
 depends_on: T-73, T-70
 findings: [A-F8]
 -->
@@ -905,7 +905,7 @@ priority: P2
 type: feature
 effort: small
 model: sonnet
-wave: 6-must
+wave: 6
 depends_on: —
 findings: [A-F8]
 -->
@@ -921,7 +921,7 @@ priority: P2
 type: feature
 effort: medium
 model: sonnet
-wave: 6-must
+wave: 6
 depends_on: —
 findings: []
 -->
@@ -937,7 +937,7 @@ priority: P2
 type: feature
 effort: medium
 model: sonnet
-wave: 6-must
+wave: 6
 depends_on: —
 findings: []
 -->
@@ -953,7 +953,7 @@ priority: P1
 type: feature
 effort: medium
 model: opus
-wave: 6-must
+wave: 6
 depends_on: —
 findings: [K-8]
 -->
@@ -969,7 +969,7 @@ priority: P2
 type: feature
 effort: medium
 model: sonnet
-wave: 6-must
+wave: 6
 depends_on: —
 findings: []
 -->
@@ -985,7 +985,7 @@ priority: P2
 type: docs
 effort: medium
 model: sonnet
-wave: 3-major
+wave: 3
 depends_on: T-90, T-13
 findings: [A-F1]
 -->
@@ -1001,7 +1001,7 @@ priority: P1
 type: full-fix
 effort: medium
 model: sonnet
-wave: 3-major
+wave: 3
 depends_on: T-91
 findings: [A-F3]
 -->
@@ -1017,7 +1017,7 @@ priority: P2
 type: full-fix
 effort: medium
 model: sonnet
-wave: 3-major
+wave: 3
 depends_on: T-91, T-10
 findings: [I-F3]
 -->
@@ -1033,7 +1033,7 @@ priority: P1
 type: full-fix
 effort: medium
 model: opus
-wave: 3-major
+wave: 3
 depends_on: T-92
 findings: [A-F4]
 -->
@@ -1049,7 +1049,7 @@ priority: P1
 type: full-fix
 effort: small
 model: sonnet
-wave: 3-major
+wave: 3
 depends_on: T-93
 findings: [I-F8]
 -->
@@ -1065,7 +1065,7 @@ priority: P1
 type: full-fix
 effort: medium
 model: sonnet
-wave: 3-major
+wave: 3
 depends_on: T-93
 findings: [I-F8]
 -->
@@ -1081,7 +1081,7 @@ priority: P1
 type: full-fix
 effort: medium
 model: sonnet
-wave: 3-major
+wave: 3
 depends_on: T-93
 findings: [I-F8]
 -->
