@@ -18,82 +18,64 @@ func compileSrc(t *testing.T, src string) error {
 	return err
 }
 
-// S-F2: мультиклозы, guard и параметры-паттерны fn не компилируются
-// (T-50, T-51) — Compile обязан вернуть ошибку, а не взять clauses[0].
+// S-F2 / T-51: мультиклозы, guard и параметры-паттерны дают результат
+// спеки, а не молча clauses[0].
 func TestAuditMultiClauseNotSilentlyDropped(t *testing.T) {
-	cases := []struct {
-		name string
-		src  string
-		want string
-	}{
-		{"t10_multiclause", `module Main
+	runModule(t, `module Main
 fn fact(0) -> 1
 fn fact(n) -> n * fact(n - 1)
 fn main() ->
-    print(fact(5))
-`, "мультиклозные fn"},
-		{"u2_guard_fn", `module Main
+    assert(fact(5) == 120)
+`)
+	runModule(t, `module Main
 fn classify(n) when n > 0 -> "positive"
 fn classify(0)             -> "zero"
 fn classify(n)             -> "negative"
 fn main() ->
-    print(classify(-5))
-`, "мультиклозные fn"},
-		{"u1_spec65", `module Main
+    assert(classify(-5) == "negative")
+    assert(classify(0) == "zero")
+    assert(classify(3) == "positive")
+`)
+	runModule(t, `module Main
 fn pow(base, exp) ->
     fn go(acc, 0) -> acc
     fn go(acc, n) -> go(acc * base, n - 1)
     go(1, exp)
 fn main() ->
-    print(pow(2, 10))
-`, "мультиклозные fn"},
-		{"guard_single_clause", `module Main
-fn positive(n) when n > 0 -> "positive"
-fn main() ->
-    print(positive(-5))
-`, "guard"},
-		{"local_guard_single_clause", `module Main
-fn main() ->
-    fn positive(n) when n > 0 -> "positive"
-    print(positive(-5))
-`, "guard"},
-		{"literal_param", `module Main
-fn is_zero(0) -> true
-fn main() ->
-    print(is_zero(5))
-`, "параметр-паттерн"},
-		{"bool_literal_param", `module Main
+    assert(pow(2, 10) == 1024)
+`)
+	runModule(t, `module Main
 fn yes(true) -> 1
-fn main() ->
-    print(yes(false))
-`, "параметр-паттерн"},
-		{"wildcard_param", `module Main
+fn yes(false) -> 0
 fn one(_) -> 1
-fn main() ->
-    print(one(5))
-`, "параметр-паттерн"},
-		{"tuple_param", `module Main
 fn first((a, b)) -> a
 fn main() ->
-    print(first((1, 2)))
-`, "параметр-паттерн"},
-		{"local_literal_param", `module Main
-fn main() ->
     fn is_zero(0) -> true
-    print(is_zero(5))
-`, "параметр-паттерн"},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			err := compileSrc(t, tc.src)
-			if err == nil {
-				t.Fatalf("Compile: want error containing %q, got nil", tc.want)
-			}
-			if !strings.Contains(err.Error(), tc.want) {
-				t.Fatalf("Compile: want error containing %q, got %v", tc.want, err)
-			}
-		})
-	}
+    fn is_zero(_) -> false
+    assert(yes(true) == 1)
+    assert(yes(false) == 0)
+    assert(one(5) == 1)
+    assert(first((1, 2)) == 1)
+    assert(is_zero(0) == true)
+    assert(is_zero(5) == false)
+`)
+}
+
+// S-F2 / T-51: ни один клоз не подошёл — (:function_clause, args...).
+func TestFunctionClauseRaise(t *testing.T) {
+	runModule(t, `module Main
+fn fact(0) -> 1
+fn fact(n) when n > 0 -> n * fact(n - 1)
+fn is_zero(0) -> true
+fn main() ->
+    fn positive(n) when n > 0 -> "positive"
+    missed = trap(fact(-1))
+    assert(missed == Error((:function_clause, -1)))
+    notZero = trap(is_zero(5))
+    assert(notZero == Error((:function_clause, 5)))
+    neg = trap(positive(-5))
+    assert(neg == Error((:function_clause, -5)))
+`)
 }
 
 // S-F3: guard в ветках recv не должен молча игнорироваться компилятором.
