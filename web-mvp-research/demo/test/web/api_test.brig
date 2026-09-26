@@ -2,7 +2,7 @@
 # Calmar.Test гоняет pipeline в памяти (Conn -> Conn — чистая функция),
 # время фейковое, БД — :memory:, внешние HTTP-запросы чекеров подменены.
 #
-# NEEDS: блочная лямбда внутри аргументов вызова (03/L1, issue #2 A5.4),
+# NEEDS: блочная лямбда `fn ->` внутри аргументов вызова (03/L1, L22, #2, #169),
 #        brig test с обнаружением модулей test/ (05), Calmar.Test (06), Json.at (03/L16),
 #        фейковые часы + in-memory транспорт (02/R9), подмена Http.Client (Q-mock),
 #        опровержимый паттерн в `=` (03/L21)
@@ -16,7 +16,7 @@ fn auth() -> [("authorization", "Bearer test")]
 pub fn tests() ->
     Test.describe("POST /api/monitors")
 
-    Test.it("создаёт монитор и сразу запускает чекер", fn () ->
+    Test.it("создаёт монитор и сразу запускает чекер", fn ->
         app = HT.start(Lookout.Application, { env: :test })
         HT.stub_http(app, "https://example.org", { status: 200 })
 
@@ -31,7 +31,7 @@ pub fn tests() ->
         show = HT.get(app, "/api/monitors", { headers: auth() })
         Test.assert_eq(Json.at(show.json, ["data", 0, "status"]), Some("up")))
 
-    Test.it("422 на невалидный URL", fn () ->
+    Test.it("422 на невалидный URL", fn ->
         app = HT.start(Lookout.Application, { env: :test })
         resp = HT.post(app, "/api/monitors", {
             headers: auth(),
@@ -40,13 +40,13 @@ pub fn tests() ->
         Test.assert_eq(resp.status, 422)
         Test.assert_eq(Json.at(resp.json, ["errors", "url"]), Some(["only http(s)"])))
 
-    Test.it("401 без токена", fn () ->
+    Test.it("401 без токена", fn ->
         app = HT.start(Lookout.Application, { env: :test })
         Test.assert_eq(HT.get(app, "/api/monitors", {}).status, 401))
 
     Test.describe("SSE /api/monitors/:id/events")
 
-    Test.it("шлёт событие при смене статуса", fn () ->
+    Test.it("шлёт событие при смене статуса", fn ->
         app = HT.start(Lookout.Application, { env: :test })
         HT.stub_http(app, "https://flaky.test", { status: 200 })
         { json: json } = HT.post(app, "/api/monitors", {

@@ -1,5 +1,5 @@
 # Юнит-тесты домена: чистые функции, без приложения и без акторов.
-# NEEDS: блочная лямбда внутри аргументов вызова (03/L1, issue #2 A5.4),
+# NEEDS: блочная лямбда `fn ->` внутри аргументов вызова (03/L1, L22, #2, #169),
 #        brig test с обнаружением модулей (05), Changeset (06), доступ к полям (03/L4),
 #        опровержимый паттерн в `=` (03/L21)
 module Test.MonitorsTest
@@ -10,12 +10,12 @@ import Lookout.Monitors.Monitor
 pub fn tests() ->
     Test.describe("Monitor.changeset")
 
-    Test.it("проставляет дефолты", fn () ->
+    Test.it("проставляет дефолты", fn ->
         Ok(m) = Monitor.changeset(%{ "name" => "a", "url" => "https://a.test" })
         Test.assert_eq(m.interval_ms, 30_000)
         Test.assert_eq(m.status, :unknown))
 
-    Test.it("отклоняет слишком частый интервал", fn () ->
+    Test.it("отклоняет слишком частый интервал", fn ->
         res = Monitor.changeset(%{ "name" => "a", "url" => "https://a.test", "interval_ms" => 100 })
         match res
             Error((:invalid, cs)) -> Test.assert(Changeset.has_error(cs, :interval_ms))
