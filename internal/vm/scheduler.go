@@ -3,6 +3,7 @@ package vm
 import (
 	"errors"
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/it1ro/brig-lang/internal/runtime"
@@ -911,9 +912,18 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 			if msVal.IsSmall {
 				ms = msVal.SmallInt
 			} else {
+				if !msVal.AsBig().IsInt64() {
+					return fail(fmt.Errorf(
+						"(:type_error, (:after, %s))", msVal.Inspect()))
+				}
 				ms = msVal.AsBig().Int64()
 			}
-			a.recvDeadline = time.Now().Add(time.Duration(ms) * time.Millisecond)
+			d, ok := recvTimerDuration(ms)
+			if !ok {
+				return fail(fmt.Errorf(
+					"(:type_error, (:after, %s))", msVal.Inspect()))
+			}
+			a.recvDeadline = time.Now().Add(d)
 			f.ip++
 
 		case RECVTAKE:
@@ -973,6 +983,16 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 	}
 
 	return fail(fmt.Errorf("internal: fell off end of %s", f.name))
+}
+
+// recvTimerDuration converts after-ms to a Duration without overflowing
+// int64 nanoseconds. Rejects ms outside [MinInt64/1e6, MaxInt64/1e6].
+func recvTimerDuration(ms int64) (time.Duration, bool) {
+	const unit = int64(time.Millisecond)
+	if ms > math.MaxInt64/unit || ms < math.MinInt64/unit {
+		return 0, false
+	}
+	return time.Duration(ms) * time.Millisecond, true
 }
 
 // ---- helpers for RANGE / INDEX ----

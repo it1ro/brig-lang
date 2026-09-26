@@ -86,11 +86,13 @@ description: >
   (`"recv in synchronous call context"`), не зависать. При `stepFailed`
   вызывает `tryUnwindRaise` так же, как `runSlice` — `trap` в колбэке
   прелюдии ловит raise из вложенного кадра (`map(fn (x) -> trap(g(x)), xs)`).
-- Таймеры (I-F14, **confirmed** T-15 #13): большой `ms` в `RECVTIMER`
-  молча переполняет `time.Duration` (`MaxInt64` → −1ms; якорь
-  `TestVerifyIF14HugeTimerMs`); `wakeExpired` обходит `map` — порядок в
-  `ready` недетерминирован (§15.4; 20× `uniq -c` даёт >1 строки). Фикс —
-  Wave 3 follow-ups из T-15; модель scheduler не менять (A-F1, T-90).
+- Таймеры (I-F14, T-15 #13): переполнение `ms`→`Duration` в `RECVTIMER`
+  закрыто T-47 (#60) — `recvTimerDuration` отвергает ms вне
+  `[MinInt64/1e6, MaxInt64/1e6]` и big.Int вне int64 как
+  `(:type_error, (:after, ...))`; якорь `TestVerifyIF14HugeTimerMs`.
+  Открыто: `wakeExpired` обходит `map` — порядок в `ready`
+  недетерминирован (§15.4; T-48). Модель scheduler не менять
+  (A-F1, T-90).
 - Равенство: `PatLiteral` использует `runtime.Equal` (паттерн `1` матчит
   `1.0`), Int×Float сравниваются через float64, Decimal×Float по-разному в
   `==` и в `INDEX`/`Map`/паттернах. Открытый design decision #43 (I-F8) —
