@@ -34,13 +34,19 @@ description: >
   `assert`) — для условия `if`, обоих операндов `and`/`or` и guard
   (`fn`/`recv`). `and`/`or` всегда возвращают `Bool`. Правый операнд
   проверяет холостой `JMPIF/JMPIFNOT acc, +0` после его вычисления
-  (`compileAndOr`). Классификация type errors (#42/T-83) не менялась.
-- **K-3.** `trap` ловит только `*ErrRaise` (см. `Frame.catch`). Ошибки
-  арности, `arithErr`, `runtime.Compare`, `not` не-Bool — обычный `error`,
-  фатальны для актора, `trap` их не видит. Но `decArithErr` возвращает
-  ловимый `ErrRaise`, а спека §10.4 числит `:type_error` среди авто-raise:
-  `trap(dec"1"+"a")` → `Error(...)`, а `trap(1+"a")` убивает актор.
-  **Открытый design decision #42 (A-F4)** — не унифицировать до решения.
+  (`compileAndOr`).
+- **K-3.** `trap` ловит только `*ErrRaise` (см. `Frame.catch`). DD #42
+  (A-F4) решён вариантом A: все `:type_error` ловимы, фатальны для актора
+  только внутренние инварианты VM (`internal:`). Форма —
+  `(:type_error, (op, val))` через `typeErr` (`vm.go`): арифметика
+  (`arithErr`/`decArithErr`, `val = (a, b)`), `neg`, `not`, сравнения
+  (ошибка `runtime.Compare` → `(:compare, (a, b))`), вызов не-функции
+  (`resolveCallee`/`vm.Call` → `(:call, fn)`; Function/Closure без тела —
+  `internal:`), не-Bool в условии (`notBoolErr`) — T-83 #108, якорь
+  `internal/compiler/type_error_test.go`. Ещё `fmt.Errorf` (мимо `trap`):
+  `:type_error` прелюдии, индексации, акторных примитивов, спреда и
+  `:function_clause` арности — T-96 #150. Новый `:type_error` —
+  только через `typeErr`.
 - **K-4.** Редукция — это `CALL`/`TAILCALL` в байткод-функцию, `RETURN`,
   шаг unwind. Вызов native не тратит редукцию; колбэк возобновляемого
   натива (`map`/`filter`/…, см. ниже) — обычный `CALL` в байткод, тратит.

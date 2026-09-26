@@ -6,6 +6,7 @@
 package vm
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"math/big"
@@ -99,7 +100,7 @@ func (vm *VM) Call(fn runtime.Value, args []runtime.Value) (runtime.Value, error
 	switch fn.Kind {
 	case runtime.KindFunction:
 		if fn.Func == nil {
-			return runtime.Unit, fmt.Errorf("(:type_error, (:call, nil))")
+			return runtime.Unit, errors.New("internal: call of nil function")
 		}
 		if fn.Func.IsNative {
 			if fn.Func.Native == nil {
@@ -111,7 +112,7 @@ func (vm *VM) Call(fn runtime.Value, args []runtime.Value) (runtime.Value, error
 	case runtime.KindClosure:
 		return vm.scheduler.callSync(fn, args)
 	default:
-		return runtime.Unit, fmt.Errorf("(:type_error, (:call, %s))", fn.Inspect())
+		return runtime.Unit, typeErr("call", fn)
 	}
 }
 
@@ -138,15 +139,20 @@ func numToRat(v runtime.Value) (*big.Rat, bool) {
 	return nil, false
 }
 
-// decArithErr — :type_error как catchable raise (для trap).
+// typeErr — ловимый raise (:type_error, (op, val)) (§10.4).
 //
 // `op` передаётся без ведущего двоеточия (`"add"`, а не `":add"`):
 // runtime.Atom сам добавляет ":" при печати, и `Atom(":add")`
 // давал бы `::add` в Inspect().
-func decArithErr(a, b runtime.Value, op string) error {
+func typeErr(op string, val runtime.Value) error {
 	return &ErrRaise{Val: runtime.Tuple(
 		runtime.Atom("type_error"),
-		runtime.Tuple(runtime.Atom(op), runtime.Tuple(a, b)))}
+		runtime.Tuple(runtime.Atom(op), val))}
+}
+
+// decArithErr — :type_error как catchable raise (для trap).
+func decArithErr(a, b runtime.Value, op string) error {
+	return typeErr(op, runtime.Tuple(a, b))
 }
 
 func add(a, b runtime.Value) (runtime.Value, error) {
@@ -168,7 +174,7 @@ func add(a, b runtime.Value) (runtime.Value, error) {
 		return runtime.List(joined...), nil
 	}
 	if !bothNum(a, b) {
-		return runtime.Unit, arithErr(a, b, ":add")
+		return runtime.Unit, arithErr(a, b, "add")
 	}
 	if a.Kind == runtime.KindFloat || b.Kind == runtime.KindFloat {
 		return runtime.Float(numToFloat(a) + numToFloat(b)), nil
@@ -194,7 +200,7 @@ func sub(a, b runtime.Value) (runtime.Value, error) {
 		return runtime.Decimal(new(big.Rat).Sub(ar, br)), nil
 	}
 	if !bothNum(a, b) {
-		return runtime.Unit, arithErr(a, b, ":sub")
+		return runtime.Unit, arithErr(a, b, "sub")
 	}
 	if a.Kind == runtime.KindFloat || b.Kind == runtime.KindFloat {
 		return runtime.Float(numToFloat(a) - numToFloat(b)), nil
@@ -220,7 +226,7 @@ func mul(a, b runtime.Value) (runtime.Value, error) {
 		return runtime.Decimal(new(big.Rat).Mul(ar, br)), nil
 	}
 	if !bothNum(a, b) {
-		return runtime.Unit, arithErr(a, b, ":mul")
+		return runtime.Unit, arithErr(a, b, "mul")
 	}
 	if a.Kind == runtime.KindFloat || b.Kind == runtime.KindFloat {
 		return runtime.Float(numToFloat(a) * numToFloat(b)), nil
@@ -258,7 +264,7 @@ func div(a, b runtime.Value) (runtime.Value, error) {
 		return runtime.Decimal(new(big.Rat).Quo(ar, br)), nil
 	}
 	if !bothNum(a, b) {
-		return runtime.Unit, arithErr(a, b, ":div")
+		return runtime.Unit, arithErr(a, b, "div")
 	}
 	if numToFloat(b) == 0 {
 		return runtime.Unit, &ErrRaise{Val: runtime.Tuple(
@@ -272,7 +278,7 @@ func intDiv(a, b runtime.Value) (runtime.Value, error) {
 		return runtime.Unit, decArithErr(a, b, "div")
 	}
 	if a.Kind != runtime.KindInt || b.Kind != runtime.KindInt {
-		return runtime.Unit, arithErr(a, b, ":div")
+		return runtime.Unit, arithErr(a, b, "div")
 	}
 	if b.IsSmall {
 		if b.SmallInt == 0 {
@@ -301,7 +307,7 @@ func neg(a runtime.Value) (runtime.Value, error) {
 	case runtime.KindFloat:
 		return runtime.Float(-a.Float), nil
 	}
-	return runtime.Unit, fmt.Errorf("(:type_error, (:neg, %s))", a.Inspect())
+	return runtime.Unit, typeErr("neg", a)
 }
 
 func rem(a, b runtime.Value) (runtime.Value, error) {
@@ -309,7 +315,7 @@ func rem(a, b runtime.Value) (runtime.Value, error) {
 		return runtime.Unit, decArithErr(a, b, "rem")
 	}
 	if a.Kind != runtime.KindInt || b.Kind != runtime.KindInt {
-		return runtime.Unit, arithErr(a, b, ":rem")
+		return runtime.Unit, arithErr(a, b, "rem")
 	}
 	if b.IsSmall {
 		if b.SmallInt == 0 {
@@ -354,7 +360,7 @@ func pow(a, b runtime.Value) (runtime.Value, error) {
 		return runtime.Unit, decArithErr(a, b, "pow")
 	}
 	if !bothNum(a, b) {
-		return runtime.Unit, arithErr(a, b, ":pow")
+		return runtime.Unit, arithErr(a, b, "pow")
 	}
 	if a.Kind == runtime.KindInt && b.Kind == runtime.KindInt && b.AsBig().Sign() >= 0 {
 		return runtime.IntBig(new(big.Int).Exp(a.AsBig(), b.AsBig(), nil)), nil
@@ -386,8 +392,10 @@ func numToFloat(v runtime.Value) float64 {
 	return f
 }
 
+// arithErr — ловимый raise (:type_error, (op, (a, b))) для операндов
+// не того вида (DD #42, вариант A).
 func arithErr(a, b runtime.Value, op string) error {
-	return fmt.Errorf("(:type_error, (%s, (%s, %s)))", op, a.Inspect(), b.Inspect())
+	return typeErr(op, runtime.Tuple(a, b))
 }
 
 // checkMixedEq — жёсткая проверка Decimal×Float для оператора == / !=
@@ -398,9 +406,7 @@ func arithErr(a, b runtime.Value, op string) error {
 func checkMixedEq(a, b runtime.Value) error {
 	if (a.Kind == runtime.KindDecimal && b.Kind == runtime.KindFloat) ||
 		(a.Kind == runtime.KindFloat && b.Kind == runtime.KindDecimal) {
-		return &ErrRaise{Val: runtime.Tuple(
-			runtime.Atom("type_error"),
-			runtime.Tuple(runtime.Atom("eq"), runtime.Tuple(a, b)))}
+		return typeErr("eq", runtime.Tuple(a, b))
 	}
 	return nil
 }
@@ -408,14 +414,11 @@ func checkMixedEq(a, b runtime.Value) error {
 // checkMixedCmp — жёсткая проверка Decimal×Float для операторов
 // сравнения < > <= >= (§7.4: ошибка). Возвращает catchable *ErrRaise.
 //
-// Нужна до вызова runtime.Compare, потому что последний возвращает
-// обычную error (без обёртки ErrRaise), и handleRaise её не ловит.
+// Даёт ту же форму raise, что и ошибка runtime.Compare в LT/GT/LE/GE.
 func checkMixedCmp(a, b runtime.Value) error {
 	if (a.Kind == runtime.KindDecimal && b.Kind == runtime.KindFloat) ||
 		(a.Kind == runtime.KindFloat && b.Kind == runtime.KindDecimal) {
-		return &ErrRaise{Val: runtime.Tuple(
-			runtime.Atom("type_error"),
-			runtime.Tuple(runtime.Atom("compare"), runtime.Tuple(a, b)))}
+		return typeErr("compare", runtime.Tuple(a, b))
 	}
 	return nil
 }

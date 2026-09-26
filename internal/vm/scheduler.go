@@ -86,25 +86,27 @@ type callee struct {
 	captures []runtime.Value
 }
 
-// resolveCallee разбирает Function/Closure с байткод-телом.
+// resolveCallee разбирает Function/Closure с байткод-телом. Не-функция —
+// ловимый raise (:type_error, (:call, fn)); Function/Closure без тела —
+// нарушение инварианта VM (internal:).
 func resolveCallee(fn runtime.Value) (callee, error) {
 	switch fn.Kind {
 	case runtime.KindFunction:
 		if fn.Func == nil {
-			return callee{}, fmt.Errorf("(:type_error, (:call, nil))")
+			return callee{}, errors.New("internal: call of nil function")
 		}
 		ch, ok := fn.Func.Body.(*Chunk)
 		if !ok {
-			return callee{}, fmt.Errorf("(:type_error, (:call, %s))", fn.Inspect())
+			return callee{}, typeErr("call", fn)
 		}
 		return callee{chunk: ch, name: fn.Func.Name}, nil
 	case runtime.KindClosure:
 		if fn.ClosureVal == nil {
-			return callee{}, fmt.Errorf("(:type_error, (:call, nil-closure))")
+			return callee{}, errors.New("internal: call of nil closure")
 		}
 		ch, ok := fn.ClosureVal.Func.(*Chunk)
 		if !ok {
-			return callee{}, fmt.Errorf("(:type_error, (:call, %s))", fn.Inspect())
+			return callee{}, typeErr("call", fn)
 		}
 		return callee{
 			chunk:    ch,
@@ -112,7 +114,7 @@ func resolveCallee(fn runtime.Value) (callee, error) {
 			captures: fn.ClosureVal.Captures,
 		}, nil
 	}
-	return callee{}, fmt.Errorf("(:type_error, (:call, %s))", fn.Inspect())
+	return callee{}, typeErr("call", fn)
 }
 
 // checkArity: variadic — argc >= NumParams-1, иначе argc == NumParams.
@@ -658,7 +660,11 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 		case NOT:
 			v := regs[in.B()]
 			if v.Kind != runtime.KindBool {
-				return fail(fmt.Errorf("(:type_error, (:not, %s))", v.Inspect()))
+				err := typeErr("not", v)
+				if f.catch(err) {
+					continue
+				}
+				return fail(err)
 			}
 			regs[in.A()] = runtime.Bool(!v.Bool)
 			f.ip++
@@ -690,6 +696,12 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 			}
 			c, err := runtime.Compare(av, bv)
 			if err != nil {
+				// Несравнимые значения (§7.4: Function, вложенный
+				// Decimal×Float) — ловимый raise с исходными операндами.
+				err = typeErr("compare", runtime.Tuple(av, bv))
+				if f.catch(err) {
+					continue
+				}
 				return fail(err)
 			}
 			var res bool
@@ -1475,7 +1487,5 @@ func (s *Scheduler) tryUnwindRaise(a *Actor) bool {
 // условии if, операнде and/or и guard (строгий Bool, DD #41 вариант A);
 // форма payload — как у assert: (:type_error, (:assert_expected_bool, v)).
 func notBoolErr(v runtime.Value) error {
-	return &ErrRaise{Val: runtime.Tuple(
-		runtime.Atom("type_error"),
-		runtime.Tuple(runtime.Atom("expected_bool"), v))}
+	return typeErr("expected_bool", v)
 }
