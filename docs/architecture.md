@@ -119,7 +119,9 @@ IsSmall == false  ⇒   intBig != nil   (для Kind == KindInt)
 - `Decimal × Decimal` и `Decimal × Int` — точно, через `big.Rat`.
 - `Decimal × Float` — `:type_error`. Для `==`/`!=` и `<`/`>`/`<=`/`>=`
   ошибка catchable через `trap` (`checkMixedEq` / `checkMixedCmp` в
-  `internal/vm/vm.go`).
+  `internal/vm/vm.go`; для `==`/`!=` — только пара верхнего уровня). В паттернах
+  (`runtime.MatchEqual`) и ключах `Map`/`Set` (`runtime.KeyEqual`) —
+  разные значения, без ошибки; `Int × Float` сравнивается точно.
 
 ---
 
