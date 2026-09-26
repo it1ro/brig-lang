@@ -1843,9 +1843,6 @@ func (fc *funcCompiler) compileRecv(re ast.RecvExpr, d dest) error {
 
 	var endJumps []int
 	for _, br := range re.RecvBranches() {
-		if br.Guard != nil {
-			fc.fail("recv: guard в ветке не реализован (S-F3)")
-		}
 		fc.pushScope()
 
 		cp, err := fc.compilePattern(br.Pattern)
@@ -1856,7 +1853,20 @@ func (fc *funcCompiler) compileRecv(re ast.RecvExpr, d dest) error {
 		patIdx := fc.chunk.AddPattern(cp)
 
 		fc.emit(vm.ABx(vm.MATCHLOCAL, mReg, patIdx))
-		failJmp := fc.emitJump(vm.JMP, 0)
+		fails := []int{fc.emitJump(vm.JMP, 0)}
+
+		// Guard видит связывания паттерна; ложный — к следующей ветке (§12.4).
+		if br.Guard != nil {
+			gMark := fc.nextReg
+			g := fc.allocReg()
+			if err := fc.compileExpr(br.Guard, val(g)); err != nil {
+				fc.popScope()
+				return err
+			}
+			fc.pos = posOf(br.Guard)
+			fails = append(fails, fc.emitJump(vm.JMPIFNOT, g))
+			fc.releaseToMark(gMark)
+		}
 
 		if err := fc.compileBranch(br.Body, d); err != nil {
 			fc.popScope()
@@ -1868,7 +1878,9 @@ func (fc *funcCompiler) compileRecv(re ast.RecvExpr, d dest) error {
 			jEnd = fc.emitJump(vm.JMP, 0)
 		}
 
-		fc.patchHere(failJmp)
+		for _, j := range fails {
+			fc.patchHere(j)
+		}
 		if jEnd >= 0 {
 			endJumps = append(endJumps, jEnd)
 		}
