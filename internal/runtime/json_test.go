@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"math"
 	"strings"
 	"testing"
 )
@@ -152,5 +153,71 @@ func TestJSONDecodeMalformed(t *testing.T) {
 		if _, err := JSONDecode(s); err == nil {
 			t.Errorf("decode %q: want error, got nil", s)
 		}
+	}
+}
+
+func TestJSONBytesMarkerCollision(t *testing.T) {
+	// Map with key "$bytes" must round-trip as Map, not become Bytes.
+	orig := Map([]MapEntry{{Key: Str("$bytes"), Val: Str("aGk=")}})
+	enc, err := JSONEncode(orig)
+	if err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+	got, err := JSONDecode(enc)
+	if err != nil {
+		t.Fatalf("decode %q: %v", enc, err)
+	}
+	if got.Kind == KindBytes {
+		t.Fatalf("collision: decode gave Bytes %s, want Map %s (enc=%q)", got.Inspect(), orig.Inspect(), enc)
+	}
+	if !Equal(got, orig) {
+		t.Fatalf("round-trip: got %s, want %s (enc=%q)", got.Inspect(), orig.Inspect(), enc)
+	}
+	// Bytes themselves still round-trip via the $bytes marker.
+	b := Bytes([]byte("hi")) // "hi" base64-encoded is aGk=
+	bEnc, err := JSONEncode(b)
+	if err != nil {
+		t.Fatalf("encode bytes: %v", err)
+	}
+	bGot, err := JSONDecode(bEnc)
+	if err != nil {
+		t.Fatalf("decode bytes %q: %v", bEnc, err)
+	}
+	if !Equal(bGot, b) {
+		t.Fatalf("bytes round-trip: got %s, want %s", bGot.Inspect(), b.Inspect())
+	}
+}
+
+func TestJSONEncodeInfIsError(t *testing.T) {
+	for _, v := range []Value{
+		Float(math.Inf(1)),
+		Float(math.Inf(-1)),
+		Float(math.NaN()),
+	} {
+		s, err := JSONEncode(v)
+		if err == nil {
+			t.Fatalf("encode %s: want error (RFC 8259), got %q", v.Inspect(), s)
+		}
+		if strings.Contains(s, "Inf") || strings.Contains(s, "NaN") {
+			t.Fatalf("encode %s: leaked non-finite into output %q", v.Inspect(), s)
+		}
+	}
+}
+
+func TestJSONFloatRoundTrip(t *testing.T) {
+	orig := Float(1.0)
+	enc, err := JSONEncode(orig)
+	if err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+	got, err := JSONDecode(enc)
+	if err != nil {
+		t.Fatalf("decode %q: %v", enc, err)
+	}
+	if got.Kind != KindFloat {
+		t.Fatalf("round-trip Float(1.0): got kind %s value %s (enc=%q), want Float", got.Kind, got.Inspect(), enc)
+	}
+	if got.Float != 1.0 {
+		t.Fatalf("round-trip Float(1.0): got %v", got.Float)
 	}
 }
