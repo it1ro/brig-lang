@@ -85,6 +85,7 @@ type funcCompiler struct {
 	upvalues  []upvalueInfo
 	consts    map[constKey]int
 	trapDepth int
+	lambdaSeq int // уникальный суффикс для лямбд этой функции (A-F6)
 	pos       vm.SrcPos
 }
 
@@ -801,11 +802,8 @@ func (fc *funcCompiler) compileVar(name string, d dest) error {
 	if r, ok := fc.resolveLocal(name); ok {
 		return fc.loadVal(d, r)
 	}
-	if mangled, ok := fc.localFns[name]; ok {
-		return fc.loadGlobal(d, mangled)
-	}
-	if fc.parent != nil {
-		if mangled, ok := fc.parent.localFns[name]; ok {
+	for p := fc; p != nil; p = p.parent {
+		if mangled, ok := p.localFns[name]; ok {
 			return fc.loadGlobal(d, mangled)
 		}
 	}
@@ -1773,7 +1771,10 @@ func (fc *funcCompiler) compileIndex(ie ast.IndexExpr, d dest) error {
 
 func (fc *funcCompiler) compileLambda(name string, params []string, body ast.Expr, d dest) error {
 	child := fc.compiler.newFuncCompiler(fc)
-	child.prefix = fc.prefix + "lambda$"
+	// Уникальный префикс на лямбду: иначе одноимённые локальные fn в
+	// разных лямбдах одной функции перезаписывают друг друга в image.Functions (A-F6).
+	child.prefix = fmt.Sprintf("%slambda$%d$", fc.prefix, fc.lambdaSeq)
+	fc.lambdaSeq++
 
 	child.chunk.NumParams = len(params)
 	for i, p := range params {
