@@ -238,12 +238,7 @@ after_clause ::=
 with_expr ::=
     "with" NEWLINE INDENT with_item_list DEDENT [ with_else ]
 
-with_item_list ::=
-    with_item { NEWLINE with_item } [ NEWLINE ]
-
-with_item ::=
-      bind_stmt
-    | stmt
+with_item_list ::= { bind_stmt NEWLINE } stmt_list
 
 bind_stmt ::= pattern "<-" expr
 

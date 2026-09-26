@@ -115,6 +115,7 @@
 **S-F10 · minor · `with`: bind после стейтмента → ошибка парсинга**
 - Где: `expr.go:797-813`. Грамматика: `with_item ::= bind_stmt | stmt`, в любом порядке.
 - Тег: [verified: probe `with_interleave`].
+- Статус: решение пересмотрено в T-95 (#129): чередование запрещено, реализация — T-88.
 
 **S-F11 · minor · Лексер: отдельные формы**
 - `0x_1` принимается, хотя §3.1 запрещает `_` рядом с `x`.
@@ -314,7 +315,7 @@
 | S-F7 | Синт | major | `010`=8, `08`→Float, большой Int→Float | [#16](https://github.com/it1ro/brig-lang/issues/16) |
 | S-F8 | Синт | minor | NEWLINE-sep в args/params/tuple | [#18](https://github.com/it1ro/brig-lang/issues/18) |
 | S-F9 | Синт | minor | Паттерн `()` | [#18](https://github.com/it1ro/brig-lang/issues/18) |
-| S-F10 | Синт | minor | Порядок bind/stmt в `with` | [#18](https://github.com/it1ro/brig-lang/issues/18) |
+| S-F10 | Синт | minor | Порядок bind/stmt в `with` (решение пересмотрено в T-95 (#129): чередование запрещено, реализация — T-88) | [#18](https://github.com/it1ro/brig-lang/issues/18) |
 | S-F11 | Синт | minor | Лексер: `0x_1`, `0b102`, ATOM после `)` | [#17](https://github.com/it1ro/brig-lang/issues/17) |
 | S-F12 | Синт | minor | Guard с `")"` — round-trip не идемпотентен | [#14](https://github.com/it1ro/brig-lang/issues/14) |
 | S-F13 | Синт | major | `Pretty`/`Walk` не видят Decl, golden `.ast` пустые | [#9](https://github.com/it1ro/brig-lang/issues/9) |
