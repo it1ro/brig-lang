@@ -15,7 +15,7 @@ import Calmar.Static
 import LookoutWeb.Plugs
 import LookoutWeb.MonitorController
 alias LookoutWeb.Api.MonitorController as Api
-alias LookoutWeb.Templates.Layouts
+import LookoutWeb.Templates.Layouts
 
 pub fn pipelines() ->
     %{
