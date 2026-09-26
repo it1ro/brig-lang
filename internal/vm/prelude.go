@@ -94,7 +94,7 @@ func InstallPrelude(vm *VM) {
 		case runtime.KindTuple:
 			return runtime.Int(int64(len(a.Tuple))), nil
 		}
-		return runtime.Unit, fmt.Errorf("(:type_error, (:len, %s))", args[0].Inspect())
+		return runtime.Unit, typeErr("len", args[0])
 	})
 
 	// list(...) — вариадический конструктор. Особый случай: единственный
@@ -131,7 +131,7 @@ func InstallPrelude(vm *VM) {
 	defResumable("map", 2, func(args []runtime.Value) (nativeCont, error) {
 		f, xs := args[0], args[1]
 		if xs.Kind != runtime.KindList {
-			return nil, fmt.Errorf("(:type_error, (:map, %s))", xs.Inspect())
+			return nil, typeErr("map", xs)
 		}
 		out := make([]runtime.Value, 0, len(xs.List))
 		return &listCont{
@@ -147,15 +147,14 @@ func InstallPrelude(vm *VM) {
 	defResumable("filter", 2, func(args []runtime.Value) (nativeCont, error) {
 		f, xs := args[0], args[1]
 		if xs.Kind != runtime.KindList {
-			return nil, fmt.Errorf("(:type_error, (:filter, %s))", xs.Inspect())
+			return nil, typeErr("filter", xs)
 		}
 		out := make([]runtime.Value, 0, len(xs.List))
 		return &listCont{
 			f: f, xs: xs.List,
 			visit: func(e, r runtime.Value) (bool, runtime.Value, error) {
 				if r.Kind != runtime.KindBool {
-					return false, runtime.Unit, fmt.Errorf(
-						"(:type_error, (:filter_predicate, %s))", r.Inspect())
+					return false, runtime.Unit, typeErr("filter_predicate", r)
 				}
 				if r.Bool {
 					out = append(out, e)
@@ -169,14 +168,13 @@ func InstallPrelude(vm *VM) {
 	defResumable("find", 2, func(args []runtime.Value) (nativeCont, error) {
 		f, xs := args[0], args[1]
 		if xs.Kind != runtime.KindList {
-			return nil, fmt.Errorf("(:type_error, (:find, %s))", xs.Inspect())
+			return nil, typeErr("find", xs)
 		}
 		return &listCont{
 			f: f, xs: xs.List,
 			visit: func(e, r runtime.Value) (bool, runtime.Value, error) {
 				if r.Kind != runtime.KindBool {
-					return false, runtime.Unit, fmt.Errorf(
-						"(:type_error, (:find_predicate, %s))", r.Inspect())
+					return false, runtime.Unit, typeErr("find_predicate", r)
 				}
 				return r.Bool, runtime.Variant("Some", e), nil
 			},
@@ -187,14 +185,13 @@ func InstallPrelude(vm *VM) {
 	defResumable("all", 2, func(args []runtime.Value) (nativeCont, error) {
 		f, xs := args[0], args[1]
 		if xs.Kind != runtime.KindList {
-			return nil, fmt.Errorf("(:type_error, (:all, %s))", xs.Inspect())
+			return nil, typeErr("all", xs)
 		}
 		return &listCont{
 			f: f, xs: xs.List,
 			visit: func(_, r runtime.Value) (bool, runtime.Value, error) {
 				if r.Kind != runtime.KindBool {
-					return false, runtime.Unit, fmt.Errorf(
-						"(:type_error, (:all_predicate, %s))", r.Inspect())
+					return false, runtime.Unit, typeErr("all_predicate", r)
 				}
 				return !r.Bool, runtime.Bool(false), nil
 			},
@@ -205,14 +202,13 @@ func InstallPrelude(vm *VM) {
 	defResumable("any", 2, func(args []runtime.Value) (nativeCont, error) {
 		f, xs := args[0], args[1]
 		if xs.Kind != runtime.KindList {
-			return nil, fmt.Errorf("(:type_error, (:any, %s))", xs.Inspect())
+			return nil, typeErr("any", xs)
 		}
 		return &listCont{
 			f: f, xs: xs.List,
 			visit: func(_, r runtime.Value) (bool, runtime.Value, error) {
 				if r.Kind != runtime.KindBool {
-					return false, runtime.Unit, fmt.Errorf(
-						"(:type_error, (:any_predicate, %s))", r.Inspect())
+					return false, runtime.Unit, typeErr("any_predicate", r)
 				}
 				return r.Bool, runtime.Bool(true), nil
 			},
@@ -223,7 +219,7 @@ func InstallPrelude(vm *VM) {
 	defResumable("fold", 3, func(args []runtime.Value) (nativeCont, error) {
 		f, acc, xs := args[0], args[1], args[2]
 		if xs.Kind != runtime.KindList {
-			return nil, fmt.Errorf("(:type_error, (:fold, %s))", xs.Inspect())
+			return nil, typeErr("fold", xs)
 		}
 		return &listCont{
 			f: f, xs: xs.List,
@@ -240,7 +236,7 @@ func InstallPrelude(vm *VM) {
 
 	def("Vec.push", 2, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		if args[0].Kind != runtime.KindVector {
-			return runtime.Unit, fmt.Errorf("(:type_error, (:Vec.push, %s))", args[0].Inspect())
+			return runtime.Unit, typeErr("Vec.push", args[0])
 		}
 		out := make([]runtime.Value, 0, len(args[0].Vector)+1)
 		out = append(out, args[0].Vector...)
@@ -250,7 +246,7 @@ func InstallPrelude(vm *VM) {
 
 	def("Vec.set", 3, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		if args[0].Kind != runtime.KindVector {
-			return runtime.Unit, fmt.Errorf("(:type_error, (:Vec.set, %s))", args[0].Inspect())
+			return runtime.Unit, typeErr("Vec.set", args[0])
 		}
 		i, ok := smallIdx(args[1])
 		if !ok || i < 0 || i >= int64(len(args[0].Vector)) {
@@ -266,7 +262,7 @@ func InstallPrelude(vm *VM) {
 
 	def("Vec.get", 2, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		if args[0].Kind != runtime.KindVector {
-			return runtime.Unit, fmt.Errorf("(:type_error, (:Vec.get, %s))", args[0].Inspect())
+			return runtime.Unit, typeErr("Vec.get", args[0])
 		}
 		i, ok := smallIdx(args[1])
 		if !ok || i < 0 || i >= int64(len(args[0].Vector)) {
@@ -277,7 +273,7 @@ func InstallPrelude(vm *VM) {
 
 	def("Vec.len", 1, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		if args[0].Kind != runtime.KindVector {
-			return runtime.Unit, fmt.Errorf("(:type_error, (:Vec.len, %s))", args[0].Inspect())
+			return runtime.Unit, typeErr("Vec.len", args[0])
 		}
 		return runtime.Int(int64(len(args[0].Vector))), nil
 	})
@@ -286,7 +282,7 @@ func InstallPrelude(vm *VM) {
 
 	def("Map.put", 3, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		if args[0].Kind != runtime.KindMap {
-			return runtime.Unit, fmt.Errorf("(:type_error, (:Map.put, %s))", args[0].Inspect())
+			return runtime.Unit, typeErr("Map.put", args[0])
 		}
 		out := make([]runtime.MapEntry, 0, len(args[0].Map)+1)
 		found := false
@@ -306,7 +302,7 @@ func InstallPrelude(vm *VM) {
 
 	def("Map.get", 2, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		if args[0].Kind != runtime.KindMap {
-			return runtime.Unit, fmt.Errorf("(:type_error, (:Map.get, %s))", args[0].Inspect())
+			return runtime.Unit, typeErr("Map.get", args[0])
 		}
 		for _, e := range args[0].Map {
 			if runtime.Equal(e.Key, args[1]) {
@@ -318,7 +314,7 @@ func InstallPrelude(vm *VM) {
 
 	def("Map.remove", 2, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		if args[0].Kind != runtime.KindMap {
-			return runtime.Unit, fmt.Errorf("(:type_error, (:Map.remove, %s))", args[0].Inspect())
+			return runtime.Unit, typeErr("Map.remove", args[0])
 		}
 		out := make([]runtime.MapEntry, 0, len(args[0].Map))
 		for _, e := range args[0].Map {
@@ -331,7 +327,7 @@ func InstallPrelude(vm *VM) {
 
 	def("Map.keys", 1, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		if args[0].Kind != runtime.KindMap {
-			return runtime.Unit, fmt.Errorf("(:type_error, (:Map.keys, %s))", args[0].Inspect())
+			return runtime.Unit, typeErr("Map.keys", args[0])
 		}
 		out := make([]runtime.Value, 0, len(args[0].Map))
 		for _, e := range args[0].Map {
@@ -346,7 +342,7 @@ func InstallPrelude(vm *VM) {
 	// UTF-8 → raise(:invalid_utf8, b) (§C.6).
 	def("Bytes.to_str", 1, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		if args[0].Kind != runtime.KindBytes {
-			return runtime.Unit, fmt.Errorf("(:type_error, (:Bytes.to_str, %s))", args[0].Inspect())
+			return runtime.Unit, typeErr("Bytes.to_str", args[0])
 		}
 		s := string(args[0].Bytes)
 		if !utf8.ValidString(s) {
@@ -359,7 +355,7 @@ func InstallPrelude(vm *VM) {
 	// Str.to_bytes(s) — всегда успешно, возвращает UTF-8-байты (§C.6).
 	def("Str.to_bytes", 1, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		if args[0].Kind != runtime.KindStr {
-			return runtime.Unit, fmt.Errorf("(:type_error, (:Str.to_bytes, %s))", args[0].Inspect())
+			return runtime.Unit, typeErr("Str.to_bytes", args[0])
 		}
 		return runtime.Bytes([]byte(args[0].Str)), nil
 	})

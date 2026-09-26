@@ -117,16 +117,26 @@ func resolveCallee(fn runtime.Value) (callee, error) {
 	return callee{}, typeErr("call", fn)
 }
 
-// checkArity: variadic — argc >= NumParams-1, иначе argc == NumParams.
-func checkArity(c callee, argc int) error {
+// functionClause — ловимый raise (:function_clause, [args]) (§6.1, §10.4):
+// ни один клоз/арность не подошли. args копируется: он может быть окном
+// регистров вызывающего.
+func functionClause(args []runtime.Value) error {
+	return &ErrRaise{Val: runtime.Tuple(
+		runtime.Atom("function_clause"),
+		runtime.List(append([]runtime.Value(nil), args...)...))}
+}
+
+// checkArity: variadic — len(args) >= NumParams-1, иначе == NumParams.
+func checkArity(c callee, args []runtime.Value) error {
+	argc := len(args)
 	if c.chunk.Variadic {
 		if argc < c.chunk.NumParams-1 {
-			return fmt.Errorf("(:function_clause, (%s, %d args))", c.name, argc)
+			return functionClause(args)
 		}
 		return nil
 	}
 	if argc != c.chunk.NumParams {
-		return fmt.Errorf("(:function_clause, (%s, %d args))", c.name, argc)
+		return functionClause(args)
 	}
 	return nil
 }
@@ -150,7 +160,7 @@ func bindArgs(regs []runtime.Value, ch *Chunk, args []runtime.Value) {
 func spreadArgs(args []runtime.Value) ([]runtime.Value, error) {
 	last := args[len(args)-1]
 	if last.Kind != runtime.KindList {
-		return nil, fmt.Errorf("(:type_error, (:spread, %s))", last.Inspect())
+		return nil, typeErr("spread", last)
 	}
 	out := make([]runtime.Value, 0, len(args)-1+len(last.List))
 	out = append(out, args[:len(args)-1]...)
@@ -163,7 +173,7 @@ func frameFromFn(fn runtime.Value, args []runtime.Value) (*Frame, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := checkArity(c, len(args)); err != nil {
+	if err := checkArity(c, args); err != nil {
 		return nil, err
 	}
 	regs := make([]runtime.Value, c.chunk.NumRegs)
@@ -188,8 +198,7 @@ func nativeFrame(name string, k nativeCont) *Frame {
 func (s *Scheduler) enterCall(fn runtime.Value, args []runtime.Value) (*Frame, runtime.Value, error) {
 	if fn.Kind == runtime.KindFunction && fn.Func != nil && fn.Func.IsNative {
 		if ar := fn.Func.Arity; ar >= 0 && ar != len(args) {
-			return nil, runtime.Unit, fmt.Errorf(
-				"(:function_clause, (%s, %d args))", fn.Func.Name, len(args))
+			return nil, runtime.Unit, functionClause(args)
 		}
 		fresh := append([]runtime.Value(nil), args...)
 		if start, ok := s.vm.resumable[fn.Func]; ok {
@@ -806,8 +815,7 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 
 			if cv.Kind == runtime.KindFunction && cv.Func != nil && cv.Func.IsNative {
 				if ar := cv.Func.Arity; ar >= 0 && ar != argc {
-					return fail(fmt.Errorf(
-						"(:function_clause, (%s, %d args))", cv.Func.Name, argc))
+					return fail(functionClause(args))
 				}
 				fresh := append([]runtime.Value(nil), args...)
 				if start, ok := s.vm.resumable[cv.Func]; ok {
@@ -831,7 +839,7 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 
 			c, err := resolveCallee(cv)
 			if err == nil {
-				err = checkArity(c, argc)
+				err = checkArity(c, args)
 			}
 			if err != nil {
 				return fail(err)
@@ -992,8 +1000,11 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 			pidVal := regs[in.B()]
 			msg := regs[in.C()]
 			if pidVal.Kind != runtime.KindPid {
-				return fail(fmt.Errorf(
-					"(:type_error, (:send, %s))", pidVal.Inspect()))
+				err := typeErr("send", pidVal)
+				if f.catch(err) {
+					continue
+				}
+				return fail(err)
 			}
 			regs[in.A()] = s.Send(pidVal.Pid, msg)
 			f.ip++
@@ -1011,8 +1022,11 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 		case WATCH:
 			pidVal := regs[in.B()]
 			if pidVal.Kind != runtime.KindPid {
-				return fail(fmt.Errorf(
-					"(:type_error, (:watch, %s))", pidVal.Inspect()))
+				err := typeErr("watch", pidVal)
+				if f.catch(err) {
+					continue
+				}
+				return fail(err)
 			}
 			ref := s.Watch(a.pid, pidVal.Pid)
 			regs[in.A()] = runtime.Value{Kind: runtime.KindRef, Ref: ref}
@@ -1021,8 +1035,11 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 		case UNWATCH:
 			refVal := regs[in.B()]
 			if refVal.Kind != runtime.KindRef {
-				return fail(fmt.Errorf(
-					"(:type_error, (:unwatch, %s))", refVal.Inspect()))
+				err := typeErr("unwatch", refVal)
+				if f.catch(err) {
+					continue
+				}
+				return fail(err)
 			}
 			s.Unwatch(a.pid, refVal.Ref)
 			regs[in.A()] = runtime.Unit
@@ -1031,8 +1048,11 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 		case MAILBOXSIZE:
 			pidVal := regs[in.B()]
 			if pidVal.Kind != runtime.KindPid {
-				return fail(fmt.Errorf(
-					"(:type_error, (:mailbox_size, %s))", pidVal.Inspect()))
+				err := typeErr("mailbox_size", pidVal)
+				if f.catch(err) {
+					continue
+				}
+				return fail(err)
 			}
 			if t, ok := s.actors[pidVal.Pid]; ok {
 				regs[in.A()] = runtime.Int(int64(len(t.mailbox)))
@@ -1044,23 +1064,32 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 		case RECVTIMER:
 			msVal := regs[in.A()]
 			if msVal.Kind != runtime.KindInt {
-				return fail(fmt.Errorf(
-					"(:type_error, (:after, %s))", msVal.Inspect()))
+				err := typeErr("after", msVal)
+				if f.catch(err) {
+					continue
+				}
+				return fail(err)
 			}
 			var ms int64
 			if msVal.IsSmall {
 				ms = msVal.SmallInt
 			} else {
 				if !msVal.AsBig().IsInt64() {
-					return fail(fmt.Errorf(
-						"(:type_error, (:after, %s))", msVal.Inspect()))
+					err := typeErr("after", msVal)
+					if f.catch(err) {
+						continue
+					}
+					return fail(err)
 				}
 				ms = msVal.AsBig().Int64()
 			}
 			d, ok := recvTimerDuration(ms)
 			if !ok {
-				return fail(fmt.Errorf(
-					"(:type_error, (:after, %s))", msVal.Inspect()))
+				err := typeErr("after", msVal)
+				if f.catch(err) {
+					continue
+				}
+				return fail(err)
 			}
 			a.recvDeadline = time.Now().Add(d)
 			a.timerSeq = s.nextSeq
@@ -1176,8 +1205,7 @@ func recvTimerDuration(ms int64) (time.Duration, bool) {
 
 func vmMakeRange(startV, endV runtime.Value) (runtime.Value, error) {
 	if startV.Kind != runtime.KindInt || endV.Kind != runtime.KindInt {
-		return runtime.Unit, fmt.Errorf("(:type_error, (:range, (%s, %s)))",
-			startV.Inspect(), endV.Inspect())
+		return runtime.Unit, typeErr("range", runtime.Tuple(startV, endV))
 	}
 	sb := startV.AsBig()
 	eb := endV.AsBig()
@@ -1260,7 +1288,7 @@ func vmIndex(obj, idx runtime.Value) (runtime.Value, error) {
 		}
 		return runtime.Variant("None"), nil
 	}
-	return runtime.Unit, fmt.Errorf("(:type_error, (:index, %s))", obj.Inspect())
+	return runtime.Unit, typeErr("index", obj)
 }
 
 // ---- helpers for RECORD / GETFIELD (T-73, §4.7) ----
@@ -1306,7 +1334,7 @@ func vmMakeRecord(shape runtime.Value, vals []runtime.Value) (runtime.Value, err
 		}
 		src := vals[i]
 		if src.Kind != runtime.KindRecord {
-			return runtime.Unit, fmt.Errorf("(:type_error, (:record_spread, %s))", src.Inspect())
+			return runtime.Unit, typeErr("record_spread", src)
 		}
 		for _, f := range src.Record.Fields {
 			if typ != "" && !isDeclared(f.Name) {
@@ -1340,7 +1368,7 @@ func vmGetField(obj, name runtime.Value) (runtime.Value, error) {
 		return runtime.Unit, fmt.Errorf("internal: GETFIELD: field name %s", name.Inspect())
 	}
 	if obj.Kind != runtime.KindRecord {
-		return runtime.Unit, fmt.Errorf("(:type_error, (:field, (%s, %s)))", name.Str, obj.Inspect())
+		return runtime.Unit, typeErr("field", runtime.Tuple(name, obj))
 	}
 	if v, ok := obj.Record.Get(name.Str); ok {
 		return v, nil
@@ -1352,13 +1380,13 @@ func vmGetField(obj, name runtime.Value) (runtime.Value, error) {
 
 func indexToInt(v runtime.Value) (int64, error) {
 	if v.Kind != runtime.KindInt {
-		return 0, fmt.Errorf("(:type_error, (:index_key, %s))", v.Inspect())
+		return 0, typeErr("index_key", v)
 	}
 	if v.IsSmall {
 		return v.SmallInt, nil
 	}
 	if !v.AsBig().IsInt64() {
-		return 0, fmt.Errorf("(:type_error, (:index_key, %s))", v.Inspect())
+		return 0, typeErr("index_key", v)
 	}
 	return v.AsBig().Int64(), nil
 }

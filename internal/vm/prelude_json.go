@@ -1,8 +1,6 @@
 package vm
 
 import (
-	"fmt"
-
 	"github.com/it1ro/brig-lang/internal/runtime"
 )
 
@@ -21,7 +19,7 @@ func InstallJSONPrelude(vm *VM) {
 	// Json.encode(v) / Json.encode(v, { type_tag: Bool }) (§4.7).
 	def("Json.encode", -1, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		if len(args) != 1 && len(args) != 2 {
-			return runtime.Unit, fmt.Errorf("(:function_clause, (Json.encode, %d args))", len(args))
+			return runtime.Unit, functionClause(args)
 		}
 		var opts runtime.JSONOptions
 		if len(args) == 2 {
