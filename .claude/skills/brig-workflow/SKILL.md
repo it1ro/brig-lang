@@ -5,7 +5,7 @@ description: >
   (GitHub Projects v2, it1ro/brig-lang, проект 5), ветка, коммиты [T-NN],
   PR, статусы, зависимости Blocked by, t.Skip("blocked: T-NN"), что делать
   с находками по пути. Использовать в начале и в конце ЛЮБОЙ задачи,
-  которая приходит как issue, номер T-NN или ссылка на TASKS.md, а также
+  которая приходит как issue, номер T-NN или ссылка на tasks/, а также
   при создании новых issues.
 ---
 
@@ -51,7 +51,7 @@ description: >
 
 ## Новый issue
 
-- Title `T-NN · <имя>`; T-NN — следующий свободный номер в десятке волны (занятые — `TASKS.md`, `PROMPT_SETUP_KANBAN.log.md`).
+- Title `T-NN · <имя>`; T-NN — следующий свободный номер в десятке волны (занятые — `tasks/`, `PROMPT_SETUP_KANBAN.log.md`). Если в `tasks/wave-N.md` уже есть полный блок задачи — body берётся из него (без заголовка), а блок после создания issue сворачивается в строку таблицы.
 - Body по образцу любого существующего issue того же типа: meta-комментарий (priority, type, effort, model, wave, depends_on, findings), **Файлы**, **Тест-якорь** (существующий или «создать»), бинарный **DoD** (команда → результат, без «улучшить»), **НЕ делать** (≥3 пункта). Зависимости — первыми строками `> Blocked by #M`.
 - Labels: `<audit|spec-gap>,<task type>,<P>,wave-<N>,<model>`, плюс `blocker` для P0 и `must` для Must-пробела §16. Task type `feature` — реализация фичи из спеки (label `feature`, ветка `feat/`).
 - Добавить на доску (`gh project item-add 5 --owner it1ro --url <url>`) и заполнить Priority, Task type, Effort, Model, Wave, Status. Sprint не ставить.
