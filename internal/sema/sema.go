@@ -434,6 +434,8 @@ func (c *checker) checkExpr(e ast.Expr) {
 			c.pushScope()
 			c.checkPatternBinding(br.Pattern, "branch")
 			c.checkPattern(br.Pattern)
+			// Guard видит связывания паттерна (T-52).
+			c.checkExpr(br.Guard)
 			c.checkBranchBody(br.Body)
 			c.popScope()
 		}

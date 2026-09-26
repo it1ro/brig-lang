@@ -352,3 +352,23 @@ fn main() ->
     s
 `, "trap is not allowed")
 }
+
+// T-52: guard ветки recv — обычное выражение §F.3, видит связывания
+// паттерна; trap и акторный примитив в pipe в нём запрещены.
+func TestRecvGuardChecked(t *testing.T) {
+	wantOK(t, `module Main
+fn main() ->
+    recv
+        (:v, n) when n > 0 -> n
+`)
+	wantErr(t, `module Main
+fn main() ->
+    recv
+        (:v, n) when trap(n) -> n
+`, "trap is not allowed")
+	wantErr(t, `module Main
+fn main() ->
+    recv
+        (:v, n) when (n |> send(1)) -> n
+`, "send")
+}

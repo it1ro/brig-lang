@@ -159,20 +159,56 @@ fn main() ->
 `)
 }
 
-// S-F3: guard в ветках recv не должен молча игнорироваться компилятором.
-// Compile обязан вернуть ошибку, а не матчить ветку по паттерну без
-// проверки условия (T-02).
-func TestAuditRecvGuardRejected(t *testing.T) {
-	src := `module Main
+// S-F3 (T-52): ложный guard ветки recv переводит к следующей ветке
+// (§12.4). Guard видит связывания паттерна и внешние локали; ветка с
+// guard в хвостовой позиции остаётся TAILCALL.
+func TestRecvGuardSelectsBranch(t *testing.T) {
+	runModule(t, `module Main
+fn classify(x) ->
+    send(self(), x)
+    recv
+        n when n > 10 -> :big
+        n -> :small
+fn worker_loop(pending, acc) ->
+    recv
+        (:reply, id, v) when id == pending ->
+            worker_loop(pending, acc + v)
+        (:reply, _, _) ->
+            worker_loop(pending, acc + 1000)
+        (:stop) -> acc
+fn to_else(x) ->
+    send(self(), x)
+    recv
+        n when n == 1 -> :one
+    else msg
+        (:else, msg)
+fn one_line(x) ->
+    send(self(), x)
+    recv n when n == 1 -> :one
 fn main() ->
-    recv (:msg) when true -> :ok
-`
-	err := compileSrc(t, src)
-	if err == nil {
-		t.Fatalf("Compile: want error containing %q, got nil", "guard")
-	}
-	if !strings.Contains(err.Error(), "guard") {
-		t.Fatalf("Compile: want error containing %q, got %v", "guard", err)
+    assert(classify(5) == :small)
+    assert(classify(50) == :big)
+    send(self(), (:reply, 7, 1))
+    send(self(), (:reply, 8, 1))
+    send(self(), (:reply, 7, 2))
+    send(self(), (:stop))
+    assert(worker_loop(7, 0) == 1003)
+    assert(to_else(1) == :one)
+    assert(to_else(2) == (:else, 2))
+    assert(one_line(1) == :one)
+`)
+}
+
+// T-52: guard, ложный во всех ветках, без else — (:recv_clause, msg).
+func TestRecvGuardNoBranchRaises(t *testing.T) {
+	err := runModuleErr(t, `module Main
+fn main() ->
+    send(self(), 5)
+    recv
+        n when n > 10 -> :big
+`)
+	if err == nil || !strings.Contains(err.Error(), "recv_clause") {
+		t.Fatalf("want :recv_clause raise, got %v", err)
 	}
 }
 
