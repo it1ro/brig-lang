@@ -1098,6 +1098,9 @@ func (fc *funcCompiler) compileGenericCall(call ast.CallExpr, d dest) error {
 	}
 
 	fc.pos = posOf(call)
+	if d.tail && fc.trapDepth > 0 {
+		fc.fail("TAILCALL under active trap (trapDepth=%d)", fc.trapDepth)
+	}
 	if d.tail {
 		fc.emit(vm.ABC(vm.TAILCALL, base, argc, 0))
 	} else {
@@ -1129,6 +1132,9 @@ func (fc *funcCompiler) compileGlobalCall(name string, args []ast.Expr, d dest, 
 	}
 
 	fc.pos = posOf(pos)
+	if d.tail && fc.trapDepth > 0 {
+		fc.fail("TAILCALL under active trap (trapDepth=%d)", fc.trapDepth)
+	}
 	if d.tail {
 		fc.emit(vm.ABC(vm.TAILCALL, base, argc, 0))
 	} else {
