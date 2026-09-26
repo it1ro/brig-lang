@@ -694,6 +694,12 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 				}
 				return fail(err)
 			}
+			if runtime.IsNaNOperand(av, bv) {
+				// NaN не упорядочен: <, >, <=, >= — false (§7.4).
+				regs[in.A()] = runtime.Bool(false)
+				f.ip++
+				break
+			}
 			c, err := runtime.Compare(av, bv)
 			if err != nil {
 				// Несравнимые значения (§7.4: Function, вложенный
