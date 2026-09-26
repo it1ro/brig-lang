@@ -124,13 +124,18 @@ definite assignment (dataflow: регистр определён на всех �
 к точке чтения, включая ветку `TRAPBEGIN`-обработчика). Включается
 `compiler.Verify = true` (в тестах — всегда) или `BRIG_VERIFY=1` в CLI.
 
-**CFG MATCHLOCAL/RECVTAKE (I-F1, T-36 #25):** `successors` моделирует
-`MATCHLOCAL → {ip+1, ip+2}` и `RECVTAKE` с `sBx≠0 → {ip+1, ip+1+sBx}`
-(`sBx==0` — только `{ip+1}`, block без after). На success-ребре
-`MATCHLOCAL` (ip+2) `verifyDefiniteAssignment` помечает слоты
-`Patterns[Bx].Slots()` определёнными; fail-ребро (ip+1, JMP) — нет.
-Якоря: `TestVerifyMatchLocalBranchUndefinedReg`,
-`TestVerifyRecvAfterUndefinedReg`, `TestCompiledPatternSlots`.
+**CFG MATCHLOCAL/RECVTAKE (I-F1, T-36 #25, T-55 #92):** все рёбра
+с состоянием definite assignment строит одна функция `edges`
+(`verify.go`): `MATCHLOCAL → {ip+1, ip+2}`, слоты
+`Patterns[Bx].Slots()` определены только на success-ребре ip+2;
+`RECVTAKE` с `sBx≠0 → {ip+1, ip+1+sBx}`, `R[A]` определён только на
+ребре сообщения ip+1 (timeout-ребро VM не пишет); `TRAPBEGIN` —
+обработчик с `errReg`. Новый опкод с несколькими исходами — добавлять
+туда же. `verifyMatchLocal` структурно (и в недостижимом коде)
+проверяет: JMP на ip+1, ip+2 внутри кода, `Bx` внутри `Patterns`, слоты
+в `[0, NumRegs)`. `Slots()` обязан совпадать с записями
+`MatchPattern` — новый `PatternKind` добавлять в оба и в
+`TestCompiledPatternSlotsMatchesMatchPattern`.
 
 **Не отключать `Verify` в тестах компилятора/VM** — это единственная
 защита, ловящая рассинхрон между `emit`, `RegUse` и реальной семантикой
