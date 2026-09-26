@@ -765,13 +765,14 @@ func (fc *funcCompiler) declareLocalFns(stmts []ast.Stmt) error {
 }
 
 // resolveLocalFn — mangled-имя локальной fn и её владелец (fn, в
-// которой она объявлена) по правилам compileVar: локаль затеняет,
-// дальше localFns своей fn и предков.
+// которой она объявлена) по правилам compileVar: по уровням parent,
+// на каждом локаль уровня затеняет localFns этого уровня и предков
+// (T-56).
 func (fc *funcCompiler) resolveLocalFn(name string) (string, *funcCompiler, bool) {
-	if _, ok := fc.resolveLocal(name); ok {
-		return "", nil, false
-	}
 	for p := fc; p != nil; p = p.parent {
+		if _, ok := p.resolveLocal(name); ok {
+			return "", nil, false
+		}
 		if mangled, ok := p.localFns[name]; ok {
 			return mangled, p, true
 		}
