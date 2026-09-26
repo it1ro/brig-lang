@@ -1,6 +1,6 @@
 == main arity=0 params=0 regs=7 consts=4 patterns=0 ==
 0000   0:0   LOADK       r1 k0 ; 100
-0001   0:0   LOADK       r3 k1 ; #<function main$lambda$/1>
+0001   0:0   LOADK       r3 k1 ; #<function main$lambda$0$/1>
 0002   0:0   MOVE        r4 r1
 0003   0:0   MAKECLOSURE r2 <- r3 +1
 0004   0:0   GETGLOBAL   r3 k2 ; print
