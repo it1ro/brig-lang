@@ -3,6 +3,8 @@ package vm
 import (
 	"strings"
 	"testing"
+
+	"github.com/it1ro/brig-lang/internal/runtime"
 )
 
 func mkChunk(n int, code ...Instr) *Chunk {
@@ -58,9 +60,7 @@ func TestVerifyMatchLocalBranchUndefinedReg(t *testing.T) {
 		ABC(RAISE, 0, 0, 0),   // 4
 	)
 	c.AddPattern(&CompiledPattern{Kind: PatWildcard})
-	if err := Verify(c); err == nil {
-		t.Errorf("Verify accepted read of undefined r2 on MATCHLOCAL success edge")
-	}
+	wantVerifyError(t, c, "RETURN at 3 reads undefined register r2")
 }
 
 // I-F1: чтение неопределённого r2 в after-ветке RECVTAKE (T-36).
@@ -70,8 +70,183 @@ func TestVerifyRecvAfterUndefinedReg(t *testing.T) {
 		ABC(RETURN, 0, 0, 0), // 1
 		ABC(RETURN, 2, 0, 0), // 2: after-body reads undefined r2
 	)
-	if err := Verify(c); err == nil {
-		t.Errorf("Verify accepted read of undefined r2 in after-body")
+	wantVerifyError(t, c, "RETURN at 2 reads undefined register r2")
+}
+
+func wantVerifyError(t *testing.T, c *Chunk, want string) {
+	t.Helper()
+	err := Verify(c)
+	if err == nil {
+		t.Fatalf("Verify: want error containing %q, got nil", want)
+	}
+	if !strings.Contains(err.Error(), want) {
+		t.Fatalf("Verify: want error containing %q, got %v", want, err)
+	}
+}
+
+// T-55: timeout-ребро RECVTAKE не пишет R[A] — чтение R[A] в after-теле
+// должно отвергаться, а на ребре сообщения (ip+1) — приниматься.
+func TestVerifyRecvAfterReadsMsgReg(t *testing.T) {
+	c := mkChunk(2,
+		AsBx(RECVTAKE, 0, 1), // 0: r0 = msg; after -> 2
+		ABC(RETURN, 0, 0, 0), // 1: message edge, r0 defined
+		ABC(RETURN, 0, 0, 0), // 2: after edge, r0 undefined
+	)
+	wantVerifyError(t, c, "RETURN at 2 reads undefined register r0")
+
+	ok := mkChunk(2,
+		AsBx(RECVTAKE, 0, 1), // 0: after -> 2
+		ABC(RETURN, 0, 0, 0), // 1: reads r0 on message edge
+		ABx(LOADK, 1, 0),     // 2: after-body
+		ABC(RETURN, 1, 0, 0), // 3
+	)
+	if err := Verify(ok); err != nil {
+		t.Fatalf("Verify rejected read of R[A] on RECVTAKE message edge: %v", err)
+	}
+}
+
+// T-55: слоты паттерна определены на success-ребре MATCHLOCAL (ip+2).
+func TestVerifyMatchLocalSuccessSlotDefined(t *testing.T) {
+	c := mkChunk(2,
+		AsBx(RECVTAKE, 0, 0),  // 0: r0 = msg
+		ABx(MATCHLOCAL, 0, 0), // 1: r1 <- pattern slot
+		AsBx(JMP, 0, 1),       // 2: fail -> 4
+		ABC(RETURN, 1, 0, 0),  // 3: success body reads r1
+		ABC(RAISE, 0, 0, 0),   // 4
+	)
+	c.AddPattern(&CompiledPattern{Kind: PatIdent, Slot: 1})
+	if err := Verify(c); err != nil {
+		t.Fatalf("Verify rejected read of pattern slot on success edge: %v", err)
+	}
+}
+
+// T-55: на fail-ребре MATCHLOCAL слоты паттерна не определены.
+func TestVerifyMatchLocalFailEdgeSlotUndefined(t *testing.T) {
+	c := mkChunk(2,
+		AsBx(RECVTAKE, 0, 0),  // 0
+		ABx(MATCHLOCAL, 0, 0), // 1
+		AsBx(JMP, 0, 1),       // 2: fail -> 4
+		ABC(RETURN, 1, 0, 0),  // 3
+		ABC(RETURN, 1, 0, 0),  // 4: fail path reads r1
+	)
+	c.AddPattern(&CompiledPattern{Kind: PatIdent, Slot: 1})
+	wantVerifyError(t, c, "RETURN at 4 reads undefined register r1")
+}
+
+// T-55: success-ребро MATCHLOCAL (ip+2) не может выходить за конец кода.
+func TestVerifyMatchLocalSuccessOutOfRange(t *testing.T) {
+	c := mkChunk(1,
+		AsBx(RECVTAKE, 0, 0),  // 0
+		ABx(MATCHLOCAL, 0, 0), // 1: success -> 3 == len(Code)
+		AsBx(JMP, 0, -3),      // 2: fail -> 0
+	)
+	c.AddPattern(&CompiledPattern{Kind: PatWildcard})
+	wantVerifyError(t, c, "MATCHLOCAL at 1: success target 3 out of range")
+}
+
+// T-55: индекс паттерна проверяется и в недостижимом коде.
+func TestVerifyMatchLocalBadPatternIndex(t *testing.T) {
+	c := mkChunk(1,
+		ABx(LOADK, 0, 0),      // 0
+		ABC(RETURN, 0, 0, 0),  // 1
+		ABx(MATCHLOCAL, 0, 5), // 2: unreachable, no pattern 5
+		AsBx(JMP, 0, -4),      // 3: -> 0
+		ABC(RETURN, 0, 0, 0),  // 4
+	)
+	wantVerifyError(t, c, "MATCHLOCAL at 2: pattern 5 out of range")
+}
+
+// T-55: слоты паттерна обязаны лежать в [0, NumRegs).
+func TestVerifyPatternSlotOutOfRange(t *testing.T) {
+	c := mkChunk(2,
+		AsBx(RECVTAKE, 0, 0),  // 0
+		ABx(MATCHLOCAL, 0, 0), // 1
+		AsBx(JMP, 0, 1),       // 2: fail -> 4
+		ABC(RETURN, 0, 0, 0),  // 3
+		ABC(RAISE, 0, 0, 0),   // 4
+	)
+	c.AddPattern(&CompiledPattern{Kind: PatTuple, Subs: []*CompiledPattern{
+		{Kind: PatIdent, Slot: 1},
+		{Kind: PatIdent, Slot: 7},
+	}})
+	wantVerifyError(t, c, "MATCHLOCAL at 1: pattern 0 slot 7 out of range [0,2)")
+}
+
+// T-55: Slots() совпадает с регистрами, которые реально пишет MatchPattern
+// при успешном сопоставлении — для каждого PatternKind.
+func TestCompiledPatternSlotsMatchesMatchPattern(t *testing.T) {
+	ident := func(slot int) *CompiledPattern {
+		return &CompiledPattern{Kind: PatIdent, Slot: slot}
+	}
+	tests := []struct {
+		kind PatternKind
+		pat  *CompiledPattern
+		val  runtime.Value
+	}{
+		{PatWildcard, &CompiledPattern{Kind: PatWildcard}, runtime.Int(1)},
+		{PatIdent, ident(0), runtime.Int(1)},
+		{PatLiteral, &CompiledPattern{Kind: PatLiteral, Lit: runtime.Int(1)}, runtime.Int(1)},
+		{PatCtor, &CompiledPattern{Kind: PatCtor, Tag: "Some", Subs: []*CompiledPattern{ident(1)}},
+			runtime.Variant("Some", runtime.Int(1))},
+		{PatTuple, &CompiledPattern{Kind: PatTuple, Subs: []*CompiledPattern{
+			ident(0), {Kind: PatWildcard}, ident(2)}},
+			runtime.Tuple(runtime.Int(1), runtime.Int(2), runtime.Int(3))},
+		{PatList, &CompiledPattern{Kind: PatList, HasRest: true, RestSlot: 3,
+			Subs: []*CompiledPattern{ident(1)}},
+			runtime.List(runtime.Int(1), runtime.Int(2))},
+		{PatList, &CompiledPattern{Kind: PatList, HasRest: true, RestSlot: -1,
+			Subs: []*CompiledPattern{ident(1)}},
+			runtime.List(runtime.Int(1), runtime.Int(2))},
+		{PatMap, &CompiledPattern{Kind: PatMap, Pairs: []MapPatPair{
+			{Key: runtime.Atom("a"), Value: ident(2)},
+			{Key: runtime.Atom("b"), Value: &CompiledPattern{Kind: PatWildcard}}}},
+			runtime.Map([]runtime.MapEntry{
+				{Key: runtime.Atom("a"), Val: runtime.Int(1)},
+				{Key: runtime.Atom("b"), Val: runtime.Int(2)}})},
+		{PatAs, &CompiledPattern{Kind: PatAs, AsSlot: 4, Inner: &CompiledPattern{
+			Kind: PatTuple, Subs: []*CompiledPattern{ident(0)}}},
+			runtime.Tuple(runtime.Int(1))},
+	}
+
+	covered := map[PatternKind]bool{}
+	for _, tt := range tests {
+		covered[tt.kind] = true
+		unset := runtime.Atom("__unset__")
+		locals := make([]runtime.Value, 8)
+		for i := range locals {
+			locals[i] = unset
+		}
+		if !MatchPattern(tt.val, tt.pat, locals) {
+			t.Fatalf("%s: MatchPattern(%s) = false, want true",
+				FormatCompiledPattern(tt.pat), tt.val.Inspect())
+		}
+		written := map[int]bool{}
+		for i, v := range locals {
+			if !runtime.Equal(v, unset) {
+				written[i] = true
+			}
+		}
+		slots := map[int]bool{}
+		for _, s := range tt.pat.Slots() {
+			slots[s] = true
+		}
+		if len(written) != len(slots) {
+			t.Errorf("%s: MatchPattern wrote %v, Slots() = %v",
+				FormatCompiledPattern(tt.pat), written, slots)
+			continue
+		}
+		for s := range written {
+			if !slots[s] {
+				t.Errorf("%s: MatchPattern wrote %v, Slots() = %v",
+					FormatCompiledPattern(tt.pat), written, slots)
+				break
+			}
+		}
+	}
+	for k := PatWildcard; k <= PatAs; k++ {
+		if !covered[k] {
+			t.Errorf("PatternKind %d not covered", k)
+		}
 	}
 }
 

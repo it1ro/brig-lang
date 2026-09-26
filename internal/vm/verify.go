@@ -143,19 +143,39 @@ func RegUse(in Instr) (reads, writes []int, err error) {
 	return nil, nil, fmt.Errorf("unknown opcode %d", in.Op())
 }
 
-// verifyMatchLocal: за каждым MATCHLOCAL обязана идти JMP.
+// verifyMatchLocal: структура MATCHLOCAL — за ним идёт JMP (fail-ребро),
+// success-ребро ip+2 внутри кода, паттерн Bx существует, его слоты —
+// регистры кадра. Проверяется и в недостижимом коде.
 func verifyMatchLocal(c *Chunk) error {
+	n := len(c.Code)
 	for ip, in := range c.Code {
 		if in.Op() != MATCHLOCAL {
 			continue
 		}
-		if ip+1 >= len(c.Code) {
+		if ip+1 >= n {
 			return fmt.Errorf("verify: MATCHLOCAL at %d: no following JMP", ip)
 		}
 		if c.Code[ip+1].Op() != JMP {
 			return fmt.Errorf(
 				"verify: MATCHLOCAL at %d: next op is %s, want JMP",
 				ip, c.Code[ip+1].Op())
+		}
+		if ip+2 >= n {
+			return fmt.Errorf(
+				"verify: MATCHLOCAL at %d: success target %d out of range [0,%d)",
+				ip, ip+2, n)
+		}
+		bx := in.Bx()
+		if bx < 0 || bx >= len(c.Patterns) {
+			return fmt.Errorf(
+				"verify: MATCHLOCAL at %d: pattern %d out of range", ip, bx)
+		}
+		for _, slot := range c.Patterns[bx].Slots() {
+			if slot >= c.NumRegs {
+				return fmt.Errorf(
+					"verify: MATCHLOCAL at %d: pattern %d slot %d out of range [0,%d)",
+					ip, bx, slot, c.NumRegs)
+			}
 		}
 	}
 	return nil
@@ -226,57 +246,20 @@ func verifyDefiniteAssignment(c *Chunk) error {
 			if in[ip] == nil {
 				continue
 			}
-			ins := c.Code[ip]
-			out := cloneBoolSlice(in[ip])
-			applyWrites(ins, out)
-
-			propagate := func(succ int, state []bool) {
-				if succ < 0 || succ >= n {
-					return
+			for _, e := range edges(c, ip, in[ip]) {
+				if e.target < 0 || e.target >= n {
+					continue
 				}
-				if in[succ] == nil {
-					in[succ] = state
+				if in[e.target] == nil {
+					in[e.target] = e.state
 					changed = true
-					return
+					continue
 				}
-				merged := intersectBoolSlices(in[succ], state)
-				if !equalBoolSlices(merged, in[succ]) {
-					in[succ] = merged
+				merged := intersectBoolSlices(in[e.target], e.state)
+				if !equalBoolSlices(merged, in[e.target]) {
+					in[e.target] = merged
 					changed = true
 				}
-			}
-
-			// MATCHLOCAL: fail → ip+1 (без слотов паттерна), success → ip+2
-			// (слоты Patterns[Bx]). Не гоняем generic successors, иначе
-			// оба ребра получат одинаковый out без слотов.
-			if ins.Op() == MATCHLOCAL {
-				propagate(ip+1, out)
-				successOut := cloneBoolSlice(out)
-				bx := ins.Bx()
-				if bx < 0 || bx >= len(c.Patterns) {
-					return fmt.Errorf(
-						"verify: MATCHLOCAL at %d: pattern %d out of range",
-						ip, bx)
-				}
-				for _, slot := range c.Patterns[bx].Slots() {
-					if slot >= 0 && slot < len(successOut) {
-						successOut[slot] = true
-					}
-				}
-				propagate(ip+2, successOut)
-			} else {
-				for _, succ := range successors(c.Code, ip) {
-					propagate(succ, out)
-				}
-			}
-
-			if ins.Op() == TRAPBEGIN {
-				handlerOut := cloneBoolSlice(out)
-				errReg := ins.A()
-				if errReg >= 0 && errReg < len(handlerOut) {
-					handlerOut[errReg] = true
-				}
-				propagate(ip+1+ins.SBx(), handlerOut)
 			}
 		}
 	}
@@ -308,40 +291,57 @@ func applyWrites(in Instr, defined []bool) {
 	if err != nil {
 		return
 	}
-	for _, r := range writes {
+	markDefined(defined, writes...)
+}
+
+func markDefined(defined []bool, regs ...int) {
+	for _, r := range regs {
 		if r >= 0 && r < len(defined) {
 			defined[r] = true
 		}
 	}
-	switch in.Op() {
-	case MATCHLOCAL:
-		if in.A() >= 0 && in.A() < len(defined) {
-			defined[in.A()] = true
-		}
-	}
 }
 
-// successors возвращает индексы инструкций-преемников.
-func successors(code []Instr, ip int) []int {
-	in := code[ip]
+// cfgEdge — ребро CFG с множеством регистров, определённых на нём.
+type cfgEdge struct {
+	target int
+	state  []bool
+}
+
+// edges возвращает рёбра из ip и состояние definite assignment на каждом.
+// before — состояние на входе в ip. Все опкоды с несколькими исходами и
+// рёбрами, на которых набор записанных регистров различается, описаны здесь.
+func edges(c *Chunk, ip int, before []bool) []cfgEdge {
+	in := c.Code[ip]
+	out := cloneBoolSlice(before)
+	applyWrites(in, out)
 	switch in.Op() {
 	case JMP:
-		return []int{ip + 1 + in.SBx()}
+		return []cfgEdge{{ip + 1 + in.SBx(), out}}
 	case JMPIFNOT, JMPIF:
-		return []int{ip + 1, ip + 1 + in.SBx()}
+		return []cfgEdge{{ip + 1, out}, {ip + 1 + in.SBx(), out}}
 	case MATCHLOCAL:
-		// fail → JMP at ip+1; success → body at ip+2 (skip JMP).
-		return []int{ip + 1, ip + 2}
+		// fail → JMP at ip+1 (слоты паттерна не определены);
+		// success → ip+2 (слоты Patterns[Bx]).
+		success := cloneBoolSlice(out)
+		markDefined(success, c.Patterns[in.Bx()].Slots()...)
+		return []cfgEdge{{ip + 1, out}, {ip + 2, success}}
 	case RECVTAKE:
 		if in.SBx() != 0 {
-			// message → ip+1 (writes A); after/timeout → ip+1+sBx (no write).
-			return []int{ip + 1, ip + 1 + in.SBx()}
+			// message → ip+1 (R[A] записан); after/timeout → ip+1+sBx
+			// (VM не пишет R[A], состояние — как на входе).
+			return []cfgEdge{{ip + 1, out}, {ip + 1 + in.SBx(), before}}
 		}
-		return []int{ip + 1} // block, no after
+		return []cfgEdge{{ip + 1, out}} // block, no after
+	case TRAPBEGIN:
+		// Обработчик: errReg пишется неявно при raise.
+		handler := cloneBoolSlice(out)
+		markDefined(handler, in.A())
+		return []cfgEdge{{ip + 1, out}, {ip + 1 + in.SBx(), handler}}
 	case RETURN, TAILCALL, RAISE:
 		return nil
 	default:
-		return []int{ip + 1}
+		return []cfgEdge{{ip + 1, out}}
 	}
 }
 
