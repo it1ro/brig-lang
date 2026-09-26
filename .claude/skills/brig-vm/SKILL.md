@@ -41,7 +41,8 @@ description: >
   `trap(dec"1"+"a")` → `Error(...)`, а `trap(1+"a")` убивает актор.
   **Открытый design decision #42 (A-F4)** — не унифицировать до решения.
 - **K-4.** Редукция — это `CALL`/`TAILCALL` в байткод-функцию, `RETURN`,
-  шаг unwind. Вызов native не тратит редукцию.
+  шаг unwind. Вызов native не тратит редукцию; колбэк возобновляемого
+  натива (`map`/`filter`/…, см. ниже) — обычный `CALL` в байткод, тратит.
 - **K-5.** Native получает свежий слайс аргументов, не окно регистров
   (см. `brig-compiler`, но проверка дублируется и здесь на уровне
   `CALL`/`TAILCALL` в `scheduler.go`).
@@ -61,7 +62,7 @@ description: >
   деталь реализации; эталон — этот run-loop, эволюция — N:M, не
   goroutine-per-actor. `TestVerifyAF1SingleGoroutineScheduler` —
   spawn 100 акторов даёт рост `NumGoroutine` ≪ 100. Не переписывать
-  scheduler на goroutine-per-actor; fairness `callSync` — T-58 (#144).
+  scheduler на goroutine-per-actor.
 - **Мёртвые акторы удаляются из `s.actors`** при `actorDone`/`actorFailed`
   через `reapActor` (кроме `mainPid`; I-F9, T-40 #29). Поэтому `watch` на
   завершившийся pid даёт немедленный `:down` с `:noproc`, `send` →
@@ -81,12 +82,23 @@ description: >
   отсутствии активного handler'а в текущем кадре; если ни один родительский
   кадр не поймал — актор падает (`actorFailed`), наблюдатели получают
   `(:down, ref, (:raise, val))`.
-- `callSync` — синхронный вызов вне обычного scheduler-цикла (используется
-  прелюдией через `runtime.Caller`); он **не может** заходить в `recv` на
-  пустом ящике — это должно фейлиться явной ошибкой
+- **Возобновляемые нативы** (G3 fairness, T-58 #144): `map`, `filter`,
+  `find`, `all`, `any`, `fold` зарегистрированы `defResumable` в
+  `VM.resumable`. `CALL` из байткода (`enterCall`) кладёт на стек актора
+  кадр натива (`Frame.cont != nil`, `chunk == nil`, результат колбэка — в
+  `regs[0]`), `TAILCALL` превращает текущий кадр в такой. `stepNative`
+  пушит байткод-колбэк обычным кадром — редукции тратятся, актор
+  вытесняется, `recv` в колбэке блокирует актор как в обычной функции.
+  Raise колбэка всплывает сквозь кадр натива (handlers у него нет);
+  `attachTrace` кадры натива пропускает. Новый HOF прелюдии с колбэком —
+  тоже через `defResumable`, не через `c.Call`, иначе он снова держит
+  run-loop. Якорь `TestFairnessPreludeCallback`.
+- `callSync` — синхронный вызов вне scheduler-цикла через `runtime.Caller`
+  (`vm.Call`: тестовый фреймворк `Test.*`, HOF, вызванный из другого
+  натива, — через `runSync`); fairness там нет. Он **не может** заходить в
+  `recv` на пустом ящике — это должно фейлиться явной ошибкой
   (`"recv in synchronous call context"`), не зависать. При `stepFailed`
-  вызывает `tryUnwindRaise` так же, как `runSlice` — `trap` в колбэке
-  прелюдии ловит raise из вложенного кадра (`map(fn (x) -> trap(g(x)), xs)`).
+  вызывает `tryUnwindRaise` так же, как `runSlice`.
 - Таймеры (I-F14, T-15 #13): переполнение `ms`→`Duration` в `RECVTIMER`
   закрыто T-47 (#60) — `recvTimerDuration` отвергает ms вне
   `[MinInt64/1e6, MaxInt64/1e6]` и big.Int вне int64 как

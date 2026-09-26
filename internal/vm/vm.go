@@ -44,11 +44,16 @@ type VM struct {
 	tests        []testCase
 	currentGroup string
 	args         []string
+	// resumable — нативы, исполняемые кадром актора (map, filter, …; T-58).
+	resumable map[*runtime.FuncValue]resumableFunc
 }
 
 // New создаёт ВМ с установленной прелюдией.
 func New() *VM {
-	vm := &VM{globals: make(map[string]runtime.Value)}
+	vm := &VM{
+		globals:   make(map[string]runtime.Value),
+		resumable: make(map[*runtime.FuncValue]resumableFunc),
+	}
 	vm.scheduler = NewScheduler(vm)
 	InstallPrelude(vm)
 	InstallJSONPrelude(vm)
