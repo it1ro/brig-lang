@@ -1,0 +1,27 @@
+# Точка входа — обычный fn main() в Main (§11.2), никакой магии запуска.
+# Graceful shutdown — это просто recv сигнала ОС.
+# NEEDS: Signal-порт (02/R2), Supervisor в stdlib (02/R3-R4), Config (04),
+#        модули как значения (03/L5), Sys.exit (04)
+module Main
+
+import Lookout.Application
+import Supervisor
+import Signal
+import Log
+
+fn main() ->
+    config = Config.load(Lookout.Config, Sys.env_name())
+    sup = Application.start(config)
+    Signal.subscribe([:sigterm, :sigint])
+    Log.info("lookout started", { port: config.port })
+    recv
+        (:signal, sig) ->
+            Log.info("shutting down", { signal: sig })
+            # Supervisor.stop гасит детей в обратном порядке старта:
+            # Endpoint перестаёт принимать, соединения дорабатывают до дедлайна,
+            # затем чекеры, PubSub и Repo.
+            Supervisor.stop(sup, :shutdown, { timeout: 15_000 })
+            Sys.exit(0)
+        (:down, _, reason) ->
+            Log.error("supervision tree died", { reason: reason })
+            Sys.exit(1)

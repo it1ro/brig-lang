@@ -1,0 +1,25 @@
+<%# Статус обновляется вживую: браузер слушает /api/monitors/:id/events (SSE).
+    Весь «real-time» на сервере — recv-цикл в api/monitor_controller.brig.
+    NEEDS: компилируемые шаблоны (03/L10) %>
+<section>
+  <h1>{assigns.monitor.name}</h1>
+  <p><code>{assigns.monitor.url}</code> · каждые {assigns.monitor.interval_ms div 1000} с</p>
+
+  <p>Статус:
+    <strong id="status" data-events={"/api/monitors/\(assigns.monitor.id)/events"}>
+      {to_str(assigns.monitor.status)}
+    </strong>
+  </p>
+
+  <table>
+    <thead><tr><th>Когда</th><th>Статус</th><th>Время ответа</th></tr></thead>
+    <tbody>
+      <tr :for={c <- assigns.checks}>
+        <td>{Time.format(c.checked_at, :short)}</td>
+        <td>{c.status}</td>
+        <td>{c.took_ms} мс</td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+<script src="/assets/live-status.js"></script>

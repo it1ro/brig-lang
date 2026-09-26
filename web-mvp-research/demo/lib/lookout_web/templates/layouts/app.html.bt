@@ -1,0 +1,16 @@
+<%# Лэйаут — обычная функция шаблона; inner — уже отрендеренный Html.Safe.
+    NEEDS: компилируемые шаблоны (03/L10) %>
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content={assigns.csrf_token}>
+  <title>{assigns.title} · Lookout</title>
+  <link rel="stylesheet" href="/assets/app.css">
+</head>
+<body>
+  <p :for={msg <- Conn.flash_messages(assigns.conn)} class="flash">{msg}</p>
+  <main>{assigns.inner}</main>
+</body>
+</html>

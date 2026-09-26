@@ -1,0 +1,50 @@
+# Маршруты — значение, а не DSL: список, собранный обычными функциями.
+# Router.compile строит дерево на старте и падает на конфликтах ДО listen.
+# Ссылка на действие — функция, а не строка "monitors#show": опечатка
+# ловится компилятором, переход к определению работает в редакторе.
+#
+# NEEDS: pub fn (03/L3), стабильная identity функций модуля как ключ для
+#        Router.path (03/L5), Calmar.Router/Plug/Session/Csrf (06)
+module LookoutWeb.Router
+
+import Calmar.Router
+import Calmar.Plug
+import Calmar.Session
+import Calmar.Csrf
+import Calmar.Static
+import LookoutWeb.Plugs
+import LookoutWeb.MonitorController
+alias LookoutWeb.Api.MonitorController as Api
+
+pub fn pipelines() ->
+    %{
+        :browser => [
+            Plug.accepts(["html"]),
+            Session.fetch,
+            Csrf.protect,
+            Plug.secure_headers,
+        ],
+        :api => [
+            Plug.accepts(["json"]),
+            Plugs.require_token,
+        ],
+    }
+
+pub fn routes() ->
+    [
+        Static.serve("/assets", "priv/static"),
+
+        Router.scope("/", :browser, [
+            Router.get("/",              MonitorController.index),
+            Router.get("/monitors/new",  MonitorController.new),
+            Router.post("/monitors",     MonitorController.create),
+            Router.get("/monitors/:id",  MonitorController.show),
+        ]),
+
+        Router.scope("/api", :api, [
+            Router.get("/monitors",             Api.index),
+            Router.post("/monitors",            Api.create),
+            Router.post("/monitors/:id/check",  Api.check_now),
+            Router.get("/monitors/:id/events",  Api.events),     # SSE
+        ]),
+    ]

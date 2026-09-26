@@ -1,0 +1,58 @@
+# Один актор на монитор. Вместо cron + очереди + воркеров — рекурсивный recv.
+# Упал (кривой ответ, баг в парсинге) — супервизор перезапустит только его.
+#
+# NEEDS: pub fn (03/L3), реестр имён с кортежным ключом (02/R5, Q-reg),
+#        Timer.send_after (02/R6), Time.monotonic_ms/now (02/R7),
+#        Http.Client (04), Server.call/reply (04), доступ к полям (03/L4),
+#        ref-ожидание без чужих сообщений внутри Http.Client (02/R12, Q-await)
+module Lookout.Monitors.Checker
+
+import Http.Client
+import Lookout.Monitors
+import Lookout.Monitors.Monitor
+
+pub fn child_spec(monitor, opts) ->
+    {
+        id: (:checker, monitor.id),
+        start: () -> spawn_linked(() -> init(monitor, opts)),
+        restart: :permanent,
+    }
+
+fn init(monitor, opts) ->
+    register((:checker, monitor.id), self())
+    _ = Timer.send_after(0, self(), :tick)
+    loop({ monitor: monitor, opts: opts })
+
+fn loop(state) ->
+    recv
+        (:tick) ->
+            _ = Timer.send_after(state.monitor.interval_ms, self(), :tick)
+            loop(check(state))
+        (:call, from, :check_now) ->
+            next = check(state)
+            Server.reply(from, Ok(next.monitor.status))
+            loop(next)
+        (:reconfigure, monitor) ->
+            loop({ ..state, monitor: monitor })
+        (:stop) ->
+            :ok
+
+fn check(state) ->
+    m = state.monitor
+    started = Time.monotonic_ms()
+    # Внутри get — порт Tcp/Tls и ожидание ответа по ref (02/R12):
+    # :tick или :check_now, пришедшие во время запроса, остаются в ящике.
+    result = Http.Client.get(m.url, { timeout: state.opts.timeout_ms })
+    event = {
+        monitor_id: m.id,
+        status: classify(result),
+        took_ms: Time.monotonic_ms() - started,
+        at: Time.now(),
+    }
+    _ = Monitors.record_check(event)
+    _ = Monitors.publish_change(m.status, event)
+    { ..state, monitor: Monitor{ ..m, status: event.status, last_checked_at: Some(event.at) } }
+
+fn classify(Ok(resp)) when resp.status < 400 -> :up
+fn classify(Ok(_))                           -> :down
+fn classify(Error(_))                        -> :down

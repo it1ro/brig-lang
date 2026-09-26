@@ -1,0 +1,24 @@
+<%# Шаблон компилируется `brig` в функцию LookoutWeb.Templates.Monitors.index(assigns).
+    Вставки {expr} — выражения Brig, всегда HTML-экранируются (тип Html.Safe).
+    Директивы :for / :if — атрибуты, без закрывающих end-тегов.
+    NEEDS: компилируемые шаблоны (03/L10, Q-tpl), Router.path по функции (03/L5) %>
+<section>
+  <header>
+    <h1>Мониторы</h1>
+    <a class="button" href={Router.path(MonitorController.new)}>Добавить</a>
+  </header>
+
+  <p :if={assigns.monitors == []}>Пока пусто. Добавьте первый URL.</p>
+
+  <table :if={assigns.monitors != []}>
+    <thead><tr><th>Имя</th><th>URL</th><th>Статус</th><th>Проверен</th></tr></thead>
+    <tbody>
+      <tr :for={m <- assigns.monitors} id={"monitor-\(m.id)"}>
+        <td><a href={Router.path(MonitorController.show, m)}>{m.name}</a></td>
+        <td><code>{m.url}</code></td>
+        <td><span class={"badge badge-\(to_str(m.status))"}>{to_str(m.status)}</span></td>
+        <td>{Time.ago(m.last_checked_at)}</td>
+      </tr>
+    </tbody>
+  </table>
+</section>

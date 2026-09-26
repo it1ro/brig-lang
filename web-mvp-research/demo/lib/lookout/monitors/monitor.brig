@@ -1,0 +1,47 @@
+# Доменная запись + валидация входа. Модуль ничего не знает про HTTP.
+# NEEDS: pub fn (03/L3), доступ к полям (03/L4), тип как значение (03/L5, Q-typename),
+#        полиморфизм «модуль типа» для to_json (03/L6), Changeset (06), Instant (03/L12)
+module Lookout.Monitors.Monitor
+
+import Changeset
+
+type Monitor {
+    id: Int,
+    name: Str,
+    url: Str,
+    interval_ms: Int,
+    status: Atom,                  # :unknown | :up | :down
+    last_checked_at: Option<Instant>,
+}
+
+# params: Map<Str, Any> прямо из формы/JSON.
+# Результат: Ok(Monitor{..}) без id или Error((:invalid, changeset)).
+pub fn changeset(params) ->
+    params
+        |> Changeset.cast(Monitor, [:name, :url, :interval_ms])
+        |> Changeset.required([:name, :url])
+        |> Changeset.check(:url, valid_url)
+        |> Changeset.default(:interval_ms, 30_000)
+        |> Changeset.in_range(:interval_ms, 5_000 to 3_600_000)
+        |> Changeset.default(:status, :unknown)
+        |> Changeset.default(:last_checked_at, None)
+        |> Changeset.apply()
+
+fn valid_url(url) ->
+    match Url.parse(url)
+        Ok(u) -> if u.scheme == "http" or u.scheme == "https" then Ok(url) else Error("only http(s)")
+        Error(_) -> Error("is not a URL")
+
+# Конвенция «модуль типа» (03/L6): Json.encode(Monitor{..}) найдёт эту функцию.
+pub fn to_json(m) ->
+    %{
+        "id" => m.id,
+        "name" => m.name,
+        "url" => m.url,
+        "interval_ms" => m.interval_ms,
+        "status" => to_str(m.status),
+        "last_checked_at" => m.last_checked_at,
+    }
+
+# И для путей: Router.path(MonitorController.show, m) → "/monitors/42".
+pub fn to_param(m) -> to_str(m.id)

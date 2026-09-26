@@ -1,0 +1,31 @@
+# Дерево процессов приложения. Порядок детей = порядок старта;
+# остановка — в обратном порядке.
+# NEEDS: pub fn (03/L3), Supervisor/child_spec (02/R3-R4, 04), модули как значения (03/L5),
+#        доступ к полям записи (03/L4), spawn_watched (02/R4)
+module Lookout.Application
+
+import Supervisor
+import Calmar.Endpoint
+import Calmar.PubSub
+import Lookout.Repo
+import Lookout.Monitors
+
+pub fn start(config) ->
+    sup = Supervisor.start({
+        strategy: :one_for_one,
+        max_restarts: 5,
+        within: 10_000,
+        children: [
+            Repo.child_spec(config.repo),
+            PubSub.child_spec({ name: :pubsub }),
+            Monitors.Supervisor.child_spec(config.checks),
+            Endpoint.child_spec({
+                router: LookoutWeb.Router,
+                port: config.port,
+                max_concurrent: 1_024,      # сверх — 503 на стороне Go (B2)
+                secret_key_base: config.secret_key_base,
+            }),
+        ],
+    })
+    _ = watch(sup)
+    sup

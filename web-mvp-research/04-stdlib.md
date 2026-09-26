@@ -1,0 +1,74 @@
+# 04. Stdlib: батарейки внутри бинарника
+
+## Правило раскладки
+
+| Слой | Когда | Примеры |
+|---|---|---|
+| **VM (Go, ядро)** | нужен доступ к планировщику/памяти/ОС | порты, `exit`, реестр, таймеры |
+| **Go-native stdlib** | криптография, парсинг форматов, горячие циклы над байтами | `Crypto`, `Tls`, `Json`, `Bytes`/`Str`, `Time` форматирование, SQLite-драйвер |
+| **Brig-stdlib (embedded)** | политика, протоколы, всё, что выиграет от читаемости и dogfooding | `Supervisor`, `GenServer`-аналог, `Http` (`Conn`, плаги, роутинг поверх HTTP-портов), `PubSub`, `Log`, `Config`, `Sql`-пул |
+| **Пакеты** | узкие домены, быстрая эволюция | Postgres-клиент? (см. Q-db), OAuth, S3, email-провайдеры |
+
+Критерий Go vs Brig для горячего пути: сначала Brig; переносим в Go, только
+если бенчмарк показывает узкое место **и** API остаётся тем же.
+
+## Модули и уровни
+
+| Модуль | Содержимое | Слой | Уровень |
+|---|---|---|---|
+| `Result`, `Option` | `map`, `and_then`, `unwrap`, `all` (список Result → Result списка), `unwrap_or` | Brig | M |
+| `Bytes`, `Str` | см. 03/L8 | Go | M |
+| `Base64`, `Hex`, `Url` | кодеки | Go | M |
+| `Json` | уже есть; + `decode_as(Type, …)`, потоковый encode в iodata | Go | M |
+| `Time`, `Timer` | `monotonic_ms`, `now`, `send_after`, форматы RFC3339/HTTP-date | VM+Go | M |
+| `Crypto` | `sha256`, `hmac`, `random_bytes`, `secure_compare`, `argon2id`/`bcrypt` | Go | M (сессии, CSRF, пароли) |
+| `Tcp`, `Tls` | порты | VM+Go | M |
+| `Acme` | автоматический HTTPS (Let's Encrypt): HTTP-01 + TLS-ALPN-01, хранение в каталоге состояния, продление супервизируемым актором; интегрирован с `HttpServer` (`--domain`) (B1) | Go + Brig-актор | M |
+| `Cache` | шардированные акторы-кэши с TTL: сессии, rate limiting (B3) | Brig | M |
+| `File`, `Dir`, `Path` | потоковое чтение/запись, листинг, `glob` | VM+Go | M (скриптинг, статика) |
+| `Proc` | subprocess как порт, `Proc.run(cmd, args)` для скриптов | VM+Go | M для скриптинга |
+| `Env`, `Sys` | `Env.get -> Option<Str>`, `Sys.args`, `Sys.exit`, `Signal` | VM | M |
+| `Supervisor`, `Server` | супервизор (статический и `start_dynamic`); generic server: `Server.call(pid, req, timeout)` шлёт `(:call, from, req)` и ждёт через `await` (02/R12), `Server.reply(from, v)` (§17.9) | Brig | M |
+| `Registry`, `PubSub` | над реестром имён R5; topic → подписчики с `watch` | Brig | M |
+| `Log` | структурированные логи (key-value), уровни, JSON-вывод | Brig | M |
+| `Config` | слои: дефолты → файл → env; валидация на старте | Brig | M |
+| `Http` | транспорт — порты на Go `net/http` (HTTP/1.1 + HTTP/2 + TLS, сервер и клиент, B2); на Brig — `Conn`, `Plug`-протокол, базовые плаги (сессии, CSRF, статика, CORS) — общий слой Calmar и Whelk | Go (транспорт) + Brig | M |
+| `Http.Ws`, `Http.Sse` | WebSocket, Server-Sent Events | Brig | S (SSE почти бесплатен — M) |
+| `Sql` + `Sqlite` | общий интерфейс + встроенный pure-Go драйвер | Brig + Go | M (см. Q-db) |
+| `Test` | уже есть; + `Test.Http` (in-memory запросы), фейковое время | Brig | M |
+| `Html` | `escape`, `Html.Safe`, рантайм шаблонов | Brig | M для SSR |
+| `Csv`, `Cli` | CSV; разбор аргументов командной строки | Go / Brig | S |
+| `Metrics` | счётчики/гистограммы, экспорт Prometheus-текстом | Brig | S |
+
+## HTTP в stdlib, а не в пакете — почему
+
+«Один файл» + «веб — первая ниша» ⇒ HTTP-сервер и клиент должны быть в
+бинарнике: HTTP-сервис или скрипт с HTTP-клиентом должен работать без
+единой зависимости. Сам фреймворк Calmar — отдельный пакет (10).
+Это **не** противоречит «HTTP не в VM»: транспорт (разбор протокола,
+TLS, HTTP/2) — Go `net/http` в Go-native stdlib за портом, смысл (`Conn`,
+плаги, роутинг) — на Brig; VM о HTTP не знает (B2). Свой HTTP-парсер на
+Brig не пишем: проверенный парсер — это и скорость, и безопасность
+(request smuggling), а HTTP/2 и параллельный на других ядрах разбор
+получаем бесплатно.
+
+## База данных — главная развилка
+
+Rails/Phoenix-опыт немыслим без БД. Варианты — Q-db в 07. Рекомендация:
+**SQLite встроен (pure-Go драйвер, ~+6–8 МБ)** как дефолт «из коробки»
+(одно приложение = один файл + один файл БД — идеально для edge и малых
+сервисов), `Sql`-интерфейс общий; Postgres — протокол на чистом Brig
+поверх `Tcp` как пакет (или stdlib во второй фазе).
+
+## Бюджет размера (оценка, требует замера)
+
+| Компонент | ≈ МБ |
+|---|---|
+| текущий `brig` | 5.7 |
+| `crypto/tls`, `net`, x509 | +3–4 |
+| pure-Go SQLite | +6–8 |
+| Brig-stdlib (байткод) + шаблонизатор | +1 |
+| strip + `-ldflags=-s -w` | −25–30 % |
+| **итог** | **≈ 12–15** |
+
+Укладываемся в цель ≤ 25 МБ с запасом.
