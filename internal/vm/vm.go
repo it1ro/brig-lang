@@ -138,15 +138,20 @@ func numToRat(v runtime.Value) (*big.Rat, bool) {
 	return nil, false
 }
 
-// decArithErr — :type_error как catchable raise (для trap).
+// typeErr — ловимый raise (:type_error, (op, val)) (§10.4).
 //
 // `op` передаётся без ведущего двоеточия (`"add"`, а не `":add"`):
 // runtime.Atom сам добавляет ":" при печати, и `Atom(":add")`
 // давал бы `::add` в Inspect().
-func decArithErr(a, b runtime.Value, op string) error {
+func typeErr(op string, val runtime.Value) error {
 	return &ErrRaise{Val: runtime.Tuple(
 		runtime.Atom("type_error"),
-		runtime.Tuple(runtime.Atom(op), runtime.Tuple(a, b)))}
+		runtime.Tuple(runtime.Atom(op), val))}
+}
+
+// decArithErr — :type_error как catchable raise (для trap).
+func decArithErr(a, b runtime.Value, op string) error {
+	return typeErr(op, runtime.Tuple(a, b))
 }
 
 func add(a, b runtime.Value) (runtime.Value, error) {
@@ -398,9 +403,7 @@ func arithErr(a, b runtime.Value, op string) error {
 func checkMixedEq(a, b runtime.Value) error {
 	if (a.Kind == runtime.KindDecimal && b.Kind == runtime.KindFloat) ||
 		(a.Kind == runtime.KindFloat && b.Kind == runtime.KindDecimal) {
-		return &ErrRaise{Val: runtime.Tuple(
-			runtime.Atom("type_error"),
-			runtime.Tuple(runtime.Atom("eq"), runtime.Tuple(a, b)))}
+		return typeErr("eq", runtime.Tuple(a, b))
 	}
 	return nil
 }
@@ -413,9 +416,7 @@ func checkMixedEq(a, b runtime.Value) error {
 func checkMixedCmp(a, b runtime.Value) error {
 	if (a.Kind == runtime.KindDecimal && b.Kind == runtime.KindFloat) ||
 		(a.Kind == runtime.KindFloat && b.Kind == runtime.KindDecimal) {
-		return &ErrRaise{Val: runtime.Tuple(
-			runtime.Atom("type_error"),
-			runtime.Tuple(runtime.Atom("compare"), runtime.Tuple(a, b)))}
+		return typeErr("compare", runtime.Tuple(a, b))
 	}
 	return nil
 }
