@@ -4,6 +4,7 @@ package runtime
 import (
 	"bytes"
 	"fmt"
+	"math"
 	"math/big"
 	"sort"
 	"strconv"
@@ -416,7 +417,11 @@ func Equal(a, b Value) bool {
 			return equalDecimalOther(b, a)
 		}
 		if isNum(a) && isNum(b) {
-			return numToFloat(a) == numToFloat(b)
+			// Int×Float — точно (I-F8, #43): 2^53+1 != 2^53.0.
+			if math.IsNaN(floatOf(a, b)) {
+				return false
+			}
+			return cmpIntFloatExact(a, b) == 0
 		}
 		return false
 	}
@@ -705,7 +710,24 @@ func compareNumbers(a, b Value) (int, error) {
 		}
 		return ar.Cmp(br), nil
 	}
-	af, bf := numToFloat(a), numToFloat(b)
+	if a.Kind != b.Kind {
+		// Int×Float — точное сравнение; NaN — см. cmpNaN.
+		if math.IsNaN(floatOf(a, b)) {
+			return cmpNaN(a, b), nil
+		}
+		return cmpIntFloatExact(a, b), nil
+	}
+	if a.Kind == KindInt {
+		// Int×Int — точно (float64 теряет младшие биты выше 2^53).
+		if a.IsSmall && b.IsSmall {
+			return cmpInt64(a.SmallInt, b.SmallInt), nil
+		}
+		return a.AsBig().Cmp(b.AsBig()), nil
+	}
+	af, bf := a.Float, b.Float
+	if math.IsNaN(af) || math.IsNaN(bf) {
+		return cmpNaN(a, b), nil
+	}
 	switch {
 	case af < bf:
 		return -1, nil
@@ -714,6 +736,66 @@ func compareNumbers(a, b Value) (int, error) {
 	default:
 		return 0, nil
 	}
+}
+
+// floatOf возвращает Float-операнд пары Int×Float (NaN проверяется на нём).
+func floatOf(a, b Value) float64 {
+	if a.Kind == KindFloat {
+		return a.Float
+	}
+	return b.Float
+}
+
+// IsNaNOperand сообщает, что хотя бы один из операндов — Float NaN.
+// Порядковые операторы (<, >, <=, >=) на таких парах дают false (§7.4);
+// Compare для них даёт детерминированный порядок (см. cmpNaN).
+func IsNaNOperand(a, b Value) bool {
+	return (a.Kind == KindFloat && math.IsNaN(a.Float)) ||
+		(b.Kind == KindFloat && math.IsNaN(b.Float))
+}
+
+// cmpNaN — порядок Compare с участием NaN: NaN после всех чисел и равен
+// себе. Это нужен только sort/Set/Map, где требуется полный порядок;
+// оператор == по-прежнему считает NaN != NaN (Equal), а <, > — false.
+func cmpNaN(a, b Value) int {
+	an := a.Kind == KindFloat && math.IsNaN(a.Float)
+	bn := b.Kind == KindFloat && math.IsNaN(b.Float)
+	switch {
+	case an && bn:
+		return 0
+	case an:
+		return 1
+	}
+	return -1
+}
+
+// cmpIntFloatExact точно сравнивает Int с Float (в любом порядке
+// аргументов), NaN уже исключён. Быстрый путь: |Int| <= 2^53 переводится
+// во float64 без потерь. Иначе Inf решается по знаку, а конечные значения
+// сравниваются через big.Float (SetInt и SetFloat64 точны).
+func cmpIntFloatExact(a, b Value) int {
+	if a.Kind == KindFloat {
+		return -cmpIntFloatExact(b, a)
+	}
+	// a — Int, b — Float
+	f := b.Float
+	if a.IsSmall && a.SmallInt >= -(1<<53) && a.SmallInt <= 1<<53 {
+		x := float64(a.SmallInt)
+		switch {
+		case x < f:
+			return -1
+		case x > f:
+			return 1
+		}
+		return 0
+	}
+	if math.IsInf(f, 1) {
+		return -1
+	}
+	if math.IsInf(f, -1) {
+		return 1
+	}
+	return new(big.Float).SetInt(a.AsBig()).Cmp(new(big.Float).SetFloat64(f))
 }
 
 // compareSlices: длина, затем поэлементно.
