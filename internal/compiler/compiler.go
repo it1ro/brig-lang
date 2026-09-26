@@ -775,9 +775,7 @@ func (fc *funcCompiler) compileExpr(e ast.Expr, d dest) error {
 	case ast.LiteralExpr:
 		return fc.compileLiteralExpr(ex.ValueStr(), d)
 	case ast.InterpExpr:
-		// T-53: узел есть в AST; компиляция (concat/to_str) — T-54.
-		// Fail-fast сохраняет контракт T-04 (ошибка с текстом "interpolation").
-		return fmt.Errorf("string interpolation is not implemented yet")
+		return fc.compileInterp(ex, d)
 	case ast.AtomExpr:
 		return fc.loadConst(runtime.Atom(ex.AtomName()), d)
 	case ast.DecimalExpr:
@@ -824,6 +822,47 @@ func (fc *funcCompiler) compileLiteralExpr(lit string, d dest) error {
 		return err
 	}
 	return fc.loadConst(v, d)
+}
+
+// compileInterp lowers "a \(e) b" to string concat of decoded parts and
+// to_str(e) for each interpolated expression (S-F1 / T-54).
+// parts has len(exprs)+1; empty parts are skipped except as the initial
+// accumulator when the string starts with \(...).
+func (fc *funcCompiler) compileInterp(ie ast.InterpExpr, d dest) error {
+	mark := fc.nextReg
+	dst := fc.destReg(d)
+	parts := ie.InterpParts()
+	exprs := ie.InterpExprs()
+
+	if err := fc.loadConst(runtime.Str(decodeStrBody(parts[0])), val(dst)); err != nil {
+		return err
+	}
+
+	for i, expr := range exprs {
+		iterMark := fc.nextReg
+
+		strReg := fc.allocReg()
+		if err := fc.compileGlobalCall("to_str", []ast.Expr{expr}, val(strReg), ie); err != nil {
+			return err
+		}
+		fc.pos = posOf(ie)
+		fc.emit(vm.ABC(vm.ADD, dst, dst, strReg))
+
+		if parts[i+1] != "" {
+			partReg := fc.allocReg()
+			if err := fc.loadConst(runtime.Str(decodeStrBody(parts[i+1])), val(partReg)); err != nil {
+				return err
+			}
+			fc.pos = posOf(ie)
+			fc.emit(vm.ABC(vm.ADD, dst, dst, partReg))
+		}
+
+		fc.releaseToMark(iterMark)
+	}
+
+	fc.finish(d, dst)
+	fc.releaseToMark(mark)
+	return nil
 }
 
 func (fc *funcCompiler) compileDecimal(body string, d dest) error {

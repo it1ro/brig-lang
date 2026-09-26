@@ -55,8 +55,8 @@ description: >
 | `stmt_list` | NEWLINE между стейтментами обязателен (S-F6 закрыт T-21 #15): после `parseStmt` — NEWLINE/DEDENT/EOF/`until` | — |
 
 S-F1 (интерполяция): `SplitInterp` + `InterpExpr(parts, exprs)` — закрыт
-T-53 (#36). Plain-строка без `\(...` остаётся `LiteralExpr`. Компиляция —
-T-54 (#37).
+T-53 (#36). Plain-строка без `\(...` остаётся `LiteralExpr`. Компиляция
+concat/`to_str` — ✓ T-54 (#37).
 
 ## AST-инкапсуляция (`internal/ast`)
 

@@ -121,7 +121,7 @@ K-8 объявляет эти фичи вне рамок, но сейчас ча
 |---|---|---|
 | Мультиклозные `fn`, параметры-паттерны, guard `fn` | AST: `Params []ast.Pattern`, `Guard ast.Expr`, variadic — `SpreadPattern` (T-50 #33). Fail-fast (T-01): `checkSimpleFn` допускает только IdentPattern/`..name`, отвергает multi-clause/guard/прочие паттерны. Полные лямбды `fn (…) ->`: params остаются `[]string`; `checkLambdaParams` отвергает паттерн и `..name` (T-44) | компиляция клауз T-51 (#34) |
 | `when`-guard в `recv` | Парсер выбрасывает guard, матчится не та ветка | fail-fast T-02 (#2); компиляция T-52 (#35) |
-| Интерполяция `"\(x)"` | AST — `InterpExpr` (T-53); `compileExpr` fail-fast `"string interpolation is not implemented yet"` | компиляция concat/`to_str` T-54 (#37) |
+| Интерполяция `"\(x)"` | AST — `InterpExpr` (T-53); `compileInterp` — concat частей и `to_str` для каждого expr | ✓ T-54 (#37) |
 | Локальная `fn` с захватом | Fail-fast (T-38, #27): `compileLocalFn` → `срез: локальная fn … с захватом не реализована` при `len(child.upvalues)>0` | лифтинг T-39 (#28) |
 | Числовые литералы | base по префиксу (`0x`/`0b`/`0o`, иначе 10) через `big.Int.SetString` + `runtime.IntBig` | ✓ T-22 (#16) |
 | Позиции инструкций | 41 инструкция в bytecode-goldens с `0:0` (`fc.pos` не выставлен перед LOADK/GETGLOBAL callee) | T-41 (#30) |

@@ -309,6 +309,20 @@ fn main() ->
 	}
 }
 
+// S-F1 / T-54: интерполяция компилируется в concat через to_str.
+func TestInterpolationConcat(t *testing.T) {
+	runModule(t, `module Main
+fn main() ->
+    x = 5
+    assert("x = \(x)" == "x = 5")
+    assert("sum: \(1 + 2)" == "sum: 3")
+    name = "Ada"
+    assert("Hi, \(name)!" == "Hi, Ada!")
+    assert("a \(10) b \(true) c" == "a 10 b true c")
+    assert("\\(not interp)" == "\\(not interp)")
+`)
+}
+
 // §4.8: pattern matching чисел — точный (1.0 не матчит паттерн 1) (T-84).
 func TestAuditLiteralPatternIsExact(t *testing.T) {
 	t.Skip("blocked: T-84")
