@@ -107,5 +107,6 @@
 | [13-microservices.md](13-microservices.md) | Brig для микросервисов: сильные стороны, риски, что добавить |
 | [14-data.md](14-data.md) | доступ к данным: data mapper в духе Ecto, а не ActiveRecord |
 | [15-views.md](15-views.md) | view-слой: формат шаблонов `.bt` |
+| [16-infrastructure.md](16-infrastructure.md) | тесты с БД, сериализация, инструментирование, команды проекта и релиза |
 | [demo/](demo/) | Lookout — uptime-монитор на Calmar |
 | [demo-whelk/](demo-whelk/) | приёмник GitHub-вебхуков на Whelk в одном файле |
