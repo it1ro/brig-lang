@@ -34,8 +34,8 @@ func TestExitClassifyHelpers(t *testing.T) {
 
 // Probes for CLI exit codes. upvalueSrc used to reach runtime
 // `internal: upvalue` (A-F7 / T-14); T-38 fail-fasted it at compile time.
-// T-51 lifts captures into hidden params, so only a capturing local fn
-// used as a value is still срез (T-39).
+// T-51 lifts captures into hidden params and T-39 closes over them when
+// the local fn is used as a value, so it now runs cleanly.
 const (
 	sliceNYISrc = `module Main
 fn main() ->
@@ -65,7 +65,7 @@ func TestBrigRunExitCodes(t *testing.T) {
 		want int
 	}{
 		{"срез pipe → 1", sliceNYISrc, exitParse},
-		{"local fn capture срез → 1", upvalueSrc, exitParse},
+		{"local fn capture as value → 0", upvalueSrc, exitOK},
 		{"uncaught raise → 2", raiseSrc, exitRuntime},
 	}
 	for _, tc := range cases {

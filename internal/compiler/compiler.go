@@ -34,9 +34,17 @@ type ProgramImage struct {
 // Compiler переводит AST в ProgramImage.
 type Compiler struct {
 	image *ProgramImage
-	// lifted — захваты локальных fn по mangled-имени: скрытые параметры
-	// после объявленных (лямбда-лифтинг, T-51).
-	lifted map[string][]string
+	// lifted — лифтнутые локальные fn по mangled-имени (T-51, T-39).
+	lifted map[string]*liftedFn
+}
+
+// liftedFn — локальная fn после лямбда-лифтинга: захваты передаются
+// скрытыми параметрами после arity объявленных. caps заданы
+// относительно функции-владельца (как upvalueInfo её прямого потомка):
+// на месте вызова их достаёт fetchCapture по связыванию, а не по имени.
+type liftedFn struct {
+	arity int
+	caps  []upvalueInfo
 }
 
 // New создаёт компилятор.
@@ -61,7 +69,8 @@ type constKey struct {
 	s    string
 }
 
-// upvalueInfo — захваченная переменная.
+// upvalueInfo — захваченная переменная. Пустое name — захват,
+// добавленный по связыванию (fetchCapture), а не по имени.
 type upvalueInfo struct {
 	name    string
 	isLocal bool
@@ -86,6 +95,8 @@ type funcCompiler struct {
 	bound     [vm.MaxRegs]bool
 	localFns  map[string]string
 	upvalues  []upvalueInfo
+	caps      []upvalueInfo // скрытые параметры лифтнутой fn (compileClauses)
+	capBase   int           // регистр первого скрытого параметра
 	consts    map[constKey]int
 	trapDepth int
 	lambdaSeq int // уникальный суффикс для лямбд этой функции (A-F6)
@@ -192,20 +203,66 @@ func (fc *funcCompiler) resolveUpvalue(name string) (int, bool) {
 		return 0, false
 	}
 	if r, ok := p.resolveLocal(name); ok {
-		idx := len(fc.upvalues)
-		fc.upvalues = append(fc.upvalues, upvalueInfo{
-			name: name, isLocal: true, index: r,
-		})
-		return idx, true
+		return fc.addUpvalue(upvalueInfo{name: name, isLocal: true, index: r}), true
 	}
 	if i, ok := p.resolveUpvalue(name); ok {
-		idx := len(fc.upvalues)
-		fc.upvalues = append(fc.upvalues, upvalueInfo{
-			name: name, isLocal: false, index: i,
-		})
-		return idx, true
+		return fc.addUpvalue(upvalueInfo{name: name, isLocal: false, index: i}), true
 	}
 	return 0, false
+}
+
+// addUpvalue — индекс upvalue со связыванием uv; одно связывание
+// захватывается один раз, даже если сначала пришло без имени.
+func (fc *funcCompiler) addUpvalue(uv upvalueInfo) int {
+	if i, ok := findCapture(fc.upvalues, uv); ok {
+		if fc.upvalues[i].name == "" {
+			fc.upvalues[i].name = uv.name
+		}
+		return i
+	}
+	fc.upvalues = append(fc.upvalues, uv)
+	return len(fc.upvalues) - 1
+}
+
+// findCapture ищет связывание uv (без учёта имени).
+func findCapture(caps []upvalueInfo, uv upvalueInfo) (int, bool) {
+	for i, c := range caps {
+		if c.isLocal == uv.isLocal && c.index == uv.index {
+			return i, true
+		}
+	}
+	return 0, false
+}
+
+// fetchCapture — где в fc лежит связывание uv функции owner (uv задан
+// относительно owner). Промежуточные уровни получают его по
+// связыванию, а не по имени: имя в точке вызова может быть затенено
+// (T-39). Лифтнутая fn держит его скрытым параметром, прочие — upvalue;
+// недостающий захват лифтнутой fn добирает фикспойнт declareLocalFns.
+func (fc *funcCompiler) fetchCapture(owner *funcCompiler, uv upvalueInfo) (isLocal bool, index int) {
+	if fc == owner {
+		return uv.isLocal, uv.index
+	}
+	if fc.parent == nil {
+		fc.fail("internal: capture owner is not an ancestor of %q", fc.prefix)
+	}
+	pl, pi := fc.parent.fetchCapture(owner, uv)
+	in := upvalueInfo{isLocal: pl, index: pi}
+	if i, ok := findCapture(fc.caps, in); ok {
+		return true, fc.capBase + i
+	}
+	return false, fc.addUpvalue(in)
+}
+
+// loadCapture кладёт связывание uv функции owner в регистр r.
+func (fc *funcCompiler) loadCapture(owner *funcCompiler, uv upvalueInfo, r int) {
+	isLocal, idx := fc.fetchCapture(owner, uv)
+	switch {
+	case !isLocal:
+		fc.emit(vm.ABC(vm.GETUPVAL, r, idx, 0))
+	case idx != r:
+		fc.emit(vm.ABC(vm.MOVE, r, idx, 0))
+	}
 }
 
 // ---- constants (§8) ----
@@ -358,7 +415,7 @@ func (fc *funcCompiler) operandInto(e ast.Expr, into int) (int, error) {
 // Compile — входная точка модуля.
 func (c *Compiler) Compile(prog *ast.Program) (image *ProgramImage, err error) {
 	c.image = &ProgramImage{Functions: make(map[string]*vm.Function)}
-	c.lifted = make(map[string][]string)
+	c.lifted = make(map[string]*liftedFn)
 	defer func() {
 		if r := recover(); r != nil {
 			if ce, ok := r.(compileError); ok {
@@ -522,7 +579,7 @@ func isIdentParam(p string) bool {
 // связываются без проверки, прочие паттерны — MATCHLOCAL, затем guard
 // (JMPIFNOT). Если ни один не подошёл — raise (:function_clause, [args]);
 // после неопровержимого последнего клоза raise не эмитится.
-func (fc *funcCompiler) compileClauses(clauses []ast.FnClauseArg, caps []string) error {
+func (fc *funcCompiler) compileClauses(clauses []ast.FnClauseArg, caps []upvalueInfo) error {
 	if len(clauses) == 0 {
 		return fmt.Errorf("нет клозов")
 	}
@@ -554,8 +611,11 @@ func (fc *funcCompiler) compileClauses(clauses []ast.FnClauseArg, caps []string)
 			return fmt.Errorf("internal: param %d in r%d", i, r)
 		}
 	}
-	for i, name := range caps {
-		fc.bindLocal(name, n+i)
+	fc.caps, fc.capBase = caps, n
+	for i, c := range caps {
+		if c.name != "" {
+			fc.bindLocal(c.name, n+i)
+		}
 	}
 
 	var fails []int
@@ -659,16 +719,21 @@ func localClauses(cs []ast.LocalFnClauseArg) []ast.FnClauseArg {
 // так что видимые снаружи имена к этому моменту уже связаны.
 //
 // Захваты считаются фикспойнтом: вызов другой локальной fn блока
-// передаёт и её захваты, поэтому они транзитивны. Итерация компилирует
-// тела во временных funcCompiler и отбрасывает результат; новые upvalue
-// дописываются в захваты, наборы только растут.
+// (или её значение) передаёт и её захваты, поэтому они транзитивны.
+// Итерация компилирует тела во временных funcCompiler и отбрасывает
+// результат; новые upvalue дописываются в захваты (по связыванию, см.
+// fetchCapture), наборы только растут.
 func (fc *funcCompiler) declareLocalFns(stmts []ast.Stmt) error {
 	var decls []ast.LocalFnDecl
 	for _, s := range stmts {
 		if lfd, ok := s.(ast.LocalFnDecl); ok {
 			mangled := fc.prefix + lfd.FnName()
 			fc.localFns[lfd.FnName()] = mangled
-			delete(fc.compiler.lifted, mangled)
+			arity := 0
+			if cs := lfd.Clauses(); len(cs) > 0 {
+				arity = len(cs[0].Params)
+			}
+			fc.compiler.lifted[mangled] = &liftedFn{arity: arity}
 			decls = append(decls, lfd)
 		}
 	}
@@ -676,13 +741,22 @@ func (fc *funcCompiler) declareLocalFns(stmts []ast.Stmt) error {
 		changed = false
 		for _, d := range decls {
 			mangled := fc.localFns[d.FnName()]
+			lf := fc.compiler.lifted[mangled]
 			probe := fc.compiler.newFuncCompiler(fc)
 			probe.prefix = mangled + "$"
-			if err := probe.compileClauses(localClauses(d.Clauses()), fc.compiler.lifted[mangled]); err != nil {
+			if err := probe.compileClauses(localClauses(d.Clauses()), lf.caps); err != nil {
 				return fmt.Errorf("local fn %s: %w", d.FnName(), err)
 			}
 			for _, uv := range probe.upvalues {
-				fc.compiler.lifted[mangled] = append(fc.compiler.lifted[mangled], uv.name)
+				i, ok := findCapture(lf.caps, uv)
+				switch {
+				case !ok:
+					lf.caps = append(lf.caps, uv)
+				case lf.caps[i].name == "" && uv.name != "":
+					lf.caps[i].name = uv.name
+				default:
+					continue
+				}
 				changed = true
 			}
 		}
@@ -690,18 +764,19 @@ func (fc *funcCompiler) declareLocalFns(stmts []ast.Stmt) error {
 	return nil
 }
 
-// resolveLocalFn — mangled-имя локальной fn по правилам compileVar:
-// локаль затеняет, дальше localFns своей fn и предков.
-func (fc *funcCompiler) resolveLocalFn(name string) (string, bool) {
+// resolveLocalFn — mangled-имя локальной fn и её владелец (fn, в
+// которой она объявлена) по правилам compileVar: локаль затеняет,
+// дальше localFns своей fn и предков.
+func (fc *funcCompiler) resolveLocalFn(name string) (string, *funcCompiler, bool) {
 	if _, ok := fc.resolveLocal(name); ok {
-		return "", false
+		return "", nil, false
 	}
 	for p := fc; p != nil; p = p.parent {
 		if mangled, ok := p.localFns[name]; ok {
-			return mangled, true
+			return mangled, p, true
 		}
 	}
-	return "", false
+	return "", nil, false
 }
 
 // CompileReplLine компилирует одну REPL-строку как функцию от видимых имён.
@@ -719,7 +794,7 @@ func (c *Compiler) CompileReplLine(names []string, s ast.Stmt) (fn *vm.Function,
 	}()
 
 	c.image = &ProgramImage{Functions: make(map[string]*vm.Function)}
-	c.lifted = make(map[string][]string)
+	c.lifted = make(map[string]*liftedFn)
 
 	fc := c.newFuncCompiler(nil)
 	fc.prefix = "__repl__$"
@@ -825,16 +900,20 @@ func (fc *funcCompiler) compileLocalFn(decl ast.LocalFnDecl, d dest) error {
 		fc.localFns[name] = mangled
 	}
 
-	// Захваты — скрытые параметры после объявленных (лямбда-лифтинг, T-51).
+	// Захваты — скрытые параметры после объявленных (лямбда-лифтинг).
+	var caps []upvalueInfo
+	if lf := fc.compiler.lifted[mangled]; lf != nil {
+		caps = lf.caps
+	}
 	child := fc.compiler.newFuncCompiler(fc)
 	child.prefix = mangled + "$"
-	if err := child.compileClauses(localClauses(decl.Clauses()), fc.compiler.lifted[mangled]); err != nil {
+	if err := child.compileClauses(localClauses(decl.Clauses()), caps); err != nil {
 		return fmt.Errorf("local fn %s: %w", name, err)
 	}
-	// I-F7 / T-38: upvalue у локальной fn упал бы только в рантайме
-	// (`internal: upvalue`) — fn кладётся как глобальная Function.
+	// fn кладётся как глобальная Function: upvalue здесь — захват мимо
+	// фикспойнта declareLocalFns, в рантайме это `internal: upvalue`.
 	if len(child.upvalues) > 0 {
-		return fmt.Errorf("срез: локальная fn %s с захватом не реализована", name)
+		fc.fail("internal: local fn %s: capture %q outside lifted params", name, child.upvalues[0].name)
 	}
 	fc.compiler.image.Functions[mangled] = child.function(mangled)
 
@@ -983,17 +1062,60 @@ func (fc *funcCompiler) compileVar(name string, d dest) error {
 	if r, ok := fc.resolveLocal(name); ok {
 		return fc.loadVal(d, r)
 	}
-	if mangled, ok := fc.resolveLocalFn(name); ok {
-		// Вне позиции вызова скрытые параметры передать некому.
-		if len(fc.compiler.lifted[mangled]) > 0 {
-			return fmt.Errorf("срез: локальная fn %s с захватом как значение не реализована (T-39)", name)
-		}
-		return fc.loadGlobal(d, mangled)
+	if mangled, owner, ok := fc.resolveLocalFn(name); ok {
+		return fc.loadLocalFn(d, mangled, owner)
 	}
 	if idx, ok := fc.resolveUpvalue(name); ok {
 		return fc.loadUpval(d, idx)
 	}
 	return fc.loadGlobal(d, name)
+}
+
+// loadLocalFn — локальная fn как значение. Без захватов это глобальная
+// Function. С захватами — замыкание над обёрткой: обёртка арности
+// объявленных параметров хвостом вызывает лифтнутую fn, дописывая
+// захваты из своих upvalue (T-39).
+func (fc *funcCompiler) loadLocalFn(d dest, mangled string, owner *funcCompiler) error {
+	lf := fc.compiler.lifted[mangled]
+	if lf == nil || len(lf.caps) == 0 {
+		return fc.loadGlobal(d, mangled)
+	}
+	if d.reg == -1 && !d.tail {
+		return nil
+	}
+
+	w := fc.compiler.newFuncCompiler(nil)
+	w.prefix = mangled + "$"
+	w.chunk.NumParams = lf.arity
+	for i := 0; i < lf.arity; i++ {
+		w.allocReg()
+	}
+	wbase := w.allocReg()
+	w.emit(vm.ABx(vm.GETGLOBAL, wbase, w.konst(runtime.Str(mangled))))
+	for i := 0; i < lf.arity; i++ {
+		w.emit(vm.ABC(vm.MOVE, w.allocReg(), i, 0))
+	}
+	for j := range lf.caps {
+		w.emit(vm.ABC(vm.GETUPVAL, w.allocReg(), j, 0))
+	}
+	w.emit(vm.ABC(vm.TAILCALL, wbase, lf.arity+len(lf.caps), 0))
+	fnIdx := fc.chunk.AddConstant(vm.FuncValue(w.function(mangled)))
+
+	mark := fc.nextReg
+	dst := fc.destReg(d)
+	base := fc.allocReg()
+	fc.emit(vm.ABx(vm.LOADK, base, fnIdx))
+	for j, uv := range lf.caps {
+		r := fc.allocReg()
+		if r != base+1+j {
+			fc.fail("closure: capture %d in r%d, want r%d", j, r, base+1+j)
+		}
+		fc.loadCapture(owner, uv, r)
+	}
+	fc.emit(vm.ABC(vm.MAKECLOSURE, dst, base, len(lf.caps)))
+	fc.finish(d, dst)
+	fc.releaseToMark(mark)
+	return nil
 }
 
 func (fc *funcCompiler) loadVal(d dest, src int) error {
@@ -1271,14 +1393,18 @@ func (fc *funcCompiler) compileGenericCall(call ast.CallExpr, d dest) error {
 	mark := fc.nextReg
 	base := fc.allocReg()
 
-	// Вызов локальной fn с захватом: захваты — хвост аргументов (T-51).
-	var caps []string
+	// Вызов локальной fn с захватом: захваты — хвост аргументов (T-51),
+	// достаются по связыванию в точке объявления (T-39).
+	var caps []upvalueInfo
+	var owner *funcCompiler
 	callee, isLocalFn := "", false
 	if v, ok := call.Callee().(ast.VariableExpr); ok {
-		callee, isLocalFn = fc.resolveLocalFn(v.Name())
+		callee, owner, isLocalFn = fc.resolveLocalFn(v.Name())
 	}
 	if isLocalFn {
-		caps = fc.compiler.lifted[callee]
+		if lf := fc.compiler.lifted[callee]; lf != nil {
+			caps = lf.caps
+		}
 		if err := fc.loadGlobal(val(base), callee); err != nil {
 			return err
 		}
@@ -1296,15 +1422,13 @@ func (fc *funcCompiler) compileGenericCall(call ast.CallExpr, d dest) error {
 			return err
 		}
 	}
-	for j, name := range caps {
+	for j, uv := range caps {
 		r := fc.allocReg()
 		i := len(call.Args()) + j
 		if r != base+1+i {
 			fc.fail("call: arg %d in r%d, want r%d", i, r, base+1+i)
 		}
-		if err := fc.compileVar(name, val(r)); err != nil {
-			return err
-		}
+		fc.loadCapture(owner, uv, r)
 	}
 
 	fc.pos = posOf(call)
