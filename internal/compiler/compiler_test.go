@@ -63,7 +63,10 @@ fn main() ->
     b = false or true
     c = true and true
     d = false or false
-    print(a, b, c, d)
+    assert(a == false)
+    assert(b == true)
+    assert(c == true)
+    assert(d == false)
 `)
 }
 
@@ -71,7 +74,7 @@ func TestLocalFn(t *testing.T) {
 	runModule(t, `module Main
 fn main() ->
     fn add(x, y) -> x + y
-    print(add(1, 2))
+    assert(add(1, 2) == 3)
 `)
 }
 
@@ -80,7 +83,7 @@ func TestClosure(t *testing.T) {
 fn main() ->
     x = 10
     f = () -> x
-    print(f())
+    assert(f() == 10)
 `)
 }
 
@@ -89,7 +92,7 @@ func TestMutualRecursion(t *testing.T) {
 fn main() ->
     fn is_even(n) -> if n == 0 then true else is_odd(n - 1)
     fn is_odd(n) -> if n == 0 then false else is_even(n - 1)
-    print(is_even(10))
+    assert(is_even(10) == true)
 `)
 }
 
@@ -107,7 +110,7 @@ func TestClosureCapture(t *testing.T) {
 fn main() ->
     base = 100
     add_base = x -> base + x
-    print(add_base(5))
+    assert(add_base(5) == 105)
 `)
 }
 
@@ -115,7 +118,7 @@ func TestLocalFnRecursion(t *testing.T) {
 	runModule(t, `module Main
 fn main() ->
     fn fact(n) -> if n <= 1 then 1 else n * fact(n - 1)
-    print(fact(5))
+    assert(fact(5) == 120)
 `)
 }
 
@@ -182,7 +185,7 @@ func TestTrapCatchesDivisionByZero(t *testing.T) {
 	runModule(t, `module Main
 fn main() ->
     result = trap(1 div 0)
-    print(result)
+    assert(result == Error((:division_by_zero, ())))
 `)
 }
 
@@ -191,7 +194,7 @@ func TestTrapBlockPropagatesThroughFn(t *testing.T) {
 fn boom() -> raise(:deep)
 fn main() ->
     result = trap(boom())
-    print(result)
+    assert(result == Error(:deep))
 `)
 }
 
@@ -199,10 +202,9 @@ func TestTrapEnsureRaisesInSuccess(t *testing.T) {
 	runModule(t, `module Main
 fn main() ->
     result = trap
-        print("body")
         ensure raise(:cleanup_failed)
         :ok
-    print(result)
+    assert(result == Error(:cleanup_failed))
 `)
 }
 
@@ -212,7 +214,7 @@ fn main() ->
     result = trap
         raise(:body_failed)
         ensure raise(:cleanup_failed)
-    print(result)
+    assert(result == Error(:cleanup_failed))
 `)
 }
 
@@ -220,11 +222,10 @@ func TestTrapEnsureLifo(t *testing.T) {
 	runModule(t, `module Main
 fn main() ->
     result = trap
-        print("body")
-        ensure print("cleanup-1")
-        ensure print("cleanup-2")
+        ensure raise(:first_registered)
+        ensure raise(:second_registered)
         :ok
-    print(result)
+    assert(result == Error(:first_registered))
 `)
 }
 
@@ -232,11 +233,10 @@ func TestTrapEnsureLifoOnError(t *testing.T) {
 	runModule(t, `module Main
 fn main() ->
     result = trap
-        print("body")
-        ensure print("cleanup-1")
-        ensure print("cleanup-2")
+        ensure raise(:first_registered)
+        ensure raise(:second_registered)
         raise(:boom)
-    print(result)
+    assert(result == Error(:first_registered))
 `)
 }
 
@@ -479,11 +479,10 @@ func TestEnsureAllRunOnFailure(t *testing.T) {
 	runModule(t, `module Main
 fn main() ->
     result = trap
-        print("body")
-        ensure print("cleanup-1")
+        ensure raise(:first_registered)
         ensure raise(:cleanup_failed)
         :ok
-    print(result)
+    assert(result == Error(:first_registered))
 `)
 }
 
