@@ -555,17 +555,6 @@ func equalSlice(a, b []Value) bool {
 
 func isNum(v Value) bool { return v.Kind == KindInt || v.Kind == KindFloat }
 
-func numToFloat(v Value) float64 {
-	if v.Kind == KindFloat {
-		return v.Float
-	}
-	if v.IsSmall {
-		return float64(v.SmallInt)
-	}
-	f, _ := new(big.Float).SetInt(v.intBig).Float64()
-	return f
-}
-
 // valueToRat возвращает big.Rat для Int/Decimal; для остальных — false.
 func valueToRat(v Value) (*big.Rat, bool) {
 	switch v.Kind {
