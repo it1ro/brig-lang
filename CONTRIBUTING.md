@@ -38,6 +38,11 @@ VM — в `docs/02-register-based-virtual-machine.md`. Задачи ведутс
 - Ветка создаётся от свежего `main`, живёт не дольше одной сессии и squash-мержится в `main`.
 - После merge удаляется локально и на origin:
   `git branch -D fix/T-14-newline-required && git push origin --delete fix/T-14-newline-required`.
+- **Force-push — только в собственную ветку задачи**: ветку `<type>/<T-NN>-<slug>`,
+  созданную под этот тикет тем, кто её пушит (человеком или агентом в его сессии). Типичные
+  случаи — rebase на свежий `main` и перестройка стека PR после squash-merge нижнего.
+  Только `git push --force-with-lease=<ветка>:<ожидаемый sha>`, не голый `--force`.
+  Force-push в `main`, `iter/*`, теги и чужие ветки (в т.ч. ветки других задач) запрещён.
 - **Исключение — integration-ветка** `iter/<short-name>` (прецедент: `iter/regvm`), только
   когда изменение нельзя разбить на PR. До старта — baseline-тег на `main`:
   `git tag baseline/regvm main && git push origin baseline/regvm`. В `main` попадает одним
