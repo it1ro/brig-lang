@@ -658,7 +658,11 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 		case NOT:
 			v := regs[in.B()]
 			if v.Kind != runtime.KindBool {
-				return fail(fmt.Errorf("(:type_error, (:not, %s))", v.Inspect()))
+				err := typeErr("not", v)
+				if f.catch(err) {
+					continue
+				}
+				return fail(err)
 			}
 			regs[in.A()] = runtime.Bool(!v.Bool)
 			f.ip++
@@ -690,6 +694,12 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 			}
 			c, err := runtime.Compare(av, bv)
 			if err != nil {
+				// Несравнимые значения (§7.4: Function, вложенный
+				// Decimal×Float) — ловимый raise с исходными операндами.
+				err = typeErr("compare", runtime.Tuple(av, bv))
+				if f.catch(err) {
+					continue
+				}
 				return fail(err)
 			}
 			var res bool
