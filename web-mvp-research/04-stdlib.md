@@ -20,6 +20,7 @@
 | `Bytes`, `Str` | см. 03/L8 | Go | M |
 | `Base64`, `Hex`, `Url` | кодеки | Go | M |
 | `Json` | уже есть; + `decode_as(Type, …)`, потоковый encode в iodata | Go | M |
+| `Term` | бинарная сериализация значений Brig: CBOR + теги (16) | Go | M |
 | `Time`, `Timer` | `monotonic_ms`, `now`, `send_after`, форматы RFC3339/HTTP-date; встроенная база часовых поясов (C1) | VM+Go | M |
 | `Unicode`, `Plural` | нормализация, регистр, CLDR-правила плюрализации (C4); переводы — пакет | Go | M |
 | `Crypto` | `sha256`, `hmac`, `random_bytes`, `secure_compare`, `argon2id`/`bcrypt` | Go | M (сессии, CSRF, пароли) |
