@@ -293,15 +293,21 @@ fn main() -> f_inline()
 	}
 }
 
-// §4 табл. п.6 (doc 02): правый операнд and/or — хвостовая позиция (T-82).
-func TestAuditAndOrRightOperandIsTail(t *testing.T) {
-	t.Skip("blocked: T-82")
+// I-F3 / #41 (вариант A, строгий Bool): правый операнд and/or НЕ хвостовой —
+// его результат проверяется на Bool после вычисления, поэтому вызов
+// компилируется как CALL, а не TAILCALL (T-82 — won't-fix). Хвостовая форма
+// рекурсии — `if c then true else loop(n - 1)`.
+func TestAuditAndOrRightOperandIsNotTail(t *testing.T) {
 	img := compileModule(t, `module Main
 fn loop(n) -> n == 0 or loop(n - 1)
 fn main() -> loop(3)
 `)
-	if dis := img.Functions["loop"].Disassemble(); !strings.Contains(dis, "TAILCALL") {
-		t.Errorf("right operand of `or` is not TAILCALL:\n%s", dis)
+	dis := img.Functions["loop"].Disassemble()
+	if strings.Contains(dis, "TAILCALL") {
+		t.Errorf("right operand of `or` must not be TAILCALL (#41):\n%s", dis)
+	}
+	if !strings.Contains(dis, "CALL") {
+		t.Errorf("right operand of `or` expected to be CALL:\n%s", dis)
 	}
 }
 
