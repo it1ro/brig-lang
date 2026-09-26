@@ -33,7 +33,9 @@ func TestExitClassifyHelpers(t *testing.T) {
 }
 
 // Probes for CLI exit codes. upvalueSrc used to reach runtime
-// `internal: upvalue` (A-F7 / T-14); T-38 fail-fasts it at compile time.
+// `internal: upvalue` (A-F7 / T-14); T-38 fail-fasted it at compile time.
+// T-51 lifts captures into hidden params, so only a capturing local fn
+// used as a value is still срез (T-39).
 const (
 	sliceNYISrc = `module Main
 fn main() ->
@@ -42,7 +44,8 @@ fn main() ->
 	upvalueSrc = `module Main
 fn outer(x) ->
     fn add(y) -> x + y
-    add(2)
+    h = add
+    h(2)
 fn main() ->
     print(outer(1))
 `

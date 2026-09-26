@@ -120,10 +120,10 @@ K-8 объявляет эти фичи вне рамок, но сейчас ча
 
 | Что | Что происходит сейчас | Issue |
 |---|---|---|
-| Мультиклозные `fn`, параметры-паттерны, guard `fn` | AST: `Params []ast.Pattern`, `Guard ast.Expr`, variadic — `SpreadPattern` (T-50 #33). Fail-fast (T-01): `checkSimpleFn` допускает только IdentPattern/`..name`, отвергает multi-clause/guard/прочие паттерны. Полные лямбды `fn (…) ->`: params остаются `[]string`; `checkLambdaParams` отвергает паттерн и `..name` (T-44) | компиляция клауз T-51 (#34) |
+| Мультиклозные `fn`, параметры-паттерны, guard `fn` | `compileClauses` — единый путь для всех fn: ident/`..name`/`_` связываются прямо на регистр параметра (без MATCHLOCAL), прочие паттерны — MATCHLOCAL+JMP, guard — JMPIFNOT. Нет совпадения — `(:function_clause, [args])` (§6.1/§5.3); после неопровержимого последнего клоза raise не эмитится (T-51 #34). Лямбды `fn (…) ->` по-прежнему `[]string`; `checkLambdaParams` отвергает паттерн и `..name` (T-44) | ✓ T-51 (#34); guard в recv — T-52 |
 | `when`-guard в `recv` | Парсер выбрасывает guard, матчится не та ветка | fail-fast T-02 (#2); компиляция T-52 (#35) |
 | Интерполяция `"\(x)"` | AST — `InterpExpr` (T-53); `compileInterp` — concat частей и `to_str` для каждого expr | ✓ T-54 (#37) |
-| Локальная `fn` с захватом | Fail-fast (T-38, #27): `compileLocalFn` → `срез: локальная fn … с захватом не реализована` при `len(child.upvalues)>0` | лифтинг T-39 (#28) |
+| Локальная `fn` с захватом | Лямбда-лифтинг (T-51): `declareLocalFns` считает захваты блока фикспойнтом (транзитивно через вызовы соседей) в `Compiler.lifted[mangled]`; захваты — скрытые параметры после объявленных, вызов дописывает их в аргументы. Callee разрешается `resolveLocalFn` по правилам `compileVar` (локаль затеняет). Fail-fast: ссылка на fn с захватом как значение / в `spawn`, variadic+захват | fn с захватом как значение — T-39 (#28) |
 | Числовые литералы | base по префиксу (`0x`/`0b`/`0o`, иначе 10) через `big.Int.SetString` + `runtime.IntBig` | ✓ T-22 (#16) |
 | Позиции инструкций | 41 инструкция в bytecode-goldens с `0:0` (`fc.pos` не выставлен перед LOADK/GETGLOBAL callee) | T-41 (#30) |
 

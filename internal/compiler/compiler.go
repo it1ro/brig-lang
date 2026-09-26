@@ -34,6 +34,9 @@ type ProgramImage struct {
 // Compiler переводит AST в ProgramImage.
 type Compiler struct {
 	image *ProgramImage
+	// lifted — захваты локальных fn по mangled-имени: скрытые параметры
+	// после объявленных (лямбда-лифтинг, T-51).
+	lifted map[string][]string
 }
 
 // New создаёт компилятор.
@@ -355,6 +358,7 @@ func (fc *funcCompiler) operandInto(e ast.Expr, into int) (int, error) {
 // Compile — входная точка модуля.
 func (c *Compiler) Compile(prog *ast.Program) (image *ProgramImage, err error) {
 	c.image = &ProgramImage{Functions: make(map[string]*vm.Function)}
+	c.lifted = make(map[string][]string)
 	defer func() {
 		if r := recover(); r != nil {
 			if ce, ok := r.(compileError); ok {
@@ -375,11 +379,7 @@ func (c *Compiler) Compile(prog *ast.Program) (image *ProgramImage, err error) {
 		if len(clauses) == 0 {
 			continue
 		}
-		cl := clauses[0]
-		if cerr := checkSimpleFn(len(clauses), cl.Guard, cl.Params); cerr != nil {
-			return nil, fmt.Errorf("fn %s: %w", fd.FnName(), cerr)
-		}
-		fn, cerr := c.compileFunction(fd.FnName(), simpleParamNames(cl.Params), cl.Body)
+		fn, cerr := c.compileNamedFn(fd.FnName(), clauses)
 		if cerr != nil {
 			return nil, fmt.Errorf("fn %s: %w", fd.FnName(), cerr)
 		}
@@ -422,20 +422,23 @@ func verifyImage(img *ProgramImage) error {
 	return nil
 }
 
-func (c *Compiler) compileFunction(name string, params []string, body *ast.BlockStmt) (*vm.Function, error) {
+func (c *Compiler) compileNamedFn(name string, clauses []ast.FnClauseArg) (*vm.Function, error) {
 	fc := c.newFuncCompiler(nil)
 	fc.prefix = name + "$"
-
-	if err := fc.compileBody(params, body); err != nil {
+	if err := fc.compileClauses(clauses, nil); err != nil {
 		return nil, err
 	}
-	fc.chunk.NumRegs = fc.maxReg
+	return fc.function(name), nil
+}
 
-	fn := &vm.Function{Name: name, Arity: len(params), Chunk: fc.chunk}
+// function собирает vm.Function из скомпилированного чанка fn.
+func (fc *funcCompiler) function(name string) *vm.Function {
+	fc.chunk.NumRegs = fc.maxReg
+	arity := fc.chunk.NumParams
 	if fc.chunk.Variadic {
-		fn.Arity = -1
+		arity = -1
 	}
-	return fn, nil
+	return &vm.Function{Name: name, Arity: arity, Chunk: fc.chunk}
 }
 
 func (c *Compiler) compileBlock(name string, params []string, stmts []ast.Stmt) (*vm.Function, error) {
@@ -467,53 +470,22 @@ func (c *Compiler) compileBlock(name string, params []string, stmts []ast.Stmt) 
 	return &vm.Function{Name: name, Arity: len(params), Chunk: fc.chunk}, nil
 }
 
-// checkSimpleFn отвергает то, что компилятор не умеет, вместо того чтобы
-// молча взять clauses[0] и связать строку паттерна как имя (S-F2).
-// Именованные fn допускают IdentPattern и SpreadPattern (`..name`);
-// остальные паттерны и guard — fail-fast до T-51.
-func checkSimpleFn(nClauses int, guard ast.Expr, params []ast.Pattern) error {
-	if nClauses > 1 {
-		return fmt.Errorf("срез: мультиклозные fn не реализованы (%d клозов)", nClauses)
-	}
-	if guard != nil {
-		return fmt.Errorf("срез: guard `when %s` в fn не реализован", guard)
-	}
-	for _, p := range params {
-		switch x := p.(type) {
-		case ast.IdentPattern:
-			if !isIdentParam(x.IdentName()) {
-				return fmt.Errorf("срез: параметр-паттерн %q не реализован", p)
-			}
-		case ast.SpreadPattern:
-			if !isIdentParam(x.SpreadName()) {
-				return fmt.Errorf("срез: параметр-паттерн %q не реализован", p)
-			}
-		default:
-			return fmt.Errorf("срез: параметр-паттерн %q не реализован", p)
-		}
-	}
-	return nil
-}
-
-// simpleParamNames — имена для compileBody после checkSimpleFn
-// (IdentPattern / `..name` SpreadPattern).
-func simpleParamNames(params []ast.Pattern) []string {
-	out := make([]string, len(params))
+// clauseVariadic — оканчивается ли клоз `..name`; спред не в конце — ошибка.
+func clauseVariadic(params []ast.Pattern) (bool, error) {
+	variadic := false
 	for i, p := range params {
-		switch x := p.(type) {
-		case ast.SpreadPattern:
-			out[i] = ".." + x.SpreadName()
-		case ast.IdentPattern:
-			out[i] = x.IdentName()
-		default:
-			out[i] = p.String()
+		if _, ok := p.(ast.SpreadPattern); ok {
+			if i != len(params)-1 {
+				return false, fmt.Errorf("variadic parameter %q must be last", p)
+			}
+			variadic = true
 		}
 	}
-	return out
+	return variadic, nil
 }
 
 // checkLambdaParams — fail-fast для полной лямбды `fn (…) ->` (T-44).
-// Именованные fn по-прежнему допускают `..name` через checkSimpleFn;
+// Именованные fn допускают `..name` (compileClauses);
 // в лямбде и параметр-паттерн, и variadic — ошибка, а не молчаливое имя.
 func checkLambdaParams(params []string) error {
 	for _, p := range params {
@@ -544,42 +516,192 @@ func isIdentParam(p string) bool {
 	return true
 }
 
-func (fc *funcCompiler) compileBody(params []string, body *ast.BlockStmt) error {
-	variadic := false
-	for i, p := range params {
-		if strings.HasPrefix(p, "..") {
-			if i != len(params)-1 {
-				return fmt.Errorf("variadic parameter %q must be last", p)
-			}
-			variadic = true
+// compileClauses компилирует клозы fn (§6.1). Параметры лежат в
+// r0..n-1, за ними — скрытые параметры захвата caps (лямбда-лифтинг
+// локальной fn). Клозы проверяются по порядку: ident, `..name` и `_`
+// связываются без проверки, прочие паттерны — MATCHLOCAL, затем guard
+// (JMPIFNOT). Если ни один не подошёл — raise (:function_clause, [args]);
+// после неопровержимого последнего клоза raise не эмитится.
+func (fc *funcCompiler) compileClauses(clauses []ast.FnClauseArg, caps []string) error {
+	if len(clauses) == 0 {
+		return fmt.Errorf("нет клозов")
+	}
+	n := len(clauses[0].Params)
+	variadic, err := clauseVariadic(clauses[0].Params)
+	if err != nil {
+		return err
+	}
+	for _, cl := range clauses[1:] {
+		if len(cl.Params) != n {
+			return fmt.Errorf("клозы разной арности (%d и %d)", n, len(cl.Params))
+		}
+		v, verr := clauseVariadic(cl.Params)
+		if verr != nil {
+			return verr
+		}
+		if v != variadic {
+			return fmt.Errorf("клозы расходятся в variadic")
 		}
 	}
-	fc.chunk.Variadic = variadic
-	fc.chunk.NumParams = len(params)
+	if variadic && len(caps) > 0 {
+		return fmt.Errorf("срез: variadic-параметр с захватом не реализован")
+	}
 
-	for i, p := range params {
-		r := fc.allocReg()
-		if r != i {
+	fc.chunk.Variadic = variadic
+	fc.chunk.NumParams = n + len(caps)
+	for i := 0; i < n+len(caps); i++ {
+		if r := fc.allocReg(); r != i {
 			return fmt.Errorf("internal: param %d in r%d", i, r)
 		}
-		nm := p
-		if strings.HasPrefix(p, "..") {
-			nm = p[2:]
-		}
-		fc.bindLocal(nm, i)
+	}
+	for i, name := range caps {
+		fc.bindLocal(name, n+i)
 	}
 
-	if body == nil {
-		scratch := fc.allocReg()
-		return fc.loadUnit(dest{reg: scratch, tail: true})
+	var fails []int
+	for _, cl := range clauses {
+		if fails, err = fc.compileOneClause(cl); err != nil {
+			return err
+		}
+		here := len(fc.chunk.Code)
+		for _, j := range fails {
+			if perr := fc.chunk.PatchJump(j, here); perr != nil {
+				fc.fail("patch: %v", perr)
+			}
+		}
 	}
-	stmts := body.Body()
-	if len(stmts) == 0 {
-		scratch := fc.allocReg()
-		return fc.loadUnit(dest{reg: scratch, tail: true})
+	if len(fails) > 0 {
+		fc.raiseFunctionClause(clauses[0], n)
 	}
+	return nil
+}
+
+// compileOneClause компилирует один клоз и возвращает его fail-переходы
+// (к следующему клозу). Пустой список — клоз неопровержим.
+func (fc *funcCompiler) compileOneClause(cl ast.FnClauseArg) ([]int, error) {
+	fc.pushScope()
+	defer fc.popScope()
+
+	var fails []int
+	for i, p := range cl.Params {
+		switch x := p.(type) {
+		case ast.SpreadPattern:
+			fc.bindLocal(x.SpreadName(), i)
+			continue
+		case ast.IdentPattern:
+			if isIdentParam(x.IdentName()) {
+				fc.bindLocal(x.IdentName(), i)
+				continue
+			}
+		case ast.PatternWildcard:
+			if p.String() == "_" {
+				continue
+			}
+		}
+		cp, err := fc.compilePattern(p)
+		if err != nil {
+			return nil, err
+		}
+		patIdx := fc.chunk.AddPattern(cp)
+		fc.pos = posOf(p)
+		fc.emit(vm.ABx(vm.MATCHLOCAL, i, patIdx))
+		fails = append(fails, fc.emitJump(vm.JMP, 0))
+	}
+	if cl.Guard != nil {
+		mark := fc.nextReg
+		g := fc.allocReg()
+		if err := fc.compileExpr(cl.Guard, val(g)); err != nil {
+			return nil, err
+		}
+		fc.pos = posOf(cl.Guard)
+		fails = append(fails, fc.emitJump(vm.JMPIFNOT, g))
+		fc.releaseToMark(mark)
+	}
+
 	scratch := fc.allocReg()
-	return fc.compileStmts(stmts, dest{reg: scratch, tail: true})
+	if cl.Body == nil || len(cl.Body.Body()) == 0 {
+		return fails, fc.loadUnit(dest{reg: scratch, tail: true})
+	}
+	return fails, fc.compileStmts(cl.Body.Body(), dest{reg: scratch, tail: true})
+}
+
+// raiseFunctionClause — (:function_clause, [arg0, …]) (§6.1, §5.3).
+// Аргументы уже лежат подряд в r0..arity-1. У variadic последний элемент
+// списка — сам rest-список: конкатенации в байткоде нет.
+func (fc *funcCompiler) raiseFunctionClause(first ast.FnClauseArg, arity int) {
+	switch {
+	case len(first.Params) > 0:
+		fc.pos = posOf(first.Params[0])
+	case first.Guard != nil:
+		fc.pos = posOf(first.Guard)
+	}
+	w := fc.allocReg()
+	fc.emit(vm.ABx(vm.LOADK, w, fc.konst(runtime.Atom("function_clause"))))
+	l := fc.allocReg()
+	fc.emit(vm.ABC(vm.LIST, l, 0, arity))
+	fc.emit(vm.ABC(vm.TUPLE, w, w, 2))
+	fc.emit(vm.ABC(vm.RAISE, w, 0, 0))
+}
+
+func localClauses(cs []ast.LocalFnClauseArg) []ast.FnClauseArg {
+	out := make([]ast.FnClauseArg, len(cs))
+	for i, c := range cs {
+		out[i] = ast.FnClauseArg(c)
+	}
+	return out
+}
+
+// ---- лямбда-лифтинг локальных fn (T-51) ----
+
+// declareLocalFns регистрирует имена локальных fn блока до компиляции
+// тел (взаимная рекурсия, §6.5) и вычисляет их захваты — скрытые
+// параметры после объявленных. sema держит объявления в начале блока,
+// так что видимые снаружи имена к этому моменту уже связаны.
+//
+// Захваты считаются фикспойнтом: вызов другой локальной fn блока
+// передаёт и её захваты, поэтому они транзитивны. Итерация компилирует
+// тела во временных funcCompiler и отбрасывает результат; новые upvalue
+// дописываются в захваты, наборы только растут.
+func (fc *funcCompiler) declareLocalFns(stmts []ast.Stmt) error {
+	var decls []ast.LocalFnDecl
+	for _, s := range stmts {
+		if lfd, ok := s.(ast.LocalFnDecl); ok {
+			mangled := fc.prefix + lfd.FnName()
+			fc.localFns[lfd.FnName()] = mangled
+			delete(fc.compiler.lifted, mangled)
+			decls = append(decls, lfd)
+		}
+	}
+	for changed := len(decls) > 0; changed; {
+		changed = false
+		for _, d := range decls {
+			mangled := fc.localFns[d.FnName()]
+			probe := fc.compiler.newFuncCompiler(fc)
+			probe.prefix = mangled + "$"
+			if err := probe.compileClauses(localClauses(d.Clauses()), fc.compiler.lifted[mangled]); err != nil {
+				return fmt.Errorf("local fn %s: %w", d.FnName(), err)
+			}
+			for _, uv := range probe.upvalues {
+				fc.compiler.lifted[mangled] = append(fc.compiler.lifted[mangled], uv.name)
+				changed = true
+			}
+		}
+	}
+	return nil
+}
+
+// resolveLocalFn — mangled-имя локальной fn по правилам compileVar:
+// локаль затеняет, дальше localFns своей fn и предков.
+func (fc *funcCompiler) resolveLocalFn(name string) (string, bool) {
+	if _, ok := fc.resolveLocal(name); ok {
+		return "", false
+	}
+	for p := fc; p != nil; p = p.parent {
+		if mangled, ok := p.localFns[name]; ok {
+			return mangled, true
+		}
+	}
+	return "", false
 }
 
 // CompileReplLine компилирует одну REPL-строку как функцию от видимых имён.
@@ -597,6 +719,7 @@ func (c *Compiler) CompileReplLine(names []string, s ast.Stmt) (fn *vm.Function,
 	}()
 
 	c.image = &ProgramImage{Functions: make(map[string]*vm.Function)}
+	c.lifted = make(map[string][]string)
 
 	fc := c.newFuncCompiler(nil)
 	fc.prefix = "__repl__$"
@@ -649,10 +772,8 @@ func (fc *funcCompiler) compileStmts(stmts []ast.Stmt, d dest) error {
 	}
 
 	// Local fn names first — для взаимной рекурсии (§6.5).
-	for _, s := range stmts {
-		if lfd, ok := s.(ast.LocalFnDecl); ok {
-			fc.localFns[lfd.FnName()] = fc.prefix + lfd.FnName()
-		}
+	if err := fc.declareLocalFns(stmts); err != nil {
+		return err
 	}
 
 	for i, s := range stmts {
@@ -698,81 +819,24 @@ func (fc *funcCompiler) compileLetBind(st ast.LetBind, d dest) error {
 
 func (fc *funcCompiler) compileLocalFn(decl ast.LocalFnDecl, d dest) error {
 	name := decl.FnName()
-	clauses := decl.Clauses()
-	if len(clauses) == 0 {
-		return fmt.Errorf("local fn %s: нет клозов", name)
-	}
-	cl := clauses[0]
-	if err := checkSimpleFn(len(clauses), cl.Guard, cl.Params); err != nil {
-		return fmt.Errorf("local fn %s: %w", name, err)
-	}
 	mangled, ok := fc.localFns[name]
 	if !ok {
 		mangled = fc.prefix + name
 		fc.localFns[name] = mangled
 	}
 
+	// Захваты — скрытые параметры после объявленных (лямбда-лифтинг, T-51).
 	child := fc.compiler.newFuncCompiler(fc)
 	child.prefix = mangled + "$"
-
-	paramNames := simpleParamNames(cl.Params)
-	variadic := false
-	for i, p := range paramNames {
-		if strings.HasPrefix(p, "..") {
-			if i != len(paramNames)-1 {
-				return fmt.Errorf("local fn %s: variadic param must be last", name)
-			}
-			variadic = true
-		}
+	if err := child.compileClauses(localClauses(decl.Clauses()), fc.compiler.lifted[mangled]); err != nil {
+		return fmt.Errorf("local fn %s: %w", name, err)
 	}
-	child.chunk.Variadic = variadic
-	child.chunk.NumParams = len(paramNames)
-	for i, p := range paramNames {
-		r := child.allocReg()
-		if r != i {
-			return fmt.Errorf("internal: local fn param %d in r%d", i, r)
-		}
-		nm := p
-		if strings.HasPrefix(p, "..") {
-			nm = p[2:]
-		}
-		child.bindLocal(nm, i)
-	}
-
-	if cl.Body != nil {
-		stmts := cl.Body.Body()
-		if len(stmts) == 0 {
-			scratch := child.allocReg()
-			if err := child.loadUnit(dest{reg: scratch, tail: true}); err != nil {
-				return err
-			}
-		} else {
-			scratch := child.allocReg()
-			if err := child.compileStmts(stmts, dest{reg: scratch, tail: true}); err != nil {
-				return fmt.Errorf("local fn %s: %w", name, err)
-			}
-		}
-	} else {
-		scratch := child.allocReg()
-		if err := child.loadUnit(dest{reg: scratch, tail: true}); err != nil {
-			return err
-		}
-	}
-	child.chunk.NumRegs = child.maxReg
-
-	// I-F7 / T-38: локальная fn кладётся как глобальная Function без
-	// captures — захват падал бы только в рантайме (`internal: upvalue`).
-	// Полная реализация (лямбда-лифтинг) — T-39.
+	// I-F7 / T-38: upvalue у локальной fn упал бы только в рантайме
+	// (`internal: upvalue`) — fn кладётся как глобальная Function.
 	if len(child.upvalues) > 0 {
 		return fmt.Errorf("срез: локальная fn %s с захватом не реализована", name)
 	}
-
-	fnArity := len(paramNames)
-	if variadic {
-		fnArity = -1
-	}
-	fn := &vm.Function{Name: mangled, Arity: fnArity, Chunk: child.chunk}
-	fc.compiler.image.Functions[mangled] = fn
+	fc.compiler.image.Functions[mangled] = child.function(mangled)
 
 	// Значение local fn — () (совместимо с регистровой VM).
 	return fc.loadUnit(d)
@@ -919,10 +983,12 @@ func (fc *funcCompiler) compileVar(name string, d dest) error {
 	if r, ok := fc.resolveLocal(name); ok {
 		return fc.loadVal(d, r)
 	}
-	for p := fc; p != nil; p = p.parent {
-		if mangled, ok := p.localFns[name]; ok {
-			return fc.loadGlobal(d, mangled)
+	if mangled, ok := fc.resolveLocalFn(name); ok {
+		// Вне позиции вызова скрытые параметры передать некому.
+		if len(fc.compiler.lifted[mangled]) > 0 {
+			return fmt.Errorf("срез: локальная fn %s с захватом как значение не реализована (T-39)", name)
 		}
+		return fc.loadGlobal(d, mangled)
 	}
 	if idx, ok := fc.resolveUpvalue(name); ok {
 		return fc.loadUpval(d, idx)
@@ -1204,17 +1270,39 @@ func (fc *funcCompiler) compileCall(call ast.CallExpr, d dest) error {
 func (fc *funcCompiler) compileGenericCall(call ast.CallExpr, d dest) error {
 	mark := fc.nextReg
 	base := fc.allocReg()
-	if err := fc.compileExpr(call.Callee(), val(base)); err != nil {
+
+	// Вызов локальной fn с захватом: захваты — хвост аргументов (T-51).
+	var caps []string
+	callee, isLocalFn := "", false
+	if v, ok := call.Callee().(ast.VariableExpr); ok {
+		callee, isLocalFn = fc.resolveLocalFn(v.Name())
+	}
+	if isLocalFn {
+		caps = fc.compiler.lifted[callee]
+		if err := fc.loadGlobal(val(base), callee); err != nil {
+			return err
+		}
+	} else if err := fc.compileExpr(call.Callee(), val(base)); err != nil {
 		return err
 	}
 
-	argc := len(call.Args())
+	argc := len(call.Args()) + len(caps)
 	for i, a := range call.Args() {
 		r := fc.allocReg()
 		if r != base+1+i {
 			fc.fail("call: arg %d in r%d, want r%d", i, r, base+1+i)
 		}
 		if err := fc.compileExpr(a, val(r)); err != nil {
+			return err
+		}
+	}
+	for j, name := range caps {
+		r := fc.allocReg()
+		i := len(call.Args()) + j
+		if r != base+1+i {
+			fc.fail("call: arg %d in r%d, want r%d", i, r, base+1+i)
+		}
+		if err := fc.compileVar(name, val(r)); err != nil {
 			return err
 		}
 	}
@@ -1655,10 +1743,8 @@ func (fc *funcCompiler) compileTrapBodyWithEnsures(
 		return fc.loadUnit(d)
 	}
 
-	for _, s := range stmts {
-		if lfd, ok := s.(ast.LocalFnDecl); ok {
-			fc.localFns[lfd.FnName()] = fc.prefix + lfd.FnName()
-		}
+	if err := fc.declareLocalFns(stmts); err != nil {
+		return err
 	}
 
 	type item struct {
