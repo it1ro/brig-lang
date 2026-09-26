@@ -90,8 +90,10 @@ description: >
   закрыто T-47 (#60) — `recvTimerDuration` отвергает ms вне
   `[MinInt64/1e6, MaxInt64/1e6]` и big.Int вне int64 как
   `(:type_error, (:after, ...))`; якорь `TestVerifyIF14HugeTimerMs`.
-  Открыто: `wakeExpired` обходит `map` — порядок в `ready`
-  недетерминирован (§15.4; T-48). Модель scheduler не менять
+  `wakeExpired` будит истёкших в порядке `(recvDeadline, timerSeq)`
+  (T-48 #61; `timerSeq` взводится в `RECVTIMER` из `s.nextSeq`) — не
+  возвращать обход `map` напрямую в `ready` (§15.4); якорь
+  `TestWakeExpiredDeterministicOrder`. Модель scheduler не менять
   (A-F1, T-90).
 - Равенство: `PatLiteral` использует `runtime.Equal` (паттерн `1` матчит
   `1.0`), Int×Float сравниваются через float64, Decimal×Float по-разному в
