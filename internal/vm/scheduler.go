@@ -711,7 +711,14 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 
 		case JMPIFNOT:
 			v := regs[in.A()]
-			if v.Kind == runtime.KindBool && !v.Bool {
+			if v.Kind != runtime.KindBool {
+				err := notBoolErr(v)
+				if f.catch(err) {
+					continue
+				}
+				return fail(err)
+			}
+			if !v.Bool {
 				f.ip += 1 + in.SBx()
 			} else {
 				f.ip++
@@ -719,7 +726,14 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 
 		case JMPIF:
 			v := regs[in.A()]
-			if v.Kind == runtime.KindBool && v.Bool {
+			if v.Kind != runtime.KindBool {
+				err := notBoolErr(v)
+				if f.catch(err) {
+					continue
+				}
+				return fail(err)
+			}
+			if v.Bool {
 				f.ip += 1 + in.SBx()
 			} else {
 				f.ip++
@@ -1455,4 +1469,13 @@ func (s *Scheduler) tryUnwindRaise(a *Actor) bool {
 		a.frames = a.frames[:len(a.frames)-1]
 	}
 	return false
+}
+
+// notBoolErr — raise (:type_error, (:expected_bool, v)) для не-Bool в
+// условии if, операнде and/or и guard (строгий Bool, DD #41 вариант A);
+// форма payload — как у assert: (:type_error, (:assert_expected_bool, v)).
+func notBoolErr(v runtime.Value) error {
+	return &ErrRaise{Val: runtime.Tuple(
+		runtime.Atom("type_error"),
+		runtime.Tuple(runtime.Atom("expected_bool"), v))}
 }

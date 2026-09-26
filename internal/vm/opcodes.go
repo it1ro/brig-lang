@@ -35,8 +35,8 @@ const (
 	NOT // R[A] = not R[B]
 
 	JMP      // ip += 1 + sBx
-	JMPIFNOT // if R[A] == Bool(false) { ip += 1 + sBx }
-	JMPIF    // if R[A] == Bool(true)  { ip += 1 + sBx }
+	JMPIFNOT // if R[A] == Bool(false) { ip += 1 + sBx }; R[A] не Bool → raise (:type_error, (:expected_bool, v))
+	JMPIF    // if R[A] == Bool(true)  { ip += 1 + sBx }; R[A] не Bool → raise (:type_error, (:expected_bool, v))
 
 	CALL     // R[C] = R[A](R[A+1..A+B])
 	TAILCALL // замена кадра: R[A](R[A+1..A+B])
