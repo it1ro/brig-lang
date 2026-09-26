@@ -1,6 +1,8 @@
 package vm
 
 import (
+	"fmt"
+
 	"github.com/it1ro/brig-lang/internal/runtime"
 )
 
@@ -16,8 +18,22 @@ func InstallJSONPrelude(vm *VM) {
 		})
 	}
 
-	def("Json.encode", 1, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
-		s, err := runtime.JSONEncode(args[0])
+	// Json.encode(v) / Json.encode(v, { type_tag: Bool }) (§4.7).
+	def("Json.encode", -1, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+		if len(args) != 1 && len(args) != 2 {
+			return runtime.Unit, fmt.Errorf("(:function_clause, (Json.encode, %d args))", len(args))
+		}
+		var opts runtime.JSONOptions
+		if len(args) == 2 {
+			o, ok := jsonEncodeOpts(args[1])
+			if !ok {
+				return runtime.Unit, &ErrRaise{Val: runtime.Tuple(
+					runtime.Atom("type_error"),
+					runtime.Tuple(runtime.Atom("json_encode_opts"), args[1]))}
+			}
+			opts = o
+		}
+		s, err := runtime.JSONEncodeOpts(args[0], opts)
 		if err != nil {
 			return runtime.Unit, &ErrRaise{Val: runtime.Tuple(
 				runtime.Atom("json_encode_error"),
@@ -38,4 +54,20 @@ func InstallJSONPrelude(vm *VM) {
 		}
 		return runtime.Variant("Ok", v), nil
 	})
+}
+
+// jsonEncodeOpts разбирает анонимную запись опций Json.encode; известно
+// только поле type_tag: Bool.
+func jsonEncodeOpts(v runtime.Value) (runtime.JSONOptions, bool) {
+	var o runtime.JSONOptions
+	if v.Kind != runtime.KindRecord || v.Record.Type != "" {
+		return o, false
+	}
+	for _, f := range v.Record.Fields {
+		if f.Name != "type_tag" || f.Val.Kind != runtime.KindBool {
+			return o, false
+		}
+		o.TypeTag = f.Val.Bool
+	}
+	return o, true
 }

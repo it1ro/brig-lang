@@ -3,8 +3,8 @@ package vm
 // OpCode — опкод регистровой ВМ (Sprint 7, §1, §10).
 //
 // Инструкция — 4 байта (Instr); op занимает младший байт uint32.
-// Полный набор — 49 опкодов: удалены Pop/Dup/GetLocal/SetLocal/SetUpvalue
-// стековой ВМ, добавлены MOVE и TAILCALL.
+// Полный набор — 51 опкод: удалены Pop/Dup/GetLocal/SetLocal/SetUpvalue
+// стековой ВМ, добавлены MOVE и TAILCALL; записи (T-73) — RECORD и GETFIELD.
 type OpCode byte
 
 // Опкоды регистровой ВМ. LOADK — R[A] = K[Bx].
@@ -69,6 +69,12 @@ const (
 	RECVTAKE    // R[A] = сообщение; sBx → after (0 — after отсутствует)
 	MATCHLOCAL  // if MatchPattern(R[A], Patterns[Bx], regs) { ip += 2 } else { ip += 1 }
 	YIELD       // отдать квант
+
+	// RECORD: R[A] = запись по форме R[B] и значениям R[B+1..B+C] (§4.7).
+	// Форма — константа (Str тип, Tuple объявленных полей, Tuple слотов);
+	// слот — имя поля или ".." (спред записи). Тип "" — анонимная.
+	RECORD
+	GETFIELD // R[A] = R[B].field, имя поля — Str в R[C]
 )
 
 // opNames индексируется OpCode; размер массива фиксирован числом опкодов.
@@ -122,6 +128,8 @@ var opNames = [...]string{
 	RECVTAKE:    "RECVTAKE",
 	MATCHLOCAL:  "MATCHLOCAL",
 	YIELD:       "YIELD",
+	RECORD:      "RECORD",
+	GETFIELD:    "GETFIELD",
 }
 
 func (op OpCode) String() string {
