@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"fmt"
 	"math/big"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -510,43 +511,26 @@ func valueToRat(v Value) (*big.Rat, bool) {
 
 // Compare возвращает -1/0/+1.
 //
+// Порядок между видами — term order §7.4 (число < Bool < Range < атом <
+// Bytes < Str < кортеж < Vector < List < Map < Set < встроенные варианты <
+// Pid < Ref); внутри вида — по правилам вида. Function вне списка и даёт
+// :type_error.
+//
 // Decimal-правила: Decimal×Decimal и Decimal×Int — точно, по значению;
 // Decimal×Float — ошибка (жёстко, §7.4).
 func Compare(a, b Value) (int, error) {
-	if a.Kind == KindDecimal || b.Kind == KindDecimal {
-		ar, ok1 := valueToRat(a)
-		br, ok2 := valueToRat(b)
-		if !ok1 || !ok2 {
-			return 0, cmpErr(a, b)
-		}
-		return ar.Cmp(br), nil
+	ra, ok1 := termRank(a)
+	rb, ok2 := termRank(b)
+	if !ok1 || !ok2 {
+		return 0, cmpErr(a, b)
 	}
-	if isNum(a) && isNum(b) {
-		af, bf := numToFloat(a), numToFloat(b)
-		switch {
-		case af < bf:
-			return -1, nil
-		case af > bf:
-			return 1, nil
-		default:
-			return 0, nil
-		}
+	if ra != rb {
+		return cmpInt(ra, rb), nil
 	}
-	switch a.Kind {
-	case KindStr:
-		if b.Kind != KindStr {
-			return 0, cmpErr(a, b)
-		}
-		return strings.Compare(a.Str, b.Str), nil
-	case KindAtom:
-		if b.Kind != KindAtom {
-			return 0, cmpErr(a, b)
-		}
-		return strings.Compare(a.Atom, b.Atom), nil
-	case KindBool:
-		if b.Kind != KindBool {
-			return 0, cmpErr(a, b)
-		}
+	switch ra {
+	case rankNumber:
+		return compareNumbers(a, b)
+	case rankBool:
 		ai, bi := 0, 0
 		if a.Bool {
 			ai = 1
@@ -555,38 +539,181 @@ func Compare(a, b Value) (int, error) {
 			bi = 1
 		}
 		return ai - bi, nil
-	case KindRange:
-		if b.Kind != KindRange {
-			return 0, cmpErr(a, b)
-		}
+	case rankRange:
 		if a.RangeStart != b.RangeStart {
 			return cmpInt64(a.RangeStart, b.RangeStart), nil
 		}
 		return cmpInt64(a.RangeEnd, b.RangeEnd), nil
-	case KindBytes:
-		if b.Kind != KindBytes {
-			return 0, cmpErr(a, b)
-		}
+	case rankAtom:
+		return strings.Compare(a.Atom, b.Atom), nil
+	case rankBytes:
 		return bytes.Compare(a.Bytes, b.Bytes), nil
-	case KindSet:
-		if b.Kind != KindSet {
-			return 0, cmpErr(a, b)
-		}
-		if len(a.Set) != len(b.Set) {
-			return cmpInt(len(a.Set), len(b.Set)), nil
-		}
-		for i := range a.Set {
-			c, err := Compare(a.Set[i], b.Set[i])
-			if err != nil {
-				return 0, err
-			}
-			if c != 0 {
-				return c, nil
-			}
-		}
-		return 0, nil
+	case rankStr:
+		return strings.Compare(a.Str, b.Str), nil
+	case rankTuple:
+		return compareSlices(a.Tuple, b.Tuple)
+	case rankVector:
+		return compareSlices(a.Vector, b.Vector)
+	case rankList:
+		return compareSlices(a.List, b.List)
+	case rankMap:
+		return compareMaps(a.Map, b.Map)
+	case rankSet:
+		return compareSlices(sortedValues(a.Set), sortedValues(b.Set))
+	case rankVariant:
+		return compareVariants(a.Variant, b.Variant)
+	case rankPid:
+		return cmpInt(a.Pid, b.Pid), nil
+	case rankRef:
+		return cmpInt(a.Ref, b.Ref), nil
 	}
 	return 0, cmpErr(a, b)
+}
+
+// Ранги видов в term order §7.4.
+const (
+	rankNumber = iota
+	rankBool
+	rankRange
+	rankAtom
+	rankBytes
+	rankStr
+	rankTuple
+	rankVector
+	rankList
+	rankMap
+	rankSet
+	rankVariant
+	rankPid
+	rankRef
+)
+
+func termRank(v Value) (int, bool) {
+	switch v.Kind {
+	case KindInt, KindFloat, KindDecimal:
+		return rankNumber, true
+	case KindBool:
+		return rankBool, true
+	case KindRange:
+		return rankRange, true
+	case KindAtom:
+		return rankAtom, true
+	case KindBytes:
+		return rankBytes, true
+	case KindStr:
+		return rankStr, true
+	case KindUnit, KindTuple:
+		return rankTuple, true
+	case KindVector:
+		return rankVector, true
+	case KindList:
+		return rankList, true
+	case KindMap:
+		return rankMap, true
+	case KindSet:
+		return rankSet, true
+	case KindVariant:
+		return rankVariant, true
+	case KindPid:
+		return rankPid, true
+	case KindRef:
+		return rankRef, true
+	}
+	return 0, false
+}
+
+func compareNumbers(a, b Value) (int, error) {
+	if a.Kind == KindDecimal || b.Kind == KindDecimal {
+		ar, ok1 := valueToRat(a)
+		br, ok2 := valueToRat(b)
+		if !ok1 || !ok2 {
+			return 0, cmpErr(a, b)
+		}
+		return ar.Cmp(br), nil
+	}
+	af, bf := numToFloat(a), numToFloat(b)
+	switch {
+	case af < bf:
+		return -1, nil
+	case af > bf:
+		return 1, nil
+	default:
+		return 0, nil
+	}
+}
+
+// compareSlices: длина, затем поэлементно.
+func compareSlices(a, b []Value) (int, error) {
+	if len(a) != len(b) {
+		return cmpInt(len(a), len(b)), nil
+	}
+	for i := range a {
+		c, err := Compare(a[i], b[i])
+		if err != nil || c != 0 {
+			return c, err
+		}
+	}
+	return 0, nil
+}
+
+// sortedValues возвращает отсортированную копию; при несравнимых
+// элементах порядок остаётся исходным (ошибку отдаст compareSlices).
+func sortedValues(vs []Value) []Value {
+	out := append([]Value(nil), vs...)
+	sort.SliceStable(out, func(i, j int) bool {
+		c, err := Compare(out[i], out[j])
+		return err == nil && c < 0
+	})
+	return out
+}
+
+// compareMaps: размер, затем по парам, отсортированным по ключу.
+func compareMaps(a, b []MapEntry) (int, error) {
+	if len(a) != len(b) {
+		return cmpInt(len(a), len(b)), nil
+	}
+	sa, sb := sortedEntries(a), sortedEntries(b)
+	for i := range sa {
+		if c, err := Compare(sa[i].Key, sb[i].Key); err != nil || c != 0 {
+			return c, err
+		}
+		if c, err := Compare(sa[i].Val, sb[i].Val); err != nil || c != 0 {
+			return c, err
+		}
+	}
+	return 0, nil
+}
+
+func sortedEntries(es []MapEntry) []MapEntry {
+	out := append([]MapEntry(nil), es...)
+	sort.SliceStable(out, func(i, j int) bool {
+		c, err := Compare(out[i].Key, out[j].Key)
+		return err == nil && c < 0
+	})
+	return out
+}
+
+// variantTagOrder: None < Some < Ok < Error. Порядок между группами
+// Option и Result спекой не задан — выбран по порядку перечисления.
+var variantTagOrder = map[string]int{"None": 0, "Some": 1, "Ok": 2, "Error": 3}
+
+// compareVariants: по тегу, затем по полям.
+func compareVariants(a, b *VariantValue) (int, error) {
+	ta, oka := variantTagOrder[a.Tag]
+	tb, okb := variantTagOrder[b.Tag]
+	switch {
+	case oka && okb:
+		if ta != tb {
+			return cmpInt(ta, tb), nil
+		}
+	case oka != okb:
+		return 0, cmpErr(Value{Kind: KindVariant, Variant: a}, Value{Kind: KindVariant, Variant: b})
+	default:
+		if c := strings.Compare(a.Tag, b.Tag); c != 0 {
+			return c, nil
+		}
+	}
+	return compareSlices(a.Args, b.Args)
 }
 
 func cmpInt64(a, b int64) int {
