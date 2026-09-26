@@ -1,5 +1,5 @@
-<%# Форма с ошибками changeset'а и CSRF-токеном (плаг Csrf.protect кладёт его в assigns).
-    NEEDS: компилируемые шаблоны (03/L10), Form-хелперы (06) %>
+{# Форма с ошибками changeset'а и CSRF-токеном (плаг Csrf.protect кладёт его в assigns).
+    NEEDS: компилируемые шаблоны (03/L10), Form-хелперы (06) #}
 <form method="post" action={Router.path(MonitorController.create)}>
   <input type="hidden" name="_csrf" value={assigns.csrf_token}>
 

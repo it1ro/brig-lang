@@ -108,8 +108,8 @@ Monitor: { type: object, required: [id, name, url, interval_ms, status],
 
 | Где | Что | Уровень |
 |---|---|---|
-| Спека §14.4 | «аннотации — documentation-only» → «аннотации проверяются на входе `pub fn` (вид/тег) и в `decode_as` (глубоко)» | DD, M |
-| Спека §16 | runtime-контракты: Should → Must (уровни B и P) | DD |
+| Спека §14.4 | «аннотации — documentation-only» → «аннотации проверяются на входе `pub fn` (вид/тег) и в `decode_as` (глубоко)» | `edit-spec`, M |
+| Спека §16 | runtime-контракты: Should → Must (уровни B и P) | `edit-spec` |
 | VM | `CHECK_KIND` / `CHECK_TAG`, `:contract_violation` | M |
 | Компилятор/sema | пролог `pub fn` из аннотаций; флаг `--contracts=off\|shallow\|deep` | M |
 | stdlib | `Json.decode_as`, `Check`, `Type.fields`/`Type.schema` (рефлексия, 03/L11) | M |

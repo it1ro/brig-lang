@@ -1,7 +1,7 @@
-<%# Шаблон компилируется `brig` в функцию LookoutWeb.Templates.Monitors.index(assigns).
+{# Шаблон компилируется `brig` в функцию LookoutWeb.Templates.Monitors.index(assigns).
     Вставки {expr} — выражения Brig, всегда HTML-экранируются (тип Html.Safe).
     Директивы :for / :if — атрибуты, без закрывающих end-тегов.
-    NEEDS: компилируемые шаблоны (03/L10, Q-tpl), Router.path по функции (03/L5) %>
+    NEEDS: компилируемые шаблоны (03/L10, Q-tpl), Router.path по функции (03/L5) #}
 <section>
   <header>
     <h1>Мониторы</h1>

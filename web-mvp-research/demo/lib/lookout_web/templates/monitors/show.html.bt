@@ -1,6 +1,6 @@
-<%# Статус обновляется вживую: браузер слушает /api/monitors/:id/events (SSE).
+{# Статус обновляется вживую: браузер слушает /api/monitors/:id/events (SSE).
     Весь «real-time» на сервере — recv-цикл в api/monitor_controller.brig.
-    NEEDS: компилируемые шаблоны (03/L10) %>
+    NEEDS: компилируемые шаблоны (03/L10) #}
 <section>
   <h1>{assigns.monitor.name}</h1>
   <p><code>{assigns.monitor.url}</code> · каждые {assigns.monitor.interval_ms div 1000} с</p>

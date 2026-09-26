@@ -53,6 +53,8 @@ Conn{
     status: Option<Int>, resp_headers: List<(Str, Str)>,
     resp: Option<Body>,      # Some(...) ⇒ ответ задан ⇒ конвейер остановлен
     remote: (Str, Int), request_id: Str,
+    port: Port,              # порт запроса (02/R2): тело, запись, (:http_closed, port)
+    trace: Trace,            # контекст трейса, пробрасывается явно (Q-trace, 13)
 }
 ```
 
@@ -61,19 +63,16 @@ Conn{
 Плаг — функция `Conn -> Conn`. Конвейер — список плагов; раннер
 вызывает их по порядку и **останавливается, как только `conn.resp`
 стал `Some`** (ответ задан — дальше идти незачем). Никакого отдельного
-флага `halted` и никаких колбэков. → Q-halt в 07.
+флага `halted` и никаких колбэков (Q-halt).
 
 ```brig
-pub fn require_token(conn) -> check_token(conn, Conn.bearer(conn))
+pub fn require_token(conn) -> authorize(conn, Conn.bearer(conn), Config.get(:api_token))
 
-fn check_token(conn, Some(t)) ->
-    if Crypto.secure_compare(t, Config.get(:api_token))
-        conn
-    else
-        deny(conn)
-fn check_token(conn, None) -> deny(conn)
+fn authorize(conn, Some(token), Some(expected)) ->
+    if Crypto.secure_compare(token, expected) then conn else deny(conn)
+fn authorize(conn, _, _) -> deny(conn)
 
-fn deny(conn) -> conn |> Conn.send(401, "unauthorized")
+fn deny(conn) -> conn |> Conn.json(401, %{ "error" => "unauthorized" })
 ```
 
 ## Роутер — данные, а не DSL
@@ -83,21 +82,25 @@ fn deny(conn) -> conn |> Conn.send(401, "unauthorized")
 ```brig
 pub fn routes() ->
     [
-        scope("/", [:browser], [
-            get("/", PageController.home),
-            resources("/monitors", MonitorController, [:index, :show, :new, :create]),
+        Router.scope("/", :browser, [
+            Router.get("/",             MonitorController.index),
+            Router.get("/monitors/:id", MonitorController.show),
         ]),
-        scope("/api", [:api], [
-            get("/monitors", Api.MonitorController.index),
-            get("/monitors/:id/events", Api.MonitorController.events),
+        Router.scope("/api", :api, [
+            Router.get("/monitors/:id/events", Api.events),
         ]),
     ]
 ```
 
-`Router.compile(routes())` на старте строит префиксное дерево по сегментам;
-ошибки (дубли, конфликт `:id` vs `new`) — на старте, до `listen`.
-`Router.path(:monitor, 42)` → `/monitors/42` (хелпер путей из имён маршрутов).
-`resources` требует модуль-значение (03/L5).
+Пайплайны (`:browser`, `:api`) — мапа «имя → список плагов» из
+`pipelines()`. `Router.compile(routes())` на старте строит префиксное дерево
+по сегментам; ошибки (дубли, конфликт `:id` vs `new`) — на старте, до
+`listen`. Хелпер путей ключуется **функцией-действием**, а не строковым
+именем: `Router.path(MonitorController.show, m)` → `/monitors/42`
+(параметр — через `to_param`, L6); опечатка ловится компилятором.
+Сахар `Router.resources("/monitors", MonitorController, [:index, :show])`
+раскрывается в те же маршруты и требует модуль-значение (03/L5).
+Полный пример — `demo/lib/lookout_web/router.brig`.
 
 ## Контроллеры
 
@@ -118,9 +121,21 @@ WebSocket (как Phoenix LiveView) — модель акторов Brig под�
 ## Шаблоны
 
 `lib/lookout_web/templates/monitors/index.html.bt` → функция
-`LookoutWeb.Templates.Monitors.index(assigns) -> Html.Safe`.
-Вставки `<%= expr %>` экранируются всегда; `<%= raw(x) %>` — явный отказ.
-Лэйауты — обычный вызов функции с `inner`.
+`LookoutWeb.Templates.Monitors.index(assigns) -> Html.Safe` (Q-tpl).
+Компилятор шаблонов — в тулчейне `brig` (общий формат для Calmar и
+будущих фреймворков), хелперы — в Calmar.
+
+| Конструкция | Смысл |
+|---|---|
+| `{expr}` | вставка выражения Brig; **всегда** HTML-экранируется |
+| `{raw(x)}` | явный отказ от экранирования |
+| `attr={expr}` | значение атрибута из выражения |
+| `:for={x <- list}` | повторить элемент для каждого `x` |
+| `:if={cond}` | вывести элемент, если `cond` (строгий `Bool`) |
+| `{# … #}` | комментарий шаблона, в вывод не попадает |
+
+Лэйауты — обычный вызов функции с `inner`. Примеры —
+`demo/lib/lookout_web/templates/`.
 
 ## Данные
 
@@ -128,8 +143,11 @@ WebSocket (как Phoenix LiveView) — модель акторов Brig под�
   (никакого query-DSL в MVP): предсказуемо, отлаживаемо, без магии.
 - `Repo.all(Monitor, sql, params)` маппит строки в записи через
   `Type.fields` (03/L11).
-- `Changeset` — валидация входа: `params → Result<Record, Errors>`;
-  `Form` — хелперы шаблонов поверх changeset (`Form.value`, `Form.errors`).
+- Правила данных — `validate/1` в модуле типа из `Check`-комбинаторов (09);
+  `Json.decode_as(Monitor, body)` проверяет форму и правила на границе.
+- `Changeset` — ввод из форм поверх той же пары «форма + `validate/1`»:
+  `params → Result<Record, (:invalid, changeset)>`; `Form` — хелперы шаблонов
+  (`Form.value`, `Form.errors`).
 - `Params` — приведение строковых params: `Params.int`, `Params.bool`, …
   → `Result`, ошибка превращается fallback'ом в 400.
 - Миграции — модули с `pub fn up()`/`down()`, возвращающими SQL;
@@ -141,12 +159,12 @@ WebSocket (как Phoenix LiveView) — модель акторов Brig под�
   после MVP — пакет с персистентной очередью в той же БД (C5).
 - Почта — пакет `Mailer` (C3), Calmar даёт интеграцию с шаблонами.
 - Загрузки файлов — `Upload`-записи из `Http.Multipart` (C2).
-- `PubSub.subscribe(topic)` / `PubSub.broadcast(topic, msg)` — подписчик
-  получает обычное сообщение в ящик; подписки снимаются по `:down`.
+- `PubSub.subscribe(:pubsub, topic)` / `PubSub.broadcast(:pubsub, topic, msg)` —
+  подписчик получает обычное сообщение в ящик; подписки снимаются по `:down`.
 - **SSE-хендлер — это `recv`-цикл в акторе запроса** (см. demo): никакого
   async, каналов и колбэков. WebSocket — тот же паттерн (S).
-- LiveView-подобное (актор на сессию, diff HTML по WebSocket) — N, но модель
-  Brig подходит для этого идеально.
+- LiveView-подобное (актор на сессию, diff HTML по WebSocket) — после MVP,
+  стратегическая цель (C8).
 
 ## Безопасность по умолчанию
 
@@ -173,7 +191,7 @@ CSRF-токен, secure headers, лимит тела, таймауты чтен�
    интеграция — модуль с конвенционными функциями (адаптер), новый фон —
    актор под супервизором. Нет наследования, нет `before_action`-колбэков.
 4. **Тестируемость как архитектурное требование**: pipeline чистый →
-   `Test.Http.get(app, "/monitors")` работает в памяти без сокетов;
+   `Calmar.Test.get(app, "/monitors", opts)` работает в памяти без сокетов;
    время — фейковое (02/R9).
 5. **Ошибки — значения** на границах домена, `raise` — только для
    невозможного; каждый запрос — изолированный актор.
@@ -190,3 +208,7 @@ lookout/
 ├── scripts/                 # серверные скрипты на том же коде
 └── test/
 ```
+
+`calmar new --api` (Q-calmar-api) — тот же каркас без `templates/`,
+`priv/static/`, сессий и CSRF; с БД, миграциями, контрактами и экспортом
+OpenAPI.

@@ -8,16 +8,21 @@
 - Wave 6: T-70 match, T-71 with, T-72 pipe, T-73 записи, T-74 record-паттерны,
   T-75 прелюдия (`Sys.args`, `link`, `mailbox_size`), T-79 stack trace.
 - T-58: учёт native-вызовов в редукциях.
-- DD по §17: Q-await, Q-mod, Q-vis, L18 (record update), L19 (тип/модуль).
+- Внести принятые решения в спеку — задачи `edit-spec` (07; первая — #169):
+  Q-await, акторные примитивы (R3–R6), порты и G5 (R1–R2, B2), `pub fn`,
+  модули/типы как значения, L18–L22, контракты (§14.4), пакеты (§17.5).
 
 **Выход:** первая «рабочая версия языка».
 
 ## Фаза 1. Проектная база (без I/O)
 
 1. Многофайловые модули + кэш байткода (L2).
-2. `pub fn` (L3), `rec.field` (L4), модули/типы как значения (L5).
+2. `pub fn` (L3), `rec.field` (L4), модули/типы как значения (L5, L19),
+   `(:badmatch, v)` (L21), `_name` (L20), `fn ->` и `(a, b) ->` (L22, #169),
+   info-диагностика `_ <-` (L17).
 3. Embedded stdlib на Brig через `go:embed` (L2) — первый модуль: `Result`/`Option`-хелперы.
-4. `Str`/`Bytes`/кодеки (L8), многострочные строки (L9).
+4. `Str`/`Bytes`/кодеки (L8), многострочные строки (L9),
+   `Instant`/`Date`/`Duration`, `Decimal` в Must (L12), `Json.at`/`Map.get_or` (L16).
 5. `brig fmt`, `brig test` с обнаружением тестов.
 6. `brig fix` и первая миграция `fn` → `pub fn` (B5).
 7. **Пакетный менеджер** (05): git + MVS + lock + кэш + vendor; пакеты — только Brig-исходники.
@@ -64,19 +69,20 @@ run-loop не блокируется.
 6. Фронтенд: import maps, кеш-бастинг ассетов (C8); загрузки файлов (C2).
 7. `brig observe`, страница ошибок в dev (C7); `SO_REUSEPORT` + graceful drain (C6).
 8. Официальные пакеты первой волны: `Postgres`, `Mailer` (D2).
-9. Лаунчер `calmar` (`brig install brig.dev/calmar`): `calmar new`, `calmar server`
+9. Лаунчер `calmar` (`brig install brig.dev/calmar`): `calmar new` (и `--api`), `calmar server`
    (на `brig run --watch`), `calmar db migrate`; `brig build` (payload с зависимостями).
 
 **Выход:** demo/`lookout` собирается `brig build` в один файл и работает.
 
 ## Фаза 5. После MVP
 
-Экспорт/дифф схем (`brig schema export|diff`), импорт OpenAPI/protobuf (09),
-LSP, пакет фоновых заданий (C5), NATS/Redis/S3/OpenTelemetry (D2), серверный UI (C8),
-WebSocket, генераторы `calmar gen`, `brig console`, LSP, Chandler (индекс + прокси),
-права пакетов как в Deno (10),
-Postgres, фоновые задания с персистентностью, метрики, LiveView-подобное,
-N:M, Go-embedding API, порты `Serial`/`Gpio`.
+- Контракты: экспорт/дифф схем (`brig schema export|diff`), импорт OpenAPI/protobuf (09).
+- DX: LSP (сразу после MVP), `brig console`, генераторы `calmar gen`, отладчик.
+- Пакеты: фоновые задания с персистентной очередью (C5); NATS, Redis, S3,
+  OpenTelemetry (D2); Chandler — индекс и прокси; права зависимостей (10/#12).
+- Веб: WebSocket, серверный UI в духе LiveView (C8), метрики Prometheus.
+- Рантайм: N:M (R10), Go-embedding API (R11), порты `Serial`/`Gpio`,
+  WASM-песочница (B6); решение по модели heap — по замерам (11).
 
 ## Критерии успеха web-MVP (уточнённые)
 
@@ -86,7 +92,7 @@ N:M, Go-embedding API, порты `Serial`/`Gpio`.
   чистом хосте без зависимостей.
 - 10k keep-alive соединений на одном ядре без роста памяти после прогона;
   планировщик не блокируется I/O.
-- Падение handler'а/чекера не затрагивает другие соединения; SIGTERM →
+- Падение handler'а/чекера не затрагивает другие запросы; SIGTERM →
   graceful shutdown за ≤ таймаута.
 - Интеграционные тесты demo проходят без сети и без `sleep`.
 - Ни одного `nil`, async/await, макроса; ошибки — `Result`/`raise`+`trap`.
