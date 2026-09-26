@@ -76,6 +76,7 @@ run-loop не блокируется.
 
 ## Фаза 5. После MVP
 
+- Данные: пакет data mapper в духе Ecto (14).
 - Контракты: экспорт/дифф схем (`brig schema export|diff`), импорт OpenAPI/protobuf (09).
 - DX: LSP (сразу после MVP), `brig console`, генераторы `calmar gen`, отладчик.
 - Пакеты: фоновые задания с персистентной очередью (C5); NATS, Redis, S3,

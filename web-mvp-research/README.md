@@ -78,7 +78,10 @@
     `brig observe` к MVP; import maps сейчас, серверный UI — стратегия;
     Linux/macOS tier 1, Windows tier 2; MIT везде; первые пакеты —
     Postgres и Mailer.
-20. **Порядок:** закрыть Wave 6 → проектная база (модули, stdlib на Brig) →
+20. **Данные (утверждено):** data mapper в духе Ecto — запрос как
+    неизменяемое значение, I/O только в `Repo`, явный `preload` (N+1
+    невозможен), без ActiveRecord; отдельный пакет после MVP.
+21. **Порядок:** закрыть Wave 6 → проектная база (модули, stdlib на Brig) →
     рантайм-механизмы (сразу закрывают нишу скриптинга) → сеть → Calmar.
 
 ## Документы
@@ -99,5 +102,6 @@
 | [11-memory.md](11-memory.md) | память и изоляция: бюджеты, счётчики, замеры, обратимость |
 | [12-whelk.md](12-whelk.md) | Whelk — микро-фреймворк; однофайловое демо в [demo-whelk/](demo-whelk/) |
 | [13-microservices.md](13-microservices.md) | Brig для микросервисов: сильные стороны, риски, что добавить |
+| [14-data.md](14-data.md) | доступ к данным: data mapper в духе Ecto, а не ActiveRecord |
 | [demo/](demo/) | Lookout — uptime-монитор на Calmar |
 | [demo-whelk/](demo-whelk/) | приёмник GitHub-вебхуков на Whelk в одном файле |
