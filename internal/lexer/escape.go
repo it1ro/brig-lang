@@ -109,3 +109,16 @@ func isDigitForBase(c byte, base int) bool {
 	}
 	return isDecDigit(c)
 }
+
+
+// SplitInterp splits a Str literal body (without surrounding quotes) into
+// literal parts and interpolation expression sources (§C.2).
+//
+// For a plain string with no \(...), parts is a single-element slice with
+// the whole body and exprs is empty.
+// When exprs is non-empty, len(parts) == len(exprs)+1.
+//
+// Stub: returns the body unsplit until T-53 implementation lands.
+func SplitInterp(body string) (parts []string, exprs []string, err error) {
+	return []string{body}, nil, nil
+}

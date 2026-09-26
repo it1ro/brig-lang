@@ -341,3 +341,14 @@ fn main() ->
     xs |> map(f)
 `)
 }
+
+// TestInterpExprsVisibleToSema — T-53 / S-F1: выражение внутри \(...)
+// обходится sema. Имя, встречающееся только в интерполяции, видно
+// проверке позиции trap (§10.2).
+func TestInterpExprsVisibleToSema(t *testing.T) {
+	wantErr(t, `module Main
+fn main() ->
+    s = "hello \(trap(1))"
+    s
+`, "trap is not allowed")
+}
