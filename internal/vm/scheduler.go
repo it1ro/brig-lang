@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sort"
 	"time"
 
 	"github.com/it1ro/brig-lang/internal/runtime"
@@ -177,6 +178,9 @@ type Actor struct {
 	err    error
 
 	recvDeadline time.Time
+	// timerSeq — порядковый номер взвода таймера: разрешает равные
+	// recvDeadline в wakeExpired (§15.4).
+	timerSeq uint64
 }
 
 // Scheduler — единый run-loop (§15.2).
@@ -185,6 +189,7 @@ type Scheduler struct {
 	actors  map[int]*Actor
 	nextPid int
 	nextRef int
+	nextSeq uint64
 	ready   []*Actor
 	reds    int
 	mainPid int
@@ -383,8 +388,11 @@ func (s *Scheduler) nextDeadline() time.Time {
 	return best
 }
 
+// wakeExpired будит актёров с истёкшим таймером в порядке (deadline, seq):
+// обход map недетерминирован, а порядок пробуждений наблюдаем (§15.4).
 func (s *Scheduler) wakeExpired() {
 	now := time.Now()
+	var expired []*Actor
 	for _, a := range s.actors {
 		if a.status != actorBlocked {
 			continue
@@ -392,6 +400,16 @@ func (s *Scheduler) wakeExpired() {
 		if a.recvDeadline.IsZero() || a.recvDeadline.After(now) {
 			continue
 		}
+		expired = append(expired, a)
+	}
+	sort.Slice(expired, func(i, j int) bool {
+		a, b := expired[i], expired[j]
+		if !a.recvDeadline.Equal(b.recvDeadline) {
+			return a.recvDeadline.Before(b.recvDeadline)
+		}
+		return a.timerSeq < b.timerSeq
+	})
+	for _, a := range expired {
 		a.status = actorReady
 		s.ready = append(s.ready, a)
 	}
@@ -924,6 +942,8 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 					"(:type_error, (:after, %s))", msVal.Inspect()))
 			}
 			a.recvDeadline = time.Now().Add(d)
+			a.timerSeq = s.nextSeq
+			s.nextSeq++
 			f.ip++
 
 		case RECVTAKE:
