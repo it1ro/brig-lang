@@ -988,6 +988,8 @@ func (fc *funcCompiler) compileExpr(e ast.Expr, d dest) (err error) {
 		return fc.compileTrap(ex, d)
 	case ast.MatchExpr:
 		return fc.compileMatch(ex, d)
+	case ast.WithExpr:
+		return fc.compileWith(ex, d)
 	case ast.RecvExpr:
 		return fc.compileRecv(ex, d)
 	case ast.RangeExpr:
@@ -1961,20 +1963,30 @@ func (fc *funcCompiler) compileTrapLetBind(st ast.LetBind, d dest, letRegs map[s
 
 // ---- match (§8.3) ----
 
-// compileMatch: субъект в регистр, ветки по порядку — MATCHLOCAL+JMP к
-// следующей ветке (схема веток recv). Ветки наследуют d (d.tail → хвостовые).
-// Ни одна ветка не подошла — raise (:case_clause, val) (§10.4).
+// compileMatch: субъект в регистр, ветки — compileCaseBranches.
 func (fc *funcCompiler) compileMatch(me ast.MatchExpr, d dest) error {
-	pos := posOf(me)
 	mark := fc.nextReg
 
 	sReg, err := fc.operand(me.MatchSubject())
 	if err != nil {
 		return err
 	}
+	if err := fc.compileCaseBranches(sReg, me.MatchBranches(), posOf(me), d); err != nil {
+		return err
+	}
+	fc.releaseToMark(mark)
+	return nil
+}
+
+// compileCaseBranches: ветки по порядку над R[sReg] — MATCHLOCAL+JMP к
+// следующей ветке (схема веток recv). Ветки наследуют d (d.tail → хвостовые).
+// Ни одна ветка не подошла — raise (:case_clause, val) с позицией pos (§10.4).
+// Общий код match (§8.3) и with/else (§8.2).
+func (fc *funcCompiler) compileCaseBranches(sReg int, branches []ast.MatchBranchArg, pos vm.SrcPos, d dest) error {
+	mark := fc.nextReg
 
 	var endJumps []int
-	for _, br := range me.MatchBranches() {
+	for _, br := range branches {
 		brMark := fc.nextReg
 		fc.pushScope()
 
@@ -2012,6 +2024,74 @@ func (fc *funcCompiler) compileMatch(me ast.MatchExpr, d dest) error {
 
 	for _, j := range endJumps {
 		fc.patchHere(j)
+	}
+	fc.releaseToMark(mark)
+	return nil
+}
+
+// ---- with/else (§8.2) ----
+
+// compileWith: binds по порядку — значение в vReg, MATCHLOCAL+JMP на метку
+// сбоя; затем тело (наследует d). На метке сбоя в vReg — первое несовпавшее
+// значение: без else оно и есть результат (пропагация, не raise), с else —
+// ветки compileCaseBranches, без совпадения — (:case_clause, val) (§10.4).
+// Связывания binds видны binds ниже и телу, но не веткам else.
+func (fc *funcCompiler) compileWith(we ast.WithExpr, d dest) error {
+	mark := fc.nextReg
+	vReg := fc.allocReg()
+
+	fc.pushScope()
+	var fails []int
+	for _, it := range we.WithItems() {
+		if err := fc.compileExpr(it.Expr, val(vReg)); err != nil {
+			fc.popScope()
+			return err
+		}
+		cp, err := fc.compilePattern(it.Pattern)
+		if err != nil {
+			fc.popScope()
+			return err
+		}
+		patIdx := fc.chunk.AddPattern(cp)
+
+		fc.pos = posOf(it.Pattern)
+		fc.emit(vm.ABx(vm.MATCHLOCAL, vReg, patIdx))
+		fails = append(fails, fc.emitJump(vm.JMP, 0))
+	}
+
+	var body ast.Expr = we.WithBody()
+	if we.WithBody() == nil {
+		body = ast.NewBlockStmt(nil, 0, 0)
+	}
+	if err := fc.compileBranch(body, d); err != nil {
+		fc.popScope()
+		return err
+	}
+	jEnd := -1
+	if !d.tail {
+		jEnd = fc.emitJump(vm.JMP, 0)
+	}
+	fc.popScope()
+	fc.releaseToMark(vReg + 1)
+
+	for _, j := range fails {
+		fc.patchHere(j)
+	}
+	fc.pos = posOf(we)
+	if elseBranches := we.WithElseBranches(); len(elseBranches) > 0 {
+		branches := make([]ast.MatchBranchArg, 0, len(elseBranches))
+		for _, eb := range elseBranches {
+			branches = append(branches, ast.MatchBranchArg(eb))
+		}
+		if err := fc.compileCaseBranches(vReg, branches, posOf(we), d); err != nil {
+			return err
+		}
+	} else {
+		fc.finish(d, vReg)
+	}
+
+	if jEnd >= 0 {
+		fc.patchHere(jEnd)
 	}
 	fc.releaseToMark(mark)
 	return nil
