@@ -6,6 +6,7 @@
 package vm
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"math/big"
@@ -99,7 +100,7 @@ func (vm *VM) Call(fn runtime.Value, args []runtime.Value) (runtime.Value, error
 	switch fn.Kind {
 	case runtime.KindFunction:
 		if fn.Func == nil {
-			return runtime.Unit, fmt.Errorf("(:type_error, (:call, nil))")
+			return runtime.Unit, errors.New("internal: call of nil function")
 		}
 		if fn.Func.IsNative {
 			if fn.Func.Native == nil {
@@ -111,7 +112,7 @@ func (vm *VM) Call(fn runtime.Value, args []runtime.Value) (runtime.Value, error
 	case runtime.KindClosure:
 		return vm.scheduler.callSync(fn, args)
 	default:
-		return runtime.Unit, fmt.Errorf("(:type_error, (:call, %s))", fn.Inspect())
+		return runtime.Unit, typeErr("call", fn)
 	}
 }
 

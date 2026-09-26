@@ -86,25 +86,27 @@ type callee struct {
 	captures []runtime.Value
 }
 
-// resolveCallee разбирает Function/Closure с байткод-телом.
+// resolveCallee разбирает Function/Closure с байткод-телом. Не-функция —
+// ловимый raise (:type_error, (:call, fn)); Function/Closure без тела —
+// нарушение инварианта VM (internal:).
 func resolveCallee(fn runtime.Value) (callee, error) {
 	switch fn.Kind {
 	case runtime.KindFunction:
 		if fn.Func == nil {
-			return callee{}, fmt.Errorf("(:type_error, (:call, nil))")
+			return callee{}, errors.New("internal: call of nil function")
 		}
 		ch, ok := fn.Func.Body.(*Chunk)
 		if !ok {
-			return callee{}, fmt.Errorf("(:type_error, (:call, %s))", fn.Inspect())
+			return callee{}, typeErr("call", fn)
 		}
 		return callee{chunk: ch, name: fn.Func.Name}, nil
 	case runtime.KindClosure:
 		if fn.ClosureVal == nil {
-			return callee{}, fmt.Errorf("(:type_error, (:call, nil-closure))")
+			return callee{}, errors.New("internal: call of nil closure")
 		}
 		ch, ok := fn.ClosureVal.Func.(*Chunk)
 		if !ok {
-			return callee{}, fmt.Errorf("(:type_error, (:call, %s))", fn.Inspect())
+			return callee{}, typeErr("call", fn)
 		}
 		return callee{
 			chunk:    ch,
@@ -112,7 +114,7 @@ func resolveCallee(fn runtime.Value) (callee, error) {
 			captures: fn.ClosureVal.Captures,
 		}, nil
 	}
-	return callee{}, fmt.Errorf("(:type_error, (:call, %s))", fn.Inspect())
+	return callee{}, typeErr("call", fn)
 }
 
 // checkArity: variadic — argc >= NumParams-1, иначе argc == NumParams.
