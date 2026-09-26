@@ -289,14 +289,14 @@ func equalNodes(a, b Node) bool {
 		for i := range x.clauses {
 			xc := &x.clauses[i]
 			yc := &y.clauses[i]
-			if xc.guard != yc.guard {
+			if !equalOptionalExpr(xc.guard, yc.guard) {
 				return false
 			}
 			if len(xc.params) != len(yc.params) {
 				return false
 			}
 			for j := range xc.params {
-				if xc.params[j] != yc.params[j] {
+				if !equalNodes(xc.params[j], yc.params[j]) {
 					return false
 				}
 			}
@@ -379,6 +379,10 @@ func equalNodes(a, b Node) bool {
 			}
 		}
 		return true
+
+	case *spreadPat:
+		y, ok := b.(*spreadPat)
+		return ok && x.name == y.name
 
 	case *mapPattern:
 		y, ok := b.(*mapPattern)
@@ -564,11 +568,11 @@ func equalNodes(a, b Node) bool {
 		for i := range x.clauses {
 			xc := &x.clauses[i]
 			yc := &y.clauses[i]
-			if xc.guard != yc.guard || len(xc.params) != len(yc.params) {
+			if !equalOptionalExpr(xc.guard, yc.guard) || len(xc.params) != len(yc.params) {
 				return false
 			}
 			for j := range xc.params {
-				if xc.params[j] != yc.params[j] {
+				if !equalNodes(xc.params[j], yc.params[j]) {
 					return false
 				}
 			}

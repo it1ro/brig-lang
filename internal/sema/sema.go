@@ -251,15 +251,35 @@ func (c *checker) checkStmt(s ast.Stmt) {
 
 // checkParams — variadic-параметр обязан быть последним (§6.3) +
 // параметры связываются в текущей области.
-func (c *checker) checkParams(params []string, site ast.Node) {
+func (c *checker) checkParams(params []ast.Pattern, site ast.Node) {
+	line, col := posOf(site)
+	for i, p := range params {
+		if sp, ok := p.(ast.SpreadPattern); ok {
+			if i != len(params)-1 {
+				c.err(line, col, "variadic parameter %q must be last (§6.3)", p)
+			}
+			// Имя параметра связываем без префикса `..` — оно
+			// доступно в теле как обычная переменная.
+			c.bind(sp.SpreadName(), "param", line, col)
+			continue
+		}
+		if id, ok := p.(ast.IdentPattern); ok {
+			c.bind(id.IdentName(), "param", line, col)
+			continue
+		}
+		c.checkPatternBinding(p, "param")
+	}
+}
+
+// checkLambdaParams — лямбда всё ещё хранит params как []string (T-50
+// не меняет LambdaFull). Variadic обязан быть последним.
+func (c *checker) checkLambdaParams(params []string, site ast.Node) {
 	line, col := posOf(site)
 	for i, p := range params {
 		if strings.HasPrefix(p, "..") {
 			if i != len(params)-1 {
 				c.err(line, col, "variadic parameter %q must be last (§6.3)", p)
 			}
-			// Имя параметра связываем без префикса `..` — оно
-			// доступно в теле как обычная переменная.
 			c.bind(strings.TrimPrefix(p, ".."), "param", line, col)
 			continue
 		}
@@ -278,6 +298,9 @@ func (c *checker) checkPatternBinding(pat ast.Pattern, kind string) {
 	case ast.IdentPattern:
 		line, col := posOf(p)
 		c.bind(p.IdentName(), kind, line, col)
+	case ast.SpreadPattern:
+		line, col := posOf(p)
+		c.bind(p.SpreadName(), kind, line, col)
 	case ast.PatternCtor:
 		for _, sub := range p.CtorArgs() {
 			c.checkPatternBinding(sub, kind)
@@ -469,7 +492,7 @@ func (c *checker) checkExpr(e ast.Expr) {
 
 	case ast.LambdaFull:
 		c.pushScope()
-		c.checkParams(x.ParamNames(), e)
+		c.checkLambdaParams(x.ParamNames(), e)
 		if b := x.BlockBody(); b != nil {
 			c.checkBlockBody(b)
 		}

@@ -236,8 +236,8 @@ func NewExprStmt(expr Expr, pos, end int) Stmt {
 // LocalFnClauseArg — публичное представление клоза локальной fn.
 // LocalFnClauseArg is an AST argument node.
 type LocalFnClauseArg struct {
-	Guard  string
-	Params []string
+	Guard  Expr
+	Params []Pattern
 	Body   *BlockStmt
 }
 
@@ -304,6 +304,11 @@ func NewTuplePattern(patterns []Pattern, pos, end int) Pattern {
 // NewListPattern creates an expression node.
 func NewListPattern(patterns []Pattern, hasRest bool, restName string, pos, end int) Pattern {
 	return &listPattern{posEnd{pos, end}, patterns, hasRest, restName}
+}
+
+// NewSpreadPat creates a standalone `..name` variadic parameter pattern.
+func NewSpreadPat(name string, pos, end int) Pattern {
+	return &spreadPat{posEnd{pos, end}, name}
 }
 
 // MapPairArg is an AST argument node.
@@ -479,8 +484,8 @@ func NewAliasTypeDecl(name string, generic []string, target Type, pos, end int) 
 
 // FnClauseArg is an AST argument node.
 type FnClauseArg struct {
-	Guard  string
-	Params []string
+	Guard  Expr
+	Params []Pattern
 	Body   *BlockStmt
 }
 

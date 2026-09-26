@@ -251,8 +251,19 @@ func walkStmt(v Visitor, s Stmt) error {
 
 	case *localFnDecl:
 		for i := range n.clauses {
-			if n.clauses[i].body != nil {
-				if err := walkNode(v, n.clauses[i].body); err != nil {
+			cl := &n.clauses[i]
+			if cl.guard != nil {
+				if err := walkNode(v, cl.guard); err != nil {
+					return err
+				}
+			}
+			for _, pat := range cl.params {
+				if err := walkNode(v, pat); err != nil {
+					return err
+				}
+			}
+			if cl.body != nil {
+				if err := walkNode(v, cl.body); err != nil {
 					return err
 				}
 			}
@@ -322,7 +333,7 @@ func walkPattern(v Visitor, p Pattern) error {
 	case *asPat:
 		return walkNode(v, n.pattern)
 
-		// wildcardPat, identPat, literalPat — листья.
+		// wildcardPat, identPat, literalPat, spreadPat — листья.
 	}
 	return nil
 }
@@ -423,8 +434,19 @@ func walkDecl(v Visitor, d Decl) error {
 
 	case *funcDecl:
 		for i := range n.clauses {
-			if n.clauses[i].body != nil {
-				if err := walkNode(v, n.clauses[i].body); err != nil {
+			cl := &n.clauses[i]
+			if cl.guard != nil {
+				if err := walkNode(v, cl.guard); err != nil {
+					return err
+				}
+			}
+			for _, pat := range cl.params {
+				if err := walkNode(v, pat); err != nil {
+					return err
+				}
+			}
+			if cl.body != nil {
+				if err := walkNode(v, cl.body); err != nil {
 					return err
 				}
 			}

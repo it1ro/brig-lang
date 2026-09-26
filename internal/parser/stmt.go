@@ -99,14 +99,14 @@ func (p *parser) parseFnClauseRest() (ast.LocalFnClauseArg, error) {
 	if err != nil {
 		return ast.LocalFnClauseArg{}, err
 	}
-	var guard string
+	var guard ast.Expr
 	if p.match(lexer.KW_WHEN) {
 		save := p.pos
 		// Guard — or_expr, не полный expr: иначе tryLambda съедает
 		// `ident ->` в `when ident -> body` (S-F4).
 		g, err := p.parseOr()
 		if err == nil {
-			guard = normalizeGuardString(g)
+			guard = g
 		} else {
 			p.pos = save
 		}
@@ -122,28 +122,30 @@ func (p *parser) parseFnClauseRest() (ast.LocalFnClauseArg, error) {
 }
 
 // params ::= param { sep param } [ sep ]
-func (p *parser) parseParams() ([]string, error) {
+// param ::= pattern | ".." LOWER_IDENT
+func (p *parser) parseParams() ([]ast.Pattern, error) {
 	if _, err := p.expect(lexer.LPAREN, "'('"); err != nil {
 		return nil, err
 	}
-	var out []string
+	var out []ast.Pattern
 	if p.at(lexer.RPAREN) {
 		p.advance()
 		return out, nil
 	}
 	for {
 		if p.at(lexer.OP_DOTDOT) {
-			p.advance()
+			dot := p.advance()
 			if !p.at(lexer.LOWER_IDENT) {
 				return nil, p.errf("expected name after '..' in params")
 			}
-			out = append(out, ".."+p.advance().Lit)
+			name := p.advance()
+			out = append(out, ast.NewSpreadPat(name.Lit, dot.Line, dot.Col))
 		} else {
 			pat, err := p.parsePattern()
 			if err != nil {
 				return nil, err
 			}
-			out = append(out, pat.String())
+			out = append(out, pat)
 		}
 		if p.match(lexer.COMMA) {
 			if p.at(lexer.RPAREN) {
@@ -163,6 +165,17 @@ func (p *parser) parseParams() ([]string, error) {
 		return nil, err
 	}
 	return out, nil
+}
+
+// lambdaParamStrings — LambdaFull хранит params как []string (T-44/T-50:
+// смена контракта лямбд — отдельно). Конвертация из Pattern без
+// обратной записи строк в AST именованных fn.
+func lambdaParamStrings(params []ast.Pattern) []string {
+	out := make([]string, len(params))
+	for i, pat := range params {
+		out[i] = pat.String()
+	}
+	return out
 }
 
 // fn_body ::= expr | NEWLINE INDENT stmt_list DEDENT
@@ -207,14 +220,14 @@ func (p *parser) parseFnDecl() (ast.Decl, error) {
 		if err != nil {
 			return nil, err
 		}
-		var guard string
+		var guard ast.Expr
 		if p.match(lexer.KW_WHEN) {
 			save := p.pos
 			// Guard — or_expr, не полный expr: иначе tryLambda съедает
 			// `ident ->` в `when ident -> body` (S-F4).
 			g, err := p.parseOr()
 			if err == nil {
-				guard = normalizeGuardString(g)
+				guard = g
 			} else {
 				p.pos = save
 			}
@@ -236,59 +249,4 @@ func (p *parser) parseFnDecl() (ast.Decl, error) {
 		break
 	}
 	return ast.NewFuncDecl(name, clauses, start.Line, start.Col), nil
-}
-
-// normalizeGuardString приводит строку guard к канонической форме,
-// снимая один уровень внешних скобок. Без этого round-trip
-// `n > 0` → Format → `(n > 0)` → Parse → `((n > 0))` не сходится:
-// binaryExpr.String() оборачивает в `(a op b)`, а groupingExpr.String()
-// добавляет ещё один уровень. После нормализации обе формы дают
-// одну и ту же строку.
-func normalizeGuardString(e ast.Expr) string {
-	return stripOuterParens(e.String())
-}
-
-// stripOuterParens снимает один уровень внешних скобок, если они
-// обнимают всё выражение целиком (баланс скобок возвращается к 0
-// только в самом конце). Скобки внутри строковых литералов не считаются
-// (S-F12: `x == ")"` → `(x == ")")`).
-func stripOuterParens(s string) string {
-	if len(s) < 2 || s[0] != '(' || s[len(s)-1] != ')' {
-		return s
-	}
-	depth := 0
-	inStr := false
-	escape := false
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		if inStr {
-			if escape {
-				escape = false
-				continue
-			}
-			if c == '\\' {
-				escape = true
-				continue
-			}
-			if c == '"' {
-				inStr = false
-			}
-			continue
-		}
-		switch c {
-		case '"':
-			inStr = true
-		case '(':
-			depth++
-		case ')':
-			depth--
-			if depth == 0 && i != len(s)-1 {
-				return s // внешняя пара закрылась раньше — не обнимает всё
-			}
-		}
-	}
-	if depth != 0 {
-		return s
-	}
-	return s[1 : len(s)-1]
 }

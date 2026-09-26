@@ -277,12 +277,15 @@ func prettyStmt(buf *bytes.Buffer, s Stmt, indent int) {
 		for i := range n.clauses {
 			cl := &n.clauses[i]
 			buf.WriteString(" (clause")
-			if cl.guard != "" {
-				buf.WriteString(" (when " + cl.guard + ")")
+			if cl.guard != nil {
+				buf.WriteString(" (when ")
+				prettyNode(buf, cl.guard, indent)
+				buf.WriteString(")")
 			}
 			buf.WriteString(" (params")
 			for _, pm := range cl.params {
-				buf.WriteString(" " + pm)
+				buf.WriteString(" ")
+				prettyNode(buf, pm, indent)
 			}
 			buf.WriteString(")")
 			buf.WriteString(" ")
@@ -339,6 +342,8 @@ func prettyPattern(buf *bytes.Buffer, p Pattern, indent int) {
 			}
 		}
 		buf.WriteString("]")
+	case *spreadPat:
+		buf.WriteString(".." + n.name)
 	case *mapPattern:
 		buf.WriteString("%{")
 		for i := range n.pairs {
@@ -500,12 +505,15 @@ func prettyDecl(buf *bytes.Buffer, d Decl, indent int) {
 		for i := range n.clauses {
 			cl := &n.clauses[i]
 			buf.WriteString(" (clause")
-			if cl.guard != "" {
-				buf.WriteString(" (when " + cl.guard + ")")
+			if cl.guard != nil {
+				buf.WriteString(" (when ")
+				prettyNode(buf, cl.guard, indent)
+				buf.WriteString(")")
 			}
 			buf.WriteString(" (params")
 			for _, p := range cl.params {
-				buf.WriteString(" " + p)
+				buf.WriteString(" ")
+				prettyNode(buf, p, indent)
 			}
 			buf.WriteString(")")
 			buf.WriteString(" ")

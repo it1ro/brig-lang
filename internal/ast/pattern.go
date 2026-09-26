@@ -90,6 +90,17 @@ func (t *tuplePattern) String() string {
 	return "(" + joinPatterns(t.patterns, ", ") + ")"
 }
 
+// spreadPat — standalone `..name` (variadic param; ebnf param ::= ".." LOWER_IDENT).
+type spreadPat struct {
+	posEnd
+	name string
+}
+
+func (s *spreadPat) IsExpression() bool { return false }
+func (s *spreadPat) IsStatement() bool  { return false }
+func (s *spreadPat) String() string     { return ".." + s.name }
+func (s *spreadPat) AsIdent() string    { return s.name }
+
 // listPattern — [p1, ..rest].
 type listPattern struct {
 	posEnd

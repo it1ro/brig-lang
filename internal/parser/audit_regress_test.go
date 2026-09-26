@@ -27,8 +27,8 @@ func TestParseGuardSingleIdent(t *testing.T) {
 	}
 }
 
-// S-F12: stripOuterParens не должен считать скобки внутри строковых
-// литералов (AUDIT_REPORT.md:123-126). Проба guard_paren_string.
+// S-F12 / T-50: guard — Expr; Format печатает when <guard> идемпотентно
+// даже когда в строковом литерале есть ')' (раньше мешал string-paren hack).
 func TestRoundTripGuardParenString(t *testing.T) {
 	src := "module M\nfn f(x) when x == \")\" -> 1\n"
 	prog1, err := ParseProgram(ModeModule, src)

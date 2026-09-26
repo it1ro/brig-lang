@@ -56,7 +56,7 @@ func (p *parser) tryLambda() (ast.Expr, bool, error) {
 		if err != nil {
 			return nil, true, err
 		}
-		return ast.NewLambdaFullExpr(params, body, start.Line, start.Col), true, nil
+		return ast.NewLambdaFullExpr(lambdaParamStrings(params), body, start.Line, start.Col), true, nil
 	}
 	return nil, false, nil
 }

@@ -75,11 +75,15 @@ func (p *printer) writeStmt(sb *strings.Builder, s Stmt, indent int) {
 			sb.WriteString("fn ")
 			sb.WriteString(v.name)
 			sb.WriteString("(")
-			sb.WriteString(strings.Join(c.params, ", "))
+			parts := make([]string, len(c.params))
+			for j, pat := range c.params {
+				parts[j] = p.patternString(pat)
+			}
+			sb.WriteString(strings.Join(parts, ", "))
 			sb.WriteString(")")
-			if c.guard != "" {
+			if c.guard != nil {
 				sb.WriteString(" when ")
-				sb.WriteString(c.guard)
+				sb.WriteString(p.exprString(c.guard, indent))
 			}
 			sb.WriteString(" ->\n")
 			p.writeBlock(sb, c.body, indent+1)
@@ -163,11 +167,15 @@ func (p *printer) funcDeclString(v *funcDecl) string {
 		sb.WriteString("fn ")
 		sb.WriteString(v.name)
 		sb.WriteString("(")
-		sb.WriteString(strings.Join(c.params, ", "))
+		parts := make([]string, len(c.params))
+		for j, pat := range c.params {
+			parts[j] = p.patternString(pat)
+		}
+		sb.WriteString(strings.Join(parts, ", "))
 		sb.WriteString(")")
-		if c.guard != "" {
+		if c.guard != nil {
 			sb.WriteString(" when ")
-			sb.WriteString(c.guard)
+			sb.WriteString(p.exprString(c.guard, 0))
 		}
 		sb.WriteString(" ->\n")
 		p.writeBlock(&sb, c.body, 1)
@@ -547,6 +555,8 @@ func (p *printer) patternString(pat Pattern) string {
 			}
 		}
 		return "[" + body + "]"
+	case *spreadPat:
+		return ".." + v.name
 	case *mapPattern:
 		parts := make([]string, len(v.pairs))
 		for i := range v.pairs {

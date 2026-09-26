@@ -1,1 +1,1 @@
-(program (fn classify (clause (when n > 0) (params n) (block (lit "positive"))) (clause (params 0) (block (lit "zero"))) (clause (params n) (block (lit "negative")))))
+(program (fn classify (clause (when (> (var n) (lit 0))) (params n) (block (lit "positive"))) (clause (params 0) (block (lit "zero"))) (clause (params n) (block (lit "negative")))))
