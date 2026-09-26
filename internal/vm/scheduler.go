@@ -140,6 +140,18 @@ func bindArgs(regs []runtime.Value, ch *Chunk, args []runtime.Value) {
 	regs[fixed] = runtime.List(rest...)
 }
 
+// spreadArgs разворачивает последний аргумент-List в отдельные аргументы;
+// результат — свежий срез, не пересекающийся с regs.
+func spreadArgs(args []runtime.Value) ([]runtime.Value, error) {
+	last := args[len(args)-1]
+	if last.Kind != runtime.KindList {
+		return nil, fmt.Errorf("(:type_error, (:spread, %s))", last.Inspect())
+	}
+	out := make([]runtime.Value, 0, len(args)-1+len(last.List))
+	out = append(out, args[:len(args)-1]...)
+	return append(out, last.List...), nil
+}
+
 // frameFromFn создаёт кадр вызова.
 func frameFromFn(fn runtime.Value, args []runtime.Value) (*Frame, error) {
 	c, err := resolveCallee(fn)
@@ -674,10 +686,20 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 				f.ip++
 			}
 
-		case CALL:
+		case CALL, CALLSPREAD:
 			base, argc, dst := in.A(), in.B(), in.C()
 			cv := regs[base]
 			args := regs[base+1 : base+1+argc]
+			if op == CALLSPREAD {
+				var serr error
+				if args, serr = spreadArgs(args); serr != nil {
+					if f.catch(serr) {
+						continue
+					}
+					return fail(serr)
+				}
+				argc = len(args)
+			}
 
 			if cv.Kind == runtime.KindFunction && cv.Func != nil && cv.Func.IsNative {
 				if ar := cv.Func.Arity; ar >= 0 && ar != argc {
@@ -709,10 +731,17 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 			a.frames = append(a.frames, nf)
 			return stepContinue
 
-		case TAILCALL:
+		case TAILCALL, TAILCALLSPREAD:
 			base, argc := in.A(), in.B()
 			cv := regs[base]
 			args := regs[base+1 : base+1+argc]
+			if op == TAILCALLSPREAD {
+				var serr error
+				if args, serr = spreadArgs(args); serr != nil {
+					return fail(serr)
+				}
+				argc = len(args)
+			}
 
 			if len(f.handlers) != 0 {
 				return fail(errors.New("internal: TAILCALL under active trap"))

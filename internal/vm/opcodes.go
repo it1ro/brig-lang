@@ -75,6 +75,11 @@ const (
 	// слот — имя поля или ".." (спред записи). Тип "" — анонимная.
 	RECORD
 	GETFIELD // R[A] = R[B].field, имя поля — Str в R[C]
+
+	// Вызов со спредом (§6.3): как CALL/TAILCALL, но последний аргумент
+	// R[A+B] — List, чьи элементы разворачиваются в аргументы.
+	CALLSPREAD     // R[C] = R[A](R[A+1..A+B-1], ..R[A+B])
+	TAILCALLSPREAD // замена кадра: R[A](R[A+1..A+B-1], ..R[A+B])
 )
 
 // opNames индексируется OpCode; размер массива фиксирован числом опкодов.
@@ -130,6 +135,9 @@ var opNames = [...]string{
 	YIELD:       "YIELD",
 	RECORD:      "RECORD",
 	GETFIELD:    "GETFIELD",
+
+	CALLSPREAD:     "CALLSPREAD",
+	TAILCALLSPREAD: "TAILCALLSPREAD",
 }
 
 func (op OpCode) String() string {
