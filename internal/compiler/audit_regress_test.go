@@ -235,42 +235,84 @@ fn main() -> assert(outer(41) == 42)
 	}
 }
 
-// I-F7: локальная fn с захватом вне позиции вызова (как значение, в
-// spawn) — ошибка компиляции, а не арность в рантайме (T-51; значение
-// с захватом — T-39).
-func TestLocalFnCaptureFailsFast(t *testing.T) {
-	cases := map[string]string{
-		"value": `module Main
-fn outer(base) ->
+// I-F7: локальная fn с захватом как значение — замыкание над захватами
+// (T-39): присваивание, передача в функцию высшего порядка, spawn,
+// рекурсивная fn как значение, значение из вложенной лямбды.
+func TestLocalFnCaptureAsValue(t *testing.T) {
+	runModule(t, `module Main
+fn value(base) ->
     fn helper(n) -> base + n
     h = helper
     h(1)
-fn main() ->
-    print(outer(41))
-`,
-		"spawn": `module Main
-fn outer(base) ->
-    fn helper() -> print(base)
+fn higher(k, xs) ->
+    fn scale(x) -> x * k
+    map(scale, xs)
+fn rec_value(base) ->
+    fn go(0) -> base
+    fn go(n) -> go(n - 1)
+    g = go
+    g(3)
+fn from_lambda(base) ->
+    fn helper(n) -> base + n
+    mk = fn () -> helper
+    f = mk()
+    f(2)
+fn run(parent, base) ->
+    fn helper() -> send(parent, base + 1)
     spawn(helper)
 fn main() ->
-    outer(41)
-`,
-	}
-	for name, src := range cases {
-		t.Run(name, func(t *testing.T) {
-			err := compileSrc(t, src)
-			if err == nil {
-				t.Fatal("Compile: want error for capturing local fn as value, got nil")
-			}
-			msg := err.Error()
-			if strings.Contains(msg, "internal: upvalue") {
-				t.Fatalf("Compile: want compile-time error, got runtime-style %q", msg)
-			}
-			if !strings.Contains(msg, "захват") {
-				t.Fatalf("Compile: want error mentioning захват, got %v", err)
-			}
-		})
-	}
+    assert(value(41) == 42)
+    assert(higher(3, [1, 2]) == [3, 6])
+    assert(rec_value(7) == 7)
+    assert(from_lambda(40) == 42)
+    run(self(), 41)
+    recv
+        n -> assert(n == 42)
+`)
+}
+
+// I-F7: захват передаётся по связыванию, видимому в точке объявления
+// локальной fn, а не по имени в точке вызова (T-39).
+func TestLocalFnCaptureResolvedByBinding(t *testing.T) {
+	runModule(t, `module Main
+fn lambda_param(base) ->
+    fn helper(n) -> base + n
+    f = fn (base) -> helper(base)
+    f(1)
+fn sibling_param(x) ->
+    fn g(n) -> x + n
+    fn f(x) -> g(x)
+    f(1)
+fn nested(x) ->
+    fn g(n) -> x + n
+    fn f(x) ->
+        fn h(n) -> x * g(n)
+        h(2)
+    f(3)
+fn rec_shadow(base) ->
+    fn go(0) -> base
+    fn go(n) ->
+        base = 100
+        go(n - 1)
+    go(2)
+fn main() ->
+    assert(lambda_param(41) == 42)
+    assert(sibling_param(10) == 11)
+    assert(nested(10) == 36)
+    assert(rec_shadow(1) == 1)
+`)
+}
+
+// §6.5: пример из спеки — мультиклозная локальная fn с захватом `base`.
+func TestLocalFnSpec65Pow(t *testing.T) {
+	runModule(t, `module Main
+fn pow(base, exp) ->
+    fn go(acc, 0) -> acc
+    fn go(acc, n) -> go(acc * base, n - 1)
+    go(1, exp)
+fn main() ->
+    assert(pow(2, 10) == 1024)
+`)
 }
 
 // §3.1: Int — произвольной точности; литерал за пределами int64 — Int (T-22).
