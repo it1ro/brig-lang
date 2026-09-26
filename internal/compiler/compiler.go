@@ -1085,7 +1085,7 @@ func (fc *funcCompiler) compileExpr(e ast.Expr, d dest) (err error) {
 	case ast.LambdaFull:
 		return fc.compileLambda("", ex.ParamNames(), ex.BlockBody(), d)
 	case ast.PipeExpr:
-		return fmt.Errorf("срез: pipe не реализован")
+		return fc.compilePipe(ex, d)
 	}
 	return fmt.Errorf("срез: неподдерживаемое выражение %T", e)
 }
@@ -1501,6 +1501,23 @@ func (fc *funcCompiler) compileCall(call ast.CallExpr, d dest) error {
 	}
 
 	return fc.compileGenericCall(call, d)
+}
+
+// compilePipe: `x |> f(a…)` — вызов `f(x, a…)` (§7.5). Форма `obj.method(a)`
+// (RHS с точкой вне модулей прелюдии) до методов — ошибка компиляции.
+func (fc *funcCompiler) compilePipe(p ast.PipeExpr, d dest) error {
+	callee := p.PipeRHS()
+	if v, ok := callee.(ast.VariableExpr); ok {
+		if mod, _, dotted := strings.Cut(v.Name(), "."); dotted && !isPreludeModule(mod) {
+			return fmt.Errorf("%d:%d: |>: форма obj.method(a) не поддерживается: %s", p.Pos(), p.End(), v.Name())
+		}
+	}
+	args := append([]ast.Expr{p.PipeLHS()}, p.PipeArgs()...)
+	if v, ok := callee.(ast.VariableExpr); ok && strings.Contains(v.Name(), ".") {
+		fc.pos = posOf(p)
+		return fc.compileGlobalCall(v.Name(), args, d, p)
+	}
+	return fc.compileCall(ast.NewCallExpr(callee, args, p.Pos(), p.End()).(ast.CallExpr), d)
 }
 
 func (fc *funcCompiler) compileGenericCall(call ast.CallExpr, d dest) error {
