@@ -1490,6 +1490,8 @@ func (fc *funcCompiler) compileCall(call ast.CallExpr, d dest) error {
 			return fc.compileMakeRef(d)
 		case "watch":
 			return fc.compileWatch(call.Args(), d)
+		case "link":
+			return fc.compileLink(call.Args(), d)
 		case "unwatch":
 			return fc.compileUnwatch(call.Args(), d)
 		case "mailbox_size":
@@ -1894,14 +1896,36 @@ func (fc *funcCompiler) compileUnwatch(args []ast.Expr, d dest) error {
 	return nil
 }
 
-func (fc *funcCompiler) compileMailboxSize(args []ast.Expr, d dest) error {
+// compileLink — `link(pid)` ≡ `watch(pid)` без возврата ref (§12): результат ().
+func (fc *funcCompiler) compileLink(args []ast.Expr, d dest) error {
 	if len(args) != 1 {
-		return fmt.Errorf("mailbox_size требует 1 аргумент (pid)")
+		return fmt.Errorf("link требует 1 аргумент (pid)")
 	}
 	mark := fc.nextReg
 	dst := fc.destReg(d)
 	pidReg := fc.allocReg()
 	if err := fc.compileExpr(args[0], val(pidReg)); err != nil {
+		return err
+	}
+	refReg := fc.allocReg()
+	fc.emit(vm.ABC(vm.WATCH, refReg, pidReg, 0))
+	fc.emit(vm.ABx(vm.LOADK, dst, fc.konst(runtime.Unit)))
+	fc.finish(d, dst)
+	fc.releaseToMark(mark)
+	return nil
+}
+
+// compileMailboxSize — `mailbox_size(pid)`; без аргументов — своя очередь.
+func (fc *funcCompiler) compileMailboxSize(args []ast.Expr, d dest) error {
+	if len(args) > 1 {
+		return fmt.Errorf("mailbox_size требует 0 или 1 аргумент (pid)")
+	}
+	mark := fc.nextReg
+	dst := fc.destReg(d)
+	pidReg := fc.allocReg()
+	if len(args) == 0 {
+		fc.emit(vm.ABC(vm.SELF, pidReg, 0, 0))
+	} else if err := fc.compileExpr(args[0], val(pidReg)); err != nil {
 		return err
 	}
 	fc.emit(vm.ABC(vm.MAILBOXSIZE, dst, pidReg, 0))
