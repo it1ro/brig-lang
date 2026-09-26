@@ -1414,8 +1414,11 @@ func binOp(s string) (vm.OpCode, bool) {
 	return 0, false
 }
 
-// compileAndOr реализует K-2: JMPIF/JMPIFNOT прыгают только на Bool;
-// значение операнда возвращается как есть (не приведение к Bool).
+// compileAndOr: строгий Bool (DD #41 вариант A). Левый операнд проверяет сам
+// JMPIF/JMPIFNOT (не-Bool → (:type_error, (:expected_bool, v))); правый
+// проверяется после вычисления «холостым» условным переходом на следующую
+// инструкцию (оба исхода — ip+1, различие лишь в проверке типа). Правый
+// операнд по-прежнему не хвостовой (T-82).
 func (fc *funcCompiler) compileAndOr(b ast.BinaryExpr, isAnd bool, d dest) error {
 	mark := fc.nextReg
 	acc := fc.destReg(d)
@@ -1435,6 +1438,7 @@ func (fc *funcCompiler) compileAndOr(b ast.BinaryExpr, isAnd bool, d dest) error
 	if err := fc.compileExpr(b.Right(), val(acc)); err != nil {
 		return err
 	}
+	fc.emitJump(jumpOp, acc) // холостой: только проверка Bool у правого операнда
 
 	fc.patchHere(jEnd)
 	fc.finish(d, acc)
