@@ -90,7 +90,9 @@ func (p *parser) parseFnClauseRest() (ast.LocalFnClauseArg, error) {
 	var guard string
 	if p.match(lexer.KW_WHEN) {
 		save := p.pos
-		g, err := p.parseExpr()
+		// Guard — or_expr, не полный expr: иначе tryLambda съедает
+		// `ident ->` в `when ident -> body` (S-F4).
+		g, err := p.parseOr()
 		if err == nil {
 			guard = normalizeGuardString(g)
 		} else {
@@ -190,7 +192,9 @@ func (p *parser) parseFnDecl() (ast.Decl, error) {
 		var guard string
 		if p.match(lexer.KW_WHEN) {
 			save := p.pos
-			g, err := p.parseExpr()
+			// Guard — or_expr, не полный expr: иначе tryLambda съедает
+			// `ident ->` в `when ident -> body` (S-F4).
+			g, err := p.parseOr()
 			if err == nil {
 				guard = normalizeGuardString(g)
 			} else {
@@ -228,14 +232,34 @@ func normalizeGuardString(e ast.Expr) string {
 
 // stripOuterParens снимает один уровень внешних скобок, если они
 // обнимают всё выражение целиком (баланс скобок возвращается к 0
-// только в самом конце).
+// только в самом конце). Скобки внутри строковых литералов не считаются
+// (S-F12: `x == ")"` → `(x == ")")`).
 func stripOuterParens(s string) string {
 	if len(s) < 2 || s[0] != '(' || s[len(s)-1] != ')' {
 		return s
 	}
 	depth := 0
+	inStr := false
+	escape := false
 	for i := 0; i < len(s); i++ {
-		switch s[i] {
+		c := s[i]
+		if inStr {
+			if escape {
+				escape = false
+				continue
+			}
+			if c == '\\' {
+				escape = true
+				continue
+			}
+			if c == '"' {
+				inStr = false
+			}
+			continue
+		}
+		switch c {
+		case '"':
+			inStr = true
 		case '(':
 			depth++
 		case ')':
