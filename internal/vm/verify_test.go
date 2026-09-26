@@ -50,7 +50,6 @@ func TestVMTailCallUnderTrapGuard(t *testing.T) {
 
 // I-F1: чтение неопределённого r2 в теле ветки после MATCHLOCAL+JMP (T-36).
 func TestVerifyMatchLocalBranchUndefinedReg(t *testing.T) {
-	t.Skip("blocked: T-36")
 	c := mkChunk(3,
 		AsBx(RECVTAKE, 0, 0),  // 0: r0 = msg
 		ABx(MATCHLOCAL, 0, 0), // 1
@@ -66,7 +65,6 @@ func TestVerifyMatchLocalBranchUndefinedReg(t *testing.T) {
 
 // I-F1: чтение неопределённого r2 в after-ветке RECVTAKE (T-36).
 func TestVerifyRecvAfterUndefinedReg(t *testing.T) {
-	t.Skip("blocked: T-36")
 	c := mkChunk(3,
 		AsBx(RECVTAKE, 0, 1), // 0: after -> 2
 		ABC(RETURN, 0, 0, 0), // 1
@@ -74,5 +72,77 @@ func TestVerifyRecvAfterUndefinedReg(t *testing.T) {
 	)
 	if err := Verify(c); err == nil {
 		t.Errorf("Verify accepted read of undefined r2 in after-body")
+	}
+}
+
+func TestCompiledPatternSlots(t *testing.T) {
+	tests := []struct {
+		name string
+		pat  *CompiledPattern
+		want []int
+	}{
+		{
+			name: "wildcard",
+			pat:  &CompiledPattern{Kind: PatWildcard},
+			want: nil,
+		},
+		{
+			name: "ident",
+			pat:  &CompiledPattern{Kind: PatIdent, Slot: 3},
+			want: []int{3},
+		},
+		{
+			name: "ident negative slot",
+			pat:  &CompiledPattern{Kind: PatIdent, Slot: -1},
+			want: nil,
+		},
+		{
+			name: "nested tuple",
+			pat: &CompiledPattern{
+				Kind: PatTuple,
+				Subs: []*CompiledPattern{
+					{Kind: PatIdent, Slot: 1},
+					{Kind: PatTuple, Subs: []*CompiledPattern{
+						{Kind: PatIdent, Slot: 2},
+						{Kind: PatWildcard},
+					}},
+				},
+			},
+			want: []int{1, 2},
+		},
+		{
+			name: "list with rest",
+			pat: &CompiledPattern{
+				Kind:     PatList,
+				HasRest:  true,
+				RestSlot: 5,
+				Subs: []*CompiledPattern{
+					{Kind: PatIdent, Slot: 4},
+				},
+			},
+			want: []int{5, 4},
+		},
+		{
+			name: "as-pattern",
+			pat: &CompiledPattern{
+				Kind:   PatAs,
+				AsSlot: 7,
+				Inner:  &CompiledPattern{Kind: PatIdent, Slot: 8},
+			},
+			want: []int{7, 8},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.pat.Slots()
+			if len(got) != len(tt.want) {
+				t.Fatalf("Slots() = %v, want %v", got, tt.want)
+			}
+			for i := range got {
+				if got[i] != tt.want[i] {
+					t.Fatalf("Slots() = %v, want %v", got, tt.want)
+				}
+			}
+		})
 	}
 }
