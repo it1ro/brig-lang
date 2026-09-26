@@ -125,8 +125,13 @@ description: >
   false (`runtime.IsNaNOperand` в `LT..GE`); `Compare` ставит NaN после
   всех чисел (только для порядка sort/Set). `PatLiteral` и ключи
   Map-паттерна используют `runtime.MatchEqual` (тот же `Kind` и точное
-  значение: `1` не матчит `1.0` и `dec"1"`; T-84 #109); Decimal×Float
-  по-разному в `==` и в `INDEX`/`Map`/паттернах — T-86 #111.
+  значение: `1` не матчит `1.0` и `dec"1"`; T-84 #109). Decimal×Float
+  (T-86 #111): в `==`/`!=`/`<`… — ловимый `:type_error` (`checkMixedEq`/
+  `checkMixedCmp`, только пара верхнего уровня); в ключах Map/Set
+  (`INDEX`, `set`, `Map.put/get/remove`) — `runtime.KeyEqual`: Decimal
+  равен только Decimal (в т.ч. не равен Int), Int×Float по-прежнему
+  точное численное; в паттернах — `MatchEqual`. Ошибки нет, просто
+  разные значения. Якорь `TestDecimalFloatMixed`.
 
 ## Опкоды (`opcodes.go`, `chunk.go`)
 

@@ -1282,7 +1282,7 @@ func vmIndex(obj, idx runtime.Value) (runtime.Value, error) {
 
 	case runtime.KindMap:
 		for _, e := range obj.Map {
-			if runtime.Equal(e.Key, idx) {
+			if runtime.KeyEqual(e.Key, idx) {
 				return runtime.Variant("Some", e.Val), nil
 			}
 		}

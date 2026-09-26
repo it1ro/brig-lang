@@ -438,9 +438,21 @@ func matchEqualSlice(a, b []Value) bool {
 //
 // Decimal-правила (§4.8, §7.4): Decimal×Decimal и Decimal×Int — по
 // значению (1.50 == 1.5, dec"2" == 2); Decimal×Float — false (мягкая
-// форма; жёсткая ошибка — на уровне оператора ==, см. vm.checkMixedEq).
-func Equal(a, b Value) bool {
+// форма; :type_error бросает оператор ==, см. vm.checkMixedEq).
+func Equal(a, b Value) bool { return equal(a, b, false) }
+
+// KeyEqual — равенство ключей Map/Set (INDEX, set, Map.*): как Equal, но
+// Decimal равен только Decimal (решение #43 п.3: разные виды — разные
+// значения, без ошибки). Int×Float остаётся точным численным (T-85).
+// Так дедупликация транзитивна: dec"1" не сливается с 1, который равен 1.0.
+// Действует и внутри контейнеров.
+func KeyEqual(a, b Value) bool { return equal(a, b, true) }
+
+func equal(a, b Value, strict bool) bool {
 	if a.Kind != b.Kind {
+		if strict && (a.Kind == KindDecimal || b.Kind == KindDecimal) {
+			return false
+		}
 		if a.Kind == KindDecimal {
 			return equalDecimalOther(a, b)
 		}
@@ -483,15 +495,15 @@ func Equal(a, b Value) bool {
 			return false
 		}
 		for i := range a.Tuple {
-			if !Equal(a.Tuple[i], b.Tuple[i]) {
+			if !equal(a.Tuple[i], b.Tuple[i], strict) {
 				return false
 			}
 		}
 		return true
 	case KindList:
-		return equalSlice(a.List, b.List)
+		return equalSlice(a.List, b.List, strict)
 	case KindVector:
-		return equalSlice(a.Vector, b.Vector)
+		return equalSlice(a.Vector, b.Vector, strict)
 	case KindMap:
 		if len(a.Map) != len(b.Map) {
 			return false
@@ -499,7 +511,7 @@ func Equal(a, b Value) bool {
 		for _, ae := range a.Map {
 			found := false
 			for _, be := range b.Map {
-				if Equal(ae.Key, be.Key) && Equal(ae.Val, be.Val) {
+				if equal(ae.Key, be.Key, strict) && equal(ae.Val, be.Val, strict) {
 					found = true
 					break
 				}
@@ -516,7 +528,7 @@ func Equal(a, b Value) bool {
 		for _, ae := range a.Set {
 			found := false
 			for _, be := range b.Set {
-				if Equal(ae, be) {
+				if equal(ae, be, strict) {
 					found = true
 					break
 				}
@@ -531,9 +543,9 @@ func Equal(a, b Value) bool {
 			len(a.Variant.Args) != len(b.Variant.Args) {
 			return false
 		}
-		return equalSlice(a.Variant.Args, b.Variant.Args)
+		return equalSlice(a.Variant.Args, b.Variant.Args, strict)
 	case KindRecord:
-		return equalRecords(a.Record, b.Record)
+		return equalRecords(a.Record, b.Record, strict)
 	case KindFunction:
 		return a.Func == b.Func
 	case KindClosure:
@@ -548,13 +560,13 @@ func Equal(a, b Value) bool {
 
 // equalRecords (§4.8): номинальная — по тегу и полям, анонимная — по
 // полям; порядок полей не важен, номинальная ≠ анонимной.
-func equalRecords(a, b *RecordValue) bool {
+func equalRecords(a, b *RecordValue, strict bool) bool {
 	if a.Type != b.Type || len(a.Fields) != len(b.Fields) {
 		return false
 	}
 	for _, f := range a.Fields {
 		bv, ok := b.Get(f.Name)
-		if !ok || !Equal(f.Val, bv) {
+		if !ok || !equal(f.Val, bv, strict) {
 			return false
 		}
 	}
@@ -572,12 +584,12 @@ func equalDecimalOther(dec, other Value) bool {
 	return false
 }
 
-func equalSlice(a, b []Value) bool {
+func equalSlice(a, b []Value, strict bool) bool {
 	if len(a) != len(b) {
 		return false
 	}
 	for i := range a {
-		if !Equal(a[i], b[i]) {
+		if !equal(a[i], b[i], strict) {
 			return false
 		}
 	}

@@ -113,7 +113,7 @@ func InstallPrelude(vm *VM) {
 		for _, a := range args {
 			found := false
 			for _, e := range out {
-				if runtime.Equal(a, e) {
+				if runtime.KeyEqual(a, e) {
 					found = true
 					break
 				}
@@ -287,7 +287,7 @@ func InstallPrelude(vm *VM) {
 		out := make([]runtime.MapEntry, 0, len(args[0].Map)+1)
 		found := false
 		for _, e := range args[0].Map {
-			if runtime.Equal(e.Key, args[1]) {
+			if runtime.KeyEqual(e.Key, args[1]) {
 				out = append(out, runtime.MapEntry{Key: args[1], Val: args[2]})
 				found = true
 			} else {
@@ -305,7 +305,7 @@ func InstallPrelude(vm *VM) {
 			return runtime.Unit, typeErr("Map.get", args[0])
 		}
 		for _, e := range args[0].Map {
-			if runtime.Equal(e.Key, args[1]) {
+			if runtime.KeyEqual(e.Key, args[1]) {
 				return runtime.Variant("Some", e.Val), nil
 			}
 		}
@@ -318,7 +318,7 @@ func InstallPrelude(vm *VM) {
 		}
 		out := make([]runtime.MapEntry, 0, len(args[0].Map))
 		for _, e := range args[0].Map {
-			if !runtime.Equal(e.Key, args[1]) {
+			if !runtime.KeyEqual(e.Key, args[1]) {
 				out = append(out, e)
 			}
 		}

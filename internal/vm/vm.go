@@ -398,11 +398,12 @@ func arithErr(a, b runtime.Value, op string) error {
 	return typeErr(op, runtime.Tuple(a, b))
 }
 
-// checkMixedEq — жёсткая проверка Decimal×Float для оператора == / !=
-// (§7.4: ошибка). Возвращает catchable *ErrRaise.
+// checkMixedEq — проверка Decimal×Float для оператора == / != (§7.4,
+// решение #43 п.3): ловимый (:type_error, (:eq, (a, b))). Проверяется
+// только пара верхнего уровня; вложенные значения сравнивает Equal (false).
 //
-// В остальных контекстах (Equal из pattern-match, коллекции) та же
-// пара даёт false — так безопаснее для нестроковых использований.
+// Ключи Map/Set (INDEX, set, Map.*) и паттерны ошибку не бросают: разные
+// виды — разные значения, см. runtime.KeyEqual и runtime.MatchEqual.
 func checkMixedEq(a, b runtime.Value) error {
 	if (a.Kind == runtime.KindDecimal && b.Kind == runtime.KindFloat) ||
 		(a.Kind == runtime.KindFloat && b.Kind == runtime.KindDecimal) {
@@ -414,7 +415,8 @@ func checkMixedEq(a, b runtime.Value) error {
 // checkMixedCmp — жёсткая проверка Decimal×Float для операторов
 // сравнения < > <= >= (§7.4: ошибка). Возвращает catchable *ErrRaise.
 //
-// Даёт ту же форму raise, что и ошибка runtime.Compare в LT/GT/LE/GE.
+// Форма raise — (:type_error, (:compare, (a, b))), как у ошибки
+// runtime.Compare (в т.ч. для вложенной пары) в LT/GT/LE/GE.
 func checkMixedCmp(a, b runtime.Value) error {
 	if (a.Kind == runtime.KindDecimal && b.Kind == runtime.KindFloat) ||
 		(a.Kind == runtime.KindFloat && b.Kind == runtime.KindDecimal) {
