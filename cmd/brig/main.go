@@ -132,8 +132,8 @@ func runFile(args []string) {
 			os.Exit(exitParse)
 		}
 	}
-	if len(args) != 1 {
-		fmt.Fprintln(os.Stderr, "brig run: ожидается один файл (опционально --dump-bytecode)")
+	if len(args) < 1 {
+		fmt.Fprintln(os.Stderr, "brig run: ожидается файл (опционально --dump-bytecode) и аргументы программы")
 		os.Exit(exitParse)
 	}
 	src, err := os.ReadFile(args[0])
@@ -193,6 +193,7 @@ func runFile(args []string) {
 	}
 
 	machine := vm.New()
+	machine.SetArgs(args[1:])
 	for name, fn := range img.Functions {
 		machine.DefineGlobal(name, vm.FuncValue(fn))
 	}

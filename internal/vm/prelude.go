@@ -3,7 +3,6 @@ package vm
 import (
 	"fmt"
 	"math/big"
-	"os"
 	"strings"
 	"unicode/utf8"
 
@@ -408,9 +407,9 @@ func InstallPrelude(vm *VM) {
 
 	// ---- Sys ----
 
-	def("sys_args", 0, func(_ runtime.Caller, _ []runtime.Value) (runtime.Value, error) {
-		out := make([]runtime.Value, 0, len(os.Args))
-		for _, a := range os.Args {
+	def("Sys.args", 0, func(_ runtime.Caller, _ []runtime.Value) (runtime.Value, error) {
+		out := make([]runtime.Value, 0, len(vm.args))
+		for _, a := range vm.args {
 			out = append(out, runtime.Str(a))
 		}
 		return runtime.List(out...), nil

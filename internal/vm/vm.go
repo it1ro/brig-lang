@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"strings"
 
 	"github.com/it1ro/brig-lang/internal/runtime"
 )
@@ -30,6 +31,7 @@ type VM struct {
 	scheduler    *Scheduler
 	tests        []testCase
 	currentGroup string
+	args         []string
 }
 
 // New создаёт ВМ с установленной прелюдией.
@@ -39,8 +41,22 @@ func New() *VM {
 	InstallPrelude(vm)
 	InstallJSONPrelude(vm)
 	InstallTestPrelude(vm)
+	aliasPrelude(vm)
 	return vm
 }
+
+// aliasPrelude кладёт функции прелюдии под именами Prelude.<name>: они
+// остаются доступны, когда пользовательская fn затеняет глобал (§11.5).
+func aliasPrelude(vm *VM) {
+	for name, v := range vm.globals {
+		if v.Kind == runtime.KindFunction && !strings.Contains(name, ".") {
+			vm.globals["Prelude."+name] = v
+		}
+	}
+}
+
+// SetArgs задаёт аргументы программы для Sys.args() (§16).
+func (vm *VM) SetArgs(args []string) { vm.args = args }
 
 // Scheduler возвращает планировщик (нужен прелюдии).
 func (vm *VM) Scheduler() *Scheduler { return vm.scheduler }

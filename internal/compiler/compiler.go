@@ -1633,7 +1633,7 @@ func (fc *funcCompiler) compileGlobalCall(name string, args []ast.Expr, d dest, 
 
 func isPreludeModule(name string) bool {
 	switch name {
-	case "Vec", "Map", "Str", "Bytes", "Json", "Test":
+	case "Vec", "Map", "Str", "Bytes", "Json", "Test", "Sys", "Prelude":
 		return true
 	}
 	return false
