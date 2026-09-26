@@ -1058,7 +1058,7 @@ after 5000 -> :timeout
 
 > `else` и `after` — клаузы `recv` на **том же отступе, что сам `recv`**. Обе опциональны. Если обе присутствуют — порядок фиксирован: сначала `else`, затем `after`. `after` без `else` разрешён. `else` без `after` разрешён. Более одного `after` — ошибка. Более одного `else` — ошибка.
 
-**`else` и `after` в `recv` имеют только блочную форму** (тело — блок INDENT...DEDENT). Однострочная форма для них не предусмотрена.
+**`else` — только блочная форма** (`else name` + INDENT…DEDENT), без `->`. **`after` — как тело ветки:** `after expr -> expr` или `after expr ->` и блок INDENT…DEDENT.
 
 Ключевое отличие от v0.4.2: `else`/`after` находятся **вне** блока `INDENT...DEDENT` веток — то есть на уровне отступа `recv`, что соответствует прозе и примеру.
 
@@ -2413,7 +2413,7 @@ info: <file>:<line>:<col>: <message>
 - [x] Сохранить этот документ как `docs/01-language-design.md` (v0.4.7).
 - [x] Применить патчи в `brig.ebnf`, `internal/parser/{expr,stmt}.go`, `internal/ast/format.go`, `internal/examples/examples.go`, `internal/lexer/lexer.go`.
 - [x] Обновить golden-файлы: `make update-golden`.
-- [x] Прогнать `make check-examples` → 65/65 ok.
+- [x] Прогнать `make check-examples` → `failed 0`.
 - [x] Прогнать `make ci-quick` → зелёный.
 - [x] Прогнать `make all` → зелёный.
 - [x] Прогнать `make test-race` → зелёный.
