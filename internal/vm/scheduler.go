@@ -298,6 +298,25 @@ func (s *Scheduler) notifyWatchers(a *Actor, reason runtime.Value) {
 	}
 }
 
+// reapActor удаляет завершённый актор из таблицы (I-F9). mainPid
+// оставляем: runMain читает его result/err после выхода из цикла.
+func (s *Scheduler) reapActor(a *Actor) {
+	if a.pid != s.mainPid {
+		delete(s.actors, a.pid)
+	}
+}
+
+// downRaiseReason — причина :down при actorFailed: значение из *ErrRaise,
+// а не a.result (fail() обнуляет result в Unit; I-F10).
+func downRaiseReason(a *Actor) runtime.Value {
+	val := runtime.Unit
+	var rerr *ErrRaise
+	if errors.As(a.err, &rerr) {
+		val = rerr.Val
+	}
+	return runtime.Tuple(runtime.Atom("raise"), val)
+}
+
 // ---- RunMain ----
 
 // RunMain запускает main как актор без аргументов.
@@ -386,6 +405,7 @@ func (s *Scheduler) runSlice(a *Actor) {
 			a.status = actorDone
 			a.result = runtime.Unit
 			s.notifyWatchers(a, runtime.Atom("normal"))
+			s.reapActor(a)
 			return
 		}
 
@@ -400,6 +420,7 @@ func (s *Scheduler) runSlice(a *Actor) {
 			if len(a.frames) == 0 {
 				a.status = actorDone
 				s.notifyWatchers(a, runtime.Atom("normal"))
+				s.reapActor(a)
 				return
 			}
 			caller := a.frames[len(a.frames)-1]
@@ -411,7 +432,8 @@ func (s *Scheduler) runSlice(a *Actor) {
 				continue
 			}
 			a.status = actorFailed
-			s.notifyWatchers(a, runtime.Tuple(runtime.Atom("raise"), a.result))
+			s.notifyWatchers(a, downRaiseReason(a))
+			s.reapActor(a)
 			return
 
 		case stepBlock:
