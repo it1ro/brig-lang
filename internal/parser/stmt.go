@@ -10,6 +10,11 @@ import (
 // SkipNewlines вынесен в начало итерации: после parseStmt, который может
 // вернуть управление уже на NEWLINE (например, после закрытия вложенного
 // INDENT-блока), итерация корректно продолжается/завершается.
+// После успешного parseStmt следующий токен обязан быть NEWLINE, DEDENT,
+// EOF или until (S-F6 / T-21). Исключение: лексер после вложенного
+// INDENT/DEDENT не вставляет NEWLINE перед следующим стейтментом на
+// родительском отступе — DEDENT уже съеден внутри parseStmt, и cur
+// сразу указывает на первый токен следующей строки.
 func (p *parser) parseStmtList(until lexer.TokenType) ([]ast.Stmt, error) {
 	var stmts []ast.Stmt
 	for {
@@ -22,6 +27,13 @@ func (p *parser) parseStmtList(until lexer.TokenType) ([]ast.Stmt, error) {
 			return nil, err
 		}
 		stmts = append(stmts, s)
+		if p.at(lexer.NEWLINE) || p.at(lexer.DEDENT) || p.at(lexer.EOF) || p.at(until) {
+			continue
+		}
+		if p.pos > 0 && p.toks[p.pos-1].Type == lexer.DEDENT {
+			continue
+		}
+		return nil, p.errf("expected NEWLINE between statements, got %s", p.cur().Type)
 	}
 }
 

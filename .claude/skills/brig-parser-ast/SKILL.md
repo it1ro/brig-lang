@@ -53,7 +53,7 @@ description: >
 | Параметры и guard `fn` | Хранятся строками (`pat.String()`, `normalizeGuardString`, `stmt.go:90-146,190-199`) — AST не выражает параметр-паттерн | T-50 (#33) |
 | Интерполяция `\(...)` | STRING → `LiteralExpr` (`expr.go:401-405`), выражение в AST не попадает, `"a \(1 +) b"` принимается | T-53 (#36) |
 | `ensure` | Только `ensure expr`; блочная форма и гибрид `ensure expr`+блок — ошибка парсинга (S-F5 закрыт T-03 #3). Реализация блочной формы — out of scope | — |
-| `stmt_list` | NEWLINE между стейтментами не обязателен (`stmt.go:13-26`): `x = 1 y = 2` — две строки | T-21 (#15) |
+| `stmt_list` | NEWLINE между стейтментами обязателен (S-F6 закрыт T-21 #15): после `parseStmt` — NEWLINE/DEDENT/EOF/`until` | — |
 | `sep ::= NEWLINE` | В args/params/tuple не поддержан (в list/map/record — да) | T-24 (#18) |
 | Паттерн `()`, порядок bind/stmt в `with` | Ошибка парсинга | T-24 (#18) |
 
