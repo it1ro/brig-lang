@@ -20,7 +20,19 @@ const maxLocals = 256
 const MaxLocals = maxLocals
 
 // ErrRaise — необработанное исключение.
-type ErrRaise struct{ Val runtime.Value }
+//
+// Trace — отдельный debug-канал (§17 Q1): его заполняет только планировщик
+// при непойманном raise; в Val, trap и :down он не попадает.
+type ErrRaise struct {
+	Val   runtime.Value
+	Trace []TraceFrame
+}
+
+// TraceFrame — кадр stack trace: функция и позиция инструкции в ней.
+type TraceFrame struct {
+	Func string
+	Pos  SrcPos
+}
 
 func (e *ErrRaise) Error() string { return "raise: " + e.Val.Inspect() }
 

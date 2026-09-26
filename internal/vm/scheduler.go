@@ -458,6 +458,9 @@ func (s *Scheduler) runSlice(a *Actor) {
 			caller.regs[caller.callDst] = a.result
 
 		case stepFailed:
+			if !s.raiseCatchable(a) {
+				attachTrace(a)
+			}
 			if s.tryUnwindRaise(a) {
 				reds--
 				continue
@@ -1311,6 +1314,44 @@ func (s *Scheduler) callSync(fn runtime.Value, args []runtime.Value) (runtime.Va
 }
 
 // ---- tryUnwindRaise ----
+
+// raiseCatchable сообщает, поймает ли raise какой-либо trap в кадрах
+// родителей верхнего кадра (в самом верхнем Frame.catch уже отработал).
+// Для не-raise ошибок возвращает true: trace для них не собирается.
+func (s *Scheduler) raiseCatchable(a *Actor) bool {
+	var rerr *ErrRaise
+	if !errors.As(a.err, &rerr) {
+		return true
+	}
+	for i := len(a.frames) - 2; i >= 0; i-- {
+		if len(a.frames[i].handlers) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// attachTrace кладёт в ErrRaise кадры от места raise к main. Кадры,
+// заменённые TAILCALL, в trace не попадают: их уже нет в a.frames.
+// У вызывающих кадров ip уже сдвинут за CALL, поэтому берём ip-1.
+// Вызывается только на пути непойманного raise.
+func attachTrace(a *Actor) {
+	var rerr *ErrRaise
+	if !errors.As(a.err, &rerr) {
+		return
+	}
+	n := len(a.frames)
+	trace := make([]TraceFrame, 0, n)
+	for i := n - 1; i >= 0; i-- {
+		f := a.frames[i]
+		ip := f.ip
+		if i != n-1 {
+			ip--
+		}
+		trace = append(trace, TraceFrame{Func: f.name, Pos: f.chunk.PosAt(ip)})
+	}
+	rerr.Trace = trace
+}
 
 // tryUnwindRaise пытается поймать невыловленный raise, всплывая вверх
 // по стеку кадров текущего актора.
