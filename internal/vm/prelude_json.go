@@ -1,12 +1,14 @@
 package vm
 
 import (
-	"fmt"
-
 	"github.com/it1ro/brig-lang/internal/runtime"
 )
 
 // InstallJSONPrelude регистрирует Json.encode/Json.decode (§4.7, Must).
+//
+// Семантика делегируется runtime.JSONEncode/JSONDecode (I-F13):
+// Inf/NaN → raise :json_encode_error; Float 1.0 round-trip сохраняет Float;
+// Map с ключом "$bytes" не коллизирует с маркером Bytes.
 func InstallJSONPrelude(vm *VM) {
 	def := func(name string, arity int, fn runtime.NativeFunc) {
 		vm.globals[name] = runtime.Func(&runtime.FuncValue{
@@ -36,7 +38,4 @@ func InstallJSONPrelude(vm *VM) {
 		}
 		return runtime.Variant("Ok", v), nil
 	})
-
-	// Для отладки — там где CLI хочет вывести ошибку без Result-обёртки.
-	_ = fmt.Sprintf
 }

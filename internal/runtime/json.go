@@ -11,29 +11,34 @@
 //	Decimal      → "dec\"...\"" (строка — точность важнее)
 //	Bytes        → {"$bytes": "<base64>"} (маркер для round-trip)
 //	List/Vector/Set/Tuple → array
-//	Map          → object (ключи только Str/Atom)
+//	Map          → object (ключи только Str/Atom; ключи с префиксом "$"
+//	               экранируются как "$$…", чтобы не пересекаться с маркером)
 //	None         → null
 //	Some(x)/Ok(x)→ прозрачно, encode(x)
 //	Error(e)     → {"error": encode(e)}
 //	иной вариант → {"tag": "Name", "args": [...]}
 //	Function/Closure/Pid/Ref → ошибка (§14.8)
+//	Float Inf/NaN → ошибка (RFC 8259)
 //
 // Decode (JSON → Value):
 //
 //	null         → Unit
 //	true/false   → Bool
 //	integer      → Int
-//	fractional   → Float
+//	fractional   → Float (в т.ч. "1.0" остаётся Float)
 //	string       → Str
 //	array        → List
-//	object       → Map (специальный случай {"$bytes": "..."} → Bytes)
+//	object       → Map (специальный случай {"$bytes": "..."} → Bytes;
+//	               ключи "$$…" снимают одно экранирование)
 package runtime
 
 import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"math"
 	"math/big"
+	"strconv"
 	"strings"
 )
 
@@ -67,8 +72,11 @@ func jsonEncode(sb *strings.Builder, v Value, depth int) error {
 		sb.WriteString(v.Inspect())
 
 	case KindFloat:
-		// %g даёт наиболее компактную форму, приемлемую как JSON number.
-		fmt.Fprintf(sb, "%g", v.Float)
+		s, err := formatJSONFloat(v.Float)
+		if err != nil {
+			return err
+		}
+		sb.WriteString(s)
 
 	case KindStr:
 		b, _ := json.Marshal(v.Str)
@@ -137,6 +145,7 @@ func jsonEncode(sb *strings.Builder, v Value, depth int) error {
 			default:
 				return fmt.Errorf("(:json_encode, (:invalid_key, %s))", e.Key.Inspect())
 			}
+			ks = jsonEscapeKey(ks)
 			b, _ := json.Marshal(ks)
 			sb.Write(b)
 			sb.WriteByte(':')
@@ -261,9 +270,38 @@ func fromJSON(raw any, depth int) (Value, error) {
 			if err != nil {
 				return Unit, err
 			}
-			entries = append(entries, MapEntry{Key: Str(k), Val: v})
+			entries = append(entries, MapEntry{Key: Str(jsonUnescapeKey(k)), Val: v})
 		}
 		return Map(entries), nil
 	}
 	return Unit, fmt.Errorf("(:json_decode, :unexpected_type)")
+}
+
+// formatJSONFloat — JSON number для Float: Inf/NaN запрещены (RFC 8259);
+// целочисленные значения пишутся с ".0", чтобы decode сохранил KindFloat.
+func formatJSONFloat(f float64) (string, error) {
+	if math.IsInf(f, 0) || math.IsNaN(f) {
+		return "", fmt.Errorf("(:json_encode, :non_finite)")
+	}
+	s := strconv.FormatFloat(f, 'g', -1, 64)
+	if !strings.ContainsAny(s, ".eE") {
+		s += ".0"
+	}
+	return s, nil
+}
+
+// jsonEscapeKey — ключи Map с префиксом "$" получают ещё один "$",
+// чтобы {"$bytes":…} от Bytes не путался с Map %{"$bytes"=>…}.
+func jsonEscapeKey(k string) string {
+	if strings.HasPrefix(k, "$") {
+		return "$" + k
+	}
+	return k
+}
+
+func jsonUnescapeKey(k string) string {
+	if strings.HasPrefix(k, "$$") {
+		return k[1:]
+	}
+	return k
 }
