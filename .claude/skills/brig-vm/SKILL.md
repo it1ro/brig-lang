@@ -61,16 +61,15 @@ description: >
   T-13 (#11) подтвердил: `TestVerifyAF1SingleGoroutineScheduler` —
   spawn 100 акторов даёт рост `NumGoroutine` ≪ 100. Модель
   планировщика не менять.
-- **Мёртвые акторы не удаляются из `s.actors`** (grep `delete(s.actors`
-  пуст; I-F9, T-40 #29). Поэтому для pid **завершившегося** актора:
-  `watch` никогда не шлёт `:down` (наблюдатель висит), `send` копит
-  mailbox и после 64 сообщений даёт `Error(:busy)`, `mailbox_size` = 64.
-  Корректно (`send` → `Ok(())`, `watch` → `:down :noproc`) только для pid,
-  который никогда не существовал.
-- **Причина `:down` теряет значение raise** (I-F10, T-40 #29): `fail()`
-  обнуляет `a.result = Unit` (`scheduler.go:437-441`) до
-  `notifyWatchers(Tuple(:raise, a.result))` — приходит
-  `(:down, ref, (:raise, ()))`.
+- **Мёртвые акторы удаляются из `s.actors`** при `actorDone`/`actorFailed`
+  через `reapActor` (кроме `mainPid`; I-F9, T-40 #29). Поэтому `watch` на
+  завершившийся pid даёт немедленный `:down` с `:noproc`, `send` →
+  `Ok(())`, `mailbox_size` = 0 — так же, как для pid, который никогда не
+  существовал.
+- **Причина `:down` несёт значение raise** (I-F10, T-40 #29):
+  `downRaiseReason` берёт `val` из `errors.As(a.err, &rerr)` — `fail()`
+  обнуляет `a.result = Unit`, поэтому `a.result` в reason использовать
+  нельзя. Наблюдатель получает `(:down, ref, (:raise, val))`.
 - `Send` возвращает `Result<(), Atom>`: `Error(:busy)` при переполнении
   HWM (`defaultHWM = 64`). `:down`-сообщения (`sendDown`) идут в отдельную
   очередь `downMsgs` и **не подчиняются HWM** — приоритет над обычными.
@@ -80,7 +79,7 @@ description: >
 - `tryUnwindRaise` — всплытие `*ErrRaise` вверх по кадрам актора при
   отсутствии активного handler'а в текущем кадре; если ни один родительский
   кадр не поймал — актор падает (`actorFailed`), наблюдатели получают
-  `(:down, ref, (:raise, val))` (с оговоркой про потерю `val` выше).
+  `(:down, ref, (:raise, val))`.
 - `callSync` — синхронный вызов вне обычного scheduler-цикла (используется
   прелюдией через `runtime.Caller`); он **не может** заходить в `recv` на
   пустом ящике — это должно фейлиться явной ошибкой
@@ -140,10 +139,10 @@ definite assignment (dataflow: регистр определён на всех �
 
 1. Прогнать `make test-vm` (узкий), затем полный `go test ./internal/vm/...`.
 2. Для новых акторных примитивов — тест на нормальный путь + тест на
-   поведение при отсутствии адресата (`send` к мёртвому pid → `Ok(())`,
-   `watch` мёртвого → немедленный `:down` с `:noproc`) — отдельно для pid,
-   который не существовал, и для завершившегося актора (второй случай
-   сломан до T-40).
+  поведение при отсутствии адресата (`send` к мёртвому pid → `Ok(())`,
+  `watch` мёртвого → немедленный `:down` с `:noproc`) — и для pid,
+  который не существовал, и для завершившегося актора (`TestWatchDeadActorGetsDown`,
+  `TestSendToDeadActor`).
 3. Для новых опкодов — обязательно прогнать
    `go test ./internal/compiler/... -run TestBytecodeGolden`; если формат
    дизассемблера/байткод изменился намеренно — `make update-bytecode` и
