@@ -183,6 +183,28 @@ fn main() ->
 `)
 }
 
+// T-49: параметр промежуточной лямбды затеняет локальную fn внешней fn
+// для вложенной лямбды — ближайшее связывание побеждает на каждом
+// уровне (doc 02 §7). Вариант с захватом: к затенённому имени не
+// дописываются захваты лифтнутой fn (T-51).
+func TestLocalFnShadowedByEnclosingLambdaParam(t *testing.T) {
+	runModule(t, `module Main
+fn f() ->
+    fn go(n) -> n
+    g = fn (go) -> (x -> go(x))
+    h = g(y -> y * 10)
+    h(2)
+fn captured(k) ->
+    fn go(n) -> n + k
+    g = fn (go) -> (x -> go(x))
+    h = g(y -> y * 10)
+    h(2) + go(1)
+fn main() ->
+    assert(f() == 20)
+    assert(captured(100) == 121)
+`)
+}
+
 // S-F3 (T-52): ложный guard ветки recv переводит к следующей ветке
 // (§12.4). Guard видит связывания паттерна и внешние локали; ветка с
 // guard в хвостовой позиции остаётся TAILCALL.
