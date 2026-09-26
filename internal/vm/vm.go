@@ -173,7 +173,7 @@ func add(a, b runtime.Value) (runtime.Value, error) {
 		return runtime.List(joined...), nil
 	}
 	if !bothNum(a, b) {
-		return runtime.Unit, arithErr(a, b, ":add")
+		return runtime.Unit, arithErr(a, b, "add")
 	}
 	if a.Kind == runtime.KindFloat || b.Kind == runtime.KindFloat {
 		return runtime.Float(numToFloat(a) + numToFloat(b)), nil
@@ -199,7 +199,7 @@ func sub(a, b runtime.Value) (runtime.Value, error) {
 		return runtime.Decimal(new(big.Rat).Sub(ar, br)), nil
 	}
 	if !bothNum(a, b) {
-		return runtime.Unit, arithErr(a, b, ":sub")
+		return runtime.Unit, arithErr(a, b, "sub")
 	}
 	if a.Kind == runtime.KindFloat || b.Kind == runtime.KindFloat {
 		return runtime.Float(numToFloat(a) - numToFloat(b)), nil
@@ -225,7 +225,7 @@ func mul(a, b runtime.Value) (runtime.Value, error) {
 		return runtime.Decimal(new(big.Rat).Mul(ar, br)), nil
 	}
 	if !bothNum(a, b) {
-		return runtime.Unit, arithErr(a, b, ":mul")
+		return runtime.Unit, arithErr(a, b, "mul")
 	}
 	if a.Kind == runtime.KindFloat || b.Kind == runtime.KindFloat {
 		return runtime.Float(numToFloat(a) * numToFloat(b)), nil
@@ -263,7 +263,7 @@ func div(a, b runtime.Value) (runtime.Value, error) {
 		return runtime.Decimal(new(big.Rat).Quo(ar, br)), nil
 	}
 	if !bothNum(a, b) {
-		return runtime.Unit, arithErr(a, b, ":div")
+		return runtime.Unit, arithErr(a, b, "div")
 	}
 	if numToFloat(b) == 0 {
 		return runtime.Unit, &ErrRaise{Val: runtime.Tuple(
@@ -277,7 +277,7 @@ func intDiv(a, b runtime.Value) (runtime.Value, error) {
 		return runtime.Unit, decArithErr(a, b, "div")
 	}
 	if a.Kind != runtime.KindInt || b.Kind != runtime.KindInt {
-		return runtime.Unit, arithErr(a, b, ":div")
+		return runtime.Unit, arithErr(a, b, "div")
 	}
 	if b.IsSmall {
 		if b.SmallInt == 0 {
@@ -306,7 +306,7 @@ func neg(a runtime.Value) (runtime.Value, error) {
 	case runtime.KindFloat:
 		return runtime.Float(-a.Float), nil
 	}
-	return runtime.Unit, fmt.Errorf("(:type_error, (:neg, %s))", a.Inspect())
+	return runtime.Unit, typeErr("neg", a)
 }
 
 func rem(a, b runtime.Value) (runtime.Value, error) {
@@ -314,7 +314,7 @@ func rem(a, b runtime.Value) (runtime.Value, error) {
 		return runtime.Unit, decArithErr(a, b, "rem")
 	}
 	if a.Kind != runtime.KindInt || b.Kind != runtime.KindInt {
-		return runtime.Unit, arithErr(a, b, ":rem")
+		return runtime.Unit, arithErr(a, b, "rem")
 	}
 	if b.IsSmall {
 		if b.SmallInt == 0 {
@@ -359,7 +359,7 @@ func pow(a, b runtime.Value) (runtime.Value, error) {
 		return runtime.Unit, decArithErr(a, b, "pow")
 	}
 	if !bothNum(a, b) {
-		return runtime.Unit, arithErr(a, b, ":pow")
+		return runtime.Unit, arithErr(a, b, "pow")
 	}
 	if a.Kind == runtime.KindInt && b.Kind == runtime.KindInt && b.AsBig().Sign() >= 0 {
 		return runtime.IntBig(new(big.Int).Exp(a.AsBig(), b.AsBig(), nil)), nil
@@ -391,8 +391,10 @@ func numToFloat(v runtime.Value) float64 {
 	return f
 }
 
+// arithErr — ловимый raise (:type_error, (op, (a, b))) для операндов
+// не того вида (DD #42, вариант A).
 func arithErr(a, b runtime.Value, op string) error {
-	return fmt.Errorf("(:type_error, (%s, (%s, %s)))", op, a.Inspect(), b.Inspect())
+	return typeErr(op, runtime.Tuple(a, b))
 }
 
 // checkMixedEq — жёсткая проверка Decimal×Float для оператора == / !=
