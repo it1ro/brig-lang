@@ -26,8 +26,9 @@ compiler → vm`, без циклов зависимостей (`parser` не в
 - `tasks/` — карта плана, файл на волну (`tasks/README.md` — индекс): волны
   0–5 (план по аудиту, label `audit`), Wave 6 (Must-пробелы §16, label
   `spec-gap`) — закрыты; Wave 7 (остаток Must), Wave 8 (укрепление,
-  повторный аудит), Wave 9 (Should) и DD по §17 (`decisions.md`) — полные
-  блоки задач, issues ещё не заведены. Статусов в нём нет — только на доске.
+  повторный аудит), Wave 9 (Should) и DD по §17 (`decisions.md`) — issues ещё
+  не заведены; полные блоки следующей волны — в `tasks/backlog.md` (порядок
+  выполнения), более поздних — в файле волны. Статусов в нём нет — только на доске.
 - Регистровая VM (Sprint 7) вмержена в `main` задачей T-07 (#7); ветки
   `iter/regvm` больше нет.
 
@@ -88,7 +89,7 @@ testdata/               # golden, bytecode, negative, positive
 .claude/skills/         # skills для агентов (этот файл и соседи)
 CONTRIBUTING.md         # правила работы
 MAINTAINING.md          # как работать с доской вручную/агентами
-tasks/                  # карта плана по волнам (README.md — индекс)
+tasks/                  # карта плана по волнам (README.md — индекс, backlog.md — очередь)
 AUDIT_REPORT.md
 ```
 
