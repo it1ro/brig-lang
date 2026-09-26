@@ -1,4 +1,4 @@
 == main arity=0 params=0 regs=3 consts=2 patterns=0 ==
-0000   0:0   GETGLOBAL   r1 k0 ; print
-0001   0:0   LOADK       r2 k1 ; hi
+0000   3:5   GETGLOBAL   r1 k0 ; print
+0001   3:11  LOADK       r2 k1 ; hi
 0002   3:5   TAILCALL    r1 1

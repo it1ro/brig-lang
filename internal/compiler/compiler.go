@@ -867,6 +867,11 @@ func (fc *funcCompiler) compileStmts(stmts []ast.Stmt, d dest) error {
 }
 
 func (fc *funcCompiler) compileStmt(s ast.Stmt, d dest) error {
+	if p := posOf(s); p.Line > 0 {
+		saved := fc.pos
+		fc.pos = p
+		defer func() { fc.pos = saved }()
+	}
 	switch st := s.(type) {
 	case ast.LetBind:
 		return fc.compileLetBind(st, d)
@@ -946,6 +951,13 @@ func (fc *funcCompiler) compileExpr(e ast.Expr, d dest) (err error) {
 	if i1TestLeak != nil {
 		i1TestLeak(fc)
 		return nil
+	}
+	// Позиция узла действует, пока он компилируется; инструкции
+	// родителя после него снова получают позицию родителя (O-F4, T-41).
+	if p := posOf(e); p.Line > 0 {
+		saved := fc.pos
+		fc.pos = p
+		defer func() { fc.pos = saved }()
 	}
 	switch ex := e.(type) {
 	case ast.LiteralExpr:
@@ -1087,6 +1099,7 @@ func (fc *funcCompiler) loadLocalFn(d dest, mangled string, owner *funcCompiler)
 
 	w := fc.compiler.newFuncCompiler(nil)
 	w.prefix = mangled + "$"
+	w.pos = fc.pos // у обёртки нет своего исходника — позиция ссылки
 	w.chunk.NumParams = lf.arity
 	for i := 0; i < lf.arity; i++ {
 		w.allocReg()

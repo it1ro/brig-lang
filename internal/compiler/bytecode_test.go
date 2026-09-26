@@ -10,6 +10,8 @@ import (
 
 	"github.com/it1ro/brig-lang/internal/compiler"
 	"github.com/it1ro/brig-lang/internal/parser"
+	"github.com/it1ro/brig-lang/internal/runtime"
+	"github.com/it1ro/brig-lang/internal/vm"
 )
 
 var updateBytecode = flag.Bool(
@@ -132,4 +134,53 @@ func renderAll(img *compiler.ProgramImage) string {
 		sb.WriteString(img.Functions[name].Disassemble())
 	}
 	return sb.String()
+}
+
+// O-F4 (T-41): у каждой инструкции есть позиция в исходнике — и в
+// bytecode-goldens, и во вложенных функциях (лямбды, обёртка локальной
+// fn с захватом как значения, T-39).
+func TestBytecodePositionsNonZero(t *testing.T) {
+	cases := append(bytecodeCases[:len(bytecodeCases):len(bytecodeCases)], struct {
+		name string
+		src  string
+	}{"localfn_value", `module Main
+fn outer(base) ->
+    fn helper(n) -> base + n
+    h = helper
+    h(1)
+fn main() ->
+    print(outer(41))
+`})
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			prog, err := parser.ParseProgram(parser.ModeModule, tc.src)
+			if err != nil {
+				t.Fatalf("parse: %v", err)
+			}
+			img, err := compiler.New().Compile(prog)
+			if err != nil {
+				t.Fatalf("compile: %v", err)
+			}
+			for name, fn := range img.Functions {
+				checkPositions(t, name, fn.Chunk)
+			}
+		})
+	}
+}
+
+func checkPositions(t *testing.T, name string, c *vm.Chunk) {
+	t.Helper()
+	for ip, pos := range c.Pos {
+		if pos.Line == 0 {
+			t.Errorf("%s: instr %04d %v at 0:0", name, ip, c.Code[ip].Op())
+		}
+	}
+	for _, k := range c.Constants {
+		if k.Kind != runtime.KindFunction || k.Func == nil {
+			continue
+		}
+		if inner, ok := k.Func.Body.(*vm.Chunk); ok {
+			checkPositions(t, name+"/"+k.Func.Name, inner)
+		}
+	}
 }

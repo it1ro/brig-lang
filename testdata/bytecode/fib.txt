@@ -1,21 +1,21 @@
 == fib arity=1 params=1 regs=6 consts=3 patterns=0 ==
-0000   0:0   LOADK       r3 k0 ; 2
+0000   3:12  LOADK       r3 k0 ; 2
 0001   3:10  LT          r2 r0 r3
 0002   3:5   JMPIFNOT    r2 -> 0004
-0003   3:5   RETURN      r0
-0004   3:5   GETGLOBAL   r2 k1 ; fib
-0005   3:5   LOADK       r4 k2 ; 1
+0003   3:19  RETURN      r0
+0004   3:26  GETGLOBAL   r2 k1 ; fib
+0005   3:34  LOADK       r4 k2 ; 1
 0006   3:32  SUB         r3 r0 r4
 0007   3:26  CALL        r2 1 -> r1
-0008   3:26  GETGLOBAL   r3 k1 ; fib
-0009   3:26  LOADK       r5 k0 ; 2
+0008   3:39  GETGLOBAL   r3 k1 ; fib
+0009   3:47  LOADK       r5 k0 ; 2
 0010   3:45  SUB         r4 r0 r5
 0011   3:39  CALL        r3 1 -> r2
 0012   3:37  ADD         r1 r1 r2
 0013   3:37  RETURN      r1
 == main arity=0 params=0 regs=5 consts=3 patterns=0 ==
-0000   0:0   GETGLOBAL   r1 k0 ; print
-0001   0:0   GETGLOBAL   r3 k1 ; fib
-0002   0:0   LOADK       r4 k2 ; 10
+0000   5:5   GETGLOBAL   r1 k0 ; print
+0001   5:11  GETGLOBAL   r3 k1 ; fib
+0002   5:15  LOADK       r4 k2 ; 10
 0003   5:11  CALL        r3 1 -> r2
 0004   5:5   TAILCALL    r1 1
