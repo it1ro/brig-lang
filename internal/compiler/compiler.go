@@ -770,7 +770,29 @@ func (fc *funcCompiler) compileLocalFn(decl ast.LocalFnDecl, d dest) error {
 
 // ---- expressions ----
 
-func (fc *funcCompiler) compileExpr(e ast.Expr, d dest) error {
+// i1TestLeak — white-box hook for TestCompileExprStackNeutral (T-32).
+// When set, compileExpr calls it instead of the real dispatch so the test
+// can simulate a callee that forgets releaseToMark.
+var i1TestLeak func(*funcCompiler)
+
+func (fc *funcCompiler) compileExpr(e ast.Expr, d dest) (err error) {
+	// I-1: compileExpr стек-нейтрален. Регистр dest выделяет вызывающий
+	// до входа; временные внутри обязаны быть сняты releaseToMark.
+	entry := fc.nextReg
+	defer func() {
+		if err != nil || fc.nextReg == entry {
+			return
+		}
+		// Уже паникуем (fc.fail в callee) — не подменять исходную ошибку I-1.
+		if p := recover(); p != nil {
+			panic(p)
+		}
+		fc.fail("compileExpr: nextReg %d != %d (I-1)", fc.nextReg, entry)
+	}()
+	if i1TestLeak != nil {
+		i1TestLeak(fc)
+		return nil
+	}
 	switch ex := e.(type) {
 	case ast.LiteralExpr:
 		return fc.compileLiteralExpr(ex.ValueStr(), d)
