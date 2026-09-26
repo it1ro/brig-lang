@@ -7,8 +7,8 @@
 | Что | Где | Зачем |
 |---|---|---|
 | Доска | [github.com/users/it1ro/projects/5](https://github.com/users/it1ro/projects/5), `gh project view 5 --owner it1ro --web` | Единственный список задач и их статусов |
-| Задачи с DoD | issues `it1ro/brig-lang` с label `audit` | Body issue = блок задачи из `TASKS.md` |
-| План целиком | `TASKS.md` | Волны, зависимости, design decisions, задачи T-80…T-86, ждущие решения |
+| Задачи с DoD | issues `it1ro/brig-lang` с label `audit` (findings аудита) или `spec-gap` (пробелы относительно спеки §16) | Body issue = блок задачи из `TASKS.md` |
+| План целиком | `TASKS.md` | Проекция доски без статусов: волны 0–6, зависимости, DoD, design decisions и ждущие их задачи |
 | Находки | `AUDIT_REPORT.md` | Описание каждого finding (S-F*, A-F*, I-F*, O-F*) и пробных программ |
 | Правила | `CONTRIBUTING.md` | Ветки, коммиты, PR, DoR/DoD, правила для LLM-сессий |
 | Контекст для агентов | `.claude/skills/*/SKILL.md` | Инварианты подсистем и протокол сессии (`brig-workflow`) |
@@ -18,7 +18,7 @@
 
 ## 2. Доска: поля и статусы
 
-Поля: **Priority** (P0…P3), **Task type** (fail-fast, full-fix, test-infra, docs, merge), **Effort** (S/M/L), **Model** (sonnet/opus/human), **Wave** (0-branch … 5-docs), **Sprint** (итерации по 2 недели с понедельника 2026-09-28). Поле называется `Task type`, а не `Type`: имя `Type` GitHub зарезервировал под встроенные issue types.
+Поля: **Priority** (P0…P3), **Task type** (fail-fast, full-fix, test-infra, docs, merge, feature), **Effort** (S/M/L), **Model** (sonnet/opus/human), **Wave** (0-branch … 6-must), **Sprint** (итерации по 2 недели с понедельника 2026-09-28). Поле называется `Task type`, а не `Type`: имя `Type` GitHub зарезервировал под встроенные issue types.
 
 | Статус | Значит | Кто переводит |
 |---|---|---|
@@ -28,7 +28,7 @@
 | Blocked | Открыт хотя бы один `Blocked by`, или finding не воспроизвёлся и ждёт решения | Исполнитель или мейнтейнер |
 | Done | Issue закрыт | Автоматически при закрытии issue (workflow проекта) |
 
-Порядок выбора: сначала меньшая Wave, внутри — выше Priority. Design-decision issues (#40–#43) и эпики (#44–#49) на доске не стоят.
+Порядок выбора: сначала меньшая Wave, внутри — выше Priority. Design-decision issues (#40–#43) и эпики (#44–#49, #124) на доске не стоят.
 
 ## 3. Разовая настройка
 
@@ -118,7 +118,7 @@ done
 - **Автономный** — агент доводит до squash-merge при зелёном CI и сам переводит зависимые задачи в Todo (так описано в `CONTRIBUTING.md` §7). Подходит для S/M задач типов fail-fast, test-infra, простых full-fix.
 - **Со сдачей на ревью** — агент останавливается на In Review с открытым PR; merge делает человек. Для всего, что трогает `compiler.go`, `scheduler.go`, `verify.go`, golden/bytecode, и для всех задач Effort L.
 
-**Что агент не делает никогда:** не берёт issue без label `audit` и вне доски; не трогает design-decision issues; не правит `docs/`, `README.md`, `STATUS.md`, `CONTRIBUTING.md` вне задач с Task type `docs`; не меняет семантику языка сверх DoD; не делает merge в режиме ревью; не ставит Sprint.
+**Что агент не делает никогда:** не берёт issue без label `audit` или `spec-gap` и вне доски; не трогает design-decision issues; не правит `docs/`, `README.md`, `CONTRIBUTING.md` вне задач с Task type `docs`; не меняет семантику языка сверх DoD; не делает merge в режиме ревью; не ставит Sprint.
 
 **Параллельные агенты.** Можно, если задачи не пересекаются по файлам: по одному агенту на issue, каждый в своём worktree (`git worktree add ../brig-T-22 -b fix/T-22-int-literals main`). Две задачи, трогающие `compiler.go`, одновременно не запускать — конфликты при squash.
 
@@ -140,10 +140,10 @@ flowchart LR
 
 | Работа | Кто |
 |---|---|
-| Design decisions (#40–#43), превращение T-80…T-86 в issues | Человек |
+| Design decisions (#40–#43); перевод T-80…T-86, T-62 в Todo или won't-fix | Человек |
 | T-07: теги `stack-vm-final`/`regvm-merged`, squash `iter/regvm` → `main` | Человек |
 | Вердикт по verification (T-13…T-15): подтвердить или закрыть как `false-positive` | Агент собирает доказательства, человек утверждает |
-| Реализация fail-fast / full-fix / test-infra | Агент |
+| Реализация fail-fast / full-fix / test-infra / feature | Агент |
 | Ревью diff'ов golden/bytecode, merge PR в `compiler`/`vm` | Человек |
 | Задачи docs (T-12, T-60, T-61) | Агент, ревью человека |
 | Новые issues, найденные по пути | Агент создаёт, человек ставит Priority и Sprint |
@@ -169,13 +169,13 @@ git branch -D iter/regvm && git push origin --delete iter/regvm
 
 **Verification (T-13…T-15).** Результат — комментарий с выводом команд. Подтвердилось — новый issue по строке таблицы «Verification needed» в `TASKS.md`. Не подтвердилось — label `false-positive`, issue закрыт.
 
-**Design decision принят.** Записать вариант в issue (#40–#43) и закрыть. Затем для каждой задачи из списка «Задачи, ждущие решения» в `TASKS.md` создать issue по образцу соседних блоков (meta, Файлы, Тест-якорь, DoD, «НЕ делать») в Wave 3 и добавить на доску.
+**Design decision принят.** Записать вариант в issue (#40–#43) и закрыть. Задачи из таблицы «Задачи, ждущие решения» в `TASKS.md` уже заведены (#105–#112) и стоят в Blocked: у каждой, чьи блокеры закрыты, прочитать DoD — если выбранный вариант её отменяет, закрыть как won't-fix, иначе перевести в Todo.
 
 **Новый issue, найденный по пути:**
 
 ```bash
 gh issue create --repo it1ro/brig-lang --title "T-NN · <имя>" --body-file body.md \
-  --label "audit,<task type>,<P>,wave-<wave>,model-<model>"
+  --label "<audit|spec-gap>,<task type>,<P>,wave-<wave>,model-<model>"
 gh project item-add 5 --owner it1ro --url <url>
 board_set <N> Priority <P>; board_set <N> "Task type" <type>; board_set <N> Effort <S|M|L>
 board_set <N> Model <model>; board_set <N> Wave <wave>; board_set <N> Status Todo
