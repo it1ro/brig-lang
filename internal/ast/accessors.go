@@ -353,6 +353,27 @@ func (d *funcDecl) FuncClauses() []FnClauseArg {
 	return out
 }
 
+// TypeDecl — доступ к декларации типа (§14.1).
+type TypeDecl interface {
+	Decl
+	TypeName() string
+	// RecordFields — имена полей записи-декларации в порядке объявления;
+	// ok == false, если декларация — не запись (вариант или алиас).
+	RecordFields() (names []string, ok bool)
+}
+
+func (d *typeDecl) TypeName() string { return d.name }
+func (d *typeDecl) RecordFields() ([]string, bool) {
+	if d.record == nil {
+		return nil, false
+	}
+	names := make([]string, len(d.record.fields))
+	for i, f := range d.record.fields {
+		names[i] = f.name
+	}
+	return names, true
+}
+
 // --- trap (v0.4.7, §10.2/§10.3) ---
 
 // TrapExpr — экспортируемый аксессор к trap-выражению.

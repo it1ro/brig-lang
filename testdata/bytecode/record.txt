@@ -1,0 +1,16 @@
+== main arity=0 params=0 regs=8 consts=8 patterns=0 ==
+0000   4:9   LOADK       r2 k0 ; ("User", ("id", "name"), ("id", "name"))
+0001   4:19  LOADK       r3 k1 ; 1
+0002   4:28  LOADK       r4 k2 ; a
+0003   4:9   RECORD      r1 <- r2 +2
+0004   5:9   LOADK       r3 k3 ; ("User", ("id", "name"), ("..", "name"))
+0005   5:17  MOVE        r4 r1
+0006   5:26  LOADK       r5 k4 ; b
+0007   5:9   RECORD      r2 <- r3 +2
+0008   6:5   GETGLOBAL   r3 k5 ; print
+0009   6:11  LOADK       r6 k6 ; ("", (), (".."))
+0010   6:15  MOVE        r7 r2
+0011   6:11  RECORD      r5 <- r6 +1
+0012   6:18  LOADK       r6 k7 ; name
+0013   6:18  GETFIELD    r4 r5 r6
+0014   6:5   TAILCALL    r3 1

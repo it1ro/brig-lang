@@ -88,7 +88,7 @@ func RegUse(in Instr) (reads, writes []int, err error) {
 	case MOVE, NEG, NOT, MAKEOK, MAKEERROR, WATCH, UNWATCH, MAILBOXSIZE:
 		return []int{b}, []int{a}, nil
 	case ADD, SUB, MUL, DIV, INTDIV, REM, POW,
-		EQ, NEQ, LT, GT, LE, GE, RANGE, INDEX:
+		EQ, NEQ, LT, GT, LE, GE, RANGE, INDEX, GETFIELD:
 		return []int{b, cc}, []int{a}, nil
 	case SETGLOBAL, RETURN, RAISE:
 		return []int{a}, nil, nil
@@ -125,8 +125,8 @@ func RegUse(in Instr) (reads, writes []int, err error) {
 			reads = append(reads, b+i)
 		}
 		return reads, []int{a}, nil
-	case MAKECLOSURE:
-		// R[B] — функция; R[B+1..B+C] — захваты.
+	case MAKECLOSURE, RECORD:
+		// R[B] — функция (форма записи); R[B+1..B+C] — захваты (значения).
 		reads = nil
 		for i := 0; i <= cc; i++ {
 			reads = append(reads, b+i)

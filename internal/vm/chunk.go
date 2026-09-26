@@ -185,7 +185,7 @@ func (c *Chunk) disInstr(sb *strings.Builder, ip int) {
 	case MOVE, GETUPVAL, NEG, NOT, MAKEOK, MAKEERROR, WATCH, UNWATCH, MAILBOXSIZE:
 		fmt.Fprintf(sb, "r%d r%d", in.A(), in.B())
 	case ADD, SUB, MUL, DIV, INTDIV, REM, POW,
-		EQ, NEQ, LT, GT, LE, GE, RANGE, INDEX:
+		EQ, NEQ, LT, GT, LE, GE, RANGE, INDEX, GETFIELD:
 		fmt.Fprintf(sb, "r%d r%d r%d", in.A(), in.B(), in.C())
 	case JMP:
 		fmt.Fprintf(sb, "-> %04d", ip+1+in.SBx())
@@ -201,7 +201,7 @@ func (c *Chunk) disInstr(sb *strings.Builder, ip int) {
 		fmt.Fprintf(sb, "r%d <- r%d..r%d", in.A(), in.B(), in.B()+in.C()-1)
 	case MAP:
 		fmt.Fprintf(sb, "r%d <- r%d..r%d", in.A(), in.B(), in.B()+2*in.C()-1)
-	case MAKECLOSURE:
+	case MAKECLOSURE, RECORD:
 		fmt.Fprintf(sb, "r%d <- r%d +%d", in.A(), in.B(), in.C())
 	case TRAPBEGIN:
 		fmt.Fprintf(sb, "r%d handler -> %04d", in.A(), ip+1+in.SBx())

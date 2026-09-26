@@ -808,6 +808,29 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 			regs[in.A()] = r
 			f.ip++
 
+		case RECORD:
+			b, n := in.B(), in.C()
+			r, err := vmMakeRecord(regs[b], regs[b+1:b+1+n])
+			if err != nil {
+				if f.catch(err) {
+					continue
+				}
+				return fail(err)
+			}
+			regs[in.A()] = r
+			f.ip++
+
+		case GETFIELD:
+			r, err := vmGetField(regs[in.B()], regs[in.C()])
+			if err != nil {
+				if f.catch(err) {
+					continue
+				}
+				return fail(err)
+			}
+			regs[in.A()] = r
+			f.ip++
+
 		case RAISE:
 			rerr := &ErrRaise{Val: regs[in.A()]}
 			if f.catch(rerr) {
@@ -1104,6 +1127,93 @@ func vmIndex(obj, idx runtime.Value) (runtime.Value, error) {
 		return runtime.Variant("None"), nil
 	}
 	return runtime.Unit, fmt.Errorf("(:type_error, (:index, %s))", obj.Inspect())
+}
+
+// ---- helpers for RECORD / GETFIELD (T-73, §4.7) ----
+
+// vmMakeRecord собирает запись по форме (см. RECORD). Поля номинальной
+// записи идут в порядке декларации, анонимной — в порядке первого
+// появления; повторное поле (спред, затем явное) перезаписывает значение.
+// Спред в номинальную запись поля, которого нет в декларации, —
+// raise (:field_error, (:field, "Type")).
+func vmMakeRecord(shape runtime.Value, vals []runtime.Value) (runtime.Value, error) {
+	if shape.Kind != runtime.KindTuple || len(shape.Tuple) != 3 ||
+		shape.Tuple[0].Kind != runtime.KindStr ||
+		shape.Tuple[1].Kind != runtime.KindTuple ||
+		shape.Tuple[2].Kind != runtime.KindTuple ||
+		len(shape.Tuple[2].Tuple) != len(vals) {
+		return runtime.Unit, fmt.Errorf("internal: RECORD: bad shape %s", shape.Inspect())
+	}
+	typ, declared, slots := shape.Tuple[0].Str, shape.Tuple[1].Tuple, shape.Tuple[2].Tuple
+
+	var fields []runtime.RecordField
+	put := func(name string, v runtime.Value) {
+		for i := range fields {
+			if fields[i].Name == name {
+				fields[i].Val = v
+				return
+			}
+		}
+		fields = append(fields, runtime.RecordField{Name: name, Val: v})
+	}
+	isDeclared := func(name string) bool {
+		for _, d := range declared {
+			if d.Str == name {
+				return true
+			}
+		}
+		return false
+	}
+
+	for i, slot := range slots {
+		if slot.Str != ".." {
+			put(slot.Str, vals[i])
+			continue
+		}
+		src := vals[i]
+		if src.Kind != runtime.KindRecord {
+			return runtime.Unit, fmt.Errorf("(:type_error, (:record_spread, %s))", src.Inspect())
+		}
+		for _, f := range src.Record.Fields {
+			if typ != "" && !isDeclared(f.Name) {
+				return runtime.Unit, &ErrRaise{Val: runtime.Tuple(
+					runtime.Atom("field_error"),
+					runtime.Tuple(runtime.Atom(f.Name), runtime.Str(typ)))}
+			}
+			put(f.Name, f.Val)
+		}
+	}
+
+	if typ != "" {
+		ordered := make([]runtime.RecordField, 0, len(fields))
+		for _, d := range declared {
+			for _, f := range fields {
+				if f.Name == d.Str {
+					ordered = append(ordered, f)
+					break
+				}
+			}
+		}
+		fields = ordered
+	}
+	return runtime.Record(typ, fields), nil
+}
+
+// vmGetField — доступ к полю записи. Отсутствующее поле — raise
+// (:field_error, (:field, record)).
+func vmGetField(obj, name runtime.Value) (runtime.Value, error) {
+	if name.Kind != runtime.KindStr {
+		return runtime.Unit, fmt.Errorf("internal: GETFIELD: field name %s", name.Inspect())
+	}
+	if obj.Kind != runtime.KindRecord {
+		return runtime.Unit, fmt.Errorf("(:type_error, (:field, (%s, %s)))", name.Str, obj.Inspect())
+	}
+	if v, ok := obj.Record.Get(name.Str); ok {
+		return v, nil
+	}
+	return runtime.Unit, &ErrRaise{Val: runtime.Tuple(
+		runtime.Atom("field_error"),
+		runtime.Tuple(runtime.Atom(name.Str), obj))}
 }
 
 func indexToInt(v runtime.Value) (int64, error) {

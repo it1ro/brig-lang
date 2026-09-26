@@ -34,6 +34,7 @@ const (
 	KindSet     // Sprint 5.2 (§4.6)
 	KindBytes   // Sprint 5.4 (§3.2)
 	KindDecimal // Sprint 5.4 (§3.1)
+	KindRecord  // T-73 (§4.7): номинальная и анонимная запись
 )
 
 func (k Kind) String() string {
@@ -76,6 +77,8 @@ func (k Kind) String() string {
 		return "Bytes"
 	case KindDecimal:
 		return "Decimal"
+	case KindRecord:
+		return "Record"
 	}
 	return "unknown"
 }
@@ -109,6 +112,30 @@ type ClosureValue struct {
 type VariantValue struct {
 	Tag  string
 	Args []Value
+}
+
+// RecordValue — запись (§4.7). Type == "" — анонимная, иначе номинальная
+// записи `type Type {...}`. Поля номинальной — в порядке декларации,
+// анонимной — в порядке первого появления; имена уникальны.
+type RecordValue struct {
+	Type   string
+	Fields []RecordField
+}
+
+// RecordField — поле записи.
+type RecordField struct {
+	Name string
+	Val  Value
+}
+
+// Get возвращает значение поля name.
+func (r *RecordValue) Get(name string) (Value, bool) {
+	for _, f := range r.Fields {
+		if f.Name == name {
+			return f.Val, true
+		}
+	}
+	return Unit, false
 }
 
 // MapEntry — пара ключ/значение в иммутабельной мапе.
@@ -145,6 +172,7 @@ type Value struct {
 	Func       *FuncValue
 	ClosureVal *ClosureValue
 	Variant    *VariantValue
+	Record     *RecordValue
 	Pid        int
 	Ref        int
 	RangeStart int64
@@ -238,6 +266,11 @@ func Variant(tag string, args ...Value) Value {
 	return Value{Kind: KindVariant, Variant: &VariantValue{Tag: tag, Args: args}}
 }
 
+// Record создаёт запись; typ == "" — анонимная (§4.7).
+func Record(typ string, fields []RecordField) Value {
+	return Value{Kind: KindRecord, Record: &RecordValue{Type: typ, Fields: fields}}
+}
+
 // Map создаёт мапу.
 func Map(entries []MapEntry) Value { return Value{Kind: KindMap, Map: entries} }
 
@@ -298,6 +331,8 @@ func (v Value) Inspect() string {
 			return v.Variant.Tag
 		}
 		return v.Variant.Tag + "(" + inspectJoin(v.Variant.Args) + ")"
+	case KindRecord:
+		return inspectRecord(v.Record)
 	case KindPid:
 		return fmt.Sprintf("#<pid %d>", v.Pid)
 	case KindRef:
@@ -335,6 +370,19 @@ func inspectBytes(b []byte) string {
 	}
 	sb.WriteByte('"')
 	return sb.String()
+}
+
+// inspectRecord печатает запись в форме литерала: `User{ id: 1 }`,
+// `{ id: 1 }`, `User{}`, `{}`.
+func inspectRecord(r *RecordValue) string {
+	if len(r.Fields) == 0 {
+		return r.Type + "{}"
+	}
+	parts := make([]string, len(r.Fields))
+	for i, f := range r.Fields {
+		parts[i] = f.Name + ": " + inspectLit(f.Val)
+	}
+	return r.Type + "{ " + strings.Join(parts, ", ") + " }"
 }
 
 func inspectLit(v Value) string {
@@ -448,6 +496,8 @@ func Equal(a, b Value) bool {
 			return false
 		}
 		return equalSlice(a.Variant.Args, b.Variant.Args)
+	case KindRecord:
+		return equalRecords(a.Record, b.Record)
 	case KindFunction:
 		return a.Func == b.Func
 	case KindClosure:
@@ -458,6 +508,21 @@ func Equal(a, b Value) bool {
 		return a.Ref == b.Ref
 	}
 	return false
+}
+
+// equalRecords (§4.8): номинальная — по тегу и полям, анонимная — по
+// полям; порядок полей не важен, номинальная ≠ анонимной.
+func equalRecords(a, b *RecordValue) bool {
+	if a.Type != b.Type || len(a.Fields) != len(b.Fields) {
+		return false
+	}
+	for _, f := range a.Fields {
+		bv, ok := b.Get(f.Name)
+		if !ok || !Equal(f.Val, bv) {
+			return false
+		}
+	}
+	return true
 }
 
 func equalDecimalOther(dec, other Value) bool {
@@ -813,6 +878,12 @@ func serializeValue(v Value, depth int) error {
 	case KindVariant:
 		for _, e := range v.Variant.Args {
 			if err := serializeValue(e, depth+1); err != nil {
+				return err
+			}
+		}
+	case KindRecord:
+		for _, f := range v.Record.Fields {
+			if err := serializeValue(f.Val, depth+1); err != nil {
 				return err
 			}
 		}

@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -36,6 +37,9 @@ type Compiler struct {
 	image *ProgramImage
 	// lifted — лифтнутые локальные fn по mangled-имени (T-51, T-39).
 	lifted map[string]*liftedFn
+	// records — поля записей-деклараций `type X {...}` по имени типа
+	// в порядке объявления (T-73, §4.7).
+	records map[string][]string
 }
 
 // liftedFn — локальная fn после лямбда-лифтинга: захваты передаются
@@ -416,6 +420,7 @@ func (fc *funcCompiler) operandInto(e ast.Expr, into int) (int, error) {
 func (c *Compiler) Compile(prog *ast.Program) (image *ProgramImage, err error) {
 	c.image = &ProgramImage{Functions: make(map[string]*vm.Function)}
 	c.lifted = make(map[string]*liftedFn)
+	c.records = make(map[string][]string)
 	defer func() {
 		if r := recover(); r != nil {
 			if ce, ok := r.(compileError); ok {
@@ -426,6 +431,15 @@ func (c *Compiler) Compile(prog *ast.Program) (image *ProgramImage, err error) {
 			panic(r)
 		}
 	}()
+
+	// Записи-декларации — до функций: порядок деклараций свободный (§11.2).
+	for _, d := range prog.Decls {
+		if td, ok := d.(ast.TypeDecl); ok {
+			if fields, ok := td.RecordFields(); ok {
+				c.records[td.TypeName()] = fields
+			}
+		}
+	}
 
 	for _, d := range prog.Decls {
 		fd, ok := d.(ast.FuncDecl)
@@ -996,6 +1010,8 @@ func (fc *funcCompiler) compileExpr(e ast.Expr, d dest) (err error) {
 		return fc.compileRange(ex, d)
 	case ast.IndexExpr:
 		return fc.compileIndex(ex, d)
+	case ast.MemberExpr:
+		return fc.compileMember(ex, d)
 	case ast.LambdaShort:
 		return fc.compileLambda("", []string{ex.ParamName()}, ex.Body(), d)
 	case ast.LambdaEmpty:
@@ -1400,7 +1416,7 @@ func (fc *funcCompiler) compileCall(call ast.CallExpr, d dest) error {
 			return fc.compileMailboxSize(call.Args(), d)
 		}
 		if strings.HasSuffix(name, "{}") {
-			return fmt.Errorf("срез: record literal не реализован")
+			return fc.compileRecord(strings.TrimSuffix(name, "{}"), call, d)
 		}
 	}
 
@@ -1563,6 +1579,106 @@ func (fc *funcCompiler) compileMap(elems []ast.Expr, d dest) error {
 		n++
 	}
 	fc.emit(vm.ABC(vm.MAP, dst, base, n))
+	fc.finish(d, dst)
+	fc.releaseToMark(mark)
+	return nil
+}
+
+// ---- records (T-73, §4.7) ----
+
+// recordSlot — элемент литерала записи: поле `name: val` или спред
+// `..val` (name == "..").
+type recordSlot struct {
+	name string
+	val  ast.Expr
+}
+
+// compileRecord — литерал записи `Type{ f: e, ..r }` (typ != "") или
+// анонимный `{ ... }`. Неизвестный тип, поле вне декларации и повторное
+// явное поле — ошибка компиляции с позицией. Форма записи (тип,
+// объявленные поля, слоты) — константа в R[base], значения слотов — в
+// R[base+1..]; RECORD собирает запись.
+func (fc *funcCompiler) compileRecord(typ string, call ast.CallExpr, d dest) error {
+	var declared []string
+	if typ != "" {
+		fields, ok := fc.compiler.records[typ]
+		if !ok {
+			p := posOf(call.Callee())
+			return fmt.Errorf("%d:%d: неизвестный тип записи %s", p.Line, p.Col, typ)
+		}
+		declared = fields
+	}
+
+	slots := make([]recordSlot, 0, len(call.Args()))
+	seen := make(map[string]bool)
+	for _, a := range call.Args() {
+		if u, ok := a.(ast.UnaryExpr); ok && u.OpStr() == ".." {
+			slots = append(slots, recordSlot{"..", u.Operand()})
+			continue
+		}
+		b, ok := a.(ast.BinaryExpr)
+		if !ok || b.OpStr() != ":" {
+			return fmt.Errorf("internal: элемент литерала записи %T", a)
+		}
+		fv, ok := b.Left().(ast.VariableExpr)
+		if !ok {
+			return fmt.Errorf("internal: имя поля записи %T", b.Left())
+		}
+		name, p := fv.Name(), posOf(fv)
+		if typ != "" && !slices.Contains(declared, name) {
+			return fmt.Errorf("%d:%d: у типа %s нет поля %s", p.Line, p.Col, typ, name)
+		}
+		if seen[name] {
+			return fmt.Errorf("%d:%d: повторное поле %s в литерале записи", p.Line, p.Col, name)
+		}
+		seen[name] = true
+		slots = append(slots, recordSlot{name, b.Right()})
+	}
+
+	decl := make([]runtime.Value, len(declared))
+	for i, n := range declared {
+		decl[i] = runtime.Str(n)
+	}
+	names := make([]runtime.Value, len(slots))
+	for i, s := range slots {
+		names[i] = runtime.Str(s.name)
+	}
+	shape := runtime.Tuple(runtime.Str(typ), runtime.Tuple(decl...), runtime.Tuple(names...))
+
+	mark := fc.nextReg
+	dst := fc.destReg(d)
+	base := fc.allocReg()
+	fc.emit(vm.ABx(vm.LOADK, base, fc.konst(shape)))
+	for i, s := range slots {
+		r := fc.allocReg()
+		if r != base+1+i {
+			fc.fail("record: slot %d in r%d, want r%d", i, r, base+1+i)
+		}
+		if err := fc.compileExpr(s.val, val(r)); err != nil {
+			return err
+		}
+	}
+	fc.emit(vm.ABC(vm.RECORD, dst, base, len(slots)))
+	fc.finish(d, dst)
+	fc.releaseToMark(mark)
+	return nil
+}
+
+// compileMember — доступ к полю записи `obj.field` (§4.7). `Mod.name`
+// модуля прелюдии вне позиции вызова не поддерживается.
+func (fc *funcCompiler) compileMember(me ast.MemberExpr, d dest) error {
+	if obj, ok := me.Obj().(ast.VariableExpr); ok && isPreludeModule(obj.Name()) {
+		return fmt.Errorf("срез: неподдерживаемое выражение %s.%s", obj.Name(), me.MemberName())
+	}
+	mark := fc.nextReg
+	dst := fc.destReg(d)
+	objReg, err := fc.operandInto(me.Obj(), fc.allocReg())
+	if err != nil {
+		return err
+	}
+	nameReg := fc.allocReg()
+	fc.emit(vm.ABx(vm.LOADK, nameReg, fc.konst(runtime.Str(me.MemberName()))))
+	fc.emit(vm.ABC(vm.GETFIELD, dst, objReg, nameReg))
 	fc.finish(d, dst)
 	fc.releaseToMark(mark)
 	return nil

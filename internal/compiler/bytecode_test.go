@@ -81,6 +81,13 @@ fn worker() ->
 fn main() ->
     worker()
 `},
+	{"record", `module Main
+type User { id: Int, name: Str }
+fn main() ->
+    u = User{ id: 1, name: "a" }
+    v = User{ ..u, name: "b" }
+    print({ ..v }.name)
+`},
 }
 
 func TestBytecodeGolden(t *testing.T) {
