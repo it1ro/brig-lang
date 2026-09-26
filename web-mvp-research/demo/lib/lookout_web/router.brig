@@ -15,6 +15,7 @@ import Calmar.Static
 import LookoutWeb.Plugs
 import LookoutWeb.MonitorController
 alias LookoutWeb.Api.MonitorController as Api
+alias LookoutWeb.Templates.Layouts
 
 pub fn pipelines() ->
     %{
@@ -23,6 +24,7 @@ pub fn pipelines() ->
             Session.fetch,
             Csrf.protect,
             Plug.secure_headers,
+            Plug.put_layout(Layouts.app),     # лэйаут — в пайплайне (15)
         ],
         :api => [
             Plug.accepts(["json"]),
