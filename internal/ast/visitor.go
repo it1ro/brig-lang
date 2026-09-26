@@ -220,6 +220,14 @@ func walkExpr(v Visitor, e Expr) error {
 		}
 		return walkNode(v, n.end)
 
+	case *interpExpr:
+		for _, e := range n.exprs {
+			if err := walkNode(v, e); err != nil {
+				return err
+			}
+		}
+		return nil
+
 		// Листья: literalExpr, variableExpr, assignExpr, decimalExpr,
 		// bytesExpr, regexExpr, atomExpr — детей нет.
 	}

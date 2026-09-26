@@ -22,6 +22,16 @@ func NewLiteralExpr(value string, pos, end int) Expr {
 	return &literalExpr{posEnd{pos, end}, value}
 }
 
+// NewInterpExpr creates an interpolated string expression.
+// len(parts) must equal len(exprs)+1.
+func NewInterpExpr(parts []string, exprs []Expr, pos, end int) Expr {
+	ps := make([]string, len(parts))
+	copy(ps, parts)
+	es := make([]Expr, len(exprs))
+	copy(es, exprs)
+	return &interpExpr{posEnd{pos, end}, ps, es}
+}
+
 // NewVariableExpr creates an expression node.
 func NewVariableExpr(name string, pos, end int) Expr {
 	return &variableExpr{posEnd{pos, end}, name}

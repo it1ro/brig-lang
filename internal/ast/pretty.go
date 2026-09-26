@@ -72,6 +72,16 @@ func prettyExpr(buf *bytes.Buffer, e Expr, indent int) {
 		buf.WriteString(")")
 	case *literalExpr:
 		fmt.Fprintf(buf, "(lit %s)", n.value)
+	case *interpExpr:
+		buf.WriteString("(interp")
+		for i, part := range n.parts {
+			fmt.Fprintf(buf, " %q", part)
+			if i < len(n.exprs) {
+				buf.WriteString(" ")
+				prettyNode(buf, n.exprs[i], indent)
+			}
+		}
+		buf.WriteString(")")
 	case *variableExpr:
 		fmt.Fprintf(buf, "(var %s)", n.name)
 	case *assignExpr:

@@ -732,6 +732,10 @@ func (fc *funcCompiler) compileExpr(e ast.Expr, d dest) error {
 	switch ex := e.(type) {
 	case ast.LiteralExpr:
 		return fc.compileLiteralExpr(ex.ValueStr(), d)
+	case ast.InterpExpr:
+		// T-53: узел есть в AST; компиляция (concat/to_str) — T-54.
+		// Fail-fast сохраняет контракт T-04 (ошибка с текстом "interpolation").
+		return fmt.Errorf("string interpolation is not implemented yet")
 	case ast.AtomExpr:
 		return fc.loadConst(runtime.Atom(ex.AtomName()), d)
 	case ast.DecimalExpr:

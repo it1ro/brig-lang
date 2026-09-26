@@ -52,6 +52,16 @@ type LiteralExpr interface {
 
 func (e *literalExpr) ValueStr() string { return e.value }
 
+// InterpExpr — строковая интерполяция "a \(expr) b" (parts, exprs).
+type InterpExpr interface {
+	Expr
+	InterpParts() []string
+	InterpExprs() []Expr
+}
+
+func (e *interpExpr) InterpParts() []string { return e.parts }
+func (e *interpExpr) InterpExprs() []Expr   { return e.exprs }
+
 // VariableExpr — доступ к переменной выражению.
 type VariableExpr interface {
 	Expr

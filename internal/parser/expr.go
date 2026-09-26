@@ -406,9 +406,7 @@ func (p *parser) parsePrimary() (ast.Expr, error) {
 		return ast.NewLiteralExpr(t.Lit, t.Line, t.Col), nil
 	case lexer.STRING:
 		p.advance()
-		// scanString возвращает тело без кавычек (A4.1); AST хранит
-		// канонический текст — с кавычками.
-		return ast.NewLiteralExpr("\""+t.Lit+"\"", t.Line, t.Col), nil
+		return p.parseStringLit(t)
 	case lexer.BYTES:
 		p.advance()
 		return ast.NewBytesExpr(t.Lit, t.Line, t.Col), nil
@@ -1061,4 +1059,57 @@ func (p *parser) parseRecv() (ast.Expr, error) {
 		clauses.AfterBody = b
 	}
 	return ast.NewRecvExpr(branches, clauses, start.Line, start.Col), nil
+}
+
+// parseStringLit — plain STRING → LiteralExpr; с \(...) → InterpExpr (S-F1).
+func (p *parser) parseStringLit(t lexer.Token) (ast.Expr, error) {
+	parts, exprSrcs, err := lexer.SplitInterp(t.Lit)
+	if err != nil {
+		return nil, err
+	}
+	if len(exprSrcs) == 0 {
+		// scanString возвращает тело без кавычек (A4.1); AST хранит
+		// канонический текст — с кавычками.
+		return ast.NewLiteralExpr("\""+t.Lit+"\"", t.Line, t.Col), nil
+	}
+	exprs := make([]ast.Expr, 0, len(exprSrcs))
+	for _, src := range exprSrcs {
+		e, err := parseExprFragment(src, t.Line, t.Col)
+		if err != nil {
+			return nil, err
+		}
+		exprs = append(exprs, e)
+	}
+	return ast.NewInterpExpr(parts, exprs, t.Line, t.Col), nil
+}
+
+// parseExprFragment разбирает исходник одного выражения интерполяции.
+func parseExprFragment(src string, line, col int) (ast.Expr, error) {
+	toks, err := lexer.Lex(src)
+	if err != nil {
+		if le, ok := err.(*lexer.Error); ok {
+			return nil, &Error{Line: line, Col: col, Msg: le.Msg}
+		}
+		return nil, &Error{Line: line, Col: col, Msg: err.Error()}
+	}
+	fp := &parser{toks: toks, mode: ModeRepl}
+	fp.skipNewlines()
+	if fp.at(lexer.EOF) {
+		return nil, &Error{Line: line, Col: col, Msg: "expected expression inside interpolation"}
+	}
+	e, err := fp.parseExpr()
+	if err != nil {
+		if pe, ok := err.(*Error); ok {
+			return nil, &Error{Line: line, Col: col, Msg: pe.Msg}
+		}
+		return nil, err
+	}
+	fp.skipNewlines()
+	if !fp.at(lexer.EOF) {
+		return nil, &Error{
+			Line: line, Col: col,
+			Msg: "expected end of interpolation expression, got " + fp.cur().Type.String(),
+		}
+	}
+	return e, nil
 }

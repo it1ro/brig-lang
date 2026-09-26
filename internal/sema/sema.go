@@ -350,6 +350,11 @@ func (c *checker) checkExpr(e ast.Expr) {
 		ast.AtomExpr, ast.VariableExpr:
 		// leaf
 
+	case ast.InterpExpr:
+		for _, sub := range x.InterpExprs() {
+			c.checkExpr(sub)
+		}
+
 	case ast.GroupingExpr:
 		c.checkExpr(x.Inner())
 

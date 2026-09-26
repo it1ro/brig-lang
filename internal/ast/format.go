@@ -181,6 +181,19 @@ func (p *printer) exprString(e Expr, indent int) string {
 	switch v := e.(type) {
 	case *literalExpr:
 		return v.value
+	case *interpExpr:
+		var sb strings.Builder
+		sb.WriteByte('"')
+		for i, part := range v.parts {
+			sb.WriteString(part)
+			if i < len(v.exprs) {
+				sb.WriteString(`\(`)
+				sb.WriteString(p.exprString(v.exprs[i], indent))
+				sb.WriteByte(')')
+			}
+		}
+		sb.WriteByte('"')
+		return sb.String()
 	case *variableExpr:
 		return v.name
 	case *decimalExpr:
