@@ -94,3 +94,44 @@ fn worker_loop(state) ->
 		})
 	}
 }
+
+// S-F6: stmt_list requires NEWLINE between statements (AUDIT_REPORT.md:88-92).
+// Probes two_stmts_one_line / p/u4_two_stmt_line.brig / p/z1.brig.
+func TestParseRequiresNewlineBetweenStmts(t *testing.T) {
+	cases := []struct {
+		name string
+		src  string
+	}{
+		{
+			name: "two_stmts_one_line",
+			src: `module M
+fn main() ->
+    x = 1 y = 2
+`,
+		},
+		{
+			name: "u4_two_stmt_line",
+			src: `module M
+fn f() ->
+    a = 1 b = 2
+    a
+`,
+		},
+		{
+			name: "z1",
+			src: `module M
+fn main() ->
+    x = 1 y = 2
+    print(y)
+`,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := Parse(ModeModule, tc.src)
+			if err == nil {
+				t.Fatalf("Parse(%q): want error for statements on one line, got nil", tc.name)
+			}
+		})
+	}
+}
