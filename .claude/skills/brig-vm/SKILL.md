@@ -43,10 +43,15 @@ description: >
   (ошибка `runtime.Compare` → `(:compare, (a, b))`), вызов не-функции
   (`resolveCallee`/`vm.Call` → `(:call, fn)`; Function/Closure без тела —
   `internal:`), не-Bool в условии (`notBoolErr`) — T-83 #108, якорь
-  `internal/compiler/type_error_test.go`. Ещё `fmt.Errorf` (мимо `trap`):
-  `:type_error` прелюдии, индексации, акторных примитивов, спреда и
-  `:function_clause` арности — T-96 #150. Новый `:type_error` —
-  только через `typeErr`.
+  `internal/compiler/type_error_test.go`. Прелюдия, индексация/range/
+  запись/поле, спред, акторные примитивы (`send`/`watch`/`unwatch`/
+  `mailbox_size`/`after`) — тоже `typeErr` (T-96 #150, якорь
+  `internal/compiler/type_error_prelude_test.go`); арность (байткод и
+  native, `Json.encode`) — ловимый `(:function_clause, [args])`
+  (`functionClause`, форма §6.1 как у мультиклоза). Фатальны остались
+  только `internal:` и `deadlock`. Новый `:type_error` — только через
+  `typeErr`, новый `:function_clause` — через `functionClause`; в
+  `stepFrame` ошибку сначала отдавать в `f.catch`, затем `fail`.
 - **K-4.** Редукция — это `CALL`/`TAILCALL` в байткод-функцию, `RETURN`,
   шаг unwind. Вызов native не тратит редукцию; колбэк возобновляемого
   натива (`map`/`filter`/…, см. ниже) — обычный `CALL` в байткод, тратит.
