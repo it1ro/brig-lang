@@ -1,10 +1,10 @@
-# TASKS — план работ по `AUDIT_REPORT.md`
+# TASKS — план работ
 
-Ветка `iter/regvm` @ `8ab58cf` (коммит аудита), `main` @ `41bbb70`. Источник findings — только `AUDIT_REPORT.md`, конвенции — `CONTRIBUTING.md`.
-Задач в волнах: **39** — fail-fast 5, full-fix 23, test-infra 7, docs 3, merge 1. Отдельно: 4 design-decision issue (T-90…T-93, не на доске) и 7 задач, ждущих решения (T-80…T-86, issue не создаются).
+Волны 0–5 — план по `AUDIT_REPORT.md` (ветка `iter/regvm` @ `8ab58cf`, коммит аудита; `main` @ `41bbb70`), задачи с label `audit`. Wave 6 — Must-пробелы §16 относительно спеки, label `spec-gap`. Конвенции — `CONTRIBUTING.md`.
+Задач в волнах 0–5: **39** — fail-fast 5, full-fix 23, test-infra 7, docs 3, merge 1; Wave 6: **10** (feature). Отдельно: 4 design-decision issue (T-90…T-93, не на доске) и 8 задач, ждущих их решения (T-80…T-86, T-62).
 Нумерация: каждая волна начинается с нового десятка (T-10 — набор тестов из §7 аудита). `depends_on` всегда ссылается на меньший номер — граф ацикличен по построению.
 
-Статус задач — на [доске](https://github.com/users/it1ro/projects/5) (GitHub Projects v2, проект 5); у каждой T-NN ниже — ссылка на issue и статус на 2026-09-26. Открыты только design decisions T-90…T-93; T-80…T-86 ждут их и issue не имеют.
+Статус задач — на [доске](https://github.com/users/it1ro/projects/5) (GitHub Projects v2, проект 5), она источник истины; `TASKS.md` — её проекция. У каждой T-NN ниже — ссылка на issue и статус; строки «Статус» переписывает `make tasks-sync` (читает доску через `gh`), запускать перед открытием PR. Эпики: Wave 5 — [#49](https://github.com/it1ro/brig-lang/issues/49), Wave 6 — [#124](https://github.com/it1ro/brig-lang/issues/124).
 
 Задачи, созданные по ходу работ (в план ниже не входят):
 
@@ -15,11 +15,12 @@
 | T-45 | [#57](https://github.com/it1ro/brig-lang/issues/57) | exit-коды: классификация ошибок в cmd/brig | A-F7 (по итогам T-14) | Wave 3 | Done |
 | T-46 | [#58](https://github.com/it1ro/brig-lang/issues/58) | runModule прогоняет sema | A-F7 (по итогам T-14) | Wave 3 | Done |
 | T-47 | [#60](https://github.com/it1ro/brig-lang/issues/60) | RECVTIMER: валидация ms | I-F14 (по итогам T-15) | Wave 3 | Done |
-| T-48 | [#61](https://github.com/it1ro/brig-lang/issues/61) | wakeExpired: детерминированный порядок (deadline, seq) | I-F14 (по итогам T-15) | Wave 3 | Done (PR #103) |
+| T-48 | [#61](https://github.com/it1ro/brig-lang/issues/61) | wakeExpired: детерминированный порядок (deadline, seq) | I-F14 (по итогам T-15) | Wave 3 | Done |
 | T-49 | [#91](https://github.com/it1ro/brig-lang/issues/91) | compileVar: локальная fn предка перекрывает локаль промежуточной функции | — (найдена при ревью T-51) | Wave 3 | Done |
 | T-55 | [#92](https://github.com/it1ro/brig-lang/issues/92) | vm.Verify: timeout-ребро RECVTAKE и структурные инварианты MATCHLOCAL | I-F1 | Wave 3 | Done |
 | T-56 | [#94](https://github.com/it1ro/brig-lang/issues/94) | Локальная fn: затенение на промежуточном уровне | A-F6 | Wave 3 | Done |
 | T-57 | [#99](https://github.com/it1ro/brig-lang/issues/99) | sema: guard клозов fn не проверяется | — (найдена в T-52) | Wave 3 | Done |
+| T-63 | [#113](https://github.com/it1ro/brig-lang/issues/113) | Docs: актуализировать TASKS.md, удалить STATUS.md, правила для spec-gap | — | Wave 5 | In Progress |
 | T-94 | [#55](https://github.com/it1ro/brig-lang/issues/55) | DD: §12.4 vs `after_clause` (inline after) | §8 аудита (из T-60) | — | Done |
 
 ```mermaid
@@ -31,9 +32,11 @@ flowchart LR
   W3 --> W4
   W1 --> W5["Wave 5: docs"]
   W4 --> W5
+  W5 --> W6["Wave 6: Must-пробелы §16"]
   W1 -.->|"T-13"| DD["Design decisions T-90..T-93"]
   DD --> Held["Held T-80..T-86"]
   Held -.->|"после решения"| W3
+  DD --> T62["T-62: docs по решениям"]
 ```
 
 ## Verification needed
@@ -48,7 +51,7 @@ Findings с тегом `[inferred]`. Задача-фикс не создаётс
 
 ## Design decisions required
 
-Код по этим findings не пишется до решения автора языка. Для каждого создаётся issue с label `design-decision` (не на доске). Задачи, которые ждут решения, перечислены ниже как T-80…T-86 — это не issue; после решения из них делаются обычные задачи Wave 3.
+Код по этим findings не пишется до решения автора языка. Для каждого заведён issue с label `design-decision` (не на доске). Задачи, которые ждут решения, — T-80…T-86 (Wave 3) и T-62 (Wave 5, запись решений в doc 02 и спеку): issues созданы, на доске в Blocked. После решения задача переходит в Todo, а если выбранный вариант её отменяет — закрывается как won't-fix (так сказано в её DoD). Полные блоки — в разделе «Задачи».
 
 | Finding | Вопрос | Варианты | Что блокирует |
 |---|---|---|---|
@@ -57,15 +60,18 @@ Findings с тегом `[inferred]`. Задача-фикс не создаётс
 | A-F4 (T-92) | Ловится ли `:type_error` через `trap`? | **A:** да (§10.4): `arithErr`, `NOT`, `Compare` → ловимый `ErrRaise(:type_error)`. **B:** нет (K-3): `decArithErr` становится фатальным, §10.4 правится. **C:** арифметика и сравнения ловятся, внутренние инварианты VM — нет (явный список в doc 02) | T-83; при A-F3=A — вид ошибки из `JMPIF` |
 | I-F8 (T-93) | Как сравниваются числа разных видов в `==`/`<`, паттернах, ключах Map/Set? | **A:** паттерны и ключи — строго по Kind (`runtime.MatchEqual`), `==`/`<` — точно по значению (Int×Float через `big.Rat`), Decimal×Float → `:type_error` везде. **B:** Decimal×Float → `false` везде (включая `==`), без ошибок. **C:** Decimal×Float сравниваются точно через `big.Rat` везде | T-84, T-85, T-86 |
 
-### Задачи, ждущие решения (issue не создаются)
+### Задачи, ждущие решения
 
-- **T-80** (issue нет · **Статус:** Held, ждёт [#40](https://github.com/it1ro/brig-lang/issues/40); A-F1, ждёт T-90 и T-13): привести architecture.md / doc 02 / §15.2 или scheduler к принятому варианту.
-- **T-81** (issue нет · **Статус:** Held, ждёт [#41](https://github.com/it1ro/brig-lang/issues/41); A-F3, ждёт T-91): `JMPIF`/`JMPIFNOT` на не-Bool → `(:type_error, …)`; проверка операндов `and`/`or` по решению. Якорь: `p/t7_if_nonbool.brig`, `p/w3_andor_nonbool.brig`.
-- **T-82** (issue нет · **Статус:** Held, ждёт [#41](https://github.com/it1ro/brig-lang/issues/41); I-F3, ждёт T-91 и T-10): правый операнд `and`/`or` в хвостовой позиции (`compileAndOr`, `compiler.go:905-921`). Якорь: `TestAuditAndOrRightOperandIsTail` (skip `blocked: T-82`). Перенесена из Wave 3, потому что при A-F3=A правый операнд проверяется на Bool и хвостовым быть не может.
-- **T-83** (issue нет · **Статус:** Held, ждёт [#42](https://github.com/it1ro/brig-lang/issues/42); A-F4, ждёт T-92): единая классификация type errors (`internal/vm/vm.go:113` `decArithErr`, `:356` `arithErr`, `NOT`, `runtime.Compare`). Якорь: `p/x1_typeerr.brig`.
-- **T-84** (issue нет · **Статус:** Held, ждёт [#43](https://github.com/it1ro/brig-lang/issues/43); I-F8, ждёт T-93): `runtime.MatchEqual` для `PatLiteral` (`internal/vm/pattern.go:67`). Якорь: `TestAuditLiteralPatternIsExact` (skip `blocked: T-84`).
-- **T-85** (issue нет · **Статус:** Held, ждёт [#43](https://github.com/it1ro/brig-lang/issues/43); I-F8, ждёт T-93): точное сравнение Int×Float (`internal/runtime/value.go:361-370`), `2^53+1 == 2^53.0` → false. Якорь: `p/w2_bigprec.brig`.
-- **T-86** (issue нет · **Статус:** Held, ждёт [#43](https://github.com/it1ro/brig-lang/issues/43); I-F8, ждёт T-93): единое поведение Decimal×Float в `INDEX` (`scheduler.go:1038`), `set`/`Map.*` (`prelude.go:103,286,304,317`), паттернах; решение записано в doc 02. Якорь: `p/v6_mixed.brig`.
+| T-NN | Issue | Задача | Finding | Ждёт | Статус |
+|---|---|---|---|---|---|
+| T-80 | [#105](https://github.com/it1ro/brig-lang/issues/105) | Scheduler: привести доки или код к решению A-F1 | A-F1 | [#40](https://github.com/it1ro/brig-lang/issues/40) | Blocked |
+| T-81 | [#106](https://github.com/it1ro/brig-lang/issues/106) | JMPIF/JMPIFNOT: не-Bool → :type_error | A-F3 | [#41](https://github.com/it1ro/brig-lang/issues/41) | Blocked |
+| T-82 | [#107](https://github.com/it1ro/brig-lang/issues/107) | Компилятор: правый операнд and/or в хвостовой позиции | I-F3 | [#41](https://github.com/it1ro/brig-lang/issues/41) | Blocked |
+| T-83 | [#108](https://github.com/it1ro/brig-lang/issues/108) | Единая классификация type errors | A-F4 | [#42](https://github.com/it1ro/brig-lang/issues/42) | Blocked |
+| T-84 | [#109](https://github.com/it1ro/brig-lang/issues/109) | Паттерны: точное сравнение литералов (MatchEqual) | I-F8 | [#43](https://github.com/it1ro/brig-lang/issues/43) | Blocked |
+| T-85 | [#110](https://github.com/it1ro/brig-lang/issues/110) | Точное сравнение Int×Float | I-F8 | [#43](https://github.com/it1ro/brig-lang/issues/43) | Blocked |
+| T-86 | [#111](https://github.com/it1ro/brig-lang/issues/111) | Decimal×Float: единое поведение в INDEX, Map/Set, паттернах | I-F8 | [#43](https://github.com/it1ro/brig-lang/issues/43) | Blocked |
+| T-62 | [#112](https://github.com/it1ro/brig-lang/issues/112) | Docs: записать решения DD #41–#43 в doc 02 и спеку | A-F3, A-F4, I-F8 | #41, #42, #43 | Blocked |
 
 ### T-90 · DD: модель планировщика (1 актор = 1 goroutine)
 <!-- meta
@@ -147,7 +153,9 @@ extra_labels: design-decision
 
 **Wave 4 — blockers full-fix.** Вход: T-11, T-20, T-23, T-36. Выход: fail-fast из T-01, T-02, T-04 удалены, канонические примеры §6.1/§6.5/§12.4 и интерполяция дают правильный результат.
 
-**Wave 5 — docs cleanup.** Вход: T-12; для T-61 — все волны 0–4. Выход: §8 и §5 аудита закрыты, `TASKS.md` и `AUDIT_REPORT.md` связаны с issues.
+**Wave 5 — docs cleanup.** Вход: T-12; для T-61 — все волны 0–4. Выход: §8 и §5 аудита закрыты, `TASKS.md` и `AUDIT_REPORT.md` связаны с issues. T-60 переоткрыт 2026-09-26: его PR #52 закрыт без merge. T-62 ждёт design decisions, T-63 синхронизирует план с доской.
+
+**Wave 6 — Must-пробелы §16.** Вход: волны 0–4 закрыты. Задачи с label `spec-gap` и Task type `feature` реализуют Must-фичи §16, которые парсятся, но не компилируются или отсутствуют: `match`, `with`, pipe, записи, вариадики, `Sys.args()`/`link`/`mailbox_size()`, term order, формат диагностики, stack trace. Зависимости: T-71 ждёт T-70; T-74 ждёт T-70 и T-73. Почти все задачи волны правят `internal/compiler/compiler.go`, поэтому по `MAINTAINING.md` §5 их не берут параллельно; исключения — T-77 (`runtime.Compare`) и T-79 (scheduler, `cmd/brig`). Выход: `rg -n 'срез: (pipe|record literal|неподдерживаемое выражение)' internal/compiler` пуст, `make check-examples` → `failed 0`.
 
 ## Задачи
 
@@ -756,11 +764,12 @@ wave: 5-docs
 depends_on: T-12
 findings: [A-F8]
 -->
-- **Issue:** [#38](https://github.com/it1ro/brig-lang/issues/38) · **Статус:** Done
-- **Файлы:** docs/architecture.md (дубли README/STATUS после ~287, `check-smallint` в `ci-quick`), docs/02-register-based-virtual-machine.md (шапка-черновик, K-8), docs/01-language-design.md §12.4 vs `brig.ebnf` `after_clause`, STATUS.md (65/65, REPL ✅, `examples/test_demo.brig`, CI → make all), cmd/brig/main.go:6, 25, 203, Makefile (`ebnf-check`)
+- **Issue:** [#38](https://github.com/it1ro/brig-lang/issues/38) · **Статус:** Todo
+- **Примечание:** **Переоткрыт 2026-09-26.** PR #52 был нацелен в `iter/regvm` и закрыт без merge, правки в `main` не попали. Коммиты лежат в ветке `docs/T-60-audit-docs` (например `7fdd75b`, `eea576e`), их можно перенести cherry-pick. Пункты про `STATUS.md` и вставленные копии README/STATUS в `docs/architecture.md` из DoD убраны: их закрывает T-63 (#113).
+- **Файлы:** docs/02-register-based-virtual-machine.md (шапка-черновик, K-8, пробелы A-F8), docs/01-language-design.md (§12.4 :1061, Part III :2416), cmd/brig/main.go (:6, :27, :230), Makefile (`ebnf-check` :104)
 - **Тест-якорь:** `rg`-проверки из DoD; `check-examples` (существует)
-- **DoD:** все 6 пунктов §8 и ложные claims §5 исправлены: `rg -n 'Я не компилировал' docs` пуст; `rg -n 'regeneration from §16 pending' Makefile` пуст; `rg -n 'токены лексера\|brig-cli' cmd/brig/main.go` пуст; `rg -n '65/65' .` пуст; в architecture.md нет вставленных копий README/STATUS. Пробелы A-F8 (pipe `|>`, record-литералы, `link`, `Sys.args()`, `mailbox_size()` без аргументов) перечислены в doc 02 рядом с K-8. §12.4 vs `brig.ebnf` согласованы в пользу источника выше по иерархии; если иерархия не решает — вопрос автору в комментарии issue, пункт остаётся открытым. `check-examples` → `failed 0`.
-- **НЕ делать:** менять код или семантику; менять skills (T-12); решать design decisions T-90…T-93.
+- **DoD:** `rg -n 'Я не компилировал' docs` пуст; `rg -n 'regeneration from §16 pending' Makefile` пуст; `rg -n 'токены лексера\|brig-cli' cmd/brig/main.go` пуст; `rg -n '65/65' --glob '!AUDIT_REPORT.md' --glob '!TASKS.md'` пуст; K-8 в doc 02 описывает текущее состояние (мультиклозы, guard в `recv`, захват в локальных `fn` сделаны; `match`/`with` — T-70/T-71, вариадики — T-78); пробелы A-F8 (pipe `|>`, record-литералы, `link`, `Sys.args()`, `mailbox_size()` без аргументов) перечислены в doc 02 рядом с K-8 со ссылками на T-72, T-73, T-75; фраза §12.4 про «только блочную форму» заменена по решению #55 (`else` — только блок, `after` — как тело ветки); `make check-examples` → `failed 0`.
+- **НЕ делать:** менять код или семантику; менять skills (T-12); решать design decisions T-90…T-93; трогать `TASKS.md` и `STATUS.md` (T-63).
 
 ### T-61 · Закрыть TASKS.md и AUDIT_REPORT.md ссылками
 <!-- meta
@@ -778,6 +787,310 @@ findings: []
 - **DoD:** у каждого T-NN в `TASKS.md` — ссылка на issue и статус. В шапке `AUDIT_REPORT.md` — ссылка на доску и `TASKS.md`; у каждого ID в §4 — ссылка на issue или пометка `false-positive`/`no-op`/`design-decision`. `gh issue list --label audit --state open` возвращает только issues с label `design-decision` или задачи, созданные после решений T-90…T-93.
 - **НЕ делать:** менять формулировки findings; менять код; трогать CONTRIBUTING.md.
 
+### T-62 · Docs: записать решения DD #41–#43 в doc 02 и спеку
+<!-- meta
+priority: P2
+type: docs
+effort: M
+model: sonnet
+wave: 5-docs
+depends_on: T-91, T-92, T-93
+findings: [A-F3, A-F4, I-F8]
+-->
+- **Issue:** [#112](https://github.com/it1ro/brig-lang/issues/112) · **Статус:** Blocked
+- **Файлы:** docs/02-register-based-virtual-machine.md (K-2, K-3, §4 табл. п.6, новый раздел о сравнении чисел разных видов), docs/01-language-design.md (§4.8, §7.2, §8.1, §10.4, §16, Part III changelog)
+- **Тест-якорь:** `rg`-проверки из DoD; `check-examples` (существует)
+- **DoD:** K-2 соответствует варианту #41, K-3 — варианту #42; в doc 02 есть раздел о сравнении Int/Float/Decimal в `==`/`<`, паттернах и ключах Map/Set по варианту #43; §4 табл. п.6 doc 02 соответствует судьбе T-82; если меняется тир 1 (#41 = C, #42 = B), правка есть в Part III changelog и версия спеки поднята; `rg -n 'проваливается' docs/02-register-based-virtual-machine.md` не находит truthiness, если #41 ≠ C; `make check-examples` → `failed 0`.
+- **НЕ делать:** менять код (T-81…T-86); описывать модель планировщика (T-80); решать design decisions.
+
+### T-63 · Docs: актуализировать TASKS.md, удалить STATUS.md, правила для spec-gap
+<!-- meta
+priority: P2
+type: docs
+effort: S
+model: sonnet
+wave: 5-docs
+depends_on: T-61
+findings: []
+-->
+- **Issue:** [#113](https://github.com/it1ro/brig-lang/issues/113) · **Статус:** In Progress
+- **Файлы:** TASKS.md, tools/tasks-sync.sh, Makefile, STATUS.md (удалить), README.md, CONTRIBUTING.md, MAINTAINING.md, docs/architecture.md, docs/02-register-based-virtual-machine.md, .claude/skills/brig-overview, .claude/skills/brig-workflow
+- **Тест-якорь:** `rg`-проверки из DoD
+- **DoD:** `STATUS.md` удалён вместе с его копией и копией README в `docs/architecture.md`; `rg -n 'STATUS\.md' --glob '!AUDIT_REPORT.md' --glob '!TASKS.md' --glob '!docs/02-register-based-virtual-machine.md'` пуст (в AUDIT_REPORT.md и плане миграции doc 02 — исторические упоминания, в TASKS.md — описания задач); `make tasks-sync` переписывает строки «Статус» в `TASKS.md` по доске, повторный запуск даёт пустой diff; в `TASKS.md` у T-62, T-63, T-70…T-86 есть ссылка на issue и статус, раздел Wave 6 описан в формате волн 0–5, шапка и счётчики актуальны; правила в CONTRIBUTING.md, MAINTAINING.md и skill `brig-workflow` принимают label `audit` или `spec-gap` и Task type `feature`; `make check-examples` → `failed 0`.
+- **НЕ делать:** менять код; менять формулировки findings в AUDIT_REPORT.md; решать design decisions; править спеку (docs/01).
+
+### T-70 · Компиляция match (§8.3)
+<!-- meta
+priority: P1
+type: feature
+effort: M
+model: opus
+wave: 6-must
+depends_on: —
+findings: [K-8]
+-->
+- **Issue:** [#114](https://github.com/it1ro/brig-lang/issues/114) · **Статус:** Todo
+- **Файлы:** internal/compiler/compiler.go (`compileExpr` ~1003 — сейчас `срез: неподдерживаемое выражение *ast.matchExpr`; новый `compileMatch` по образцу веток `compileRecv` ~1962: `compilePattern` ~2200 + `MATCHLOCAL`/`JMP`), internal/sema/sema.go (`MatchExpr` :425), internal/vm/verify.go (только если нужны новые рёбра)
+- **Тест-якорь:** создать в internal/compiler: §8.3 (литералы, конструкторы, кортежи, списки с `..rest`, Map-паттерн, `as`), §8.1 (`if c then a else b` и `match c` с `true`/`false` дают одинаковый результат), непокрытый `match` → `(:case_clause, val)` (§10.4), хвостовая ветка → `TAILCALL`
+- **DoD:** `match` компилируется для всех паттернов, которые уже поддерживает `compilePattern`; ветки проверяются по порядку, срабатывает первая совпавшая; без совпадения — авто-raise `(:case_clause, val)`; ветки наследуют `dest.tail` (doc 02, стр. ~289): `fn loop(n) -> match n` с веткой `_ -> loop(n - 1)` в `--dump-bytecode` даёт `TAILCALL`, а `loop(1000000)` не растит кадры; `BRIG_VERIFY=1 go test ./...` → 0; `make all` → 0; `make check-examples` → `failed 0`.
+- **НЕ делать:** `with`/`else` (T-71); record-паттерны (T-74); guards в `match` (запрещены §9.7); переписывать `compileIf` через `match`; менять точность сравнения литералов (T-84).
+
+### T-71 · Компиляция with/else (§8.2)
+<!-- meta
+priority: P1
+type: feature
+effort: M
+model: opus
+wave: 6-must
+depends_on: T-70
+findings: [K-8]
+-->
+- **Issue:** [#122](https://github.com/it1ro/brig-lang/issues/122) · **Статус:** Blocked
+- **Файлы:** internal/compiler/compiler.go (новый `compileWith`, переиспользует код веток из T-70), internal/sema/sema.go (`WithExpr` :463), internal/parser (только если канонический пример §8.2 не парсится)
+- **Тест-якорь:** создать: канонический `process` из §8.2; `with` без `else`, где несовпавшее значение пролетает наружу; `with` с неполным `else` → `(:case_clause, val)`; binds только в начале, тело — с первого statement без `<-`; хвостовой вызов в теле и в ветке `else` → `TAILCALL`
+- **DoD:** `with`/`else` компилируется по §8.2 и §10.4: binds проверяются по порядку, первый несовпавший уходит в `else` (или наружу, если `else` нет); ветки `else` проверяются по порядку; без совпадения в `else` — `(:case_clause, val)`; последний statement тела и ветки `else` наследуют `dest.tail`; канонический пример §8.2 даёт `Ok(c)` и `Error(e)` на соответствующих входах; `BRIG_VERIFY=1 go test ./...` → 0; `make check-examples` → `failed 0`.
+- **НЕ делать:** guards в `with`/`else` (запрещены §6.1); менять `match` сверх выноса общего кода веток; record-паттерны (T-74); трогать doc-файлы.
+
+### T-72 · Pipe |> (§7.5)
+<!-- meta
+priority: P2
+type: feature
+effort: S
+model: sonnet
+wave: 6-must
+depends_on: —
+findings: [A-F8]
+-->
+- **Issue:** [#115](https://github.com/it1ro/brig-lang/issues/115) · **Статус:** Todo
+- **Файлы:** internal/compiler/compiler.go (`compileExpr` ~1001 — сейчас `срез: pipe не реализован`; `compileCall` ~1355), internal/sema/sema.go (`checkPipe` :547 — уже запрещает акторные примитивы)
+- **Тест-якорь:** создать: `3 |> double()`, `x |> f(a, b)` ≡ `f(x, a, b)`, `xs |> f(..ys)` ≡ `f(xs, ..ys)` (§5.4), `x |> Json.encode()` (форма `M.f(a)`), цепочка из трёх pipe, pipe в хвостовой позиции → `TAILCALL`
+- **DoD:** `x |> f(a…)` компилируется как вызов `f(x, a…)` (§7.5) для RHS `f`, `f(a)` и `M.f(a)`; спред в RHS работает по §5.4; хвостовой pipe даёт `TAILCALL`; акторный примитив в RHS по-прежнему отвергается sema; `BRIG_VERIFY=1 go test ./...` → 0; `make check-examples` → `failed 0`.
+- **НЕ делать:** форму `obj.method(a)` — до записей (T-73) она даёт явную ошибку компиляции; менять приоритет `|>` в парсере; добавлять модуль `List.*` в прелюдию; трогать doc-файлы.
+
+### T-73 · Записи: номинальные и анонимные (§4.7)
+<!-- meta
+priority: P1
+type: feature
+effort: L
+model: opus
+wave: 6-must
+depends_on: —
+findings: [A-F8]
+-->
+- **Issue:** [#116](https://github.com/it1ro/brig-lang/issues/116) · **Статус:** Todo
+- **Файлы:** internal/runtime/value.go (новые виды: номинальная и анонимная запись; `Equal`, `Compare`, `Inspect`, `Serialize`), internal/runtime/json.go, internal/compiler/compiler.go (регистрация `type X {…}` рядом с обработкой деклараций ~431; литерал ~1399 — сейчас `срез: record literal не реализован`; доступ к полю через `MemberExpr`), internal/vm (опкоды построения записи и чтения поля, `RegUse` для Verify), internal/vm/prelude_json.go
+- **Тест-якорь:** создать: `type User { id: Int, name: Str }`, `User{ id: 1, name: "a" }`, анонимная `{ id: 1 }`, `u.id`, update `User{ ..u, name: "b" }`, конвертация `{ ..u }` и `User{ ..r }` (§4.7); равенство по §4.8 (`X{…} != Y{…}`, номинальная ≠ анонимной); `Json.encode(User{ id: 1 })` → `{"id":1}`, с `{ type_tag: true }` → `{"__type__":"User","id":1}`
+- **DoD:** все примеры §4.7 компилируются и дают указанный результат; равенство и `Inspect` записей соответствуют §4.8; литерал с неизвестным типом или неизвестным полем — ошибка компиляции с позицией; чтение отсутствующего поля — runtime raise; `BRIG_VERIFY=1 go test ./...` → 0; `make all` → 0; `make check-examples` → `failed 0`.
+- **НЕ делать:** record-паттерны (T-74); term order записей (T-77); типовые аннотации и runtime-контракты (Should); `obj.method(a)` в pipe (T-72); трогать doc-файлы.
+
+### T-74 · Record-паттерны (§9.6)
+<!-- meta
+priority: P1
+type: feature
+effort: M
+model: sonnet
+wave: 6-must
+depends_on: T-73, T-70
+findings: [A-F8]
+-->
+- **Issue:** [#123](https://github.com/it1ro/brig-lang/issues/123) · **Статус:** Blocked
+- **Файлы:** internal/compiler/compiler.go (`compilePattern` ~2200: `recordPattern` из AST), internal/vm/pattern.go, internal/sema (запрет `..` в record-паттерне, если его не отвергает парсер)
+- **Тест-якорь:** создать: `User{ id: id, name: name }`, частичный `User{ id: id }` (§9.6) в `match`, параметре `fn` и ветке `recv`; `User{…}` не матчит `Admin{…}` и анонимную запись; анонимный паттерн матчит только анонимную запись (§4.8); `User{ ..r }` в паттерне → ошибка компиляции
+- **DoD:** record-паттерны работают во всех позициях паттернов (§9.2: `fn`, `match`, `recv`, `with`), сопоставление частичное по полям; вид записи учитывается по §4.8; `..` в record-паттерне отвергается на этапе компиляции с позицией; `BRIG_VERIFY=1 go test ./...` → 0; `make check-examples` → `failed 0`.
+- **НЕ делать:** менять представление записей (T-73); or-паттерны (§9.7); менять точность литералов в паттернах (T-84); трогать doc-файлы.
+
+### T-75 · Прелюдия: Sys.args(), Prelude.*, link, mailbox_size()
+<!-- meta
+priority: P2
+type: feature
+effort: S
+model: sonnet
+wave: 6-must
+depends_on: —
+findings: [A-F8]
+-->
+- **Issue:** [#117](https://github.com/it1ro/brig-lang/issues/117) · **Статус:** Todo
+- **Файлы:** internal/compiler/compiler.go (`isPreludeModule` и модульный dispatch в `compileCall` ~1359, `compileMailboxSize` ~1662, специальные формы ~1385), internal/vm/prelude.go (`sys_args` :411), internal/vm/scheduler.go (опкод наблюдения — для `link`), internal/sema/sema.go (`link` уже в `actorPrimitives` :124)
+- **Тест-якорь:** создать: `Sys.args()` в `fn main()` (§16 Must, entry point); `import Prelude` + `Prelude.len([1])` при затенённом `len` (§11.5); `link(pid)` — родитель получает `:down` после смерти ребёнка, значение ref не возвращается (§12); `mailbox_size()` без аргументов — размер собственной очереди
+- **DoD:** `brig run p.brig a b` с `print(Sys.args())` печатает аргументы; `Prelude.<name>` доступен после `import Prelude` и вызывает функцию прелюдии даже при затенении; `link(pid)` ≡ `watch(pid)` без возврата ref; `mailbox_size()` и `mailbox_size(self())` дают одно и то же; `BRIG_VERIFY=1 go test ./...` → 0.
+- **НЕ делать:** добавлять модули `List.*`/`Str.*` сверх существующих; менять семантику `watch`/`:down` (T-40); менять HWM; трогать doc-файлы.
+
+### T-76 · Диагностика: формат error: file:line:col (§E)
+<!-- meta
+priority: P2
+type: feature
+effort: M
+model: sonnet
+wave: 6-must
+depends_on: —
+findings: []
+-->
+- **Issue:** [#118](https://github.com/it1ro/brig-lang/issues/118) · **Статус:** Todo
+- **Файлы:** cmd/brig/main.go (вывод ошибок :93-176), internal/compiler/compiler.go (ошибки `fmt.Errorf` без позиции, например `срез: …`, `клозы разной арности`), internal/lexer и internal/parser (типы ошибок — только если в них нет `line:col`), testdata/negative
+- **Тест-якорь:** negative-тесты в testdata (существуют) + создать CLI-тест: ошибка лексера, парсера, sema и компилятора печатается в stderr одной строкой формата §E.1
+- **DoD:** все compile-time диагностики `brig run` и `brig check` печатаются в stderr как `error: <file>:<line>:<col>: <message>` (§E.1), `info` — как `info: …` (уже так); `line` и `col` считаются с 1, `col` — в code points (§E.2); у ошибок компилятора есть позиция узла AST; exit-коды не меняются (T-45): `rg -n 'brig run: .*compile:' cmd/brig` пуст; обновление golden negative — отдельным коммитом; `BRIG_VERIFY=1 go test ./...` → 0.
+- **НЕ делать:** stack trace для runtime-ошибок (T-79); менять тексты сообщений сверх префикса и позиции; менять классификацию exit-кодов; трогать doc-файлы.
+
+### T-77 · Term order: тотальный < между видами (§7.4)
+<!-- meta
+priority: P2
+type: feature
+effort: M
+model: sonnet
+wave: 6-must
+depends_on: —
+findings: []
+-->
+- **Issue:** [#119](https://github.com/it1ro/brig-lang/issues/119) · **Статус:** Todo
+- **Файлы:** internal/runtime/value.go (`Compare` :515), internal/vm/scheduler.go (сравнения ~640 — только если меняется вызов)
+- **Тест-якорь:** создать табличный unit-тест в internal/runtime по списку term order §7.4: по одной паре соседних видов (`1 < true`, `true < (1 to 2)`, `(1 to 2) < :a`, `:a < b"x"`, `b"x" < "x"`, `"x" < ()`, `(1,) < %[1]`, `%[1] < [1]`, `[1] < %{}`, `%{} < set([])`, …) и внутривидовые правила (длина, затем поэлементно; Map и Set — по отсортированным элементам); `self() < other_pid` не падает
+- **DoD:** `<`, `>`, `<=`, `>=` тотальны на всех видах из списка §7.4 и упорядочивают их в указанном порядке; `Pid` и `Ref` сравниваются между собой (стабильно в пределах запуска); `Decimal`↔`Float` по-прежнему `:type_error`; `go test ./internal/runtime` → 0; `BRIG_VERIFY=1 go test ./...` → 0.
+- **НЕ делать:** менять сравнение чисел разных видов (DD #43, T-85, T-86); порядок записей (появятся в T-73, дописать туда); `Function` — вне списка §7.4, до ответа автора остаётся `:type_error` (вопрос — комментарием в issue); трогать doc-файлы.
+
+### T-78 · Вариадики: клозы разной арности, лямбды, захват (§6.3)
+<!-- meta
+priority: P1
+type: feature
+effort: M
+model: opus
+wave: 6-must
+depends_on: —
+findings: [K-8]
+-->
+- **Issue:** [#120](https://github.com/it1ro/brig-lang/issues/120) · **Статус:** Todo
+- **Файлы:** internal/compiler/compiler.go (`compileClauses` :581-605 — `клозы разной арности`, `variadic-параметр с захватом не реализован`; `checkLambdaParams` :546), internal/vm/scheduler.go (`bindArgs` для variadic), internal/compiler/regvm_test.go:35
+- **Тест-якорь:** `TestVariadicSum` (internal/compiler/regvm_test.go:35, `t.Skip("K-8: …")`) + создать: канонический `sum` из §6.3 (`fn sum() -> 0` / `fn sum(x, ..rest)`), `sum(..nums)`, лямбда `fn (..args) -> args`, локальная `fn` с `..rest` и захватом
+- **DoD:** мультиклозная `fn` допускает клозы разной арности, если различие покрывается variadic-хвостом; выбор клоза — по порядку; при несовпадении — `(:function_clause, args)`; `fn (..args) ->` собирает аргументы в `List`; локальная `fn` с variadic и захватом компилируется; пример §6.3 печатает `6`; skip в regvm_test.go:35 снят; `BRIG_VERIFY=1 go test ./...` → 0; `make check-examples` → `failed 0`.
+- **НЕ делать:** параметры-паттерны в лямбдах (Should §16, fail-fast T-44 для них остаётся); клозы разной фиксированной арности без variadic (это разные функции); менять TCO `TAILCALL` c variadic сверх нужного `bindArgs`; трогать doc-файлы.
+
+### T-79 · Stack trace для непойманного raise
+<!-- meta
+priority: P2
+type: feature
+effort: M
+model: sonnet
+wave: 6-must
+depends_on: —
+findings: []
+-->
+- **Issue:** [#121](https://github.com/it1ro/brig-lang/issues/121) · **Статус:** Todo
+- **Файлы:** internal/vm/vm.go (`ErrRaise` :23), internal/vm/scheduler.go (путь raise без обработчика: `tryUnwindRaise`, завершение актора), cmd/brig/main.go (печать runtime-ошибки)
+- **Тест-якорь:** создать CLI-тест: `fn g(x) -> raise(:boom)` / `fn f(x) -> g(x) + 1` / `fn main() -> f(1)` — stderr содержит строку ошибки и затем кадры `g`, `f`, `main` с `file:line:col`
+- **DoD:** stack trace — отдельный debug-канал (§17 Q1): значение ошибки, `trap` и `:down` не меняются; при непойманном raise CLI печатает в stderr после строки ошибки по строке на кадр: `  at <fn> (<file>:<line>:<col>)`, от места raise к `main`; позиции берутся из позиций инструкций (T-41); кадры, заменённые `TAILCALL`, в trace не попадают, и это описано в комментарии к коду; exit-код 2 не меняется; стоимость — только на пути непойманного raise (пойманный через `trap` trace не собирает); `BRIG_VERIFY=1 go test ./...` → 0.
+- **НЕ делать:** класть trace в значение ошибки или делать его доступным программе; менять формат compile-time диагностик (T-76); менять exit-коды; трогать doc-файлы.
+
+### T-80 · Scheduler: привести доки или код к решению A-F1
+<!-- meta
+priority: P2
+type: docs
+effort: M
+model: sonnet
+wave: 3-major
+depends_on: T-90, T-13
+findings: [A-F1]
+-->
+- **Issue:** [#105](https://github.com/it1ro/brig-lang/issues/105) · **Статус:** Blocked
+- **Файлы:** docs/architecture.md:148 («1 актор = 1 goroutine»), docs/02-register-based-virtual-machine.md (раздел о планировщике), docs/01-language-design.md §15.2; при варианте B — internal/vm/scheduler.go
+- **Тест-якорь:** `TestVerifyAF1SingleGoroutineScheduler` (internal/vm/af1_test.go:18, существует)
+- **DoD:** при варианте A или C из #40: `rg -n '1 актор = 1 goroutine' docs` пуст; §15.2, architecture.md и doc 02 описывают принятую модель (A: кооперативный однопоточный loop; C: только наблюдаемая семантика — порядок и fairness); детерминизм §15.4 назван явно; `TestVerifyAF1SingleGoroutineScheduler` зелёный; `make check-examples` → `failed 0`. При варианте B эта задача закрывается и разбивается на отдельные full-fix issues (Effort L, model-opus); код в ней не пишется.
+- **НЕ делать:** переписывать scheduler в рамках этой задачи; менять порядок таймерных пробуждений (T-48, сделано); трогать K-2/K-3 и сравнение чисел (T-62); решать другие design decisions.
+
+### T-81 · JMPIF/JMPIFNOT: не-Bool → :type_error
+<!-- meta
+priority: P1
+type: full-fix
+effort: M
+model: sonnet
+wave: 3-major
+depends_on: T-91
+findings: [A-F3]
+-->
+- **Issue:** [#106](https://github.com/it1ro/brig-lang/issues/106) · **Статус:** Blocked
+- **Файлы:** internal/vm/scheduler.go (`JMPIFNOT` ~661, `JMPIF` ~669, `NOT` ~607), internal/compiler/compiler.go (`compileAndOr` ~1274, если проверка операндов делается в компиляторе)
+- **Тест-якорь:** создать. Восстановить `p/t7_if_nonbool.brig` и `p/w3_andor_nonbool.brig` по A-F3 из `AUDIT_REPORT.md` как тесты: `if 5 then …`, `1 or 2`, `true and 5`, не-Bool guard в fn-клозе и в ветке `recv` (T-51/T-52)
+- **DoD:** при варианте A или B из #41: `if 5 then …` не входит в then-ветку, а поднимает `(:type_error, …)`; левый операнд `and`/`or` на не-Bool → `:type_error`; правый операнд проверяется только при варианте A; не-Bool guard ведёт себя как `if`. Ловимость ошибки — такая же, как у остальных type errors на момент задачи (T-83). `make test-vm test-compiler` → 0, `BRIG_VERIFY=1 go test ./...` → 0, `make check-examples` → `failed 0`. При варианте C issue закрывается как won't-fix со ссылкой на #41.
+- **НЕ делать:** делать правый операнд `and`/`or` хвостовым (T-82); менять классификацию type errors (T-83); трогать doc-файлы (K-2 в doc 02 и §7.2 правит T-62).
+
+### T-82 · Компилятор: правый операнд and/or в хвостовой позиции
+<!-- meta
+priority: P2
+type: full-fix
+effort: M
+model: sonnet
+wave: 3-major
+depends_on: T-91, T-10
+findings: [I-F3]
+-->
+- **Issue:** [#107](https://github.com/it1ro/brig-lang/issues/107) · **Статус:** Blocked
+- **Файлы:** internal/compiler/compiler.go (`compileAndOr` ~1274: правый операнд компилируется с `val(acc)` вместо `d`), testdata/bytecode (golden)
+- **Тест-якорь:** `TestAuditAndOrRightOperandIsTail` (internal/compiler/audit_regress_test.go:297, `t.Skip("blocked: T-82")`)
+- **DoD:** при варианте B или C из #41: в хвостовом контексте правый операнд компилируется с `d`, левая ветка эмитит `RETURN acc`; `fn loop(n) -> n == 0 or loop(n - 1)` в `--dump-bytecode` даёт `TAILCALL`, а не `CALL … RETURN`; `loop(1000000)` не растит кадры; skip снят, `rg -n 'blocked: T-82' internal` пуст; строка «`and`/`or` → CALL» в `.claude/skills/brig-compiler` поправлена; обновление golden — отдельным коммитом; `BRIG_VERIFY=1 go test ./...` → 0. При варианте A issue закрывается как won't-fix, а `TestAuditAndOrRightOperandIsTail` переписывается в утверждение, что правый операнд не хвостовой (со ссылкой на #41).
+- **НЕ делать:** проверять операнды `and`/`or` на Bool (T-81); менять проверку TAILCALL при `trapDepth>0` (T-31); менять AST-форму `BinaryExpr`; трогать doc-файлы.
+
+### T-83 · Единая классификация type errors
+<!-- meta
+priority: P1
+type: full-fix
+effort: M
+model: opus
+wave: 3-major
+depends_on: T-92
+findings: [A-F4]
+-->
+- **Issue:** [#108](https://github.com/it1ro/brig-lang/issues/108) · **Статус:** Blocked
+- **Файлы:** internal/vm/vm.go (`decArithErr` :113, `arithErr` :356), internal/vm/scheduler.go (`NOT` ~607, сравнения через `runtime.Compare` ~640), internal/runtime/value.go (`Compare` :515)
+- **Тест-якорь:** создать. Восстановить `p/x1_typeerr.brig` по A-F4 из `AUDIT_REPORT.md`: `trap(dec"1" + "a")`, `trap(1 + "a")`, `trap(not 1)`, `trap(1 < "a")`
+- **DoD:** все четыре случая ведут себя одинаково по варианту из #42. A: каждый даёт `Error((:type_error, …))`. B: каждый завершает актор, `brig run` → exit 2. C: арифметика и сравнения ловятся, неловимы только внутренние инварианты VM, и этот список совпадает с doc 02 (запись делает T-62). Если T-81 уже сделана, `JMPIF` на не-Bool использует ту же классификацию. `make test-vm` → 0, `BRIG_VERIFY=1 go test ./...` → 0.
+- **НЕ делать:** объединять два run-loop (`callSync` и основной); менять семантику Bool в `if`/`and`/`or` (T-81); менять сравнение Decimal×Float (T-86); трогать doc-файлы.
+
+### T-84 · Паттерны: точное сравнение литералов (MatchEqual)
+<!-- meta
+priority: P1
+type: full-fix
+effort: S
+model: sonnet
+wave: 3-major
+depends_on: T-93
+findings: [I-F8]
+-->
+- **Issue:** [#109](https://github.com/it1ro/brig-lang/issues/109) · **Статус:** Blocked
+- **Файлы:** internal/runtime/value.go (новая `MatchEqual` рядом с `Equal` :361), internal/vm/pattern.go (`PatLiteral` :112, ключи Map-паттерна :183 — по решению)
+- **Тест-якорь:** `TestAuditLiteralPatternIsExact` (internal/compiler/audit_regress_test.go:528, `t.Skip("blocked: T-84")`)
+- **DoD:** при варианте A из #43 (паттерны строго по Kind): паттерн `1` не матчит `1.0` и `dec"1"`, паттерн `1.0` не матчит `1`; skip снят, `rg -n 'blocked: T-84' internal` пуст; `go test ./internal/runtime ./internal/vm` → 0, `BRIG_VERIFY=1 go test ./...` → 0. При другом варианте тест-якорь переписывается под решение и проходит.
+- **НЕ делать:** менять `==`/`<` (T-85); менять Decimal×Float в `INDEX` и `Map.*` (T-86); трогать doc-файлы.
+
+### T-85 · Точное сравнение Int×Float
+<!-- meta
+priority: P1
+type: full-fix
+effort: M
+model: sonnet
+wave: 3-major
+depends_on: T-93
+findings: [I-F8]
+-->
+- **Issue:** [#110](https://github.com/it1ro/brig-lang/issues/110) · **Статус:** Blocked
+- **Файлы:** internal/runtime/value.go (`Equal` :361-370 — Int×Float через `numToFloat`, `Compare` :515)
+- **Тест-якорь:** создать. Восстановить `p/w2_bigprec.brig` по I-F8 из `AUDIT_REPORT.md`: `2^53 + 1 == 2^53.0`, `2^53 + 1 > 2^53.0`, Set из `[2^53 + 1, 2^53.0]`
+- **DoD:** Int×Float сравниваются точно (`big.Rat`/`big.Float`): `2^53 + 1 == 2^53.0` → `false`, `2^53 + 1 > 2^53.0` → `true`, Set из двух значений выше содержит 2 элемента; `==` транзитивно на тройке Int/Float/Int из теста; unit-тесты в internal/runtime; `go test ./internal/runtime` → 0, `BRIG_VERIFY=1 go test ./...` → 0.
+- **НЕ делать:** менять сопоставление литералов в паттернах (T-84); менять Decimal×Float (T-86); менять разбор числовых литералов в лексере; трогать doc-файлы.
+
+### T-86 · Decimal×Float: единое поведение в INDEX, Map/Set, паттернах
+<!-- meta
+priority: P1
+type: full-fix
+effort: M
+model: sonnet
+wave: 3-major
+depends_on: T-93
+findings: [I-F8]
+-->
+- **Issue:** [#111](https://github.com/it1ro/brig-lang/issues/111) · **Статус:** Blocked
+- **Файлы:** internal/vm/scheduler.go (`INDEX` ~800, поиск ключа ~1100), internal/vm/prelude.go (:103, :286, :304, :317 — `runtime.Equal` в `set`/`Map.*`), internal/vm/pattern.go (Decimal/Float-литералы), internal/vm/vm.go (комментарии :208-210, :298)
+- **Тест-якорь:** создать. Восстановить `p/v6_mixed.brig` по I-F8 из `AUDIT_REPORT.md`: табличный тест Decimal×Float для `==`, `<`, `m[k]`, `set`, `Map.get/put/delete` и паттерна
+- **DoD:** все места таблицы ведут себя одинаково по варианту из #43 (A: `:type_error` везде, кроме паттернов и ключей, где сравнение строго по Kind; B: `false` без ошибок; C: точное сравнение через `big.Rat`); комментарии в vm.go соответствуют коду; `make test-vm` → 0, `BRIG_VERIFY=1 go test ./...` → 0.
+- **НЕ делать:** менять Int×Float (T-85); вводить `MatchEqual` для Int/Float-литералов (T-84); записывать решение в doc 02 (T-62); трогать doc-файлы.
+
 ## False positives / no-op
 
 | Finding | Вердикт аудита | Почему не задача |
@@ -789,8 +1102,7 @@ findings: []
 
 ## Out of scope
 
-- Design decisions A-F1, A-F3, A-F4, I-F8 и задачи T-80…T-86 — до ответа автора языка (см. выше).
+- Design decisions A-F1, A-F3, A-F4, I-F8 — до ответа автора языка; ждущие их T-80…T-86 и T-62 заведены и стоят в Blocked (см. выше).
 - Блочная форма `ensure` (S-F5) — MVP-задел; T-03 явно её отвергает.
-- Follow-up задачи по A-F7 и I-F14 — создаются только по результату T-14/T-15.
 - Дубликаты ключей в JSON (I-F13) — спека молчит.
-- Всё из §9 аудита: мини-блоки офсайда в скобках (§D.6/D.7), якоря `trap`/`if` в глубину, §D.8; полный term order `runtime.Compare` (§7.4); гонки в `RunMainWithArgs`/REPL и переиспользование `Scheduler`; арность native в прелюдии, `Test.*`, `Serialize`, `FormatDecimal`; sema для `match`/`with`/record (K-8), парсер типов; `make fuzz` 3×60s.
+- Всё из §9 аудита: мини-блоки офсайда в скобках (§D.6/D.7), якоря `trap`/`if` в глубину, §D.8; гонки в `RunMainWithArgs`/REPL и переиспользование `Scheduler`; арность native в прелюдии, `Test.*`, `Serialize`, `FormatDecimal`; парсер типов; `make fuzz` 3×60s.
