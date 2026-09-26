@@ -92,10 +92,10 @@
 | [06-framework.md](06-framework.md) | архитектура Calmar |
 | [07-open-questions.md](07-open-questions.md) | развилки с вариантами и рекомендациями |
 | [08-roadmap.md](08-roadmap.md) | фазы и критерии успеха |
+| [09-contracts.md](09-contracts.md) | контракты данных: гибрид code-first, цена проверок, JSON Schema |
 | [10-packages.md](10-packages.md) | пакетный менеджер, Chandler, лаунчер `calmar` |
 | [11-memory.md](11-memory.md) | память и изоляция: бюджеты, счётчики, замеры, обратимость |
 | [12-whelk.md](12-whelk.md) | Whelk — микро-фреймворк; однофайловое демо в [demo-whelk/](demo-whelk/) |
 | [13-microservices.md](13-microservices.md) | Brig для микросервисов: сильные стороны, риски, что добавить |
-| [09-contracts.md](09-contracts.md) | контракты данных: гибрид code-first, цена проверок, JSON Schema |
 | [demo/](demo/) | Lookout — uptime-монитор на Calmar |
 | [demo-whelk/](demo-whelk/) | приёмник GitHub-вебхуков на Whelk в одном файле |
