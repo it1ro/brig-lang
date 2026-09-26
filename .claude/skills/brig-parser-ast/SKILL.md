@@ -34,8 +34,8 @@ description: >
   порядок фиксирован (`else` перед `after`), не более одной каждой. `else`
   требует `LOWER_IDENT` имени (нет `else _ ->`). **Guard ветки** живёт в
   `RecvBranchArg.Guard`; `Format` печатает `when <guard>`. Компилятор
-  fail-fast, пока guard не компилируется (S-F3, T-02 #2; компиляция T-52
-  #35). Отвергать guard в парсере нельзя: doc 01 (строка ~1084) содержит
+  компилирует его в `compileRecv` (S-F3, T-52 #35). Отвергать guard в
+  парсере нельзя: doc 01 (строка ~1084) содержит
   `when has_pending(...)`, `check-examples` упадёт.
 - **Guard** (`when <or_expr>`): разбирается через `parseOr()`, не
   `parseExpr()` — иначе `tryLambda` съедает `ident ->` в формах
