@@ -32,7 +32,6 @@ fn main() ->
 }
 
 func TestVariadicSum(t *testing.T) {
-	t.Skip("K-8: only first fn clause compiles; multi-clause variadic outside scope")
 	runModule(t, `module Main
 fn sum() -> 0
 fn sum(x, ..rest) -> x + sum(..rest)
@@ -40,6 +39,111 @@ fn main() ->
     assert(sum(1, 2, 3, 4) == 10)
     assert(sum() == 0)
 `)
+}
+
+func TestVariadicSumSpreadCall(t *testing.T) {
+	runModule(t, `module Main
+fn sum() -> 0
+fn sum(x, ..rest) -> x + sum(..rest)
+fn main() ->
+    nums = [1, 2, 3]
+    assert(sum(..nums) == 6)
+    assert(sum(..[]) == 0)
+`)
+}
+
+func TestVariadicClauseOrder(t *testing.T) {
+	runModule(t, `module Main
+fn shape() -> :none
+fn shape(a) -> (:one, a)
+fn shape(a, b) -> (:two, a, b)
+fn shape(a, ..rest) -> (:many, a, rest)
+fn main() ->
+    assert(shape() == :none)
+    assert(shape(1) == (:one, 1))
+    assert(shape(1, 2) == (:two, 1, 2))
+    assert(shape(1, 2, 3) == (:many, 1, [2, 3]))
+`)
+}
+
+func TestVariadicNoClauseMatches(t *testing.T) {
+	err := runModuleErr(t, `module Main
+fn f(0, ..rest) -> rest
+fn f(1, 2, ..rest) -> rest
+fn main() ->
+    f(5)
+`)
+	if err == nil || !strings.Contains(err.Error(), "function_clause") {
+		t.Fatalf("want function_clause, got: %v", err)
+	}
+}
+
+func TestVariadicTooFewArgs(t *testing.T) {
+	err := runModuleErr(t, `module Main
+fn f(a, b, ..rest) -> rest
+fn main() ->
+    f(1)
+`)
+	if err == nil || !strings.Contains(err.Error(), "function_clause") {
+		t.Fatalf("want function_clause, got: %v", err)
+	}
+}
+
+func TestVariadicLambda(t *testing.T) {
+	runModule(t, `module Main
+fn main() ->
+    id = fn (..args) -> args
+    assert(id(1, 2, 3) == [1, 2, 3])
+    assert(id() == [])
+    head = fn (x, ..rest) -> rest
+    assert(head(1, 2, 3) == [2, 3])
+`)
+}
+
+func TestVariadicLocalFnCapture(t *testing.T) {
+	runModule(t, `module Main
+fn total(base, ..xs) ->
+    fn go(acc) -> acc + base
+    fn go(acc, y, ..ys) -> go(acc + y + base, ..ys)
+    go(0, ..xs)
+fn main() ->
+    assert(total(10, 1, 2) == 33)
+    assert(total(10) == 10)
+`)
+}
+
+func TestVariadicLocalFnCaptureValue(t *testing.T) {
+	runModule(t, `module Main
+fn run(k) ->
+    fn add(..xs) -> (k, xs)
+    f = add
+    f(1, 2, 3)
+fn main() ->
+    assert(run(10) == (10, [1, 2, 3]))
+`)
+}
+
+func TestSpreadCallNonList(t *testing.T) {
+	err := runModuleErr(t, `module Main
+fn f(..a) -> a
+fn main() ->
+    f(..1)
+`)
+	if err == nil || !strings.Contains(err.Error(), "type_error") {
+		t.Fatalf("want type_error, got: %v", err)
+	}
+}
+
+func TestDifferentArityWithoutVariadicStillRejected(t *testing.T) {
+	err := runModuleErr(t, `module Main
+fn f() -> 0
+fn f(a) -> a
+fn main() ->
+    f()
+`)
+	if err == nil {
+		t.Fatal("want compile error")
+	}
 }
 
 // ---- D-2: native arity error is fatal, not Go-panic ----

@@ -191,9 +191,9 @@ func (c *Chunk) disInstr(sb *strings.Builder, ip int) {
 		fmt.Fprintf(sb, "-> %04d", ip+1+in.SBx())
 	case JMPIFNOT, JMPIF:
 		fmt.Fprintf(sb, "r%d -> %04d", in.A(), ip+1+in.SBx())
-	case CALL:
+	case CALL, CALLSPREAD:
 		fmt.Fprintf(sb, "r%d %d -> r%d", in.A(), in.B(), in.C())
-	case TAILCALL:
+	case TAILCALL, TAILCALLSPREAD:
 		fmt.Fprintf(sb, "r%d %d", in.A(), in.B())
 	case RETURN, RAISE, SELF, MAKEREF, RECVTIMER:
 		fmt.Fprintf(sb, "r%d", in.A())

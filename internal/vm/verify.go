@@ -100,14 +100,14 @@ func RegUse(in Instr) (reads, writes []int, err error) {
 		// errReg пишется неявно при raise; формально регистр определён
 		// только на пути обработчика, поэтому в reads/writes не входит.
 		return nil, nil, nil
-	case CALL:
+	case CALL, CALLSPREAD:
 		// R[A] — callee; R[A+1..A+B] — аргументы; результат — в R[C].
 		reads = []int{a}
 		for i := 1; i <= b; i++ {
 			reads = append(reads, a+i)
 		}
 		return reads, []int{cc}, nil
-	case TAILCALL:
+	case TAILCALL, TAILCALLSPREAD:
 		reads = []int{a}
 		for i := 1; i <= b; i++ {
 			reads = append(reads, a+i)
@@ -194,7 +194,7 @@ func verifyTailCall(c *Chunk) error {
 			if depth < 0 {
 				return fmt.Errorf("verify: TRAPEND at %d underflow", ip)
 			}
-		case TAILCALL:
+		case TAILCALL, TAILCALLSPREAD:
 			if depth > 0 {
 				return fmt.Errorf(
 					"verify: TAILCALL at %d under active trap (depth=%d)",
@@ -216,7 +216,7 @@ func verifyFallThrough(c *Chunk) error {
 	}
 	last := c.Code[len(c.Code)-1].Op()
 	switch last {
-	case RETURN, JMP, TAILCALL, RAISE:
+	case RETURN, JMP, TAILCALL, TAILCALLSPREAD, RAISE:
 		return nil
 	}
 	return fmt.Errorf(
@@ -338,7 +338,7 @@ func edges(c *Chunk, ip int, before []bool) []cfgEdge {
 		handler := cloneBoolSlice(out)
 		markDefined(handler, in.A())
 		return []cfgEdge{{ip + 1, out}, {ip + 1 + in.SBx(), handler}}
-	case RETURN, TAILCALL, RAISE:
+	case RETURN, TAILCALL, TAILCALLSPREAD, RAISE:
 		return nil
 	default:
 		return []cfgEdge{{ip + 1, out}}

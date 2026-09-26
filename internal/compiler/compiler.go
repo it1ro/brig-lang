@@ -46,9 +46,13 @@ type Compiler struct {
 // скрытыми параметрами после arity объявленных. caps заданы
 // относительно функции-владельца (как upvalueInfo её прямого потомка):
 // на месте вызова их достаёт fetchCapture по связыванию, а не по имени.
+//
+// У variadic-fn захваты идут ПЕРЕД параметрами (хвост занят rest-списком,
+// который у спред-вызова обязан быть последним аргументом).
 type liftedFn struct {
-	arity int
-	caps  []upvalueInfo
+	arity    int // объявленные параметры; у variadic — fixed (без rest)
+	variadic bool
+	caps     []upvalueInfo
 }
 
 // New создаёт компилятор.
@@ -556,12 +560,15 @@ func clauseVariadic(params []ast.Pattern) (bool, error) {
 }
 
 // checkLambdaParams — fail-fast для полной лямбды `fn (…) ->` (T-44).
-// Именованные fn допускают `..name` (compileClauses);
-// в лямбде и параметр-паттерн, и variadic — ошибка, а не молчаливое имя.
+// `..name` допустим последним параметром (§6.3); параметр-паттерн — ошибка,
+// а не молчаливое имя.
 func checkLambdaParams(params []string) error {
-	for _, p := range params {
+	for i, p := range params {
 		if strings.HasPrefix(p, "..") {
-			return fmt.Errorf("срез: variadic-параметр %q в лямбде не реализован", p)
+			if i != len(params)-1 {
+				return fmt.Errorf("variadic parameter %q must be last", p)
+			}
+			p = strings.TrimPrefix(p, "..")
 		}
 		if !isIdentParam(p) {
 			return fmt.Errorf("срез: параметр-паттерн %q в лямбде не реализован", p)
@@ -587,6 +594,38 @@ func isIdentParam(p string) bool {
 	return true
 }
 
+// clausesShape — форма чанка мультиклозной fn: fixed — минимум фиксированных
+// параметров по клозам, variadic — есть ли клоз с `..name`. Разные арности
+// допустимы только при наличии variadic-клоза; тогда все аргументы сверх
+// fixed приходят в rest-списке, а клозы разбирают его list-паттерном.
+func clausesShape(clauses []ast.FnClauseArg) (fixed int, variadic bool, err error) {
+	fixed = -1
+	arity := -1
+	for _, cl := range clauses {
+		v, verr := clauseVariadic(cl.Params)
+		if verr != nil {
+			return 0, false, verr
+		}
+		k := len(cl.Params)
+		if v {
+			k--
+			variadic = true
+		}
+		if fixed < 0 || k < fixed {
+			fixed = k
+		}
+		if arity >= 0 && len(cl.Params) != arity {
+			arity = -2
+		} else if arity == -1 {
+			arity = len(cl.Params)
+		}
+	}
+	if !variadic && arity == -2 {
+		return 0, false, fmt.Errorf("клозы разной арности без variadic")
+	}
+	return fixed, variadic, nil
+}
+
 // compileClauses компилирует клозы fn (§6.1). Параметры лежат в
 // r0..n-1, за ними — скрытые параметры захвата caps (лямбда-лифтинг
 // локальной fn). Клозы проверяются по порядку: ident, `..name` и `_`
@@ -597,26 +636,19 @@ func (fc *funcCompiler) compileClauses(clauses []ast.FnClauseArg, caps []upvalue
 	if len(clauses) == 0 {
 		return fmt.Errorf("нет клозов")
 	}
-	n := len(clauses[0].Params)
-	variadic, err := clauseVariadic(clauses[0].Params)
+	fixed, variadic, err := clausesShape(clauses)
 	if err != nil {
 		return err
 	}
-	for _, cl := range clauses[1:] {
-		if len(cl.Params) != n {
-			return fmt.Errorf("клозы разной арности (%d и %d)", n, len(cl.Params))
-		}
-		v, verr := clauseVariadic(cl.Params)
-		if verr != nil {
-			return verr
-		}
-		if v != variadic {
-			return fmt.Errorf("клозы расходятся в variadic")
-		}
+	// Регистры: [caps (у variadic)] fixed… [rest] [caps (иначе)].
+	base, n := 0, fixed
+	if variadic {
+		base, n = len(caps), fixed+1
+		fc.capBase = 0
+	} else {
+		fc.capBase = n
 	}
-	if variadic && len(caps) > 0 {
-		return fmt.Errorf("срез: variadic-параметр с захватом не реализован")
-	}
+	fc.caps = caps
 
 	fc.chunk.Variadic = variadic
 	fc.chunk.NumParams = n + len(caps)
@@ -625,16 +657,15 @@ func (fc *funcCompiler) compileClauses(clauses []ast.FnClauseArg, caps []upvalue
 			return fmt.Errorf("internal: param %d in r%d", i, r)
 		}
 	}
-	fc.caps, fc.capBase = caps, n
 	for i, c := range caps {
 		if c.name != "" {
-			fc.bindLocal(c.name, n+i)
+			fc.bindLocal(c.name, fc.capBase+i)
 		}
 	}
 
 	var fails []int
 	for _, cl := range clauses {
-		if fails, err = fc.compileOneClause(cl); err != nil {
+		if fails, err = fc.compileOneClause(cl, base, fixed, variadic); err != nil {
 			return err
 		}
 		here := len(fc.chunk.Code)
@@ -645,26 +676,23 @@ func (fc *funcCompiler) compileClauses(clauses []ast.FnClauseArg, caps []upvalue
 		}
 	}
 	if len(fails) > 0 {
-		fc.raiseFunctionClause(clauses[0], n)
+		fc.raiseFunctionClause(clauses[0], base, n)
 	}
 	return nil
 }
 
 // compileOneClause компилирует один клоз и возвращает его fail-переходы
 // (к следующему клозу). Пустой список — клоз неопровержим.
-func (fc *funcCompiler) compileOneClause(cl ast.FnClauseArg) ([]int, error) {
+func (fc *funcCompiler) compileOneClause(cl ast.FnClauseArg, base, fixed int, variadic bool) ([]int, error) {
 	fc.pushScope()
 	defer fc.popScope()
 
 	var fails []int
-	for i, p := range cl.Params {
+	for i, p := range cl.Params[:fixed] {
 		switch x := p.(type) {
-		case ast.SpreadPattern:
-			fc.bindLocal(x.SpreadName(), i)
-			continue
 		case ast.IdentPattern:
 			if isIdentParam(x.IdentName()) {
-				fc.bindLocal(x.IdentName(), i)
+				fc.bindLocal(x.IdentName(), base+i)
 				continue
 			}
 		case ast.PatternWildcard:
@@ -678,8 +706,17 @@ func (fc *funcCompiler) compileOneClause(cl ast.FnClauseArg) ([]int, error) {
 		}
 		patIdx := fc.chunk.AddPattern(cp)
 		fc.pos = posOf(p)
-		fc.emit(vm.ABx(vm.MATCHLOCAL, i, patIdx))
+		fc.emit(vm.ABx(vm.MATCHLOCAL, base+i, patIdx))
 		fails = append(fails, fc.emitJump(vm.JMP, 0))
+	}
+	if variadic {
+		jump, err := fc.bindRestTail(cl, base, fixed)
+		if err != nil {
+			return nil, err
+		}
+		if jump >= 0 {
+			fails = append(fails, jump)
+		}
 	}
 	if cl.Guard != nil {
 		mark := fc.nextReg
@@ -699,10 +736,39 @@ func (fc *funcCompiler) compileOneClause(cl ast.FnClauseArg) ([]int, error) {
 	return fails, fc.compileStmts(cl.Body.Body(), dest{reg: scratch, tail: true})
 }
 
+// bindRestTail связывает параметры клоза сверх fixed с rest-списком в
+// r[base+fixed]: голый `..name` — просто имя, иначе list-паттерн
+// (точная длина без `..`). Возвращает fail-переход или -1.
+func (fc *funcCompiler) bindRestTail(cl ast.FnClauseArg, base, fixed int) (int, error) {
+	tail := cl.Params[fixed:]
+	elems, restName, hasRest := tail, "", false
+	if n := len(tail); n > 0 {
+		if sp, ok := tail[n-1].(ast.SpreadPattern); ok {
+			elems, restName, hasRest = tail[:n-1], sp.SpreadName(), true
+		}
+	}
+	if len(elems) == 0 && hasRest {
+		fc.bindLocal(restName, base+fixed)
+		return -1, nil
+	}
+	cp, err := fc.compilePattern(ast.NewListPattern(elems, hasRest, restName, 0, 0))
+	if err != nil {
+		return -1, err
+	}
+	switch {
+	case len(tail) > 0:
+		fc.pos = posOf(tail[0])
+	case len(cl.Params) > 0:
+		fc.pos = posOf(cl.Params[0])
+	}
+	fc.emit(vm.ABx(vm.MATCHLOCAL, base+fixed, fc.chunk.AddPattern(cp)))
+	return fc.emitJump(vm.JMP, 0), nil
+}
+
 // raiseFunctionClause — (:function_clause, [arg0, …]) (§6.1, §5.3).
-// Аргументы уже лежат подряд в r0..arity-1. У variadic последний элемент
+// Аргументы уже лежат подряд в r[base]..r[base+arity-1]. У variadic последний элемент
 // списка — сам rest-список: конкатенации в байткоде нет.
-func (fc *funcCompiler) raiseFunctionClause(first ast.FnClauseArg, arity int) {
+func (fc *funcCompiler) raiseFunctionClause(first ast.FnClauseArg, base, arity int) {
 	switch {
 	case len(first.Params) > 0:
 		fc.pos = posOf(first.Params[0])
@@ -712,7 +778,7 @@ func (fc *funcCompiler) raiseFunctionClause(first ast.FnClauseArg, arity int) {
 	w := fc.allocReg()
 	fc.emit(vm.ABx(vm.LOADK, w, fc.konst(runtime.Atom("function_clause"))))
 	l := fc.allocReg()
-	fc.emit(vm.ABC(vm.LIST, l, 0, arity))
+	fc.emit(vm.ABC(vm.LIST, l, base, arity))
 	fc.emit(vm.ABC(vm.TUPLE, w, w, 2))
 	fc.emit(vm.ABC(vm.RAISE, w, 0, 0))
 }
@@ -743,11 +809,11 @@ func (fc *funcCompiler) declareLocalFns(stmts []ast.Stmt) error {
 		if lfd, ok := s.(ast.LocalFnDecl); ok {
 			mangled := fc.prefix + lfd.FnName()
 			fc.localFns[lfd.FnName()] = mangled
-			arity := 0
-			if cs := lfd.Clauses(); len(cs) > 0 {
-				arity = len(cs[0].Params)
+			arity, variadic, err := clausesShape(localClauses(lfd.Clauses()))
+			if err != nil {
+				return fmt.Errorf("local fn %s: %w", lfd.FnName(), err)
 			}
-			fc.compiler.lifted[mangled] = &liftedFn{arity: arity}
+			fc.compiler.lifted[mangled] = &liftedFn{arity: arity, variadic: variadic}
 			decls = append(decls, lfd)
 		}
 	}
@@ -1121,18 +1187,32 @@ func (fc *funcCompiler) loadLocalFn(d dest, mangled string, owner *funcCompiler)
 	w.prefix = mangled + "$"
 	w.pos = fc.pos // у обёртки нет своего исходника — позиция ссылки
 	w.chunk.NumParams = lf.arity
-	for i := 0; i < lf.arity; i++ {
+	if lf.variadic {
+		w.chunk.NumParams++ // rest-список
+		w.chunk.Variadic = true
+	}
+	for i := 0; i < w.chunk.NumParams; i++ {
 		w.allocReg()
 	}
 	wbase := w.allocReg()
 	w.emit(vm.ABx(vm.GETGLOBAL, wbase, w.konst(runtime.Str(mangled))))
-	for i := 0; i < lf.arity; i++ {
+	movesCaps := func() {
+		for j := range lf.caps {
+			w.emit(vm.ABC(vm.GETUPVAL, w.allocReg(), j, 0))
+		}
+	}
+	if lf.variadic {
+		movesCaps()
+	}
+	for i := 0; i < w.chunk.NumParams; i++ {
 		w.emit(vm.ABC(vm.MOVE, w.allocReg(), i, 0))
 	}
-	for j := range lf.caps {
-		w.emit(vm.ABC(vm.GETUPVAL, w.allocReg(), j, 0))
+	if lf.variadic {
+		w.emit(vm.ABC(vm.TAILCALLSPREAD, wbase, w.chunk.NumParams+len(lf.caps), 0))
+	} else {
+		movesCaps()
+		w.emit(vm.ABC(vm.TAILCALL, wbase, lf.arity+len(lf.caps), 0))
 	}
-	w.emit(vm.ABC(vm.TAILCALL, wbase, lf.arity+len(lf.caps), 0))
 	fnIdx := fc.chunk.AddConstant(vm.FuncValue(w.function(mangled)))
 
 	mark := fc.nextReg
@@ -1446,37 +1526,72 @@ func (fc *funcCompiler) compileGenericCall(call ast.CallExpr, d dest) error {
 		return err
 	}
 
-	argc := len(call.Args()) + len(caps)
-	for i, a := range call.Args() {
+	args := call.Args()
+	spread := false
+	if n := len(args); n > 0 {
+		if u, ok := args[n-1].(ast.UnaryExpr); ok && u.OpStr() == ".." {
+			spread = true
+		}
+	}
+	for _, a := range args[:max(len(args)-1, 0)] {
+		if u, ok := a.(ast.UnaryExpr); ok && u.OpStr() == ".." {
+			return fmt.Errorf("срез: спред-аргумент не последний")
+		}
+	}
+	// У variadic-fn захваты идут перед аргументами (см. liftedFn), у прочих — после.
+	leadCaps := len(caps) > 0 && fc.compiler.lifted[callee].variadic
+	if spread && len(caps) > 0 && !leadCaps {
+		return fmt.Errorf("срез: спред-вызов локальной fn с захватом")
+	}
+
+	argc := len(args) + len(caps)
+	next := 0
+	loadCaps := func() {
+		for _, uv := range caps {
+			r := fc.allocReg()
+			if r != base+1+next {
+				fc.fail("call: arg %d in r%d, want r%d", next, r, base+1+next)
+			}
+			fc.loadCapture(owner, uv, r)
+			next++
+		}
+	}
+	if leadCaps {
+		loadCaps()
+	}
+	for _, a := range args {
 		r := fc.allocReg()
-		if r != base+1+i {
-			fc.fail("call: arg %d in r%d, want r%d", i, r, base+1+i)
+		if r != base+1+next {
+			fc.fail("call: arg %d in r%d, want r%d", next, r, base+1+next)
+		}
+		if u, ok := a.(ast.UnaryExpr); ok && u.OpStr() == ".." {
+			a = u.Operand()
 		}
 		if err := fc.compileExpr(a, val(r)); err != nil {
 			return err
 		}
+		next++
 	}
-	for j, uv := range caps {
-		r := fc.allocReg()
-		i := len(call.Args()) + j
-		if r != base+1+i {
-			fc.fail("call: arg %d in r%d, want r%d", i, r, base+1+i)
-		}
-		fc.loadCapture(owner, uv, r)
+	if !leadCaps {
+		loadCaps()
 	}
 
 	fc.pos = posOf(call)
 	if d.tail && fc.trapDepth > 0 {
 		fc.fail("TAILCALL under active trap (trapDepth=%d)", fc.trapDepth)
 	}
+	tailOp, callOp := vm.TAILCALL, vm.CALL
+	if spread {
+		tailOp, callOp = vm.TAILCALLSPREAD, vm.CALLSPREAD
+	}
 	if d.tail {
-		fc.emit(vm.ABC(vm.TAILCALL, base, argc, 0))
+		fc.emit(vm.ABC(tailOp, base, argc, 0))
 	} else {
 		dst := d.reg
 		if dst == -1 {
 			dst = fc.allocReg()
 		}
-		fc.emit(vm.ABC(vm.CALL, base, argc, dst))
+		fc.emit(vm.ABC(callOp, base, argc, dst))
 	}
 	fc.releaseToMark(mark)
 	return nil
@@ -2394,6 +2509,10 @@ func (fc *funcCompiler) compileLambda(name string, params []string, body ast.Exp
 		if r != i {
 			fc.fail("lambda: param %d in r%d", i, r)
 		}
+		if name, ok := strings.CutPrefix(p, ".."); ok {
+			child.chunk.Variadic = true
+			p = name
+		}
 		child.bindLocal(p, i)
 	}
 
@@ -2422,7 +2541,11 @@ func (fc *funcCompiler) compileLambda(name string, params []string, body ast.Exp
 	if fnName == "" {
 		fnName = child.prefix
 	}
-	fn := &vm.Function{Name: fnName, Arity: len(params), Chunk: child.chunk}
+	arity := len(params)
+	if child.chunk.Variadic {
+		arity = -1
+	}
+	fn := &vm.Function{Name: fnName, Arity: arity, Chunk: child.chunk}
 
 	fnVal := vm.FuncValue(fn)
 	fnIdx := fc.chunk.AddConstant(fnVal)
