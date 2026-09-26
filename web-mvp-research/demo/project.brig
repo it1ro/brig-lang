@@ -8,11 +8,11 @@ pub fn project() ->
         version: "0.1.0",
         brig: ">= 0.6",
         # Канонические URL (10); версия — минимальная (MVS), точная — в project.lock.
+        # allow — права, выданные зависимости (как в Deno, 10/#12); код самого
+        # приложения не ограничен.
         deps: [
-            { src: "brig.dev/calmar", version: "v0.1.0" },
+            { src: "brig.dev/calmar", version: "v0.1.0", allow: [:net, :file, :env, :signal] },
         ],
-        # Права пакетов как в Deno (10): что приложению разрешено трогать.
-        permissions: [:net, :file, :env, :signal],
         build: {
             assets: ["priv/static", "priv/migrations"],
             targets: ["linux/amd64", "linux/arm64"],

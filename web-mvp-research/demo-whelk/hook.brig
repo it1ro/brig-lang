@@ -18,8 +18,8 @@ import Http.Sse
 
 fn project() ->
     {
-        deps: [{ src: "brig.dev/whelk", version: "v0.1.0" }],
-        permissions: [:net, :env],
+        # allow — права зависимости (10/#12); сам скрипт не ограничен.
+        deps: [{ src: "brig.dev/whelk", version: "v0.1.0", allow: [:net] }],
     }
 
 fn main() ->
