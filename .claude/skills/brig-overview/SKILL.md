@@ -96,8 +96,8 @@ AUDIT_REPORT.md, TASKS.md
 - `3` — внутренняя ошибка (сообщения с префиксом `internal:`)
 
 Классификация в `cmd/brig` (T-45, #57): compile/`срез` → `1`;
-`internal:` → `3`; uncaught raise → `2`. Остаток A-F7: `runModule` в
-тестах компилятора обходит sema — follow-up T-46 (#58). Комментарий
+`internal:` → `3`; uncaught raise → `2`. A-F7 (3): `runModule` /
+`runModuleErr` прогоняют sema (T-46, #58). Комментарий
 про exit-коды в `cmd/brig/main.go:27` ссылается на несуществующий skill
 (чистится в T-60, #38).
 

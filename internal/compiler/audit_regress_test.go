@@ -225,11 +225,16 @@ fn main() ->
 }
 
 // trap внутри колбэка прелюдии должен ловить raise из вложенного кадра (T-34).
+// Полная лямбда с trap как let RHS (§10.2); inline short-lambda с trap
+// отвергается sema, а блочная лямбда в аргументе map не парсится.
 func TestAuditTrapInsideNativeCallback(t *testing.T) {
 	if err := runModuleErr(t, `module Main
 fn g(x) -> if x == 2 then raise(:bad) else x
 fn main() ->
-    ys = map(fn (x) -> trap(g(x)), [1, 2])
+    cb = fn (x) ->
+        r = trap(g(x))
+        r
+    ys = map(cb, [1, 2])
     assert(ys == [Ok(1), Error(:bad)])
 `); err != nil {
 		t.Errorf("trap across callSync: %v", err)
