@@ -37,9 +37,9 @@ description: >
   fail-fast, пока guard не компилируется (S-F3, T-02 #2; компиляция T-52
   #35). Отвергать guard в парсере нельзя: doc 01 (строка ~1084) содержит
   `when has_pending(...)`, `check-examples` упадёт.
-- **Guard из одного идентификатора** (`fn f(x) when x -> 1`,
-  `n when ok -> …`) уходит в `tryLambda` (`expr.go:34`) и даёт
-  `expected '->'` — guard надо разбирать через `parseOr()` (S-F4, T-20 #14).
+- **Guard** (`when <or_expr>`): разбирается через `parseOr()`, не
+  `parseExpr()` — иначе `tryLambda` съедает `ident ->` в формах
+  `fn f(x) when x -> 1` и `n when ok -> …` (S-F4 закрыт T-20 #14).
 - **`if`-сахар**: `if...then...else` — только целиком, с обеими ветками.
   Блочная форма `if`/`else` — на одном отступе (якорь — токен `if`).
 - **Record vs constructor**: `Red` (без `{`) — значение-конструктор
@@ -72,9 +72,9 @@ description: >
   ломаться непредсказуемо.
 - `Format(n Node)` должен быть идемпотентным: `format(parse(format(x))) ==
   format(x)` — есть тест `TestFormatIdempotent`. Любая правка форматтера
-  обязана сохранить это свойство. Известное нарушение:
-  `fn f(x) when x == ")" -> 1` — `stripOuterParens` (`stmt.go:232`)
-  считает скобки внутри строковых литералов (S-F12, T-20 #14).
+  обязана сохранить это свойство. `stripOuterParens` (`stmt.go`) обязан
+  игнорировать скобки внутри строковых литералов, иначе
+  `fn f(x) when x == ")" -> 1` ломает round-trip (S-F12 закрыт T-20 #14).
 - **`ast.Pretty` и `ast.Walk` выбирают интерфейс по порядку case.** Decl,
   Pattern и Type стоят раньше `Expr`, потому что у них есть
   `IsExpression()` и иначе `case Expr` перехватывает узел. `Expr` раньше

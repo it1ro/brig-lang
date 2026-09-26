@@ -936,7 +936,9 @@ func (p *parser) parseRecv() (ast.Expr, error) {
 		}
 		var guard ast.Expr
 		if p.match(lexer.KW_WHEN) {
-			guard, err = p.parseExpr()
+			// Guard — or_expr, не полный expr: иначе tryLambda съедает
+			// `ident ->` в `when ident -> body` (S-F4).
+			guard, err = p.parseOr()
 			if err != nil {
 				return nil, err
 			}
@@ -971,7 +973,9 @@ func (p *parser) parseRecv() (ast.Expr, error) {
 		}
 		var guard ast.Expr
 		if p.match(lexer.KW_WHEN) {
-			guard, err = p.parseExpr()
+			// Guard — or_expr, не полный expr: иначе tryLambda съедает
+			// `ident ->` в `when ident -> body` (S-F4).
+			guard, err = p.parseOr()
 			if err != nil {
 				return nil, err
 			}
