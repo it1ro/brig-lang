@@ -34,6 +34,7 @@
 | `Supervisor`, `Server` | супервизор (статический и `start_dynamic`); generic server: `Server.call(pid, req, timeout)` шлёт `(:call, from, req)` и ждёт через `await` (02/R12), `Server.reply(from, v)` (§17.9) | Brig | M |
 | `Registry`, `PubSub` | над реестром имён R5; topic → подписчики с `watch` | Brig | M |
 | `Log` | структурированные логи (key-value), уровни, JSON-вывод | Brig | M |
+| `Telemetry` | шина событий инструментирования: `emit`, `span`, подписка по префиксу; события VM (16) | Brig + VM | M |
 | `Config` | слои: дефолты → файл → env; валидация на старте | Brig | M |
 | `Http` | транспорт — порты на Go `net/http` (HTTP/1.1 + HTTP/2 + TLS, сервер и клиент, B2); на Brig — `Conn`, `Plug`-протокол, базовые плаги (сессии, CSRF, статика, CORS) — общий слой Calmar и Whelk | Go (транспорт) + Brig | M |
 | `Http.Ws`, `Http.Sse` | WebSocket, Server-Sent Events | Brig | S (SSE почти бесплатен — M) |
