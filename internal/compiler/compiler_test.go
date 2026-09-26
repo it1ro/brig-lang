@@ -123,6 +123,33 @@ fn main() ->
 `)
 }
 
+// A-F6 / T-35: local fn visible through ancestor chain (grandchild → outer).
+func TestLocalFnVisibleFromGrandchild(t *testing.T) {
+	runModule(t, `module Main
+fn main() ->
+    fn h() -> 1
+    fn f() ->
+        fn g() -> h()
+        g()
+    assert(f() == 1)
+`)
+}
+
+// A-F6 / T-35: same-named local fns in different lambdas must not collide.
+func TestLambdaLocalFnNoNameCollision(t *testing.T) {
+	runModule(t, `module Main
+fn main() ->
+    a = fn () ->
+        fn k() -> 1
+        k()
+    b = fn () ->
+        fn k() -> 2
+        k()
+    assert(a() == 1)
+    assert(b() == 2)
+`)
+}
+
 func TestClosure(t *testing.T) {
 	runModule(t, `module Main
 fn main() ->
