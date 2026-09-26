@@ -39,7 +39,8 @@ func TestExitClassifyHelpers(t *testing.T) {
 const (
 	sliceNYISrc = `module Main
 fn main() ->
-    xs = [1, 2, 3] |> print
+    r = 1
+    2 |> r.area()
 `
 	upvalueSrc = `module Main
 fn outer(x) ->
@@ -64,7 +65,7 @@ func TestBrigRunExitCodes(t *testing.T) {
 		src  string
 		want int
 	}{
-		{"срез pipe → 1", sliceNYISrc, exitParse},
+		{"pipe obj.method → 1", sliceNYISrc, exitParse},
 		{"local fn capture as value → 0", upvalueSrc, exitOK},
 		{"uncaught raise → 2", raiseSrc, exitRuntime},
 	}
