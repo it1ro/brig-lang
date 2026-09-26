@@ -245,7 +245,7 @@ graph BT
 | `make test`            | `go test ./...`                                                         |
 | `make test-race`       | то же с race-detector (важно: акторы + замыкания)                       |
 | `make check-smallint`  | нет прямого `.Int` в `internal/` вне тестов                             |
-| `make check-examples`  | все ` ```brig `-блоки дизайн-дока парсятся (65/65)                      |
+| `make check-examples`  | все ` ```brig `-блоки дизайн-дока парсятся (`failed 0`)                |
 | `make update-golden`   | пересборка `testdata/golden/*.{ast,round.brig}`                         |
 | `make update-bytecode` | пересборка `testdata/bytecode/*.txt`                                    |
 | `make fuzz`            | `FuzzLex`, `FuzzParse`, `FuzzRoundTrip` — 3×60s                         |
