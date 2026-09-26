@@ -7,7 +7,6 @@ import (
 )
 
 // S-F2 / T-50: параметры fn — []ast.Pattern, guard — ast.Expr (не строки).
-// На текущем коде Params/Guard — string; тест обязан падать до фикса.
 func TestParseFnPatternParams(t *testing.T) {
 	src := `module M
 fn head(Some(x), ..rest) when x > 0 -> x
@@ -35,25 +34,18 @@ fn main() ->
 		t.Fatalf("want 2 params, got %d", len(cl.Params))
 	}
 
-	// T-50 stores params as Pattern and guard as Expr. String storage is the bug.
-	assertNotString := func(v any, label string) {
-		t.Helper()
-		if s, ok := v.(string); ok {
-			t.Fatalf("%s still stored as string %q; want AST node (T-50)", label, s)
-		}
+	if _, ok := cl.Params[0].(ast.PatternCtor); !ok {
+		t.Fatalf("Params[0]: type %T, want PatternCtor (Some(x))", cl.Params[0])
 	}
-	assertNotString(cl.Params[0], "Params[0]")
-	assertNotString(cl.Params[1], "Params[1]")
-	assertNotString(cl.Guard, "Guard")
-
-	if _, ok := any(cl.Params[0]).(ast.Pattern); !ok {
-		t.Fatalf("Params[0]: type %T, want ast.Pattern", cl.Params[0])
+	sp, ok := cl.Params[1].(ast.SpreadPattern)
+	if !ok {
+		t.Fatalf("Params[1]: type %T, want SpreadPattern (..rest)", cl.Params[1])
 	}
-	if _, ok := any(cl.Params[1]).(ast.Pattern); !ok {
-		t.Fatalf("Params[1]: type %T, want ast.Pattern", cl.Params[1])
+	if sp.SpreadName() != "rest" {
+		t.Fatalf("SpreadName = %q, want rest", sp.SpreadName())
 	}
-	if g, ok := any(cl.Guard).(ast.Expr); !ok || g == nil {
-		t.Fatalf("Guard: type %T value %v, want non-nil ast.Expr", cl.Guard, cl.Guard)
+	if cl.Guard == nil {
+		t.Fatal("Guard: nil, want non-nil Expr")
 	}
 
 	main, ok := prog.Decls[1].(ast.FuncDecl)
@@ -72,12 +64,10 @@ fn main() ->
 	if len(lcl.Params) != 1 {
 		t.Fatalf("local: want 1 param, got %d", len(lcl.Params))
 	}
-	assertNotString(lcl.Params[0], "local Params[0]")
-	assertNotString(lcl.Guard, "local Guard")
-	if _, ok := any(lcl.Params[0]).(ast.Pattern); !ok {
-		t.Fatalf("local Params[0]: type %T, want ast.Pattern", lcl.Params[0])
+	if _, ok := lcl.Params[0].(ast.PatternCtor); !ok {
+		t.Fatalf("local Params[0]: type %T, want PatternCtor", lcl.Params[0])
 	}
-	if g, ok := any(lcl.Guard).(ast.Expr); !ok || g == nil {
-		t.Fatalf("local Guard: type %T value %v, want non-nil ast.Expr", lcl.Guard, lcl.Guard)
+	if lcl.Guard == nil {
+		t.Fatal("local Guard: nil, want Expr")
 	}
 }

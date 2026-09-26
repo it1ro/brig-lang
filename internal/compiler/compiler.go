@@ -369,7 +369,7 @@ func (c *Compiler) Compile(prog *ast.Program) (image *ProgramImage, err error) {
 		if cerr := checkSimpleFn(len(clauses), cl.Guard, cl.Params); cerr != nil {
 			return nil, fmt.Errorf("fn %s: %w", fd.FnName(), cerr)
 		}
-		fn, cerr := c.compileFunction(fd.FnName(), cl.Params, cl.Body)
+		fn, cerr := c.compileFunction(fd.FnName(), simpleParamNames(cl.Params), cl.Body)
 		if cerr != nil {
 			return nil, fmt.Errorf("fn %s: %w", fd.FnName(), cerr)
 		}
@@ -459,19 +459,47 @@ func (c *Compiler) compileBlock(name string, params []string, stmts []ast.Stmt) 
 
 // checkSimpleFn отвергает то, что компилятор не умеет, вместо того чтобы
 // молча взять clauses[0] и связать строку паттерна как имя (S-F2).
-func checkSimpleFn(nClauses int, guard string, params []string) error {
+// Именованные fn допускают IdentPattern и SpreadPattern (`..name`);
+// остальные паттерны и guard — fail-fast до T-51.
+func checkSimpleFn(nClauses int, guard ast.Expr, params []ast.Pattern) error {
 	if nClauses > 1 {
 		return fmt.Errorf("срез: мультиклозные fn не реализованы (%d клозов)", nClauses)
 	}
-	if guard != "" {
+	if guard != nil {
 		return fmt.Errorf("срез: guard `when %s` в fn не реализован", guard)
 	}
 	for _, p := range params {
-		if !isIdentParam(strings.TrimPrefix(p, "..")) {
+		switch x := p.(type) {
+		case ast.IdentPattern:
+			if !isIdentParam(x.IdentName()) {
+				return fmt.Errorf("срез: параметр-паттерн %q не реализован", p)
+			}
+		case ast.SpreadPattern:
+			if !isIdentParam(x.SpreadName()) {
+				return fmt.Errorf("срез: параметр-паттерн %q не реализован", p)
+			}
+		default:
 			return fmt.Errorf("срез: параметр-паттерн %q не реализован", p)
 		}
 	}
 	return nil
+}
+
+// simpleParamNames — имена для compileBody после checkSimpleFn
+// (IdentPattern / `..name` SpreadPattern).
+func simpleParamNames(params []ast.Pattern) []string {
+	out := make([]string, len(params))
+	for i, p := range params {
+		switch x := p.(type) {
+		case ast.SpreadPattern:
+			out[i] = ".." + x.SpreadName()
+		case ast.IdentPattern:
+			out[i] = x.IdentName()
+		default:
+			out[i] = p.String()
+		}
+	}
+	return out
 }
 
 // checkLambdaParams — fail-fast для полной лямбды `fn (…) ->` (T-44).
@@ -489,9 +517,7 @@ func checkLambdaParams(params []string) error {
 	return nil
 }
 
-// isIdentParam: параметры хранятся как pat.String(), поэтому IdentPattern
-// опознаётся по форме строки — LOWER_IDENT, не совпадающий с литералами
-// true/false.
+// isIdentParam: LOWER_IDENT (с опциональным trailing `?`), не true/false.
 func isIdentParam(p string) bool {
 	if p == "" || p[0] < 'a' || p[0] > 'z' || p == "true" || p == "false" {
 		return false
@@ -679,18 +705,19 @@ func (fc *funcCompiler) compileLocalFn(decl ast.LocalFnDecl, d dest) error {
 	child := fc.compiler.newFuncCompiler(fc)
 	child.prefix = mangled + "$"
 
+	paramNames := simpleParamNames(cl.Params)
 	variadic := false
-	for i, p := range cl.Params {
+	for i, p := range paramNames {
 		if strings.HasPrefix(p, "..") {
-			if i != len(cl.Params)-1 {
+			if i != len(paramNames)-1 {
 				return fmt.Errorf("local fn %s: variadic param must be last", name)
 			}
 			variadic = true
 		}
 	}
 	child.chunk.Variadic = variadic
-	child.chunk.NumParams = len(cl.Params)
-	for i, p := range cl.Params {
+	child.chunk.NumParams = len(paramNames)
+	for i, p := range paramNames {
 		r := child.allocReg()
 		if r != i {
 			return fmt.Errorf("internal: local fn param %d in r%d", i, r)
@@ -730,7 +757,7 @@ func (fc *funcCompiler) compileLocalFn(decl ast.LocalFnDecl, d dest) error {
 		return fmt.Errorf("срез: локальная fn %s с захватом не реализована", name)
 	}
 
-	fnArity := len(cl.Params)
+	fnArity := len(paramNames)
 	if variadic {
 		fnArity = -1
 	}

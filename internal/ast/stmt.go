@@ -35,8 +35,8 @@ type localFnDecl struct {
 
 type localFnClause struct {
 	posEnd
-	guard  string
-	params []string
+	guard  Expr
+	params []Pattern
 	body   *BlockStmt
 }
 

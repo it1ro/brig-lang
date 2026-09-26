@@ -76,7 +76,11 @@ fn f(()) -> 1
 	if len(clauses) != 1 || len(clauses[0].Params) != 1 {
 		t.Fatalf("want one clause with one param, got %+v", clauses)
 	}
-	if got := clauses[0].Params[0]; got != "()" {
+	lit, ok := clauses[0].Params[0].(ast.LiteralPattern)
+	if !ok {
+		t.Fatalf("param type %T, want LiteralPattern", clauses[0].Params[0])
+	}
+	if got := lit.ValueStr(); got != "()" {
 		t.Fatalf("param = %q, want %q", got, "()")
 	}
 }

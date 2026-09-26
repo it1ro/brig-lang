@@ -325,6 +325,14 @@ type PatternAs interface {
 func (p *asPat) AsInner() Pattern { return p.pattern }
 func (p *asPat) AsName() string   { return p.ident }
 
+// SpreadPattern — standalone `..name` variadic parameter.
+type SpreadPattern interface {
+	Pattern
+	SpreadName() string
+}
+
+func (p *spreadPat) SpreadName() string { return p.name }
+
 // --- декларации ---
 
 // FuncDecl — доступ к декларации функции.

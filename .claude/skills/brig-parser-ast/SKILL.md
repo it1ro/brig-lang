@@ -50,7 +50,7 @@ description: >
 
 | Что | Сейчас | Issue |
 |---|---|---|
-| Параметры и guard `fn` | Хранятся строками (`pat.String()`, `normalizeGuardString`, `stmt.go:90-146,190-199`) — AST не выражает параметр-паттерн | T-50 (#33) |
+| Параметры и guard `fn` | `Params []ast.Pattern`, `Guard ast.Expr` (T-50 #33). Variadic — `SpreadPattern` (`..name`). Мультиклозы/guard/не-ident паттерны — fail-fast компилятора до T-51 | T-51 (#34) |
 | `ensure` | Только `ensure expr`; блочная форма и гибрид `ensure expr`+блок — ошибка парсинга (S-F5 закрыт T-03 #3). Реализация блочной формы — out of scope | — |
 | `stmt_list` | NEWLINE между стейтментами обязателен (S-F6 закрыт T-21 #15): после `parseStmt` — NEWLINE/DEDENT/EOF/`until` | — |
 
@@ -73,9 +73,8 @@ T-54 (#37).
   ломаться непредсказуемо.
 - `Format(n Node)` должен быть идемпотентным: `format(parse(format(x))) ==
   format(x)` — есть тест `TestFormatIdempotent`. Любая правка форматтера
-  обязана сохранить это свойство. `stripOuterParens` (`stmt.go`) обязан
-  игнорировать скобки внутри строковых литералов, иначе
-  `fn f(x) when x == ")" -> 1` ломает round-trip (S-F12 закрыт T-20 #14).
+  обязана сохранить это свойство. Guard `fn` — `ast.Expr`; `Format` печатает
+  `when <guard>` через `exprString` без лишних скобок (S-F12 / T-20, T-50).
 - **`ast.Pretty` и `ast.Walk` выбирают интерфейс по порядку case.** Decl,
   Pattern и Type стоят раньше `Expr`, потому что у них есть
   `IsExpression()` и иначе `case Expr` перехватывает узел. `Expr` раньше
@@ -116,11 +115,9 @@ T-54 (#37).
 - Забыть, что `parseStmtList` скипает `NEWLINE` **в начале** итерации
   (FIX в v0.4.7, `parser/stmt.go`) — если переписывать цикл, важно
   сохранить эту устойчивость к висячим `NEWLINE` после вложенных блоков.
-- `normalizeGuardString` в `parser/stmt.go` снимает один уровень внешних
-  скобок у guard-выражения — без этого round-trip guard'ов
-  `n > 0` → `(n > 0)` → `((n > 0))` расходится. Это костыль строкового
-  guard'а: T-50 (#33) переводит guard в `ast.Expr` и удаляет его. Новых
-  мест со строковыми guard'ами не добавлять.
+- Guard `fn` — `ast.Expr` в клозе (T-50); `Format` печатает `when <expr>`
+  идемпотентно. Строковых helper'ов `normalizeGuardString` /
+  `stripOuterParens` больше нет.
 - `modeByMeta` в `internal/examples/examples.go` использует регексп с `\b`,
   чтобы `invalid_foo` не матчился как `invalid` — не убирать границу
   слова при правке меток fenced-блоков в докстрингах.
