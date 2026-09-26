@@ -143,19 +143,39 @@ func RegUse(in Instr) (reads, writes []int, err error) {
 	return nil, nil, fmt.Errorf("unknown opcode %d", in.Op())
 }
 
-// verifyMatchLocal: за каждым MATCHLOCAL обязана идти JMP.
+// verifyMatchLocal: структура MATCHLOCAL — за ним идёт JMP (fail-ребро),
+// success-ребро ip+2 внутри кода, паттерн Bx существует, его слоты —
+// регистры кадра. Проверяется и в недостижимом коде.
 func verifyMatchLocal(c *Chunk) error {
+	n := len(c.Code)
 	for ip, in := range c.Code {
 		if in.Op() != MATCHLOCAL {
 			continue
 		}
-		if ip+1 >= len(c.Code) {
+		if ip+1 >= n {
 			return fmt.Errorf("verify: MATCHLOCAL at %d: no following JMP", ip)
 		}
 		if c.Code[ip+1].Op() != JMP {
 			return fmt.Errorf(
 				"verify: MATCHLOCAL at %d: next op is %s, want JMP",
 				ip, c.Code[ip+1].Op())
+		}
+		if ip+2 >= n {
+			return fmt.Errorf(
+				"verify: MATCHLOCAL at %d: success target %d out of range [0,%d)",
+				ip, ip+2, n)
+		}
+		bx := in.Bx()
+		if bx < 0 || bx >= len(c.Patterns) {
+			return fmt.Errorf(
+				"verify: MATCHLOCAL at %d: pattern %d out of range", ip, bx)
+		}
+		for _, slot := range c.Patterns[bx].Slots() {
+			if slot >= c.NumRegs {
+				return fmt.Errorf(
+					"verify: MATCHLOCAL at %d: pattern %d slot %d out of range [0,%d)",
+					ip, bx, slot, c.NumRegs)
+			}
 		}
 	}
 	return nil
@@ -225,13 +245,6 @@ func verifyDefiniteAssignment(c *Chunk) error {
 		for ip := 0; ip < n; ip++ {
 			if in[ip] == nil {
 				continue
-			}
-			if ins := c.Code[ip]; ins.Op() == MATCHLOCAL {
-				if bx := ins.Bx(); bx < 0 || bx >= len(c.Patterns) {
-					return fmt.Errorf(
-						"verify: MATCHLOCAL at %d: pattern %d out of range",
-						ip, bx)
-				}
 			}
 			for _, e := range edges(c, ip, in[ip]) {
 				if e.target < 0 || e.target >= n {
@@ -315,8 +328,9 @@ func edges(c *Chunk, ip int, before []bool) []cfgEdge {
 		return []cfgEdge{{ip + 1, out}, {ip + 2, success}}
 	case RECVTAKE:
 		if in.SBx() != 0 {
-			// message → ip+1; after/timeout → ip+1+sBx.
-			return []cfgEdge{{ip + 1, out}, {ip + 1 + in.SBx(), out}}
+			// message → ip+1 (R[A] записан); after/timeout → ip+1+sBx
+			// (VM не пишет R[A], состояние — как на входе).
+			return []cfgEdge{{ip + 1, out}, {ip + 1 + in.SBx(), before}}
 		}
 		return []cfgEdge{{ip + 1, out}} // block, no after
 	case TRAPBEGIN:
