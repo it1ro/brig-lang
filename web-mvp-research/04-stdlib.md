@@ -20,12 +20,14 @@
 | `Bytes`, `Str` | см. 03/L8 | Go | M |
 | `Base64`, `Hex`, `Url` | кодеки | Go | M |
 | `Json` | уже есть; + `decode_as(Type, …)`, потоковый encode в iodata | Go | M |
-| `Time`, `Timer` | `monotonic_ms`, `now`, `send_after`, форматы RFC3339/HTTP-date | VM+Go | M |
+| `Time`, `Timer` | `monotonic_ms`, `now`, `send_after`, форматы RFC3339/HTTP-date; встроенная база часовых поясов (C1) | VM+Go | M |
+| `Unicode`, `Plural` | нормализация, регистр, CLDR-правила плюрализации (C4); переводы — пакет | Go | M |
 | `Crypto` | `sha256`, `hmac`, `random_bytes`, `secure_compare`, `argon2id`/`bcrypt` | Go | M (сессии, CSRF, пароли) |
 | `Tcp`, `Tls` | порты | VM+Go | M |
 | `Acme` | автоматический HTTPS (Let's Encrypt): HTTP-01 + TLS-ALPN-01, хранение в каталоге состояния, продление супервизируемым актором; интегрирован с `HttpServer` (`--domain`) (B1) | Go + Brig-актор | M |
 | `Cache` | шардированные акторы-кэши с TTL: сессии, rate limiting (B3) | Brig | M |
-| `File`, `Dir`, `Path` | потоковое чтение/запись, листинг, `glob` | VM+Go | M (скриптинг, статика) |
+| `File`, `Dir`, `Path` | потоковое чтение/запись, листинг, `glob`, временные файлы | VM+Go | M (скриптинг, статика, загрузки) |
+| `Http.Multipart` | потоковый разбор multipart; файлы больше порога — во временный файл, `Upload{ path, name, size, type }` (C2) | Brig | M |
 | `Proc` | subprocess как порт, `Proc.run(cmd, args)` для скриптов | VM+Go | M для скриптинга |
 | `Env`, `Sys` | `Env.get -> Option<Str>`, `Sys.args`, `Sys.exit`, `Signal` | VM | M |
 | `Supervisor`, `Server` | супервизор (статический и `start_dynamic`); generic server: `Server.call(pid, req, timeout)` шлёт `(:call, from, req)` и ждёт через `await` (02/R12), `Server.reply(from, v)` (§17.9) | Brig | M |

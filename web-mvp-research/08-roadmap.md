@@ -61,7 +61,10 @@ run-loop не блокируется.
 3. `Sql` + встроенный SQLite + миграции.
 4. `PubSub`, SSE.
 5. Шаблоны `.html.bt` (L10), сессии, CSRF.
-6. Лаунчер `calmar` (`brig install brig.dev/calmar`): `calmar new`, `calmar server`
+6. Фронтенд: import maps, кеш-бастинг ассетов (C8); загрузки файлов (C2).
+7. `brig observe`, страница ошибок в dev (C7); `SO_REUSEPORT` + graceful drain (C6).
+8. Официальные пакеты первой волны: `Postgres`, `Mailer` (D2).
+9. Лаунчер `calmar` (`brig install brig.dev/calmar`): `calmar new`, `calmar server`
    (на `brig run --watch`), `calmar db migrate`; `brig build` (payload с зависимостями).
 
 **Выход:** demo/`lookout` собирается `brig build` в один файл и работает.
@@ -69,6 +72,7 @@ run-loop не блокируется.
 ## Фаза 5. После MVP
 
 Экспорт/дифф схем (`brig schema export|diff`), импорт OpenAPI/protobuf (09),
+LSP, пакет фоновых заданий (C5), NATS/Redis/S3/OpenTelemetry (D2), серверный UI (C8),
 WebSocket, генераторы `calmar gen`, `brig console`, LSP, Chandler (индекс + прокси),
 права пакетов как в Deno (10),
 Postgres, фоновые задания с персистентностью, метрики, LiveView-подобное,
