@@ -28,13 +28,13 @@ description: >
 - **K-1.** Порядок вычисления: callee раньше аргументов; операнды/аргументы
   слева направо; в `%{}` — сначала ключ, потом значение; `and`/`or` —
   short-circuit.
-- **K-2.** `JMPIFNOT`/`JMPIF` прыгают **только** на строгий `Bool(false)`/
-  `Bool(true)`. Не-`Bool` не прыгает (падает вниз) — поэтому `and`/`or`
-  возвращают значение операнда, а не обязательно `Bool`. Это противоречит
-  спеке (§7.2, §8.1, §16 «строгий Bool», «Не надо: truthiness»):
-  `if 5 then` идёт в then, `1 or 2` → 2. Design decision #41 (A-F3)
-  решён вариантом A: не-`Bool` в `if` и в обоих операндах `and`/`or` →
-  `(:type_error, …)`. Проверки добавляет T-81 (#106), вне него не менять.
+- **K-2.** Строгий Bool (DD #41, вариант A; T-81 #106). `JMPIFNOT`/`JMPIF`
+  на не-`Bool` поднимают ловимый `*ErrRaise`
+  `(:type_error, (:expected_bool, v))` (`notBoolErr`, форма как у
+  `assert`) — для условия `if`, обоих операндов `and`/`or` и guard
+  (`fn`/`recv`). `and`/`or` всегда возвращают `Bool`. Правый операнд
+  проверяет холостой `JMPIF/JMPIFNOT acc, +0` после его вычисления
+  (`compileAndOr`). Классификация type errors (#42/T-83) не менялась.
 - **K-3.** `trap` ловит только `*ErrRaise` (см. `Frame.catch`). Ошибки
   арности, `arithErr`, `runtime.Compare`, `not` не-Bool — обычный `error`,
   фатальны для актора, `trap` их не видит. Но `decArithErr` возвращает
