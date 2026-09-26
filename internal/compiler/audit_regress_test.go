@@ -517,7 +517,6 @@ fn main() ->
 
 // §4.8: pattern matching чисел — точный (1.0 не матчит паттерн 1) (T-84).
 func TestAuditLiteralPatternIsExact(t *testing.T) {
-	t.Skip("blocked: T-84")
 	if err := runModuleErr(t, `module Main
 fn main() ->
     send(self(), 1.0)

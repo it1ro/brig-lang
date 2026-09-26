@@ -123,7 +123,7 @@ func MatchPattern(v runtime.Value, p *CompiledPattern, locals []runtime.Value) b
 		return true
 
 	case PatLiteral:
-		return runtime.Equal(v, p.Lit)
+		return runtime.MatchEqual(v, p.Lit)
 
 	case PatAs:
 		if !MatchPattern(v, p.Inner, locals) {
@@ -194,7 +194,7 @@ func MatchPattern(v runtime.Value, p *CompiledPattern, locals []runtime.Value) b
 		for _, pair := range p.Pairs {
 			found := false
 			for _, entry := range v.Map {
-				if runtime.Equal(entry.Key, pair.Key) {
+				if runtime.MatchEqual(entry.Key, pair.Key) {
 					if !MatchPattern(entry.Val, pair.Value, locals) {
 						return false
 					}
