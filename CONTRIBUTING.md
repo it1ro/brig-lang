@@ -6,7 +6,7 @@
 Не дублируем: правила языка — в `docs/01-language-design.md`, дизайн
 VM — в `docs/02-register-based-virtual-machine.md`. Задачи ведутся и ищутся только
 на Kanban-доске (GitHub Projects v2); `TASKS.md` — её локальная проекция (план волн,
-зависимости, DoD), при расхождении права доска.
+зависимости, DoD, без статусов), при расхождении права доска.
 
 ## 1. TL;DR
 
@@ -27,7 +27,7 @@ VM — в `docs/02-register-based-virtual-machine.md`. Задачи ведутс
 - Один issue = одна сессия. Не помещается в Effort L — дели на несколько issue.
 - Обязательные поля: Type, Effort, Model, Wave, Priority.
 - Label происхождения: `audit` — finding из `AUDIT_REPORT.md`, `spec-gap` — пробел реализации относительно спеки (§16). Задача без одного из них не берётся.
-- `TASKS.md` — проекция доски: после изменения статусов `make tasks-sync`.
+- Статус задачи — только на доске. `TASKS.md` хранит план, зависимости и DoD без статусов.
 - Зависимость — строкой в body, не label: `Blocked by #42`.
 - Issue остаётся в Blocked, пока все issue из `Blocked by` не закрыты.
 

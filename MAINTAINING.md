@@ -8,7 +8,7 @@
 |---|---|---|
 | Доска | [github.com/users/it1ro/projects/5](https://github.com/users/it1ro/projects/5), `gh project view 5 --owner it1ro --web` | Единственный список задач и их статусов |
 | Задачи с DoD | issues `it1ro/brig-lang` с label `audit` (findings аудита) или `spec-gap` (пробелы относительно спеки §16) | Body issue = блок задачи из `TASKS.md` |
-| План целиком | `TASKS.md` | Проекция доски: волны 0–6, зависимости, DoD, design decisions и ждущие их задачи. Статусы — `make tasks-sync` |
+| План целиком | `TASKS.md` | Проекция доски без статусов: волны 0–6, зависимости, DoD, design decisions и ждущие их задачи |
 | Находки | `AUDIT_REPORT.md` | Описание каждого finding (S-F*, A-F*, I-F*, O-F*) и пробных программ |
 | Правила | `CONTRIBUTING.md` | Ветки, коммиты, PR, DoR/DoD, правила для LLM-сессий |
 | Контекст для агентов | `.claude/skills/*/SKILL.md` | Инварианты подсистем и протокол сессии (`brig-workflow`) |
@@ -83,7 +83,6 @@ board_set 15 Status "In Progress"
 git switch main && git pull && git switch -c fix/T-21-newline-required
 # ... правка + тест-якорь из issue ...
 make all && BRIG_VERIFY=1 go test ./...
-make tasks-sync && { git diff --quiet TASKS.md || git commit -m "docs(tasks): sync statuses with board [T-21]" TASKS.md; }
 git commit -m "fix(parser): require NEWLINE between statements [T-21]"
 git push -u origin fix/T-21-newline-required
 gh pr create --title "$(git log -1 --format=%s)" --body-file pr.md   # pr.md — шаблон CONTRIBUTING.md §5 с "Closes #15"
@@ -170,7 +169,7 @@ git branch -D iter/regvm && git push origin --delete iter/regvm
 
 **Verification (T-13…T-15).** Результат — комментарий с выводом команд. Подтвердилось — новый issue по строке таблицы «Verification needed» в `TASKS.md`. Не подтвердилось — label `false-positive`, issue закрыт.
 
-**Design decision принят.** Записать вариант в issue (#40–#43) и закрыть. Задачи из таблицы «Задачи, ждущие решения» в `TASKS.md` уже заведены (#105–#112) и стоят в Blocked: у каждой, чьи блокеры закрыты, прочитать DoD — если выбранный вариант её отменяет, закрыть как won't-fix, иначе перевести в Todo. Затем `make tasks-sync`.
+**Design decision принят.** Записать вариант в issue (#40–#43) и закрыть. Задачи из таблицы «Задачи, ждущие решения» в `TASKS.md` уже заведены (#105–#112) и стоят в Blocked: у каждой, чьи блокеры закрыты, прочитать DoD — если выбранный вариант её отменяет, закрыть как won't-fix, иначе перевести в Todo.
 
 **Новый issue, найденный по пути:**
 

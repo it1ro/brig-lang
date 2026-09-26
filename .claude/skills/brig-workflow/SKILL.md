@@ -44,10 +44,9 @@ description: >
 2. `rg -n 'blocked: T-NN' internal` — пусто для своего T-NN.
 3. `rg -n 'T-NN' .claude/skills` — строки skills, описывающие ограничение, которое задача сняла, поправить в том же PR (skills — рабочие заметки агента, а не doc-файлы).
 4. `gofmt -l .` пуст; `git status` чист от временных `.brig`, `bin/`, `coverage.out`.
-5. `make tasks-sync`; если `TASKS.md` изменился — отдельный коммит `docs(tasks): sync statuses with board [T-NN]`. Конфликт в `TASKS.md` при rebase решается повторным `make tasks-sync`: файл перегенерируется по доске.
-6. PR в `main`, title = формат коммита, body по шаблону `CONTRIBUTING.md` §5: `Closes #<N>`, «Что сделано», «Что НЕ сделано», «Как проверялось» с реальными командами и результатом. PR трогает больше двух пакетов — объяснить почему.
-7. Статус → **In Review**. Режим «со сдачей на ревью» — здесь сессия заканчивается. Автономный режим — после зелёного CI `gh pr merge --squash --delete-branch`.
-8. После merge: `gh issue list --search '"Blocked by #<N>" in:body' --state open` — для каждого, у кого все блокеры закрыты, статус → **Todo**.
+5. PR в `main`, title = формат коммита, body по шаблону `CONTRIBUTING.md` §5: `Closes #<N>`, «Что сделано», «Что НЕ сделано», «Как проверялось» с реальными командами и результатом. PR трогает больше двух пакетов — объяснить почему.
+6. Статус → **In Review**. Режим «со сдачей на ревью» — здесь сессия заканчивается. Автономный режим — после зелёного CI `gh pr merge --squash --delete-branch`.
+7. После merge: `gh issue list --search '"Blocked by #<N>" in:body' --state open` — для каждого, у кого все блокеры закрыты, статус → **Todo**.
 
 ## Новый issue
 

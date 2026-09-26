@@ -8,7 +8,7 @@ VERSION ?= $(shell git describe --tags --always 2>/dev/null || echo dev)
 	git-hooks changelog fuzz update-golden update-bytecode clean \
 	test-roundtrip test-ast test-parser test-lexer test-one \
 	test-vm test-compiler run run-hello \
-	fmt-check cover cover-html ci-quick check repl tasks-sync
+	fmt-check cover cover-html ci-quick check repl
 
 # `make` без цели: полный локальный прогон всего, что должно быть зелёным.
 # Добавлены цели Трека C: test-vm и test-compiler.
@@ -98,10 +98,6 @@ ci-quick: fmt-check vet test-lexer test-parser test-roundtrip test-vm test-compi
 ## ---- Документация и грамматика (A1, A2, A6) ----
 check-examples:
 	$(GO) run ./cmd/check-examples -- docs/01-language-design.md
-
-# Статусы в TASKS.md по доске (нужен gh с доступом к проекту).
-tasks-sync:
-	tools/tasks-sync.sh TASKS.md
 
 ebnf-check:
 	@test -f brig.ebnf || (echo "brig.ebnf missing (extract from docs, A1)" && exit 1)
