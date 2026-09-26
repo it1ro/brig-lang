@@ -94,9 +94,13 @@ func (p *parser) parsePatternAtom() (ast.Pattern, error) {
 }
 
 // tuple_pattern ::= "(" pattern "," [ pattern { "," pattern } ] [ "," ] ")"
-// Также допускает группировку: "(" pattern ")".
+// Также допускает группировку: "(" pattern ")" и unit_lit: "()" (S-F9).
 func (p *parser) parseTupleOrGroupPattern() (ast.Pattern, error) {
 	start := p.advance() // (
+	if p.at(lexer.RPAREN) {
+		p.advance()
+		return ast.NewLiteralPat("()", start.Line, start.Col), nil
+	}
 	first, err := p.parsePattern()
 	if err != nil {
 		return nil, err

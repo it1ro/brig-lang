@@ -151,6 +151,12 @@ func (p *parser) parseParams() ([]string, error) {
 			}
 			continue
 		}
+		if p.match(lexer.NEWLINE) {
+			if p.at(lexer.RPAREN) {
+				break
+			}
+			continue
+		}
 		break
 	}
 	if _, err := p.expect(lexer.RPAREN, "')'"); err != nil {
