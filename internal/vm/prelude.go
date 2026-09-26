@@ -23,6 +23,20 @@ func InstallPrelude(vm *VM) {
 			Name: name, Arity: arity, IsNative: true, Native: fn,
 		})
 	}
+	defResumable := func(name string, arity int, start resumableFunc) {
+		fv := &runtime.FuncValue{
+			Name: name, Arity: arity, IsNative: true,
+			Native: func(c runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+				k, err := start(args)
+				if err != nil {
+					return runtime.Unit, err
+				}
+				return runSync(c, k)
+			},
+		}
+		globals[name] = runtime.Func(fv)
+		vm.resumable[fv] = start
+	}
 
 	// ---- I/O ----
 
@@ -111,120 +125,115 @@ func InstallPrelude(vm *VM) {
 		return runtime.Set(out...), nil
 	})
 
-	def("map", 2, func(c runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+	// Функции высшего порядка — возобновляемые нативы (G3, T-58): на CALL
+	// из байткода состояние обхода живёт в кадре актора, колбэк исполняется
+	// обычным кадром и тратит редукции. Через Caller (vm.Call) — синхронно.
+	defResumable("map", 2, func(args []runtime.Value) (nativeCont, error) {
 		f, xs := args[0], args[1]
 		if xs.Kind != runtime.KindList {
-			return runtime.Unit, fmt.Errorf("(:type_error, (:map, %s))", xs.Inspect())
+			return nil, fmt.Errorf("(:type_error, (:map, %s))", xs.Inspect())
 		}
 		out := make([]runtime.Value, 0, len(xs.List))
-		for _, e := range xs.List {
-			r, err := c.Call(f, []runtime.Value{e})
-			if err != nil {
-				return runtime.Unit, err
-			}
-			out = append(out, r)
-		}
-		return runtime.List(out...), nil
+		return &listCont{
+			f: f, xs: xs.List,
+			visit: func(_, r runtime.Value) (bool, runtime.Value, error) {
+				out = append(out, r)
+				return false, runtime.Unit, nil
+			},
+			final: func() runtime.Value { return runtime.List(out...) },
+		}, nil
 	})
 
-	def("filter", 2, func(c runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+	defResumable("filter", 2, func(args []runtime.Value) (nativeCont, error) {
 		f, xs := args[0], args[1]
 		if xs.Kind != runtime.KindList {
-			return runtime.Unit, fmt.Errorf("(:type_error, (:filter, %s))", xs.Inspect())
+			return nil, fmt.Errorf("(:type_error, (:filter, %s))", xs.Inspect())
 		}
 		out := make([]runtime.Value, 0, len(xs.List))
-		for _, e := range xs.List {
-			r, err := c.Call(f, []runtime.Value{e})
-			if err != nil {
-				return runtime.Unit, err
-			}
-			if r.Kind != runtime.KindBool {
-				return runtime.Unit, fmt.Errorf(
-					"(:type_error, (:filter_predicate, %s))", r.Inspect())
-			}
-			if r.Bool {
-				out = append(out, e)
-			}
-		}
-		return runtime.List(out...), nil
+		return &listCont{
+			f: f, xs: xs.List,
+			visit: func(e, r runtime.Value) (bool, runtime.Value, error) {
+				if r.Kind != runtime.KindBool {
+					return false, runtime.Unit, fmt.Errorf(
+						"(:type_error, (:filter_predicate, %s))", r.Inspect())
+				}
+				if r.Bool {
+					out = append(out, e)
+				}
+				return false, runtime.Unit, nil
+			},
+			final: func() runtime.Value { return runtime.List(out...) },
+		}, nil
 	})
 
-	def("find", 2, func(c runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+	defResumable("find", 2, func(args []runtime.Value) (nativeCont, error) {
 		f, xs := args[0], args[1]
 		if xs.Kind != runtime.KindList {
-			return runtime.Unit, fmt.Errorf("(:type_error, (:find, %s))", xs.Inspect())
+			return nil, fmt.Errorf("(:type_error, (:find, %s))", xs.Inspect())
 		}
-		for _, e := range xs.List {
-			r, err := c.Call(f, []runtime.Value{e})
-			if err != nil {
-				return runtime.Unit, err
-			}
-			if r.Kind != runtime.KindBool {
-				return runtime.Unit, fmt.Errorf(
-					"(:type_error, (:find_predicate, %s))", r.Inspect())
-			}
-			if r.Bool {
-				return runtime.Variant("Some", e), nil
-			}
-		}
-		return runtime.Variant("None"), nil
+		return &listCont{
+			f: f, xs: xs.List,
+			visit: func(e, r runtime.Value) (bool, runtime.Value, error) {
+				if r.Kind != runtime.KindBool {
+					return false, runtime.Unit, fmt.Errorf(
+						"(:type_error, (:find_predicate, %s))", r.Inspect())
+				}
+				return r.Bool, runtime.Variant("Some", e), nil
+			},
+			final: func() runtime.Value { return runtime.Variant("None") },
+		}, nil
 	})
 
-	def("all", 2, func(c runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+	defResumable("all", 2, func(args []runtime.Value) (nativeCont, error) {
 		f, xs := args[0], args[1]
 		if xs.Kind != runtime.KindList {
-			return runtime.Unit, fmt.Errorf("(:type_error, (:all, %s))", xs.Inspect())
+			return nil, fmt.Errorf("(:type_error, (:all, %s))", xs.Inspect())
 		}
-		for _, e := range xs.List {
-			r, err := c.Call(f, []runtime.Value{e})
-			if err != nil {
-				return runtime.Unit, err
-			}
-			if r.Kind != runtime.KindBool {
-				return runtime.Unit, fmt.Errorf(
-					"(:type_error, (:all_predicate, %s))", r.Inspect())
-			}
-			if !r.Bool {
-				return runtime.Bool(false), nil
-			}
-		}
-		return runtime.Bool(true), nil
+		return &listCont{
+			f: f, xs: xs.List,
+			visit: func(_, r runtime.Value) (bool, runtime.Value, error) {
+				if r.Kind != runtime.KindBool {
+					return false, runtime.Unit, fmt.Errorf(
+						"(:type_error, (:all_predicate, %s))", r.Inspect())
+				}
+				return !r.Bool, runtime.Bool(false), nil
+			},
+			final: func() runtime.Value { return runtime.Bool(true) },
+		}, nil
 	})
 
-	def("any", 2, func(c runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+	defResumable("any", 2, func(args []runtime.Value) (nativeCont, error) {
 		f, xs := args[0], args[1]
 		if xs.Kind != runtime.KindList {
-			return runtime.Unit, fmt.Errorf("(:type_error, (:any, %s))", xs.Inspect())
+			return nil, fmt.Errorf("(:type_error, (:any, %s))", xs.Inspect())
 		}
-		for _, e := range xs.List {
-			r, err := c.Call(f, []runtime.Value{e})
-			if err != nil {
-				return runtime.Unit, err
-			}
-			if r.Kind != runtime.KindBool {
-				return runtime.Unit, fmt.Errorf(
-					"(:type_error, (:any_predicate, %s))", r.Inspect())
-			}
-			if r.Bool {
-				return runtime.Bool(true), nil
-			}
-		}
-		return runtime.Bool(false), nil
+		return &listCont{
+			f: f, xs: xs.List,
+			visit: func(_, r runtime.Value) (bool, runtime.Value, error) {
+				if r.Kind != runtime.KindBool {
+					return false, runtime.Unit, fmt.Errorf(
+						"(:type_error, (:any_predicate, %s))", r.Inspect())
+				}
+				return r.Bool, runtime.Bool(true), nil
+			},
+			final: func() runtime.Value { return runtime.Bool(false) },
+		}, nil
 	})
 
-	def("fold", 3, func(c runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+	defResumable("fold", 3, func(args []runtime.Value) (nativeCont, error) {
 		f, acc, xs := args[0], args[1], args[2]
 		if xs.Kind != runtime.KindList {
-			return runtime.Unit, fmt.Errorf("(:type_error, (:fold, %s))", xs.Inspect())
+			return nil, fmt.Errorf("(:type_error, (:fold, %s))", xs.Inspect())
 		}
-		for _, e := range xs.List {
-			r, err := c.Call(f, []runtime.Value{acc, e})
-			if err != nil {
-				return runtime.Unit, err
-			}
-			acc = r
-		}
-		return acc, nil
+		return &listCont{
+			f: f, xs: xs.List,
+			args: func(e runtime.Value) []runtime.Value { return []runtime.Value{acc, e} },
+			visit: func(_, r runtime.Value) (bool, runtime.Value, error) {
+				acc = r
+				return false, runtime.Unit, nil
+			},
+			final: func() runtime.Value { return acc },
+		}, nil
 	})
 
 	// ---- Vec module (§4.4) ----
@@ -469,4 +478,76 @@ func smallIdx(v runtime.Value) (int64, bool) {
 		return 0, false
 	}
 	return v.SmallInt, true
+}
+
+// ---- возобновляемые нативы (G3, T-58) ----
+
+// nativeStep — ход возобновляемого натива: вызвать fn(args) и вернуться в
+// resume с его результатом либо (done) завершиться со значением res.
+type nativeStep struct {
+	fn   runtime.Value
+	args []runtime.Value
+	done bool
+	res  runtime.Value
+}
+
+// nativeCont — состояние нативной функции высшего порядка между вызовами
+// колбэка. resume получает результат предыдущего колбэка (в первый раз —
+// Unit).
+type nativeCont interface {
+	resume(ret runtime.Value) (nativeStep, error)
+}
+
+// resumableFunc проверяет аргументы вызова и строит nativeCont.
+type resumableFunc func(args []runtime.Value) (nativeCont, error)
+
+// runSync исполняет nativeCont синхронно, вызывая колбэки через Caller.
+func runSync(c runtime.Caller, k nativeCont) (runtime.Value, error) {
+	ret := runtime.Unit
+	for {
+		st, err := k.resume(ret)
+		if err != nil {
+			return runtime.Unit, err
+		}
+		if st.done {
+			return st.res, nil
+		}
+		if ret, err = c.Call(st.fn, st.args); err != nil {
+			return runtime.Unit, err
+		}
+	}
+}
+
+// listCont обходит xs, вызывая f на каждом элементе (с аргументами
+// args(e), по умолчанию — e). visit получает элемент и результат колбэка
+// и может завершить обход досрочно со значением res; иначе итог — final().
+type listCont struct {
+	f     runtime.Value
+	xs    []runtime.Value
+	i     int
+	args  func(e runtime.Value) []runtime.Value
+	visit func(e, r runtime.Value) (stop bool, res runtime.Value, err error)
+	final func() runtime.Value
+}
+
+func (c *listCont) resume(ret runtime.Value) (nativeStep, error) {
+	if c.i > 0 {
+		stop, res, err := c.visit(c.xs[c.i-1], ret)
+		if err != nil {
+			return nativeStep{}, err
+		}
+		if stop {
+			return nativeStep{done: true, res: res}, nil
+		}
+	}
+	if c.i == len(c.xs) {
+		return nativeStep{done: true, res: c.final()}, nil
+	}
+	e := c.xs[c.i]
+	c.i++
+	args := []runtime.Value{e}
+	if c.args != nil {
+		args = c.args(e)
+	}
+	return nativeStep{fn: c.f, args: args}, nil
 }
