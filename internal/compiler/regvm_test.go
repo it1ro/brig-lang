@@ -1,11 +1,13 @@
 package compiler_test
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/it1ro/brig-lang/internal/compiler"
 	"github.com/it1ro/brig-lang/internal/parser"
+	"github.com/it1ro/brig-lang/internal/sema"
 	"github.com/it1ro/brig-lang/internal/vm"
 )
 
@@ -204,6 +206,9 @@ func runModuleErr(t *testing.T, src string) error {
 	prog, err := parser.ParseProgram(parser.ModeModule, src)
 	if err != nil {
 		t.Fatalf("parse: %v", err)
+	}
+	if semaRes := sema.Check(prog); semaRes.HasErrors() {
+		return fmt.Errorf("sema:\n%s", formatSemaDiagnostics(semaRes))
 	}
 	img, err := compiler.New().Compile(prog)
 	if err != nil {

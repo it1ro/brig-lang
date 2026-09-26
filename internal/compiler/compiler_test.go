@@ -1,20 +1,27 @@
 package compiler_test
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/it1ro/brig-lang/internal/compiler"
 	"github.com/it1ro/brig-lang/internal/parser"
+	"github.com/it1ro/brig-lang/internal/sema"
 	"github.com/it1ro/brig-lang/internal/vm"
 )
 
 // runModule прогоняет модуль через scheduler (RunMain), чтобы recv
-// и другие акторные примитивы работали.
+// и другие акторные примитивы работали. После parse вызывает sema.Check
+// (как CLI `brig run`/`brig check`) и падает на HasErrors.
 func runModule(t *testing.T, src string) {
 	t.Helper()
 	prog, err := parser.ParseProgram(parser.ModeModule, src)
 	if err != nil {
 		t.Fatalf("parse: %v", err)
+	}
+	if semaRes := sema.Check(prog); semaRes.HasErrors() {
+		t.Fatalf("sema:\n%s", formatSemaDiagnostics(semaRes))
 	}
 	img, err := compiler.New().Compile(prog)
 	if err != nil {
@@ -30,6 +37,19 @@ func runModule(t *testing.T, src string) {
 	if _, err := m.RunMain(m.Global("main")); err != nil {
 		t.Fatalf("run: %v", err)
 	}
+}
+
+// formatSemaDiagnostics зеркалит CLI reportDiagnostics (severityность + позиция + Message).
+func formatSemaDiagnostics(r *sema.Result) string {
+	var b strings.Builder
+	for _, d := range r.Diagnostics {
+		sev := "error"
+		if d.Severity == sema.SeverityInfo {
+			sev = "info"
+		}
+		fmt.Fprintf(&b, "%s: %d:%d: %s\n", sev, d.Line, d.Col, d.Message)
+	}
+	return b.String()
 }
 
 func TestHello(t *testing.T) {
@@ -243,8 +263,10 @@ fn main() ->
 func TestTrapNoEnsureUnchanged(t *testing.T) {
 	runModule(t, `module Main
 fn main() ->
-    print(trap(1 + 1))
-    print(trap(raise(:x)))
+    a = trap(1 + 1)
+    print(a)
+    b = trap(raise(:x))
+    print(b)
 `)
 }
 
@@ -489,9 +511,12 @@ fn main() ->
 func TestDivByZeroSmallInt(t *testing.T) {
 	runModule(t, `module Main
 fn main() ->
-    print(trap(1 div 0))
-    print(trap(1 rem 0))
-    print(trap(0 ** 0))
+    a = trap(1 div 0)
+    print(a)
+    b = trap(1 rem 0)
+    print(b)
+    c = trap(0 ** 0)
+    print(c)
 `)
 }
 
@@ -768,24 +793,30 @@ fn main() ->
 func TestDecimalFloatTypeError(t *testing.T) {
 	runModule(t, `module Main
 fn main() ->
-    print(trap(dec"1.5" + 1.5))
-    print(trap(dec"1.5" == 1.5))
-    print(trap(dec"1.5" < 1.5))
+    a = trap(dec"1.5" + 1.5)
+    print(a)
+    b = trap(dec"1.5" == 1.5)
+    print(b)
+    c = trap(dec"1.5" < 1.5)
+    print(c)
 `)
 }
 
 func TestDecimalDivideByZero(t *testing.T) {
 	runModule(t, `module Main
 fn main() ->
-    print(trap(dec"1" / dec"0"))
+    a = trap(dec"1" / dec"0")
+    print(a)
 `)
 }
 
 func TestDecimalIntDivRemTypeError(t *testing.T) {
 	runModule(t, `module Main
 fn main() ->
-    print(trap(dec"5" div 2))
-    print(trap(dec"5" rem 2))
+    a = trap(dec"5" div 2)
+    print(a)
+    b = trap(dec"5" rem 2)
+    print(b)
 `)
 }
 
