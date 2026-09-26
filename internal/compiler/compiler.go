@@ -2792,6 +2792,12 @@ func (fc *funcCompiler) compileConstExpr(e ast.Expr) (runtime.Value, error) {
 		return parseLiteralValue(x.ValueStr())
 	case ast.AtomExpr:
 		return runtime.Atom(x.AtomName()), nil
+	case ast.DecimalExpr:
+		r, err := runtime.ParseDecimal(x.ValueStr())
+		if err != nil {
+			return runtime.Unit, err
+		}
+		return runtime.Decimal(r), nil
 	case ast.GroupingExpr:
 		return fc.compileConstExpr(x.Inner())
 	}
