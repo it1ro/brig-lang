@@ -48,6 +48,51 @@ type CompiledPattern struct {
 	Inner  *CompiledPattern
 }
 
+// Slots возвращает регистры, которые MatchPattern записывает при успешном
+// сопоставлении. Используется vm.Verify для рёбер MATCHLOCAL (только ip+2).
+func (p *CompiledPattern) Slots() []int {
+	if p == nil {
+		return nil
+	}
+	var slots []int
+	var walk func(*CompiledPattern)
+	walk = func(p *CompiledPattern) {
+		if p == nil {
+			return
+		}
+		switch p.Kind {
+		case PatIdent:
+			if p.Slot >= 0 {
+				slots = append(slots, p.Slot)
+			}
+		case PatAs:
+			if p.AsSlot >= 0 {
+				slots = append(slots, p.AsSlot)
+			}
+			walk(p.Inner)
+		case PatList:
+			if p.HasRest && p.RestSlot >= 0 {
+				slots = append(slots, p.RestSlot)
+			}
+			for _, sub := range p.Subs {
+				walk(sub)
+			}
+		case PatCtor, PatTuple:
+			for _, sub := range p.Subs {
+				walk(sub)
+			}
+		case PatMap:
+			for _, pair := range p.Pairs {
+				walk(pair.Value)
+			}
+		case PatWildcard, PatLiteral:
+			// nothing
+		}
+	}
+	walk(p)
+	return slots
+}
+
 // MatchPattern пытается сопоставить v с p, записывая связывания в locals.
 func MatchPattern(v runtime.Value, p *CompiledPattern, locals []runtime.Value) bool {
 	if p == nil {

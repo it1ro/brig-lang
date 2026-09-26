@@ -122,14 +122,13 @@ definite assignment (dataflow: регистр определён на всех �
 к точке чтения, включая ветку `TRAPBEGIN`-обработчика). Включается
 `compiler.Verify = true` (в тестах — всегда) или `BRIG_VERIFY=1` в CLI.
 
-**Дыра в CFG (I-F1, T-36 #25):** `successors` (`verify.go:304-316`) не
-моделирует успешное ребро `MATCHLOCAL` (ip+2) и ребро `RECVTAKE→after`,
-`applyWrites` не помечает слоты паттерна определёнными. Тела всех веток
-`recv` и `after` для definite assignment недостижимы (`in[ip]==nil`) и
-**не проверяются**. Якоря в `verify_test.go` (T-10 #8):
-`TestVerifyRejectsTailCallUnderTrap` и `TestVMTailCallUnderTrapGuard`
-зелёные; `TestVerifyMatchLocalBranchUndefinedReg` /
-`TestVerifyRecvAfterUndefinedReg` — `t.Skip("blocked: T-36")`.
+**CFG MATCHLOCAL/RECVTAKE (I-F1, T-36 #25):** `successors` моделирует
+`MATCHLOCAL → {ip+1, ip+2}` и `RECVTAKE` с `sBx≠0 → {ip+1, ip+1+sBx}`
+(`sBx==0` — только `{ip+1}`, block без after). На success-ребре
+`MATCHLOCAL` (ip+2) `verifyDefiniteAssignment` помечает слоты
+`Patterns[Bx].Slots()` определёнными; fail-ребро (ip+1, JMP) — нет.
+Якоря: `TestVerifyMatchLocalBranchUndefinedReg`,
+`TestVerifyRecvAfterUndefinedReg`, `TestCompiledPatternSlots`.
 
 **Не отключать `Verify` в тестах компилятора/VM** — это единственная
 защита, ловящая рассинхрон между `emit`, `RegUse` и реальной семантикой

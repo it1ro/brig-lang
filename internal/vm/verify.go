@@ -226,8 +226,9 @@ func verifyDefiniteAssignment(c *Chunk) error {
 			if in[ip] == nil {
 				continue
 			}
+			ins := c.Code[ip]
 			out := cloneBoolSlice(in[ip])
-			applyWrites(c.Code[ip], out)
+			applyWrites(ins, out)
 
 			propagate := func(succ int, state []bool) {
 				if succ < 0 || succ >= n {
@@ -245,17 +246,37 @@ func verifyDefiniteAssignment(c *Chunk) error {
 				}
 			}
 
-			for _, succ := range successors(c.Code, ip) {
-				propagate(succ, out)
+			// MATCHLOCAL: fail → ip+1 (без слотов паттерна), success → ip+2
+			// (слоты Patterns[Bx]). Не гоняем generic successors, иначе
+			// оба ребра получат одинаковый out без слотов.
+			if ins.Op() == MATCHLOCAL {
+				propagate(ip+1, out)
+				successOut := cloneBoolSlice(out)
+				bx := ins.Bx()
+				if bx < 0 || bx >= len(c.Patterns) {
+					return fmt.Errorf(
+						"verify: MATCHLOCAL at %d: pattern %d out of range",
+						ip, bx)
+				}
+				for _, slot := range c.Patterns[bx].Slots() {
+					if slot >= 0 && slot < len(successOut) {
+						successOut[slot] = true
+					}
+				}
+				propagate(ip+2, successOut)
+			} else {
+				for _, succ := range successors(c.Code, ip) {
+					propagate(succ, out)
+				}
 			}
 
-			if c.Code[ip].Op() == TRAPBEGIN {
+			if ins.Op() == TRAPBEGIN {
 				handlerOut := cloneBoolSlice(out)
-				errReg := c.Code[ip].A()
+				errReg := ins.A()
 				if errReg >= 0 && errReg < len(handlerOut) {
 					handlerOut[errReg] = true
 				}
-				propagate(ip+1+c.Code[ip].SBx(), handlerOut)
+				propagate(ip+1+ins.SBx(), handlerOut)
 			}
 		}
 	}
@@ -308,6 +329,15 @@ func successors(code []Instr, ip int) []int {
 		return []int{ip + 1 + in.SBx()}
 	case JMPIFNOT, JMPIF:
 		return []int{ip + 1, ip + 1 + in.SBx()}
+	case MATCHLOCAL:
+		// fail → JMP at ip+1; success → body at ip+2 (skip JMP).
+		return []int{ip + 1, ip + 2}
+	case RECVTAKE:
+		if in.SBx() != 0 {
+			// message → ip+1 (writes A); after/timeout → ip+1+sBx (no write).
+			return []int{ip + 1, ip + 1 + in.SBx()}
+		}
+		return []int{ip + 1} // block, no after
 	case RETURN, TAILCALL, RAISE:
 		return nil
 	default:
