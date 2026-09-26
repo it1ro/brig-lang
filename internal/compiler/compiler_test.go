@@ -2,6 +2,8 @@ package compiler_test
 
 import (
 	"fmt"
+	"io"
+	"os"
 	"strings"
 	"testing"
 
@@ -10,6 +12,29 @@ import (
 	"github.com/it1ro/brig-lang/internal/sema"
 	"github.com/it1ro/brig-lang/internal/vm"
 )
+
+// captureStdout redirects os.Stdout for the duration of fn and returns
+// the captured bytes as a string.
+func captureStdout(t *testing.T, fn func()) string {
+	t.Helper()
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("pipe: %v", err)
+	}
+	old := os.Stdout
+	os.Stdout = w
+	defer func() { os.Stdout = old }()
+
+	fn()
+
+	_ = w.Close()
+	b, err := io.ReadAll(r)
+	_ = r.Close()
+	if err != nil {
+		t.Fatalf("read stdout: %v", err)
+	}
+	return string(b)
+}
 
 // runModule прогоняет модуль через scheduler (RunMain), чтобы recv
 // и другие акторные примитивы работали. После parse вызывает sema.Check
@@ -229,11 +254,13 @@ fn main() ->
 }
 
 func TestTrapEnsureRaisesInBody(t *testing.T) {
+	// ensure зарегистрирован до raise → при ошибке тела cleanup
+	// выполняется и его ошибка побеждает (§10.3, last error wins).
 	runModule(t, `module Main
 fn main() ->
     result = trap
-        raise(:body_failed)
         ensure raise(:cleanup_failed)
+        raise(:body_failed)
     assert(result == Error(:cleanup_failed))
 `)
 }
@@ -258,6 +285,38 @@ fn main() ->
         raise(:boom)
     assert(result == Error(:first_registered))
 `)
+}
+
+// I-F5 / T-37: ensure после raise в тексте не регистрируется и не
+// исполняется; ensure до raise — исполняется (p/v2 audit probe).
+func TestEnsureNotRunBeforeRegistration(t *testing.T) {
+	out := captureStdout(t, func() {
+		runModule(t, `module Main
+fn main() ->
+    r = trap
+        raise(:early)
+        ensure print(:should_not_run)
+        1
+    assert(r == Error(:early))
+`)
+	})
+	if strings.Contains(out, "should_not_run") {
+		t.Fatalf("ensure after raise must not run; stdout=%q", out)
+	}
+
+	out = captureStdout(t, func() {
+		runModule(t, `module Main
+fn main() ->
+    r = trap
+        ensure print(:did_run)
+        raise(:early)
+        1
+    assert(r == Error(:early))
+`)
+	})
+	if !strings.Contains(out, "did_run") {
+		t.Fatalf("ensure before raise must run; stdout=%q", out)
+	}
 }
 
 func TestTrapNoEnsureUnchanged(t *testing.T) {
