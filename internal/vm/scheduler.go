@@ -992,8 +992,11 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 			pidVal := regs[in.B()]
 			msg := regs[in.C()]
 			if pidVal.Kind != runtime.KindPid {
-				return fail(fmt.Errorf(
-					"(:type_error, (:send, %s))", pidVal.Inspect()))
+				err := typeErr("send", pidVal)
+				if f.catch(err) {
+					continue
+				}
+				return fail(err)
 			}
 			regs[in.A()] = s.Send(pidVal.Pid, msg)
 			f.ip++
@@ -1011,8 +1014,11 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 		case WATCH:
 			pidVal := regs[in.B()]
 			if pidVal.Kind != runtime.KindPid {
-				return fail(fmt.Errorf(
-					"(:type_error, (:watch, %s))", pidVal.Inspect()))
+				err := typeErr("watch", pidVal)
+				if f.catch(err) {
+					continue
+				}
+				return fail(err)
 			}
 			ref := s.Watch(a.pid, pidVal.Pid)
 			regs[in.A()] = runtime.Value{Kind: runtime.KindRef, Ref: ref}
@@ -1021,8 +1027,11 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 		case UNWATCH:
 			refVal := regs[in.B()]
 			if refVal.Kind != runtime.KindRef {
-				return fail(fmt.Errorf(
-					"(:type_error, (:unwatch, %s))", refVal.Inspect()))
+				err := typeErr("unwatch", refVal)
+				if f.catch(err) {
+					continue
+				}
+				return fail(err)
 			}
 			s.Unwatch(a.pid, refVal.Ref)
 			regs[in.A()] = runtime.Unit
@@ -1031,8 +1040,11 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 		case MAILBOXSIZE:
 			pidVal := regs[in.B()]
 			if pidVal.Kind != runtime.KindPid {
-				return fail(fmt.Errorf(
-					"(:type_error, (:mailbox_size, %s))", pidVal.Inspect()))
+				err := typeErr("mailbox_size", pidVal)
+				if f.catch(err) {
+					continue
+				}
+				return fail(err)
 			}
 			if t, ok := s.actors[pidVal.Pid]; ok {
 				regs[in.A()] = runtime.Int(int64(len(t.mailbox)))
@@ -1044,23 +1056,32 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 		case RECVTIMER:
 			msVal := regs[in.A()]
 			if msVal.Kind != runtime.KindInt {
-				return fail(fmt.Errorf(
-					"(:type_error, (:after, %s))", msVal.Inspect()))
+				err := typeErr("after", msVal)
+				if f.catch(err) {
+					continue
+				}
+				return fail(err)
 			}
 			var ms int64
 			if msVal.IsSmall {
 				ms = msVal.SmallInt
 			} else {
 				if !msVal.AsBig().IsInt64() {
-					return fail(fmt.Errorf(
-						"(:type_error, (:after, %s))", msVal.Inspect()))
+					err := typeErr("after", msVal)
+					if f.catch(err) {
+						continue
+					}
+					return fail(err)
 				}
 				ms = msVal.AsBig().Int64()
 			}
 			d, ok := recvTimerDuration(ms)
 			if !ok {
-				return fail(fmt.Errorf(
-					"(:type_error, (:after, %s))", msVal.Inspect()))
+				err := typeErr("after", msVal)
+				if f.catch(err) {
+					continue
+				}
+				return fail(err)
 			}
 			a.recvDeadline = time.Now().Add(d)
 			a.timerSeq = s.nextSeq
