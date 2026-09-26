@@ -577,9 +577,9 @@ func valueToRat(v Value) (*big.Rat, bool) {
 // Compare возвращает -1/0/+1.
 //
 // Порядок между видами — term order §7.4 (число < Bool < Range < атом <
-// Bytes < Str < кортеж < Vector < List < Map < Set < встроенные варианты <
-// Pid < Ref); внутри вида — по правилам вида. Function вне списка и даёт
-// :type_error.
+// Bytes < Str < кортеж < Vector < List < Map < Set < номинальная запись <
+// встроенные варианты < анонимная запись < Pid < Ref); внутри вида — по
+// правилам вида. Function вне списка и даёт :type_error.
 //
 // Decimal-правила: Decimal×Decimal и Decimal×Int — точно, по значению;
 // Decimal×Float — ошибка (жёстко, §7.4).
@@ -625,6 +625,8 @@ func Compare(a, b Value) (int, error) {
 		return compareMaps(a.Map, b.Map)
 	case rankSet:
 		return compareSlices(sortedValues(a.Set), sortedValues(b.Set))
+	case rankNominal, rankAnon:
+		return compareRecords(a.Record, b.Record)
 	case rankVariant:
 		return compareVariants(a.Variant, b.Variant)
 	case rankPid:
@@ -648,7 +650,9 @@ const (
 	rankList
 	rankMap
 	rankSet
+	rankNominal
 	rankVariant
+	rankAnon
 	rankPid
 	rankRef
 )
@@ -677,6 +681,11 @@ func termRank(v Value) (int, bool) {
 		return rankMap, true
 	case KindSet:
 		return rankSet, true
+	case KindRecord:
+		if v.Record.Type == "" {
+			return rankAnon, true
+		}
+		return rankNominal, true
 	case KindVariant:
 		return rankVariant, true
 	case KindPid:
@@ -779,6 +788,34 @@ func compareVariants(a, b *VariantValue) (int, error) {
 		}
 	}
 	return compareSlices(a.Args, b.Args)
+}
+
+// compareRecords: для номинальных — имя типа; затем число полей и пары
+// (имя, значение) в порядке отсортированных имён — не зависит от порядка
+// полей в литерале.
+func compareRecords(a, b *RecordValue) (int, error) {
+	if c := strings.Compare(a.Type, b.Type); c != 0 {
+		return c, nil
+	}
+	if len(a.Fields) != len(b.Fields) {
+		return cmpInt(len(a.Fields), len(b.Fields)), nil
+	}
+	fa, fb := sortedFields(a.Fields), sortedFields(b.Fields)
+	for i := range fa {
+		if c := strings.Compare(fa[i].Name, fb[i].Name); c != 0 {
+			return c, nil
+		}
+		if c, err := Compare(fa[i].Val, fb[i].Val); err != nil || c != 0 {
+			return c, err
+		}
+	}
+	return 0, nil
+}
+
+func sortedFields(fs []RecordField) []RecordField {
+	out := append([]RecordField(nil), fs...)
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
 }
 
 func cmpInt64(a, b int64) int {
