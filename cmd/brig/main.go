@@ -158,7 +158,7 @@ func runFile(args []string) {
 	img, err := compiler.New().Compile(prog)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "brig run: %s: compile: %v\n", args[0], err)
-		os.Exit(exitInternal)
+		os.Exit(exitForCompileErr(err))
 	}
 	if img.Main == nil {
 		fmt.Fprintf(os.Stderr, "brig run: %s: нет функции main()\n", args[0])
@@ -199,8 +199,32 @@ func runFile(args []string) {
 	mainVal := machine.Global("main")
 	if _, err := machine.RunMain(mainVal); err != nil {
 		fmt.Fprintf(os.Stderr, "brig run: %s: %v\n", args[0], err)
-		os.Exit(exitRuntime)
+		os.Exit(exitForRunErr(err))
 	}
+}
+
+// exitForCompileErr maps compile failures to CLI exit codes (A-F7 / T-45).
+// User-facing compile errors including «срез: …» → exitParse; messages with
+// an "internal:" prefix → exitInternal.
+func exitForCompileErr(err error) int {
+	if isInternalErr(err) {
+		return exitInternal
+	}
+	return exitParse
+}
+
+// exitForRunErr maps RunMain failures to CLI exit codes (A-F7 / T-45).
+// Errors whose message has an "internal:" prefix → exitInternal; a real
+// uncaught raise → exitRuntime.
+func exitForRunErr(err error) int {
+	if isInternalErr(err) {
+		return exitInternal
+	}
+	return exitRuntime
+}
+
+func isInternalErr(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "internal:")
 }
 
 // runRepl: отладочный REPL — по строке выводит токены лексера.
