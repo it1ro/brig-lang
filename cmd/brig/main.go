@@ -18,6 +18,7 @@ import (
 	"strings"
 
 	"github.com/it1ro/brig-lang/internal/compiler"
+	"github.com/it1ro/brig-lang/internal/lexer"
 	"github.com/it1ro/brig-lang/internal/parser"
 	"github.com/it1ro/brig-lang/internal/sema"
 	"github.com/it1ro/brig-lang/internal/vm"
@@ -96,6 +97,27 @@ func reportDiagnostics(file string, r *sema.Result) {
 	}
 }
 
+// reportCompileError печатает ошибку лексера, парсера или компилятора в
+// формате E.1. Ошибка без позиции получает 1:1.
+func reportCompileError(file string, err error) {
+	line, col, msg := 1, 1, err.Error()
+	var le *lexer.Error
+	var pe *parser.Error
+	var ce *compiler.Error
+	switch {
+	case errors.As(err, &le):
+		line, col, msg = le.Line, le.Col, le.Msg
+	case errors.As(err, &pe):
+		line, col, msg = pe.Line, pe.Col, pe.Msg
+	case errors.As(err, &ce):
+		if ce.Line > 0 {
+			line, col = ce.Line, ce.Col
+		}
+		msg = ce.Msg
+	}
+	fmt.Fprintf(os.Stderr, "error: %s:%d:%d: %s\n", file, line, col, msg)
+}
+
 // runCheck: brig check <file.brig> — лексинг + парсинг + sema.
 func runCheck(args []string) {
 	if len(args) != 1 {
@@ -109,7 +131,7 @@ func runCheck(args []string) {
 	}
 	prog, err := parser.ParseProgram(parser.ModeModule, string(src))
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "brig check: %s: %v\n", args[0], err)
+		reportCompileError(args[0], err)
 		os.Exit(exitParse)
 	}
 	semaRes := sema.Check(prog)
@@ -145,7 +167,7 @@ func runFile(args []string) {
 
 	prog, err := parser.ParseProgram(parser.ModeModule, string(src))
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "brig run: %s: %v\n", args[0], err)
+		reportCompileError(args[0], err)
 		os.Exit(exitParse)
 	}
 
@@ -158,11 +180,11 @@ func runFile(args []string) {
 
 	img, err := compiler.New().Compile(prog)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "brig run: %s: compile: %v\n", args[0], err)
+		reportCompileError(args[0], err)
 		os.Exit(exitForCompileErr(err))
 	}
 	if img.Main == nil {
-		fmt.Fprintf(os.Stderr, "brig run: %s: нет функции main()\n", args[0])
+		reportCompileError(args[0], errors.New("нет функции main()"))
 		os.Exit(exitParse)
 	}
 

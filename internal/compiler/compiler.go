@@ -8,6 +8,7 @@
 package compiler
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"math/big"
@@ -63,9 +64,47 @@ func (c *Compiler) Image() *ProgramImage { return c.image }
 
 // compileError — внутренняя ошибка компиляции, поднимаемая через panic
 // и перехватываемая в Compile/CompileReplLine.
-type compileError struct{ msg string }
+type compileError struct {
+	msg string
+	pos vm.SrcPos
+}
 
 func (e compileError) Error() string { return e.msg }
+
+// Error — ошибка компиляции с позицией узла AST (§E.1: line и col с 1,
+// col в code points). Line == 0 — позиция неизвестна.
+type Error struct {
+	Line, Col int
+	Msg       string
+}
+
+func (e *Error) Error() string {
+	if e.Line == 0 {
+		return e.Msg
+	}
+	return fmt.Sprintf("%d:%d: %s", e.Line, e.Col, e.Msg)
+}
+
+// wrapCtx добавляет к ошибке префикс контекста, сохраняя позицию. Ошибке
+// без позиции даётся позиция at (позиция объемлющего объявления).
+func wrapCtx(at vm.SrcPos, err error, format string, args ...any) error {
+	ctx := fmt.Sprintf(format, args...)
+	var ce *Error
+	if errors.As(err, &ce) {
+		return &Error{Line: ce.Line, Col: ce.Col, Msg: ctx + ": " + ce.Msg}
+	}
+	return &Error{Line: int(at.Line), Col: int(at.Col), Msg: ctx + ": " + err.Error()}
+}
+
+// locate приписывает ошибке позицию текущего узла, если у неё ещё нет
+// позиции: самая глубокая конструкция, в которой ошибка возникла, побеждает.
+func (fc *funcCompiler) locate(err error) error {
+	var ce *Error
+	if err == nil || errors.As(err, &ce) || fc.pos.Line == 0 {
+		return err
+	}
+	return &Error{Line: int(fc.pos.Line), Col: int(fc.pos.Col), Msg: err.Error()}
+}
 
 // ---- funcCompiler ----
 
@@ -142,7 +181,7 @@ func (c *Compiler) newFuncCompiler(parent *funcCompiler) *funcCompiler {
 // ---- allocator (§7) ----
 
 func (fc *funcCompiler) fail(format string, args ...any) {
-	panic(compileError{msg: fmt.Sprintf(format, args...)})
+	panic(compileError{msg: fmt.Sprintf(format, args...), pos: fc.pos})
 }
 
 func (fc *funcCompiler) allocReg() int {
@@ -429,7 +468,7 @@ func (c *Compiler) Compile(prog *ast.Program) (image *ProgramImage, err error) {
 		if r := recover(); r != nil {
 			if ce, ok := r.(compileError); ok {
 				image = nil
-				err = fmt.Errorf("compile: %s", ce.msg)
+				err = &Error{Line: int(ce.pos.Line), Col: int(ce.pos.Col), Msg: ce.msg}
 				return
 			}
 			panic(r)
@@ -456,7 +495,7 @@ func (c *Compiler) Compile(prog *ast.Program) (image *ProgramImage, err error) {
 		}
 		fn, cerr := c.compileNamedFn(fd.FnName(), clauses)
 		if cerr != nil {
-			return nil, fmt.Errorf("fn %s: %w", fd.FnName(), cerr)
+			return nil, wrapCtx(posOf(fd), cerr, "fn %s", fd.FnName())
 		}
 		c.image.Functions[fd.FnName()] = fn
 		if fd.FnName() == "main" {
@@ -811,7 +850,7 @@ func (fc *funcCompiler) declareLocalFns(stmts []ast.Stmt) error {
 			fc.localFns[lfd.FnName()] = mangled
 			arity, variadic, err := clausesShape(localClauses(lfd.Clauses()))
 			if err != nil {
-				return fmt.Errorf("local fn %s: %w", lfd.FnName(), err)
+				return wrapCtx(posOf(lfd), err, "local fn %s", lfd.FnName())
 			}
 			fc.compiler.lifted[mangled] = &liftedFn{arity: arity, variadic: variadic}
 			decls = append(decls, lfd)
@@ -825,7 +864,7 @@ func (fc *funcCompiler) declareLocalFns(stmts []ast.Stmt) error {
 			probe := fc.compiler.newFuncCompiler(fc)
 			probe.prefix = mangled + "$"
 			if err := probe.compileClauses(localClauses(d.Clauses()), lf.caps); err != nil {
-				return fmt.Errorf("local fn %s: %w", d.FnName(), err)
+				return wrapCtx(posOf(d), err, "local fn %s", d.FnName())
 			}
 			for _, uv := range probe.upvalues {
 				i, ok := findCapture(lf.caps, uv)
@@ -946,11 +985,14 @@ func (fc *funcCompiler) compileStmts(stmts []ast.Stmt, d dest) error {
 	return nil
 }
 
-func (fc *funcCompiler) compileStmt(s ast.Stmt, d dest) error {
+func (fc *funcCompiler) compileStmt(s ast.Stmt, d dest) (err error) {
 	if p := posOf(s); p.Line > 0 {
 		saved := fc.pos
 		fc.pos = p
-		defer func() { fc.pos = saved }()
+		defer func() {
+			err = fc.locate(err)
+			fc.pos = saved
+		}()
 	}
 	switch st := s.(type) {
 	case ast.LetBind:
@@ -994,7 +1036,7 @@ func (fc *funcCompiler) compileLocalFn(decl ast.LocalFnDecl, d dest) error {
 	child := fc.compiler.newFuncCompiler(fc)
 	child.prefix = mangled + "$"
 	if err := child.compileClauses(localClauses(decl.Clauses()), caps); err != nil {
-		return fmt.Errorf("local fn %s: %w", name, err)
+		return wrapCtx(posOf(decl), err, "local fn %s", name)
 	}
 	// fn кладётся как глобальная Function: upvalue здесь — захват мимо
 	// фикспойнта declareLocalFns, в рантайме это `internal: upvalue`.
@@ -1037,7 +1079,10 @@ func (fc *funcCompiler) compileExpr(e ast.Expr, d dest) (err error) {
 	if p := posOf(e); p.Line > 0 {
 		saved := fc.pos
 		fc.pos = p
-		defer func() { fc.pos = saved }()
+		defer func() {
+			err = fc.locate(err)
+			fc.pos = saved
+		}()
 	}
 	switch ex := e.(type) {
 	case ast.LiteralExpr:
@@ -1738,7 +1783,7 @@ func (fc *funcCompiler) compileRecord(typ string, call ast.CallExpr, d dest) err
 		fields, ok := fc.compiler.records[typ]
 		if !ok {
 			p := posOf(call.Callee())
-			return fmt.Errorf("%d:%d: неизвестный тип записи %s", p.Line, p.Col, typ)
+			return &Error{Line: int(p.Line), Col: int(p.Col), Msg: "неизвестный тип записи " + typ}
 		}
 		declared = fields
 	}
@@ -1760,10 +1805,10 @@ func (fc *funcCompiler) compileRecord(typ string, call ast.CallExpr, d dest) err
 		}
 		name, p := fv.Name(), posOf(fv)
 		if typ != "" && !slices.Contains(declared, name) {
-			return fmt.Errorf("%d:%d: у типа %s нет поля %s", p.Line, p.Col, typ, name)
+			return &Error{Line: int(p.Line), Col: int(p.Col), Msg: fmt.Sprintf("у типа %s нет поля %s", typ, name)}
 		}
 		if seen[name] {
-			return fmt.Errorf("%d:%d: повторное поле %s в литерале записи", p.Line, p.Col, name)
+			return &Error{Line: int(p.Line), Col: int(p.Col), Msg: fmt.Sprintf("повторное поле %s в литерале записи", name)}
 		}
 		seen[name] = true
 		slots = append(slots, recordSlot{name, b.Right()})

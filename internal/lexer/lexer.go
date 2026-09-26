@@ -2,6 +2,8 @@ package lexer
 
 import (
 	"fmt"
+	"strings"
+	"unicode/utf8"
 )
 
 // Error — ошибка лексера с позицией (A3: ошибки всегда line:col).
@@ -20,7 +22,46 @@ func errf(line, col int, format string, args ...any) *Error {
 
 // Lex токенизирует src: полный список токенов программы, включая
 // offside-терминалы NEWLINE/INDENT/DEDENT (A5.2) и EOF.
-func Lex(src string) ([]Token, error) { return newLexer(src).run() }
+func Lex(src string) ([]Token, error) {
+	toks, err := newLexer(src).run()
+	if !isASCII(src) {
+		toks, err = codePointCols(src, toks, err)
+	}
+	return toks, err
+}
+
+func isASCII(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] >= utf8.RuneSelf {
+			return false
+		}
+	}
+	return true
+}
+
+// codePointCols переводит байтовые колонки, посчитанные лексером, в
+// колонки по Unicode code points (§E.2).
+func codePointCols(src string, toks []Token, err error) ([]Token, error) {
+	lines := strings.Split(src, "\n")
+	conv := func(line, col int) int {
+		if line < 1 || line > len(lines) || col < 2 {
+			return col
+		}
+		text := lines[line-1]
+		b := col - 1
+		if b > len(text) {
+			return col
+		}
+		return utf8.RuneCountInString(text[:b]) + 1
+	}
+	for i := range toks {
+		toks[i].Col = conv(toks[i].Line, toks[i].Col)
+	}
+	if le, ok := err.(*Error); ok {
+		le.Col = conv(le.Line, le.Col)
+	}
+	return toks, err
+}
 
 type lexer struct {
 	src string
