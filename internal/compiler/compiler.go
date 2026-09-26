@@ -1961,20 +1961,30 @@ func (fc *funcCompiler) compileTrapLetBind(st ast.LetBind, d dest, letRegs map[s
 
 // ---- match (§8.3) ----
 
-// compileMatch: субъект в регистр, ветки по порядку — MATCHLOCAL+JMP к
-// следующей ветке (схема веток recv). Ветки наследуют d (d.tail → хвостовые).
-// Ни одна ветка не подошла — raise (:case_clause, val) (§10.4).
+// compileMatch: субъект в регистр, ветки — compileCaseBranches.
 func (fc *funcCompiler) compileMatch(me ast.MatchExpr, d dest) error {
-	pos := posOf(me)
 	mark := fc.nextReg
 
 	sReg, err := fc.operand(me.MatchSubject())
 	if err != nil {
 		return err
 	}
+	if err := fc.compileCaseBranches(sReg, me.MatchBranches(), posOf(me), d); err != nil {
+		return err
+	}
+	fc.releaseToMark(mark)
+	return nil
+}
+
+// compileCaseBranches: ветки по порядку над R[sReg] — MATCHLOCAL+JMP к
+// следующей ветке (схема веток recv). Ветки наследуют d (d.tail → хвостовые).
+// Ни одна ветка не подошла — raise (:case_clause, val) с позицией pos (§10.4).
+// Общий код match (§8.3) и with/else (§8.2).
+func (fc *funcCompiler) compileCaseBranches(sReg int, branches []ast.MatchBranchArg, pos vm.SrcPos, d dest) error {
+	mark := fc.nextReg
 
 	var endJumps []int
-	for _, br := range me.MatchBranches() {
+	for _, br := range branches {
 		brMark := fc.nextReg
 		fc.pushScope()
 
