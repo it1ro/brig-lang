@@ -474,6 +474,21 @@ func checkSimpleFn(nClauses int, guard string, params []string) error {
 	return nil
 }
 
+// checkLambdaParams — fail-fast для полной лямбды `fn (…) ->` (T-44).
+// Именованные fn по-прежнему допускают `..name` через checkSimpleFn;
+// в лямбде и параметр-паттерн, и variadic — ошибка, а не молчаливое имя.
+func checkLambdaParams(params []string) error {
+	for _, p := range params {
+		if strings.HasPrefix(p, "..") {
+			return fmt.Errorf("срез: variadic-параметр %q в лямбде не реализован", p)
+		}
+		if !isIdentParam(p) {
+			return fmt.Errorf("срез: параметр-паттерн %q в лямбде не реализован", p)
+		}
+	}
+	return nil
+}
+
 // isIdentParam: параметры хранятся как pat.String(), поэтому IdentPattern
 // опознаётся по форме строки — LOWER_IDENT, не совпадающий с литералами
 // true/false.
@@ -1774,6 +1789,9 @@ func (fc *funcCompiler) compileIndex(ie ast.IndexExpr, d dest) error {
 // ---- lambda / closure ----
 
 func (fc *funcCompiler) compileLambda(name string, params []string, body ast.Expr, d dest) error {
+	if err := checkLambdaParams(params); err != nil {
+		return err
+	}
 	child := fc.compiler.newFuncCompiler(fc)
 	// Уникальный префикс на лямбду: иначе одноимённые локальные fn в
 	// разных лямбдах одной функции перезаписывают друг друга в image.Functions (A-F6).
