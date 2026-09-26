@@ -1,17 +1,17 @@
 == main arity=0 params=0 regs=2 consts=1 patterns=0 ==
-0000   0:0   GETGLOBAL   r1 k0 ; worker
+0000   8:5   GETGLOBAL   r1 k0 ; worker
 0001   8:5   TAILCALL    r1 0
 == worker arity=0 params=0 regs=5 consts=4 patterns=1 ==
-0000   0:0   LOADK       r2 k0 ; 10
-0001   0:0   RECVTIMER   r2
-0002   0:0   RECVTAKE    r1 after -> 0011
-0003   0:0   MATCHLOCAL  r1 p0 ; :a
-0004   0:0   JMP         -> 0007
-0005   0:0   LOADK       r2 k1 ; :got_a
-0006   0:0   RETURN      r2
-0007   0:0   LOADK       r2 k2 ; :recv_clause
-0008   0:0   MOVE        r3 r1
-0009   0:0   TUPLE       r2 <- r2..r3
-0010   0:0   RAISE       r2
-0011   0:0   LOADK       r4 k3 ; :timeout
-0012   0:0   RETURN      r4
+0000   5:11  LOADK       r2 k0 ; 10
+0001   3:5   RECVTIMER   r2
+0002   3:5   RECVTAKE    r1 after -> 0011
+0003   3:5   MATCHLOCAL  r1 p0 ; :a
+0004   3:5   JMP         -> 0007
+0005   4:15  LOADK       r2 k1 ; :got_a
+0006   4:15  RETURN      r2
+0007   3:5   LOADK       r2 k2 ; :recv_clause
+0008   3:5   MOVE        r3 r1
+0009   3:5   TUPLE       r2 <- r2..r3
+0010   3:5   RAISE       r2
+0011   5:17  LOADK       r4 k3 ; :timeout
+0012   5:17  RETURN      r4
