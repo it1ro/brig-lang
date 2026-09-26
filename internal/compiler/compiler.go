@@ -707,6 +707,13 @@ func (fc *funcCompiler) compileLocalFn(decl ast.LocalFnDecl, d dest) error {
 	}
 	child.chunk.NumRegs = child.maxReg
 
+	// I-F7 / T-38: локальная fn кладётся как глобальная Function без
+	// captures — захват падал бы только в рантайме (`internal: upvalue`).
+	// Полная реализация (лямбда-лифтинг) — T-39.
+	if len(child.upvalues) > 0 {
+		return fmt.Errorf("срез: локальная fn %s с захватом не реализована", name)
+	}
+
 	fnArity := len(cl.Params)
 	if variadic {
 		fnArity = -1

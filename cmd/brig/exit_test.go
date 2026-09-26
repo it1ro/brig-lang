@@ -32,7 +32,8 @@ func TestExitClassifyHelpers(t *testing.T) {
 	}
 }
 
-// Probes from T-14 (#12) verification of A-F7 exit-code misclassification.
+// Probes for CLI exit codes. upvalueSrc used to reach runtime
+// `internal: upvalue` (A-F7 / T-14); T-38 fail-fasts it at compile time.
 const (
 	sliceNYISrc = `module Main
 fn main() ->
@@ -61,7 +62,7 @@ func TestBrigRunExitCodes(t *testing.T) {
 		want int
 	}{
 		{"срез pipe → 1", sliceNYISrc, exitParse},
-		{"internal upvalue → 3", upvalueSrc, exitInternal},
+		{"local fn capture срез → 1", upvalueSrc, exitParse},
 		{"uncaught raise → 2", raiseSrc, exitRuntime},
 	}
 	for _, tc := range cases {
