@@ -77,7 +77,7 @@ Findings с тегом `[inferred]`. Задача-фикс не создаётс
 <!-- meta
 priority: P2
 type: design-decision
-effort: small
+effort: low
 model: human
 wave: —
 depends_on: —
@@ -94,7 +94,7 @@ extra_labels: design-decision
 <!-- meta
 priority: P1
 type: design-decision
-effort: small
+effort: low
 model: human
 wave: —
 depends_on: —
@@ -111,7 +111,7 @@ extra_labels: design-decision
 <!-- meta
 priority: P1
 type: design-decision
-effort: small
+effort: low
 model: human
 wave: —
 depends_on: —
@@ -128,7 +128,7 @@ extra_labels: design-decision
 <!-- meta
 priority: P1
 type: design-decision
-effort: small
+effort: low
 model: human
 wave: —
 depends_on: —
@@ -163,7 +163,7 @@ extra_labels: design-decision
 <!-- meta
 priority: P0
 type: fail-fast
-effort: small
+effort: low
 model: sonnet
 wave: 0
 depends_on: —
@@ -195,7 +195,7 @@ findings: [S-F3]
 <!-- meta
 priority: P1
 type: fail-fast
-effort: small
+effort: low
 model: sonnet
 wave: 0
 depends_on: —
@@ -211,7 +211,7 @@ findings: [S-F5]
 <!-- meta
 priority: P0
 type: fail-fast
-effort: small
+effort: low
 model: sonnet
 wave: 0
 depends_on: —
@@ -227,7 +227,7 @@ findings: [S-F1]
 <!-- meta
 priority: P0
 type: full-fix
-effort: small
+effort: low
 model: sonnet
 wave: 0
 depends_on: —
@@ -243,7 +243,7 @@ findings: [O-F1]
 <!-- meta
 priority: P0
 type: test-infra
-effort: small
+effort: low
 model: sonnet
 wave: 0
 depends_on: —
@@ -259,7 +259,7 @@ findings: [O-F3]
 <!-- meta
 priority: P0
 type: merge
-effort: small
+effort: low
 model: human
 wave: 0
 depends_on: T-01, T-02, T-03, T-04, T-05, T-06
@@ -307,7 +307,7 @@ findings: [S-F13]
 <!-- meta
 priority: P2
 type: docs
-effort: small
+effort: low
 model: sonnet
 wave: 1
 depends_on: T-11
@@ -323,7 +323,7 @@ findings: []
 <!-- meta
 priority: P2
 type: test-infra
-effort: small
+effort: low
 model: sonnet
 wave: 1
 depends_on: T-07
@@ -340,7 +340,7 @@ extra_labels: verification
 <!-- meta
 priority: P2
 type: test-infra
-effort: small
+effort: low
 model: sonnet
 wave: 1
 depends_on: T-07
@@ -357,7 +357,7 @@ extra_labels: verification
 <!-- meta
 priority: P2
 type: test-infra
-effort: small
+effort: low
 model: sonnet
 wave: 1
 depends_on: T-07
@@ -374,7 +374,7 @@ extra_labels: verification
 <!-- meta
 priority: P1
 type: full-fix
-effort: small
+effort: low
 model: sonnet
 wave: 2
 depends_on: T-11
@@ -390,7 +390,7 @@ findings: [S-F4, S-F12]
 <!-- meta
 priority: P1
 type: full-fix
-effort: small
+effort: low
 model: sonnet
 wave: 2
 depends_on: T-11
@@ -406,7 +406,7 @@ findings: [S-F6]
 <!-- meta
 priority: P1
 type: full-fix
-effort: small
+effort: low
 model: sonnet
 wave: 2
 depends_on: T-10
@@ -422,7 +422,7 @@ findings: [S-F7]
 <!-- meta
 priority: P2
 type: full-fix
-effort: small
+effort: low
 model: sonnet
 wave: 2
 depends_on: T-10
@@ -470,7 +470,7 @@ findings: [O-F2]
 <!-- meta
 priority: P1
 type: full-fix
-effort: small
+effort: low
 model: sonnet
 wave: 3
 depends_on: T-10
@@ -518,7 +518,7 @@ findings: [A-F2]
 <!-- meta
 priority: P1
 type: full-fix
-effort: small
+effort: low
 model: sonnet
 wave: 3
 depends_on: T-10
@@ -582,7 +582,7 @@ findings: [I-F5]
 <!-- meta
 priority: P1
 type: fail-fast
-effort: small
+effort: low
 model: sonnet
 wave: 3
 depends_on: T-10
@@ -630,7 +630,7 @@ findings: [I-F9, I-F10]
 <!-- meta
 priority: P2
 type: full-fix
-effort: small
+effort: low
 model: sonnet
 wave: 3
 depends_on: T-10
@@ -662,7 +662,7 @@ findings: [I-F13]
 <!-- meta
 priority: P2
 type: full-fix
-effort: small
+effort: low
 model: sonnet
 wave: 3
 depends_on: T-10
@@ -775,7 +775,7 @@ findings: [A-F8]
 <!-- meta
 priority: P3
 type: docs
-effort: small
+effort: low
 model: sonnet
 wave: 5
 depends_on: T-60
@@ -807,7 +807,7 @@ findings: [A-F3, A-F4, I-F8]
 <!-- meta
 priority: P2
 type: docs
-effort: small
+effort: low
 model: sonnet
 wave: 5
 depends_on: T-61
@@ -855,7 +855,7 @@ findings: [K-8]
 <!-- meta
 priority: P2
 type: feature
-effort: small
+effort: low
 model: sonnet
 wave: 6
 depends_on: —
@@ -903,7 +903,7 @@ findings: [A-F8]
 <!-- meta
 priority: P2
 type: feature
-effort: small
+effort: low
 model: sonnet
 wave: 6
 depends_on: —
@@ -1047,7 +1047,7 @@ findings: [A-F4]
 <!-- meta
 priority: P1
 type: full-fix
-effort: small
+effort: low
 model: sonnet
 wave: 3
 depends_on: T-93

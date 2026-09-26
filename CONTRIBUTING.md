@@ -116,7 +116,7 @@ Closes #<issue>
 ## 7. Сессии с LLM-агентом
 
 - Сессия начинается с одного issue с доски (п. 2): `gh issue view <N> --json title,body`.
-- Effort small/medium — любая модель; large — только модель из поля `Model`.
+- Effort low/medium — любая модель; large — только модель из поля `Model`.
 - Один тикет за сессию. Найденное по пути — новый issue на доске, не правка в этой сессии.
 - Doc-файлы агент меняет только в тикетах с Type `docs`.
 - Finding не воспроизводится — issue в Blocked или закрывается как false-positive.
