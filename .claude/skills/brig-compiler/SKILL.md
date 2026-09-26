@@ -16,10 +16,9 @@ description: >
 
 ## Инварианты аллокатора (I-1..I-4) — САМОЕ важное в этом модуле
 
-Статус проверки: **I-1 и I-4 проверяются** автоматически (`compileExpr`
-сверяет `nextReg`, `emit` — операнды); **I-3 — нет** (A-F2): держится
-только на дисциплине кода. Проверку I-3 добавляет T-33 (#22) — до неё
-запись в bound-регистр не упадёт на `Compile`.
+Статус проверки: **I-1, I-3 и I-4 проверяются** автоматически
+(`compileExpr` сверяет `nextReg`; `emit` — операнды и запись через A в
+bound-регистр).
 
 - **I-1.** `compileExpr` не меняет `nextReg` (стек-нейтральность):
   выделенные внутри временные регистры обязаны быть освобождены
@@ -30,8 +29,9 @@ description: >
   `compileGenericCall`, `compileGlobalCall`).
 - **I-3.** После `bindLocal(r)` ни одна инструкция не пишет в `r` явным
   операндом `A`, кроме `MATCHLOCAL` (пишет неявно). Не выделять новый
-  временный регистр поверх уже связанной локали. Массив `bound[]`
-  (`compiler.go:138,164`) сейчас только пишется и нигде не читается.
+  временный регистр поверх уже связанной локали. Проверяется в `emit`
+  через `vm.RegUse`: если A входит в `writes` и `bound[A]`, то
+  `fc.fail` с `I-3` (исключение — `MATCHLOCAL`).
 - **I-4.** Любой регистр-операнд в `emit()` строго меньше `nextReg` —
   проверяется автоматически через `vm.RegUse` внутри `funcCompiler.emit`;
   если тесты падают с «reads/writes r%d >= nextReg» — это сигнал, что
@@ -134,10 +134,10 @@ K-8 объявляет эти фичи вне рамок, но сейчас ча
 
 1. `compiler.Verify = true` уже включён в тестах пакета
    (`verify_on_test.go`) — не отключать. Сейчас на этапе `Compile` падают
-   нарушения I-1 (`nextReg` в `compileExpr`), I-4, `trapDepth` (TAILCALL
-   под trap, T-31) и то, что видит `vm.Verify` (TAILCALL под trap,
-   definite assignment — кроме тел веток `recv`/`after`, см. `brig-vm`);
-   I-3 не проверяется до T-33.
+   нарушения I-1 (`nextReg` в `compileExpr`), I-3 (запись в bound через A),
+   I-4, `trapDepth` (TAILCALL под trap, T-31) и то, что видит `vm.Verify`
+   (TAILCALL под trap, definite assignment — кроме тел веток
+   `recv`/`after`, см. `brig-vm`).
 2. Прогнать `make test-compiler` (узкий) и затем `go test
    ./internal/compiler/... -run TestBytecodeGolden` — если байткод
    изменился намеренно, `make update-bytecode`.

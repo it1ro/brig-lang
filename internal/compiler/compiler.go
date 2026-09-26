@@ -241,7 +241,7 @@ func (fc *funcCompiler) konst(v runtime.Value) int {
 	return idx
 }
 
-// ---- emit (§7, I-4) ----
+// ---- emit (§7, I-3, I-4) ----
 
 func (fc *funcCompiler) emit(i vm.Instr) int {
 	reads, writes, err := vm.RegUse(i)
@@ -256,6 +256,16 @@ func (fc *funcCompiler) emit(i vm.Instr) int {
 	for _, r := range writes {
 		if r < 0 || r >= fc.nextReg {
 			fc.fail("emit: %s writes r%d >= nextReg %d (I-4)", i.Op(), r, fc.nextReg)
+		}
+	}
+	// I-3: no write via operand A into a bound register.
+	// MATCHLOCAL reads A and writes pattern slots implicitly (not in RegUse.writes).
+	if i.Op() != vm.MATCHLOCAL {
+		a := i.A()
+		for _, r := range writes {
+			if r == a && fc.bound[a] {
+				fc.fail("emit: %s writes bound r%d (I-3)", i.Op(), a)
+			}
 		}
 	}
 	return fc.chunk.Emit(i, fc.pos)
