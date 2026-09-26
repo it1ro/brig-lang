@@ -45,7 +45,7 @@ Findings с тегом `[inferred]`. Задача-фикс не создаётс
 
 | Finding | Что проверить | Команда/тест | Если подтвердится | Если нет |
 |---|---|---|---|---|
-| A-F1 (T-13) | Все акторы исполняются в одной goroutine кооперативным run-loop (`internal/vm/scheduler.go:313-428`) | `rg -n 'go func\|go s\.' internal/vm`; тест `TestVerifyAF1SingleGoroutineScheduler`: spawn 100 акторов, `runtime.NumGoroutine()` растёт меньше чем на 100 | T-90 остаётся открытым; после решения — T-80 | A-F1 → `false-positive`, T-90 закрывается как неактуальный, T-80 не создаётся |
+| A-F1 (T-13) | Все акторы исполняются в одной goroutine кооперативным run-loop (`internal/vm/scheduler.go:313-428`) | `rg -n 'go func\|go s\.' internal/vm`; тест `TestVerifyAF1SingleGoroutineScheduler`: spawn 100 акторов, `runtime.NumGoroutine()` растёт меньше чем на 100 | T-90 решён: C (#40); T-80 — правка доков | A-F1 → `false-positive`, T-90 закрывается как неактуальный, T-80 не создаётся |
 | A-F7 (T-14) | (1) «срез: не реализовано» → exit 3 вместо 1; (2) `internal: upvalue out of range` → exit 2 вместо 3; (3) `runModule` (`internal/compiler/compiler_test.go:13-33`) не прогоняет sema | (1)(2) `go run ./cmd/brig run <probe>.brig; echo $?` по `cmd/brig/main.go:162-166, 208-211`; (3) тест `TestVerifyAF7RunModuleSkipsSema`: `print(trap(1+1))` компилируется через `runModule`, а `brig check` отвергает | Создать issue «exit-коды: классификация ошибок в cmd/brig» (full-fix, wave 3) и/или «runModule прогоняет sema» (test-infra, wave 3) — по подтверждённым пунктам | Неподтверждённый пункт → `false-positive` |
 | I-F14 (T-15) | (1) Большой `ms` в `RECVTIMER` молча усекается или переполняется (`scheduler.go:888-894`); (2) `wakeExpired` (`scheduler.go:366`) даёт недетерминированный порядок в `ready` | (1) тест `TestVerifyIF14HugeTimerMs`: `after 9223372036854775807`; (2) программа из N акторов с одинаковым таймаутом: `for i in $(seq 20); do go run ./cmd/brig run p.brig; done \| sort \| uniq -c` — больше одной строки значит недетерминизм | Issue «RECVTIMER: валидация ms» и/или «wakeExpired: детерминированный порядок (deadline, seq)» (full-fix, wave 3) | `false-positive` |
 
@@ -55,7 +55,7 @@ Findings с тегом `[inferred]`. Задача-фикс не создаётс
 
 | Finding | Вопрос | Варианты | Что блокирует |
 |---|---|---|---|
-| A-F1 (T-90) | «1 актор = 1 goroutine» (§15.2, architecture.md:148) — норматив или деталь реализации? | **A:** описать кооперативный однопоточный loop как соответствующий спеке (правка §15.2 и architecture.md); детерминизм §15.4 сохраняется. **B:** переписать scheduler на goroutine-per-actor: L+, гонки, детерминизм §15.4 теряется. **C:** спека фиксирует только наблюдаемую семантику (порядок, fairness), модель потоков — свобода реализации | T-80; follow-up из T-15 (порядок таймеров) |
+| A-F1 (T-90) | «1 актор = 1 goroutine» (§15.2, architecture.md:148) — норматив или деталь реализации? | **A:** описать кооперативный однопоточный loop как соответствующий спеке (правка §15.2 и architecture.md); детерминизм §15.4 сохраняется. **B:** переписать scheduler на goroutine-per-actor: L+, гонки, детерминизм §15.4 теряется. **C:** спека фиксирует только наблюдаемую семантику (порядок, fairness), модель потоков — свобода реализации | **Решено: C (#40).** T-80; follow-up из T-15 (порядок таймеров) |
 | A-F3 (T-91) | Не-Bool в `if`/`and`/`or` — это `:type_error` (тир 1: §7.2, §8.1, §16) или truthiness (K-2 в doc 02)? | **A:** строгий Bool везде, включая правый операнд `and`/`or`; правый операнд тогда не хвостовой, T-82 закрывается как won't-fix, doc 02 §4 табл. п.6 правится. **B:** строгий Bool для условия и левого операнда, правый не проверяется (как `andalso` в Erlang); T-82 делается. **C:** оставить K-2 и править §7.2/§16 (тир 1) | T-81, T-82; семантика не-Bool guard в T-51/T-52 |
 | A-F4 (T-92) | Ловится ли `:type_error` через `trap`? | **A:** да (§10.4): `arithErr`, `NOT`, `Compare` → ловимый `ErrRaise(:type_error)`. **B:** нет (K-3): `decArithErr` становится фатальным, §10.4 правится. **C:** арифметика и сравнения ловятся, внутренние инварианты VM — нет (явный список в doc 02) | T-83; при A-F3=A — вид ошибки из `JMPIF` |
 | I-F8 (T-93) | Как сравниваются числа разных видов в `==`/`<`, паттернах, ключах Map/Set? | **A:** паттерны и ключи — строго по Kind (`runtime.MatchEqual`), `==`/`<` — точно по значению (Int×Float через `big.Rat`), Decimal×Float → `:type_error` везде. **B:** Decimal×Float → `false` везде (включая `==`), без ошибок. **C:** Decimal×Float сравниваются точно через `big.Rat` везде | T-84, T-85, T-86 |
@@ -64,7 +64,7 @@ Findings с тегом `[inferred]`. Задача-фикс не создаётс
 
 | T-NN | Issue | Задача | Finding | Ждёт |
 |---|---|---|---|---|
-| T-80 | [#105](https://github.com/it1ro/brig-lang/issues/105) | Scheduler: привести доки или код к решению A-F1 | A-F1 | [#40](https://github.com/it1ro/brig-lang/issues/40) |
+| T-80 | [#105](https://github.com/it1ro/brig-lang/issues/105) | Scheduler: привести доки или код к решению A-F1 | A-F1 | решено: C ([#40](https://github.com/it1ro/brig-lang/issues/40)) |
 | T-81 | [#106](https://github.com/it1ro/brig-lang/issues/106) | JMPIF/JMPIFNOT: не-Bool → :type_error | A-F3 | [#41](https://github.com/it1ro/brig-lang/issues/41) |
 | T-82 | [#107](https://github.com/it1ro/brig-lang/issues/107) | Компилятор: правый операнд and/or в хвостовой позиции | I-F3 | [#41](https://github.com/it1ro/brig-lang/issues/41) |
 | T-83 | [#108](https://github.com/it1ro/brig-lang/issues/108) | Единая классификация type errors | A-F4 | [#42](https://github.com/it1ro/brig-lang/issues/42) |
@@ -368,7 +368,7 @@ extra_labels: verification
 - **Файлы:** internal/vm/scheduler.go:366 (`wakeExpired`), :888-894 (`RECVTIMER`)
 - **Тест-якорь:** `TestVerifyIF14HugeTimerMs` (создать)
 - **DoD:** тест и цикл 20 прогонов из таблицы «Verification needed» выполнены, вывод — комментарием в issue. По каждому подтверждённому пункту создан issue по шаблону `TASKS.md` на доске (Wave 3). По неподтверждённому — `false-positive`.
-- **НЕ делать:** чинить таймеры в этой сессии; менять модель scheduler (A-F1, T-90); трогать doc-файлы.
+- **НЕ делать:** чинить таймеры в этой сессии; менять модель scheduler (A-F1: решено C, #40); трогать doc-файлы.
 
 ### T-20 · Parser: guard через parseOr и идемпотентный round-trip guard
 <!-- meta
@@ -624,7 +624,7 @@ findings: [I-F9, I-F10]
 - **Файлы:** internal/vm/scheduler.go:291 (`notifyWatchers`), :414, :437-441 (`fail()`), обработка `actorDone`/`actorFailed`, `s.actors`
 - **Тест-якорь:** `TestAuditDownReasonCarriesRaiseValue` (снять skip); `TestWatchDeadActorGetsDown` (создать; `p/s2_watch_dead.brig`); `TestSendToDeadActor` (создать; `p/s3_send_dead.brig`)
 - **DoD:** актор удаляется из `s.actors` при `actorDone`/`actorFailed` (кроме `mainPid`). `watch` на завершившийся актор даёт `(:down, ref, :noproc)`. `send` на него → `Ok(())`, после 100 отправок нет `Error(:busy)`, `mailbox_size` = 0. Причина `:down` — `(:raise, val)` со значением из `errors.As(a.err, &rerr)` (`p/s1_down_reason.brig`). Три теста зелёные. `go test -race ./internal/vm` → 0.
-- **НЕ делать:** менять модель scheduler (A-F1, T-90); таймеры (I-F14, T-15); реализовывать `link` (A-F8); трогать doc-файлы.
+- **НЕ делать:** менять модель scheduler (A-F1: решено C, #40); таймеры (I-F14, T-15); реализовывать `link` (A-F8); трогать doc-файлы.
 
 ### T-41 · Позиции 0:0 в bytecode
 <!-- meta
@@ -1102,7 +1102,7 @@ findings: [I-F8]
 
 ## Out of scope
 
-- Design decisions A-F1, A-F3, A-F4, I-F8 — до ответа автора языка; ждущие их T-80…T-86 и T-62 заведены и стоят в Blocked (см. выше).
+- Design decisions A-F3, A-F4, I-F8 — до ответа автора языка (A-F1 решён: C, #40); ждущие их T-81…T-86 и T-62 заведены и стоят в Blocked (см. выше).
 - Блочная форма `ensure` (S-F5) — MVP-задел; T-03 явно её отвергает.
 - Дубликаты ключей в JSON (I-F13) — спека молчит.
 - Всё из §9 аудита: мини-блоки офсайда в скобках (§D.6/D.7), якоря `trap`/`if` в глубину, §D.8; гонки в `RunMainWithArgs`/REPL и переиспользование `Scheduler`; арность native в прелюдии, `Test.*`, `Serialize`, `FormatDecimal`; парсер типов; `make fuzz` 3×60s.
