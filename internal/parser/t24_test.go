@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/it1ro/brig-lang/internal/ast"
@@ -85,8 +86,7 @@ fn f(()) -> 1
 	}
 }
 
-// S-F10: with_item ::= bind_stmt | stmt in any order (AUDIT_REPORT.md:113-115).
-// Probe with_interleave.
+// S-F10 / T-95 (вариант A): binds только в начале with, затем тело.
 func TestParseWithInterleave(t *testing.T) {
 	src := `module M
 fn main() ->
@@ -96,7 +96,39 @@ fn main() ->
         Ok(b) <- transform(a)
         Ok(b)
 `
+	err := Parse(ModeModule, src)
+	if err == nil {
+		t.Fatal("bind after with body statement: expected parse error")
+	}
+	for _, sub := range []string{"with", "<-", "8.2", "_ <- expr"} {
+		if !strings.Contains(err.Error(), sub) {
+			t.Fatalf("error %q does not contain %q", err, sub)
+		}
+	}
+}
+
+func TestParseWithBindsOnly(t *testing.T) {
+	src := `module M
+fn main() ->
+    with
+        Ok(a) <- validate(x)
+        Ok(b) <- transform(a)
+`
+	if err := Parse(ModeModule, src); err == nil {
+		t.Fatal("with without body: expected parse error")
+	}
+}
+
+func TestParseWithDiscardBind(t *testing.T) {
+	src := `module M
+fn main() ->
+    with
+        Ok(a) <- validate(x)
+        _ <- log(a)
+        Ok(b) <- transform(a)
+        Ok(b)
+`
 	if err := Parse(ModeModule, src); err != nil {
-		t.Fatalf("Parse with_interleave: %v", err)
+		t.Fatalf("Parse with discard bind: %v", err)
 	}
 }

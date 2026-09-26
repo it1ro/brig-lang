@@ -1,0 +1,4 @@
+fn main() ->
+    with
+        Ok(a) <- validate(x)
+        Ok(b) <- transform(a)
