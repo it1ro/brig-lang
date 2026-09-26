@@ -39,8 +39,8 @@ compiler → vm`, без циклов зависимостей (`parser` не в
 3. `docs/architecture.md` и `docs/02-register-based-virtual-machine.md` —
    дизайн слоёв и VM (опкоды, кадры, TCO, trap/ensure, соглашения K-1…K-8).
    Если они противоречат п.1–2 — ошибка в них, а не в спеке (пример:
-   K-2 truthiness против строгого Bool §7.2/§16 — открытый design decision
-   #41).
+   K-2 truthiness против строгого Bool §7.2/§16 — design decision #41
+   решён в пользу строгого Bool, K-2 переписывается в T-62).
 4. Skills (`.claude/skills/`), `TASKS.md`, `README.md` — рабочие заметки
    и обзоры, не нормативны.
 
