@@ -173,6 +173,29 @@ fn main() -> assert(outer(41) == 42)
 	}
 }
 
+// I-F7: локальная fn с захватом — ошибка компиляции, не runtime
+// `internal: upvalue` (T-38 fail-fast; полная реализация — T-39).
+// Probe: p/t1_localfn_capture.brig
+func TestLocalFnCaptureFailsFast(t *testing.T) {
+	err := compileSrc(t, `module Main
+fn outer(base) ->
+    fn helper(n) -> base + n
+    helper(1)
+fn main() ->
+    print(outer(41))
+`)
+	if err == nil {
+		t.Fatal("Compile: want error for local fn with capture, got nil")
+	}
+	msg := err.Error()
+	if strings.Contains(msg, "internal: upvalue") {
+		t.Fatalf("Compile: want compile-time error, got runtime-style %q", msg)
+	}
+	if !strings.Contains(msg, "захват") {
+		t.Fatalf("Compile: want error mentioning захват, got %v", err)
+	}
+}
+
 // §3.1: Int — произвольной точности; литерал за пределами int64 — Int (T-22).
 func TestAuditBigIntLiteral(t *testing.T) {
 	if err := runModuleErr(t, `module Main
