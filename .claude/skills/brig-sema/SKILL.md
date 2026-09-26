@@ -16,11 +16,12 @@ Message}`; `SeverityError` блокирует компиляцию, `SeverityInf
 
 ## Реализованные проверки (не дублировать, не удалять без согласования)
 
-1. `trap` в позиции аргумента вызова или элемента литерала (списка,
-   кортежа, поля мапы/записи) — ошибка (`checkArgForTrap`). По §10.2
-   `trap` разрешён только как RHS `let_bind` или отдельный `expr_stmt`,
-   но проверка покрывает лишь аргументы и литералы: `x = 1 + trap(y)` и
-   `if c then trap(y) else z` сейчас принимаются (I-F15, T-43 #32).
+1. `trap` только как RHS `let_bind` или отдельный `expr_stmt` (§10.2) —
+   иначе ошибка (`checkExpr` отвергает `TrapExpr`; вход через
+   `checkExprAllowTrap` из `LetBind`/`ExprStmt`). Покрывает в том числе
+   `x = 1 + trap(y)` и `if c then trap(y) else z` (I-F15, T-43 #32).
+   Вложенный `trap` в теле другого `trap` допустим через `let`/`expr_stmt`
+   внутри блока; идиома в ветке `recv` — блочная форма со стейтментом.
 2. Pipe-запрет акторных примитивов (`send`, `spawn`, `spawn_linked`,
    `link`, `watch`, `unwatch`, `self`, `make_ref`, `mailbox_size`) как RHS
    `|>` — проверка по базовому имени до первой точки (`checkPipe`).

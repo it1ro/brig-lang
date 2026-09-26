@@ -141,6 +141,20 @@ fn main() ->
 		"trap is not allowed")
 }
 
+// TestTrapPositionRestricted — полная проверка позиции trap (§10.2 / I-F15):
+// trap запрещён внутри операторов и в ветках if; разрешён только как
+// RHS let_bind или отдельный expr_stmt.
+func TestTrapPositionRestricted(t *testing.T) {
+	wantErr(t,
+		"module Main\nfn main() ->\n    x = 1 + trap(y)\n    x\n",
+		"trap is not allowed")
+	wantErr(t,
+		"module Main\nfn main() ->\n    if c then trap(y) else z\n",
+		"trap is not allowed")
+	wantOK(t, "module Main\nfn main() ->\n    x = trap(y)\n    x\n")
+	wantOK(t, "module Main\nfn main() ->\n    trap(y)\n")
+}
+
 func TestTrapAsLetRHS(t *testing.T) {
 	wantOK(t, "module Main\nfn main() ->\n    x = trap(1 + 1)\n    x\n")
 }
@@ -170,12 +184,21 @@ fn main() ->
 }
 
 func TestTrapInRecvBranchBody(t *testing.T) {
+	// §10.2 + §10.2 «trap внутри ветки recv»: trap — expr_stmt в блоке ветки,
+	// а не голый expression в `-> expr` (как в if-then).
 	wantOK(t, `module Main
+fn main() ->
+    x = recv
+        :stop ->
+            trap(1)
+    x
+`)
+	wantErr(t, `module Main
 fn main() ->
     x = recv
         :stop -> trap(1)
     x
-`)
+`, "trap is not allowed")
 }
 
 // ---- rebinding (§6.6, principle #12) ----

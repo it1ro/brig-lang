@@ -2,7 +2,7 @@
 // compiler: проверки, которые невозможно выполнить грамматически.
 //
 // Проверки (Sprint 6.1, полностью):
-//  1. `trap` в позиции аргумента вызова или элемента литерала (§10.2);
+//  1. `trap` только как RHS let_bind или expr_stmt (§10.2);
 //  2. `..` в list-паттерне: только последним, не более одного раза (§5.1);
 //  3. pipe-запрет акторных примитивов (§7.5);
 //  4. variadic-параметр должен быть последним (§6.3);
@@ -230,9 +230,11 @@ func (c *checker) checkStmt(s ast.Stmt) {
 		c.checkBlock(x)
 	case ast.LetBind:
 		c.checkPatternBinding(x.Pat(), "let")
-		c.checkExpr(x.Val())
+		// §10.2: trap разрешён на верхнем уровне RHS let_bind.
+		c.checkExprAllowTrap(x.Val())
 	case ast.ExprStmt:
-		c.checkExpr(x.ExprValue())
+		// §10.2: trap разрешён как отдельный expr_stmt.
+		c.checkExprAllowTrap(x.ExprValue())
 	case ast.LocalFnDecl:
 		line, col := posOf(s)
 		c.bind(x.FnName(), "local fn", line, col)
@@ -368,7 +370,6 @@ func (c *checker) checkExpr(e ast.Expr) {
 	case ast.CallExpr:
 		c.checkExpr(x.Callee())
 		for _, a := range x.Args() {
-			c.checkArgForTrap(a)
 			c.checkExpr(a)
 		}
 
@@ -444,17 +445,11 @@ func (c *checker) checkExpr(e ast.Expr) {
 		}
 
 	case ast.TrapExpr:
-		if x.TrapInline() != nil {
-			c.checkExpr(x.TrapInline())
-		}
-		if b := x.TrapBody(); b != nil {
-			c.pushScope()
-			c.checkStmt(b)
-			c.popScope()
-		}
-		for _, en := range x.TrapEnsures() {
-			c.checkExpr(en)
-		}
+		// trap встретился вне разрешённых позиций (§10.2).
+		line, col := posOf(x)
+		c.err(line, col,
+			"trap is not allowed in this position (§10.2); only as let RHS or expr_stmt")
+		c.checkTrapInner(x)
 
 	case ast.LambdaShort:
 		c.pushScope()
@@ -478,7 +473,9 @@ func (c *checker) checkExpr(e ast.Expr) {
 }
 
 // checkBranchBody — тело ветки if/match/recv/with. Если это BlockStmt —
-// отдельная область видимости; иначе — выражение.
+// отдельная область видимости; иначе — выражение. Trap на верхнем уровне
+// выражения ветки запрещён (§10.2): допустимая идиома — блок со
+// стейтментом `trap(...)` или `x = trap(...)`.
 func (c *checker) checkBranchBody(e ast.Expr) {
 	if blk, ok := e.(*ast.BlockStmt); ok {
 		c.checkBlock(blk)
@@ -487,26 +484,29 @@ func (c *checker) checkBranchBody(e ast.Expr) {
 	c.checkExpr(e)
 }
 
-// checkArgForTrap — запрет trap в позиции аргумента вызова или элемента
-// литерала (§10.2). Ловит также пару ключ-значение внутри map/record:
-// `%{ k => trap ... }`, `{ field: trap ... }`, `Name{ field: trap ... }`.
-func (c *checker) checkArgForTrap(a ast.Expr) {
-	if _, ok := a.(ast.TrapExpr); ok {
-		line, col := posOf(a)
-		c.err(line, col,
-			"trap is not allowed in argument or literal-element position (§10.2)")
+// checkExprAllowTrap — выражение в позиции, где trap на верхнем уровне
+// разрешён (§10.2): RHS let_bind или expr_stmt.
+func (c *checker) checkExprAllowTrap(e ast.Expr) {
+	if t, ok := e.(ast.TrapExpr); ok {
+		c.checkTrapInner(t)
 		return
 	}
-	if b, ok := a.(ast.BinaryExpr); ok {
-		op := b.OpStr()
-		if op != "=>" && op != ":" {
-			return
-		}
-		if _, ok := b.Right().(ast.TrapExpr); ok {
-			line, col := posOf(b.Right())
-			c.err(line, col,
-				"trap is not allowed in argument or literal-element position (§10.2)")
-		}
+	c.checkExpr(e)
+}
+
+// checkTrapInner — обход содержимого trap без повторной проверки позиции
+// самого узла.
+func (c *checker) checkTrapInner(x ast.TrapExpr) {
+	if x.TrapInline() != nil {
+		c.checkExpr(x.TrapInline())
+	}
+	if b := x.TrapBody(); b != nil {
+		c.pushScope()
+		c.checkStmt(b)
+		c.popScope()
+	}
+	for _, en := range x.TrapEnsures() {
+		c.checkExpr(en)
 	}
 }
 
@@ -528,7 +528,6 @@ func (c *checker) checkPipe(p ast.PipeExpr) {
 	}
 	c.checkExpr(p.PipeLHS())
 	for _, a := range p.PipeArgs() {
-		c.checkArgForTrap(a)
 		c.checkExpr(a)
 	}
 }
