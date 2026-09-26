@@ -33,7 +33,7 @@ Skills описывают состояние `iter/regvm` @ `8ab58cf` по `AUDI
 ## Модели
 
 Модель задачи задаёт поле **Model** на доске (`sonnet` / `opus` /
-`human`); для Effort L — только она.
+`human`); для Effort large — только она.
 
 - **opus** — дизайн семантики, инварианты компилятора и Verify, крупные
   full-fix (`compiler.go`, `scheduler.go`, `verify.go`).

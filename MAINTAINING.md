@@ -7,7 +7,7 @@
 | Что | Где | Зачем |
 |---|---|---|
 | Доска | [github.com/users/it1ro/projects/5](https://github.com/users/it1ro/projects/5), `gh project view 5 --owner it1ro --web` | Единственный список задач и их статусов |
-| Задачи с DoD | issues `it1ro/brig-lang` с label `audit` (findings аудита) или `spec-gap` (пробелы относительно спеки §16) | Body issue = блок задачи из `TASKS.md` |
+| Задачи с DoD | issues `it1ro/brig-lang` с label `audit` (findings аудита) или `spec-gap` (пробелы относительно спеки §16; уровень §16 — label `must`) | Body issue = блок задачи из `TASKS.md` |
 | План целиком | `TASKS.md` | Проекция доски без статусов: волны 0–6, зависимости, DoD, design decisions и ждущие их задачи |
 | Находки | `AUDIT_REPORT.md` | Описание каждого finding (S-F*, A-F*, I-F*, O-F*) и пробных программ |
 | Правила | `CONTRIBUTING.md` | Ветки, коммиты, PR, DoR/DoD, правила для LLM-сессий |
@@ -18,7 +18,19 @@
 
 ## 2. Доска: поля и статусы
 
-Поля: **Priority** (P0…P3), **Task type** (fail-fast, full-fix, test-infra, docs, merge, feature), **Effort** (S/M/L), **Model** (sonnet/opus/human), **Wave** (0-branch … 6-must), **Sprint** (итерации по 2 недели с понедельника 2026-09-28). Поле называется `Task type`, а не `Type`: имя `Type` GitHub зарезервировал под встроенные issue types.
+Поля: **Priority** (P0…P3), **Task type** (fail-fast, full-fix, test-infra, docs, merge, feature), **Effort** — размер задачи (low / medium / large), **Model** — исполнитель (`sonnet · рутина`, `opus · сложное`, `human · вручную`), **Wave** (0…6; смысл волны — в описании опции и label `wave-N`), **Sprint** (итерации по 2 недели с понедельника 2026-09-28). Поле называется `Task type`, а не `Type`: имя `Type` GitHub зарезервировал под встроенные issue types. В опциях Model код стоит до ` · `; в тексте и в `board_set` достаточно кода (`Model opus`).
+
+Цвета labels: у группы свой оттенок и уровень насыщенности, порядок внутри группы — светлота.
+
+| Группа | Labels | Цвет |
+|---|---|---|
+| Приоритет | `P0`/`blocker`, `P1`, `P2`, `P3` | насыщенные тёплые: красный → оранжевый → жёлтый → светло-жёлтый |
+| Task type | `feature`, `full-fix`, `fail-fast`, `test-infra`, `docs`, `merge` | пастель, у каждого типа свой тон |
+| Источник | `audit`, `spec-gap`, `must` | фиолетовые, от светлого к тёмному |
+| Модель | `sonnet`, `opus`; `human` | синие, от светлого к тёмному; `human` — коричневый |
+| Волна | `wave-0` … `wave-6` | серые, от светлого к тёмному |
+| Процесс | `design-decision`, `verification`, `epic` | маджента, зелёный, чёрный |
+| Закрыто без работы | `false-positive`, `duplicate`, `invalid`, `wontfix` | белый |
 
 | Статус | Значит | Кто переводит |
 |---|---|---|
@@ -54,7 +66,7 @@ board_set() {
   local item fid oid
   item=$(board_item "$1")
   read -r fid oid < <(gh project field-list $BRIG_P --owner $BRIG_O --format json \
-    --jq ".fields[] | select(.name==\"$2\") | [.id, (.options[] | select(.name==\"$3\") | .id)] | @tsv")
+    --jq ".fields[] | select(.name==\"$2\") | [.id, (.options[] | select(.name==\"$3\" or (.name | startswith(\"$3 · \"))) | .id)] | @tsv")
   gh project item-edit --id "$item" --project-id $BRIG_PID --field-id "$fid" --single-select-option-id "$oid"
 }
 
@@ -105,7 +117,7 @@ done
 
 Агент — Claude Code или Cursor Agent, запущенный в корне репозитория. Skills из `.claude/skills/` подхватываются автоматически; протокол сессии описан в skill `brig-workflow`, контекст подсистем — в `brig-overview`, `brig-lexer`, `brig-parser-ast`, `brig-sema`, `brig-compiler`, `brig-vm`, `brig-testing-workflow`.
 
-**Модель** берётся из поля Model issue. Для Effort L (T-36, T-39, T-50, T-51, T-53) — только она; S/M — любая. `model-human` агенту не отдаётся (T-07 и design decisions).
+**Модель** берётся из поля Model issue. Для Effort large (T-36, T-39, T-50, T-51, T-53) — только она; low/medium — любая. `human` агенту не отдаётся (T-07 и design decisions).
 
 **Промпт сессии** (скопировать, подставить номер):
 
@@ -115,8 +127,8 @@ done
 Работай строго в рамках DoD и «НЕ делать» из issue. Найденное по пути — новый issue, не правка.
 ```
 
-- **Автономный** — агент доводит до squash-merge при зелёном CI и сам переводит зависимые задачи в Todo (так описано в `CONTRIBUTING.md` §7). Подходит для S/M задач типов fail-fast, test-infra, простых full-fix.
-- **Со сдачей на ревью** — агент останавливается на In Review с открытым PR; merge делает человек. Для всего, что трогает `compiler.go`, `scheduler.go`, `verify.go`, golden/bytecode, и для всех задач Effort L.
+- **Автономный** — агент доводит до squash-merge при зелёном CI и сам переводит зависимые задачи в Todo (так описано в `CONTRIBUTING.md` §7). Подходит для low/medium задач типов fail-fast, test-infra, простых full-fix.
+- **Со сдачей на ревью** — агент останавливается на In Review с открытым PR; merge делает человек. Для всего, что трогает `compiler.go`, `scheduler.go`, `verify.go`, golden/bytecode, и для всех задач Effort large.
 
 **Что агент не делает никогда:** не берёт issue без label `audit` или `spec-gap` и вне доски; не трогает design-decision issues; не правит `docs/`, `README.md`, `CONTRIBUTING.md` вне задач с Task type `docs`; не меняет семантику языка сверх DoD; не делает merge в режиме ревью; не ставит Sprint.
 
@@ -175,9 +187,9 @@ git branch -D iter/regvm && git push origin --delete iter/regvm
 
 ```bash
 gh issue create --repo it1ro/brig-lang --title "T-NN · <имя>" --body-file body.md \
-  --label "<audit|spec-gap>,<task type>,<P>,wave-<wave>,model-<model>"
+  --label "<audit|spec-gap>,<task type>,<P>,wave-<N>,<model>[,must]"
 gh project item-add 5 --owner it1ro --url <url>
-board_set <N> Priority <P>; board_set <N> "Task type" <type>; board_set <N> Effort <S|M|L>
+board_set <N> Priority <P>; board_set <N> "Task type" <type>; board_set <N> Effort <low|medium|large>
 board_set <N> Model <model>; board_set <N> Wave <wave>; board_set <N> Status Todo
 ```
 
@@ -191,7 +203,7 @@ board_set <N> Model <model>; board_set <N> Wave <wave>; board_set <N> Status Tod
 
 ```bash
 gh project view 5 --owner it1ro --web                                   # доска
-gh issue list --repo it1ro/brig-lang --label wave-0-branch --state open  # волна
+gh issue list --repo it1ro/brig-lang --label wave-0 --state open         # волна
 gh issue list --repo it1ro/brig-lang --label design-decision            # ждут решения
 gh issue list --repo it1ro/brig-lang --label verification               # проверки
 board_set <N> Status "In Progress"                                      # статус
