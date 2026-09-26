@@ -403,6 +403,37 @@ func inspectJoin(vs []Value) string {
 
 // ---- равенство (§4.8) ----
 
+// MatchEqual — сравнение литерала-паттерна со значением (§4.8, колонка
+// «Pattern matching»: точное; решение #43, вариант A). Значения разных
+// Kind не равны: паттерн `1` не матчит `1.0` и `dec"1"`, `1.0` не
+// матчит `1`. Внутри контейнеров правило то же (поэлементно).
+func MatchEqual(a, b Value) bool {
+	if a.Kind != b.Kind {
+		return false
+	}
+	switch a.Kind {
+	case KindTuple:
+		return matchEqualSlice(a.Tuple, b.Tuple)
+	case KindList:
+		return matchEqualSlice(a.List, b.List)
+	case KindVector:
+		return matchEqualSlice(a.Vector, b.Vector)
+	}
+	return Equal(a, b)
+}
+
+func matchEqualSlice(a, b []Value) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if !MatchEqual(a[i], b[i]) {
+			return false
+		}
+	}
+	return true
+}
+
 // Equal — структурное равенство.
 //
 // Decimal-правила (§4.8, §7.4): Decimal×Decimal и Decimal×Int — по
