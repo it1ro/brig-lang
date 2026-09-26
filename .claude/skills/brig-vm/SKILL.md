@@ -114,10 +114,13 @@ description: >
   (T-48 #61; `timerSeq` взводится в `RECVTIMER` из `s.nextSeq`) — не
   возвращать обход `map` напрямую в `ready` (§15.4); якорь
   `TestWakeExpiredDeterministicOrder`. Модель scheduler: решено C (#40).
-- Равенство: `PatLiteral` использует `runtime.Equal` (паттерн `1` матчит
-  `1.0`), Int×Float сравниваются через float64, Decimal×Float по-разному в
-  `==` и в `INDEX`/`Map`/паттернах. Открытый design decision #43 (I-F8) —
-  не трогать до решения.
+- Равенство: Int×Float сравниваются точно (T-85 #110, решение #43:
+  `runtime.Equal`/`Compare`, быстрый путь для |Int| <= 2^53, иначе
+  `big.Float`; `Inf` по знаку). `NaN != NaN`, `<`/`>`/`<=`/`>=` с NaN —
+  false (`runtime.IsNaNOperand` в `LT..GE`); `Compare` ставит NaN после
+  всех чисел (только для порядка sort/Set). `PatLiteral` пока использует
+  `runtime.Equal` (паттерн `1` матчит `1.0`) — T-84 #109; Decimal×Float
+  по-разному в `==` и в `INDEX`/`Map`/паттернах — T-86 #111.
 
 ## Опкоды (`opcodes.go`, `chunk.go`)
 
