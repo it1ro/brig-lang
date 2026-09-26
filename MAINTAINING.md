@@ -18,7 +18,7 @@
 
 ## 2. Доска: поля и статусы
 
-Поля: **Priority** (P0…P3), **Task type** (fail-fast, full-fix, test-infra, docs, merge, feature), **Effort** (S/M/L), **Model** (sonnet/opus/human), **Wave** (0-branch … 6-must), **Sprint** (итерации по 2 недели с понедельника 2026-09-28). Поле называется `Task type`, а не `Type`: имя `Type` GitHub зарезервировал под встроенные issue types.
+Поля: **Priority** (P0…P3), **Task type** (fail-fast, full-fix, test-infra, docs, merge, feature), **Effort** — размер задачи (`S · мелкая`, `M · средняя`, `L · крупная`), **Model** — исполнитель (`sonnet · рутина`, `opus · сложное`, `human · вручную`), **Wave** (0-branch … 6-must), **Sprint** (итерации по 2 недели с понедельника 2026-09-28). Поле называется `Task type`, а не `Type`: имя `Type` GitHub зарезервировал под встроенные issue types. В опциях Effort и Model код стоит до ` · `; в тексте и в `board_set` достаточно кода (`Effort L`, `Model opus`).
 
 | Статус | Значит | Кто переводит |
 |---|---|---|
@@ -54,7 +54,7 @@ board_set() {
   local item fid oid
   item=$(board_item "$1")
   read -r fid oid < <(gh project field-list $BRIG_P --owner $BRIG_O --format json \
-    --jq ".fields[] | select(.name==\"$2\") | [.id, (.options[] | select(.name==\"$3\") | .id)] | @tsv")
+    --jq ".fields[] | select(.name==\"$2\") | [.id, (.options[] | select(.name==\"$3\" or (.name | startswith(\"$3 · \"))) | .id)] | @tsv")
   gh project item-edit --id "$item" --project-id $BRIG_PID --field-id "$fid" --single-select-option-id "$oid"
 }
 
