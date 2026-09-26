@@ -17,6 +17,8 @@
 //	Some(x)/Ok(x)→ прозрачно, encode(x)
 //	Error(e)     → {"error": encode(e)}
 //	иной вариант → {"tag": "Name", "args": [...]}
+//	запись       → object по полям; номинальная с TypeTag —
+//	               {"__type__": "Name", ...} (§4.7)
 //	Function/Closure/Pid/Ref → ошибка (§14.8)
 //	Float Inf/NaN → ошибка (RFC 8259)
 //
@@ -44,16 +46,27 @@ import (
 
 const jsonMaxDepth = 64
 
+// JSONOptions — опции Json.encode (§4.7).
+type JSONOptions struct {
+	// TypeTag — номинальные записи получают ключ "__type__" с именем типа.
+	TypeTag bool
+}
+
 // JSONEncode — сериализует значение в строку JSON.
 func JSONEncode(v Value) (string, error) {
+	return JSONEncodeOpts(v, JSONOptions{})
+}
+
+// JSONEncodeOpts — JSONEncode с опциями.
+func JSONEncodeOpts(v Value, opts JSONOptions) (string, error) {
 	var sb strings.Builder
-	if err := jsonEncode(&sb, v, 0); err != nil {
+	if err := jsonEncode(&sb, opts, v, 0); err != nil {
 		return "", err
 	}
 	return sb.String(), nil
 }
 
-func jsonEncode(sb *strings.Builder, v Value, depth int) error {
+func jsonEncode(sb *strings.Builder, opts JSONOptions, v Value, depth int) error {
 	if depth > jsonMaxDepth {
 		return fmt.Errorf("(:json_encode, :depth_limit)")
 	}
@@ -112,7 +125,7 @@ func jsonEncode(sb *strings.Builder, v Value, depth int) error {
 			if i > 0 {
 				sb.WriteByte(',')
 			}
-			if err := jsonEncode(sb, e, depth+1); err != nil {
+			if err := jsonEncode(sb, opts, e, depth+1); err != nil {
 				return err
 			}
 		}
@@ -124,7 +137,7 @@ func jsonEncode(sb *strings.Builder, v Value, depth int) error {
 			if i > 0 {
 				sb.WriteByte(',')
 			}
-			if err := jsonEncode(sb, e, depth+1); err != nil {
+			if err := jsonEncode(sb, opts, e, depth+1); err != nil {
 				return err
 			}
 		}
@@ -149,7 +162,7 @@ func jsonEncode(sb *strings.Builder, v Value, depth int) error {
 			b, _ := json.Marshal(ks)
 			sb.Write(b)
 			sb.WriteByte(':')
-			if err := jsonEncode(sb, e.Val, depth+1); err != nil {
+			if err := jsonEncode(sb, opts, e.Val, depth+1); err != nil {
 				return err
 			}
 		}
@@ -166,13 +179,13 @@ func jsonEncode(sb *strings.Builder, v Value, depth int) error {
 			if len(v.Variant.Args) != 1 {
 				return fmt.Errorf("(:json_encode, (:bad_variant, %s))", v.Inspect())
 			}
-			return jsonEncode(sb, v.Variant.Args[0], depth+1)
+			return jsonEncode(sb, opts, v.Variant.Args[0], depth+1)
 		case "Error":
 			if len(v.Variant.Args) != 1 {
 				return fmt.Errorf("(:json_encode, (:bad_variant, %s))", v.Inspect())
 			}
 			sb.WriteString(`{"error":`)
-			if err := jsonEncode(sb, v.Variant.Args[0], depth+1); err != nil {
+			if err := jsonEncode(sb, opts, v.Variant.Args[0], depth+1); err != nil {
 				return err
 			}
 			sb.WriteByte('}')
@@ -185,12 +198,35 @@ func jsonEncode(sb *strings.Builder, v Value, depth int) error {
 				if i > 0 {
 					sb.WriteByte(',')
 				}
-				if err := jsonEncode(sb, a, depth+1); err != nil {
+				if err := jsonEncode(sb, opts, a, depth+1); err != nil {
 					return err
 				}
 			}
 			sb.WriteString(`]}`)
 		}
+
+	case KindRecord:
+		sb.WriteByte('{')
+		n := 0
+		if opts.TypeTag && v.Record.Type != "" {
+			sb.WriteString(`"__type__":`)
+			b, _ := json.Marshal(v.Record.Type)
+			sb.Write(b)
+			n++
+		}
+		for _, f := range v.Record.Fields {
+			if n > 0 {
+				sb.WriteByte(',')
+			}
+			n++
+			b, _ := json.Marshal(f.Name)
+			sb.Write(b)
+			sb.WriteByte(':')
+			if err := jsonEncode(sb, opts, f.Val, depth+1); err != nil {
+				return err
+			}
+		}
+		sb.WriteByte('}')
 
 	case KindFunction, KindClosure, KindPid, KindRef:
 		return fmt.Errorf("(:json_encode, (:not_serializable, %s))", v.Kind)
