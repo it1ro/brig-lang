@@ -117,16 +117,26 @@ func resolveCallee(fn runtime.Value) (callee, error) {
 	return callee{}, typeErr("call", fn)
 }
 
-// checkArity: variadic — argc >= NumParams-1, иначе argc == NumParams.
-func checkArity(c callee, argc int) error {
+// functionClause — ловимый raise (:function_clause, [args]) (§6.1, §10.4):
+// ни один клоз/арность не подошли. args копируется: он может быть окном
+// регистров вызывающего.
+func functionClause(args []runtime.Value) error {
+	return &ErrRaise{Val: runtime.Tuple(
+		runtime.Atom("function_clause"),
+		runtime.List(append([]runtime.Value(nil), args...)...))}
+}
+
+// checkArity: variadic — len(args) >= NumParams-1, иначе == NumParams.
+func checkArity(c callee, args []runtime.Value) error {
+	argc := len(args)
 	if c.chunk.Variadic {
 		if argc < c.chunk.NumParams-1 {
-			return fmt.Errorf("(:function_clause, (%s, %d args))", c.name, argc)
+			return functionClause(args)
 		}
 		return nil
 	}
 	if argc != c.chunk.NumParams {
-		return fmt.Errorf("(:function_clause, (%s, %d args))", c.name, argc)
+		return functionClause(args)
 	}
 	return nil
 }
@@ -163,7 +173,7 @@ func frameFromFn(fn runtime.Value, args []runtime.Value) (*Frame, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := checkArity(c, len(args)); err != nil {
+	if err := checkArity(c, args); err != nil {
 		return nil, err
 	}
 	regs := make([]runtime.Value, c.chunk.NumRegs)
@@ -188,8 +198,7 @@ func nativeFrame(name string, k nativeCont) *Frame {
 func (s *Scheduler) enterCall(fn runtime.Value, args []runtime.Value) (*Frame, runtime.Value, error) {
 	if fn.Kind == runtime.KindFunction && fn.Func != nil && fn.Func.IsNative {
 		if ar := fn.Func.Arity; ar >= 0 && ar != len(args) {
-			return nil, runtime.Unit, fmt.Errorf(
-				"(:function_clause, (%s, %d args))", fn.Func.Name, len(args))
+			return nil, runtime.Unit, functionClause(args)
 		}
 		fresh := append([]runtime.Value(nil), args...)
 		if start, ok := s.vm.resumable[fn.Func]; ok {
@@ -806,8 +815,7 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 
 			if cv.Kind == runtime.KindFunction && cv.Func != nil && cv.Func.IsNative {
 				if ar := cv.Func.Arity; ar >= 0 && ar != argc {
-					return fail(fmt.Errorf(
-						"(:function_clause, (%s, %d args))", cv.Func.Name, argc))
+					return fail(functionClause(args))
 				}
 				fresh := append([]runtime.Value(nil), args...)
 				if start, ok := s.vm.resumable[cv.Func]; ok {
@@ -831,7 +839,7 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 
 			c, err := resolveCallee(cv)
 			if err == nil {
-				err = checkArity(c, argc)
+				err = checkArity(c, args)
 			}
 			if err != nil {
 				return fail(err)
