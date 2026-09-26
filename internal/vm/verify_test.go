@@ -203,6 +203,10 @@ func TestCompiledPatternSlotsMatchesMatchPattern(t *testing.T) {
 			runtime.Map([]runtime.MapEntry{
 				{Key: runtime.Atom("a"), Val: runtime.Int(1)},
 				{Key: runtime.Atom("b"), Val: runtime.Int(2)}})},
+		{PatRecord, &CompiledPattern{Kind: PatRecord, Tag: "User", Fields: []RecordPatField{
+			{Name: "id", Value: ident(2)}}},
+			runtime.Record("User", []runtime.RecordField{
+				{Name: "id", Val: runtime.Int(1)}, {Name: "name", Val: runtime.Str("a")}})},
 		{PatAs, &CompiledPattern{Kind: PatAs, AsSlot: 4, Inner: &CompiledPattern{
 			Kind: PatTuple, Subs: []*CompiledPattern{ident(0)}}},
 			runtime.Tuple(runtime.Int(1))},
