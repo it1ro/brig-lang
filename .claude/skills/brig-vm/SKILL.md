@@ -118,8 +118,9 @@ description: >
   `runtime.Equal`/`Compare`, быстрый путь для |Int| <= 2^53, иначе
   `big.Float`; `Inf` по знаку). `NaN != NaN`, `<`/`>`/`<=`/`>=` с NaN —
   false (`runtime.IsNaNOperand` в `LT..GE`); `Compare` ставит NaN после
-  всех чисел (только для порядка sort/Set). `PatLiteral` пока использует
-  `runtime.Equal` (паттерн `1` матчит `1.0`) — T-84 #109; Decimal×Float
+  всех чисел (только для порядка sort/Set). `PatLiteral` и ключи
+  Map-паттерна используют `runtime.MatchEqual` (тот же `Kind` и точное
+  значение: `1` не матчит `1.0` и `dec"1"`; T-84 #109); Decimal×Float
   по-разному в `==` и в `INDEX`/`Map`/паттернах — T-86 #111.
 
 ## Опкоды (`opcodes.go`, `chunk.go`)
