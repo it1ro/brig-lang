@@ -4,7 +4,8 @@
 # NEEDS: pub fn (03/L3), реестр имён с кортежным ключом (02/R5, Q-reg),
 #        Timer.send_after (02/R6), Time.monotonic_ms/now (02/R7),
 #        Http.Client (04), Server.call/reply (04), доступ к полям (03/L4),
-#        ref-ожидание без чужих сообщений внутри Http.Client (02/R12, Q-await)
+#        ref-ожидание без чужих сообщений внутри Http.Client (02/R12, Q-await),
+#        опровержимый паттерн в `=` (03/L21)
 module Lookout.Monitors.Checker
 
 import Http.Client
@@ -20,13 +21,13 @@ pub fn child_spec(monitor, opts) ->
 
 fn init(monitor, opts) ->
     register((:checker, monitor.id), self())
-    _ = Timer.send_after(0, self(), :tick)
+    Timer.send_after(0, self(), :tick)
     loop({ monitor: monitor, opts: opts })
 
 fn loop(state) ->
     recv
         (:tick) ->
-            _ = Timer.send_after(state.monitor.interval_ms, self(), :tick)
+            Timer.send_after(state.monitor.interval_ms, self(), :tick)
             loop(check(state))
         (:call, from, :check_now) ->
             next = check(state)
@@ -34,8 +35,7 @@ fn loop(state) ->
             loop(next)
         (:reconfigure, monitor) ->
             loop({ ..state, monitor: monitor })
-        (:stop) ->
-            :ok
+    # Остановка — забота супервизора (exit, Q-exit), своего :stop нет.
 
 fn check(state) ->
     m = state.monitor
@@ -49,8 +49,10 @@ fn check(state) ->
         took_ms: Time.monotonic_ms() - started,
         at: Time.now(),
     }
-    _ = Monitors.record_check(event)
-    _ = Monitors.publish_change(m.status, event)
+    # Let it crash: БД недоступна — чекер падает, супервизор перезапустит
+    # его с backoff; молча терять проверки нельзя.
+    Ok(_) = Monitors.record_check(event)
+    Monitors.publish_change(m.status, event)
     { ..state, monitor: Monitor{ ..m, status: event.status, last_checked_at: Some(event.at) } }
 
 fn classify(Ok(resp)) when resp.status < 400 -> :up

@@ -12,13 +12,14 @@ import Log
 fn main() ->
     config = Config.load(Lookout.Config, Sys.env_name())
     sup = Application.start(config)
+    watch(sup)
     Signal.subscribe([:sigterm, :sigint])
     Log.info("lookout started", { port: config.port })
     recv
         (:signal, sig) ->
             Log.info("shutting down", { signal: sig })
             # Supervisor.stop гасит детей в обратном порядке старта:
-            # Endpoint перестаёт принимать, соединения дорабатывают до дедлайна,
+            # Endpoint перестаёт принимать, запросы дорабатывают до дедлайна,
             # затем чекеры, PubSub и Repo.
             Supervisor.stop(sup, :shutdown, { timeout: 15_000 })
             Sys.exit(0)

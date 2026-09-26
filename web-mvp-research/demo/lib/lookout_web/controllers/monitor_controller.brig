@@ -12,6 +12,7 @@ import Calmar.Params
 import Calmar.Router
 import Lookout.Monitors
 import Changeset
+import Lookout.Monitors.Monitor
 alias LookoutWeb.Templates.Monitors as T
 
 pub fn index(conn, _) ->
@@ -27,7 +28,7 @@ pub fn show(conn, %{ "id" => raw_id }) ->
         conn |> Conn.render(T.show, { monitor: m, checks: checks })
 
 pub fn new(conn, _) ->
-    conn |> Conn.render(T.form, { changeset: Changeset.empty() })
+    conn |> Conn.render(T.form, { changeset: Changeset.empty(Monitor) })
 
 pub fn create(conn, %{ "monitor" => attrs }) ->
     match Monitors.create(attrs)
@@ -39,5 +40,5 @@ pub fn create(conn, %{ "monitor" => attrs }) ->
             conn
                 |> Conn.put_status(422)
                 |> Conn.render(T.form, { changeset: cs })
-        Error(e) ->
-            Error(e)
+        Error(_) as err ->
+            err                       # остальное — в Calmar.Fallback (404, 500…)

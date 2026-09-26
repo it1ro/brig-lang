@@ -27,7 +27,7 @@ pub fn create(conn, params) ->
     match Monitors.create(params)
         Ok(m)                 -> conn |> Conn.json(201, %{ "data" => m })
         Error((:invalid, cs)) -> conn |> Conn.json(422, %{ "errors" => Changeset.errors(cs) })
-        Error(e)              -> Error(e)
+        Error(_) as err       -> err
 
 pub fn check_now(conn, %{ "id" => raw_id }) ->
     with

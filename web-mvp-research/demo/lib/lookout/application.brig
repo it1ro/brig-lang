@@ -11,7 +11,7 @@ import Lookout.Repo
 import Lookout.Monitors
 
 pub fn start(config) ->
-    sup = Supervisor.start({
+    Supervisor.start({
         strategy: :one_for_one,
         max_restarts: 5,
         within: 10_000,
@@ -27,5 +27,3 @@ pub fn start(config) ->
             }),
         ],
     })
-    _ = watch(sup)
-    sup

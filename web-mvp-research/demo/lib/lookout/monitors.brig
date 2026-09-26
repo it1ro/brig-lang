@@ -22,7 +22,7 @@ pub fn create(params) ->
         Ok(m)     <- Monitor.changeset(params)
         Ok(saved) <- Repo.insert("monitors", m)
         Ok(_)     <- Sup.start_checker(saved)
-        _         <- PubSub.broadcast(:pubsub, "monitors", (:monitor_created, saved))
+        PubSub.broadcast(:pubsub, "monitors", (:monitor_created, saved))
         Ok(saved)
 
 pub fn recent_checks(monitor_id, limit) ->
@@ -47,9 +47,8 @@ pub fn record_check(event) ->
             Ok(event))
 
 # Уведомить подписчиков, только если статус реально изменился.
-pub fn publish_change(old_status, event) ->
-    if old_status != event.status
-        PubSub.broadcast(:pubsub, "monitor:\(event.monitor_id)", (:status_changed, event))
-        PubSub.broadcast(:pubsub, "monitors", (:status_changed, event))
-    else
-        Ok(())
+pub fn publish_change(old_status, event) when old_status == event.status -> :unchanged
+pub fn publish_change(_, event) ->
+    PubSub.broadcast(:pubsub, "monitor:\(event.monitor_id)", (:status_changed, event))
+    PubSub.broadcast(:pubsub, "monitors", (:status_changed, event))
+    :published
