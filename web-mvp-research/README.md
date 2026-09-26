@@ -85,12 +85,12 @@
 |---|---|
 | [00-PROMPT.md](00-PROMPT.md) | промпт, по которому сделано исследование |
 | [01-positioning.md](01-positioning.md) | один файл, ниши, чего не делаем |
-| [02-runtime.md](02-runtime.md) | R1–R13: требования к VM и планировщику |
-| [03-language.md](03-language.md) | L1–L19: пробелы языка |
+| [02-runtime.md](02-runtime.md) | R1–R14: требования к VM и планировщику |
+| [03-language.md](03-language.md) | L1–L20: пробелы языка |
 | [04-stdlib.md](04-stdlib.md) | батарейки, раскладка VM / Go / Brig / пакеты, бюджет размера |
 | [05-toolchain.md](05-toolchain.md) | CLI, self-contained сборка, манифест, скриптинг, embedded |
 | [06-framework.md](06-framework.md) | архитектура Calmar |
-| [07-open-questions.md](07-open-questions.md) | развилки с вариантами и рекомендациями |
+| [07-open-questions.md](07-open-questions.md) | принятые решения и развилки с вариантами |
 | [08-roadmap.md](08-roadmap.md) | фазы и критерии успеха |
 | [09-contracts.md](09-contracts.md) | контракты данных: гибрид code-first, цена проверок, JSON Schema |
 | [10-packages.md](10-packages.md) | пакетный менеджер, Chandler, лаунчер `calmar` |
