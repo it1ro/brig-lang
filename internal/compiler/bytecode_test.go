@@ -57,6 +57,19 @@ fn main() ->
         :ok
     print(result)
 `},
+	{"fn_multiclause", `module Main
+fn fact(0) -> 1
+fn fact(n) -> n * fact(n - 1)
+fn classify(n) when n > 0 -> :positive
+fn classify(0) -> :zero
+fn first((a, _)) -> a
+fn pow(base, exp) ->
+    fn go(acc, 0) -> acc
+    fn go(acc, n) -> go(acc * base, n - 1)
+    go(1, exp)
+fn main() ->
+    print(fact(5))
+`},
 	{"recv_after", `module Main
 fn worker() ->
     recv

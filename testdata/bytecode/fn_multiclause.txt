@@ -1,0 +1,55 @@
+== classify arity=1 params=1 regs=3 consts=4 patterns=1 ==
+0000   0:0   LOADK       r2 k0 ; 0
+0001   4:23  GT          r1 r0 r2
+0002   4:23  JMPIFNOT    r1 -> 0005
+0003   4:23  LOADK       r2 k1 ; :positive
+0004   4:23  RETURN      r2
+0005   5:13  MATCHLOCAL  r0 p0 ; 0
+0006   5:13  JMP         -> 0009
+0007   5:13  LOADK       r2 k2 ; :zero
+0008   5:13  RETURN      r2
+0009   4:13  LOADK       r1 k3 ; :function_clause
+0010   4:13  LIST        r2 <- r0..r0
+0011   4:13  TUPLE       r1 <- r1..r2
+0012   4:13  RAISE       r1
+== fact arity=1 params=1 regs=6 consts=2 patterns=1 ==
+0000   2:9   MATCHLOCAL  r0 p0 ; 0
+0001   2:9   JMP         -> 0004
+0002   2:9   LOADK       r2 k0 ; 1
+0003   2:9   RETURN      r2
+0004   2:9   GETGLOBAL   r3 k1 ; fact
+0005   2:9   LOADK       r5 k0 ; 1
+0006   3:26  SUB         r4 r0 r5
+0007   3:19  CALL        r3 1 -> r2
+0008   3:17  MUL         r1 r0 r2
+0009   3:17  RETURN      r1
+== first arity=1 params=1 regs=3 consts=1 patterns=1 ==
+0000   6:10  MATCHLOCAL  r0 p0 ; (r1, _)
+0001   6:10  JMP         -> 0003
+0002   6:10  RETURN      r1
+0003   6:10  LOADK       r1 k0 ; :function_clause
+0004   6:10  LIST        r2 <- r0..r0
+0005   6:10  TUPLE       r1 <- r1..r2
+0006   6:10  RAISE       r1
+== main arity=0 params=0 regs=5 consts=3 patterns=0 ==
+0000   0:0   GETGLOBAL   r1 k0 ; print
+0001   0:0   GETGLOBAL   r3 k1 ; fact
+0002   0:0   LOADK       r4 k2 ; 5
+0003  12:11  CALL        r3 1 -> r2
+0004  12:5   TAILCALL    r1 1
+== pow arity=2 params=2 regs=7 consts=2 patterns=0 ==
+0000   0:0   GETGLOBAL   r3 k0 ; pow$go
+0001   0:0   LOADK       r4 k1 ; 1
+0002   0:0   MOVE        r5 r1
+0003   0:0   MOVE        r6 r0
+0004  10:5   TAILCALL    r3 3
+== pow$go arity=3 params=3 regs=8 consts=2 patterns=1 ==
+0000   8:16  MATCHLOCAL  r1 p0 ; 0
+0001   8:16  JMP         -> 0003
+0002   8:16  RETURN      r0
+0003   8:16  GETGLOBAL   r4 k0 ; pow$go
+0004   9:29  MUL         r5 r0 r2
+0005   9:29  LOADK       r7 k1 ; 1
+0006   9:39  SUB         r6 r1 r7
+0007   9:39  MOVE        r7 r2
+0008   9:22  TAILCALL    r4 3
