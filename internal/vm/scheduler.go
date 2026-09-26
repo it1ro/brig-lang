@@ -50,6 +50,9 @@ type Frame struct {
 	captures []runtime.Value
 	handlers []trapHandler
 	callDst  int
+	// cont != nil — кадр возобновляемого натива (T-58): chunk == nil,
+	// regs[0] принимает результат колбэка (callDst == 0).
+	cont nativeCont
 }
 
 // catch пытается поймать *ErrRaise активным trap-регионом. При успехе
@@ -169,6 +172,36 @@ func frameFromFn(fn runtime.Value, args []runtime.Value) (*Frame, error) {
 		regs:     regs,
 		captures: c.captures,
 	}, nil
+}
+
+// nativeFrame — кадр возобновляемого натива name с состоянием k.
+func nativeFrame(name string, k nativeCont) *Frame {
+	return &Frame{name: name, regs: make([]runtime.Value, 1), cont: k}
+}
+
+// enterCall готовит вызов fn(args) из кадра актора: кадр для байткод-
+// функции или возобновляемого натива (G3, T-58) либо сразу результат
+// обычного натива, который редукций не тратит (K-4). args может быть окном
+// регистров вызывающего: нативу уходит свежая копия (K-5).
+func (s *Scheduler) enterCall(fn runtime.Value, args []runtime.Value) (*Frame, runtime.Value, error) {
+	if fn.Kind == runtime.KindFunction && fn.Func != nil && fn.Func.IsNative {
+		if ar := fn.Func.Arity; ar >= 0 && ar != len(args) {
+			return nil, runtime.Unit, fmt.Errorf(
+				"(:function_clause, (%s, %d args))", fn.Func.Name, len(args))
+		}
+		fresh := append([]runtime.Value(nil), args...)
+		if start, ok := s.vm.resumable[fn.Func]; ok {
+			k, err := start(fresh)
+			if err != nil {
+				return nil, runtime.Unit, err
+			}
+			return nativeFrame(fn.Func.Name, k), runtime.Unit, nil
+		}
+		r, err := fn.Func.Native(s.vm, fresh)
+		return nil, r, err
+	}
+	nf, err := frameFromFn(fn, args)
+	return nf, runtime.Unit, err
 }
 
 // ---- Actor / Scheduler ----
@@ -486,6 +519,9 @@ func (s *Scheduler) runSlice(a *Actor) {
 // ---- stepFrame ----
 
 func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
+	if f.cont != nil {
+		return s.stepNative(a, f)
+	}
 	regs := f.regs
 	code := f.chunk.Code
 	consts := f.chunk.Constants
@@ -701,33 +737,19 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 					}
 					return fail(serr)
 				}
-				argc = len(args)
 			}
 
-			if cv.Kind == runtime.KindFunction && cv.Func != nil && cv.Func.IsNative {
-				if ar := cv.Func.Arity; ar >= 0 && ar != argc {
-					return fail(fmt.Errorf(
-						"(:function_clause, (%s, %d args))", cv.Func.Name, argc))
-				}
-				fresh := append([]runtime.Value(nil), args...) // K-5
-				r, err := cv.Func.Native(s.vm, fresh)
-				if err != nil {
-					if f.catch(err) {
-						continue
-					}
-					return fail(err)
-				}
-				regs[dst] = r
-				f.ip++
-				continue
-			}
-
-			nf, err := frameFromFn(cv, args)
+			nf, r, err := s.enterCall(cv, args)
 			if err != nil {
 				if f.catch(err) {
 					continue
 				}
 				return fail(err)
+			}
+			if nf == nil {
+				regs[dst] = r
+				f.ip++
+				continue
 			}
 			f.callDst = dst
 			f.ip++
@@ -755,7 +777,19 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 					return fail(fmt.Errorf(
 						"(:function_clause, (%s, %d args))", cv.Func.Name, argc))
 				}
-				r, err := cv.Func.Native(s.vm, append([]runtime.Value(nil), args...))
+				fresh := append([]runtime.Value(nil), args...)
+				if start, ok := s.vm.resumable[cv.Func]; ok {
+					// Кадр становится кадром натива: колбэки пойдут поверх
+					// него, результат — туда же, куда ушёл бы у f.
+					k, err := start(fresh)
+					if err != nil {
+						return fail(err)
+					}
+					f.regs, f.chunk, f.name, f.captures, f.ip, f.cont =
+						make([]runtime.Value, 1), nil, cv.Func.Name, nil, 0, k
+					return stepContinue
+				}
+				r, err := cv.Func.Native(s.vm, fresh)
 				if err != nil {
 					return fail(err)
 				}
@@ -1060,6 +1094,42 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 	return fail(fmt.Errorf("internal: fell off end of %s", f.name))
 }
 
+// stepNative — ход кадра возобновляемого натива (T-58): отдаёт cont
+// результат предыдущего колбэка из regs[0]. Байткод-колбэк (и вложенный
+// возобновляемый натив) уходит новым кадром поверх — так он тратит
+// редукции и может быть вытеснен (G3); обычный натив вызывается на месте.
+// Raise колбэка всплывает сквозь этот кадр (handlers у него нет) к trap
+// вызывающего, как было при синхронном вызове.
+func (s *Scheduler) stepNative(a *Actor, f *Frame) stepOutcome {
+	fail := func(err error) stepOutcome {
+		a.err = err
+		a.result = runtime.Unit
+		return stepFailed
+	}
+
+	for {
+		st, err := f.cont.resume(f.regs[0])
+		if err != nil {
+			return fail(err)
+		}
+		if st.done {
+			a.result = st.res
+			return stepDone
+		}
+		nf, r, err := s.enterCall(st.fn, st.args)
+		if err != nil {
+			return fail(err)
+		}
+		if nf == nil {
+			f.regs[0] = r
+			continue
+		}
+		f.callDst = 0
+		a.frames = append(a.frames, nf)
+		return stepContinue
+	}
+}
+
 // recvTimerDuration converts after-ms to a Duration without overflowing
 // int64 nanoseconds. Rejects ms outside [MinInt64/1e6, MaxInt64/1e6].
 func recvTimerDuration(ms int64) (time.Duration, bool) {
@@ -1344,6 +1414,9 @@ func attachTrace(a *Actor) {
 	trace := make([]TraceFrame, 0, n)
 	for i := n - 1; i >= 0; i-- {
 		f := a.frames[i]
+		if f.cont != nil {
+			continue // кадр натива: позиции в исходнике нет
+		}
 		ip := f.ip
 		if i != n-1 {
 			ip--
