@@ -83,13 +83,11 @@ T-82, ждёт design decision #41 (при строгом Bool правый оп
   падение одного `ensure` не мешает остальным отработать; побеждает
   **последняя** сработавшая ошибка — записывает `eReg` только сработавший
   handler.
-- `TAILCALL` **никогда** не эмитируется внутри тела `trap`. Сейчас это
-  держится на двух вещах: тело `trap` компилируется с `val(dst)` (не
-  хвостовой dest — структурная гарантия) и `vm.Verify` проверяет
-  `TAILCALL` вне `TRAPBEGIN..TRAPEND` (линейный счётчик). **Проверки в
-  компиляторе нет:** `fc.trapDepth` только инкрементируется и
-  декрементируется, нигде не читается (A-F2). Проверку в
-  `compileGenericCall`/`compileGlobalCall` добавляет T-31 (#20). Если
+- `TAILCALL` **никогда** не эмитируется внутри тела `trap`. Три слоя:
+  тело `trap` компилируется с `val(dst)` (не хвостовой dest — структурная
+  гарантия); `compileGenericCall`/`compileGlobalCall` делают
+  `if d.tail && fc.trapDepth > 0 { fc.fail(...) }` (T-31 #20); `vm.Verify`
+  проверяет `TAILCALL` вне `TRAPBEGIN..TRAPEND` (линейный счётчик). Если
   добавляете новую хвостовую позицию внутри тела `trap` — сначала
   проверьте, что она не входит в область активного `ensure`.
 - **Известные дефекты ensure (I-F5, T-37 #26):** ensure компилируются
@@ -135,9 +133,9 @@ K-8 объявляет эти фичи вне рамок, но сейчас ча
 
 1. `compiler.Verify = true` уже включён в тестах пакета
    (`verify_on_test.go`) — не отключать. Сейчас на этапе `Compile` падают
-   нарушения I-4 и то, что видит `vm.Verify` (TAILCALL под trap, definite
-   assignment — кроме тел веток `recv`/`after`, см. `brig-vm`); I-1, I-3 и
-   `trapDepth` не проверяются до T-31…T-33.
+   нарушения I-4, `trapDepth` (TAILCALL под trap, T-31) и то, что видит
+   `vm.Verify` (TAILCALL под trap, definite assignment — кроме тел веток
+   `recv`/`after`, см. `brig-vm`); I-1 и I-3 не проверяются до T-32/T-33.
 2. Прогнать `make test-compiler` (узкий) и затем `go test
    ./internal/compiler/... -run TestBytecodeGolden` — если байткод
    изменился намеренно, `make update-bytecode`.
