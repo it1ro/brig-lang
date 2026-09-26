@@ -26,22 +26,35 @@
 ## Как выглядит (без макросов и перегрузки операторов)
 
 Ecto строит условия макросами (`where: m.status == ^s`). В Brig их нет,
-поэтому условия — **данные**: равенство — мапой, остальное — явным
-оператором-атомом.
+поэтому **условие — запись**, где форма значения задаёт оператор
+(утверждено 2026-09-27):
+
+| Значение поля | SQL |
+|---|---|
+| литерал | `=` |
+| `List` | `IN` |
+| `Range` (`5_000 to 60_000`) | `BETWEEN` |
+| `Q.lt(x)`, `Q.gt(x)`, `Q.lte(x)`, `Q.gte(x)`, `Q.like(s)`, `Q.not(v)` | `<`, `>`, `<=`, `>=`, `LIKE`, `NOT …` |
 
 ```brig
+alias Query as Q
+
 pub fn failing(since) ->
     Monitor
-        |> Query.from()
-        |> Query.where(%{ status: :down })
-        |> Query.where_op(:last_checked_at, :<, since)
-        |> Query.order_by([(:desc, :last_checked_at)])
-        |> Query.preload(:checks, Check |> Query.from() |> Query.limit(10))
+        |> Q.from()
+        |> Q.where({ status: :down, last_checked_at: Q.lt(since) })
+        |> Q.order_by([(:desc, :last_checked_at)])
+        |> Q.preload(:checks, Check |> Q.from() |> Q.limit(10))
         |> Repo.all()
 
 # Скоуп — обычная функция Query -> Query
-pub fn active(q) -> q |> Query.where_op(:interval_ms, :<=, 60_000)
+pub fn active(q) -> q |> Q.where({ interval_ms: Q.lte(60_000) })
 ```
+
+Имена полей сверяются с `Type.fields` при построении запроса (опечатка —
+сразу, а не в SQL); значения всегда уходят параметрами. `OR` и сравнение
+двух полей — `Q.any([cond, …])` и `Q.sql(…)`; если этого окажется мало —
+кандидат в язык `quote`-лямбды (03/L23).
 
 Связи объявляются данными в модуле типа (конвенция «модуль типа», 03/L6):
 
@@ -74,5 +87,5 @@ pub fn relations() ->
 
 - Имя пакета: рабочее `Query`; в резерве морских имён подходит, например,
   *Hold* (трюм — где хранится груз). Решить при старте работ.
-- Оператор-атом (`:<`, `:>=`, `:like`, `:in`) или отдельные функции
-  (`Query.lt`, `Query.in`) — решить при проектировании API пакета.
+- Вводить ли в язык `quote`-лямбды (03/L23) — решить при проектировании
+  пакета по реальным запросам.

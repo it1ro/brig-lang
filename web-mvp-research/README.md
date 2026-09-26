@@ -91,7 +91,7 @@
 | [00-PROMPT.md](00-PROMPT.md) | промпт, по которому сделано исследование |
 | [01-positioning.md](01-positioning.md) | один файл, ниши, чего не делаем |
 | [02-runtime.md](02-runtime.md) | R1–R14: требования к VM и планировщику |
-| [03-language.md](03-language.md) | L1–L22: пробелы языка |
+| [03-language.md](03-language.md) | L1–L23: пробелы языка |
 | [04-stdlib.md](04-stdlib.md) | батарейки, раскладка VM / Go / Brig / пакеты, бюджет размера |
 | [05-toolchain.md](05-toolchain.md) | CLI, self-contained сборка, манифест, скриптинг, embedded |
 | [06-framework.md](06-framework.md) | архитектура Calmar |
