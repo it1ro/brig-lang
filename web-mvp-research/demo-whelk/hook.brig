@@ -25,7 +25,7 @@ fn project() ->
 fn main() ->
     secret = Env.required("GITHUB_SECRET")
     start_events()
-    Whelk.run({ port: 4000 }, fn (conn) -> route(conn, secret))
+    Whelk.run({ port: 4000 }, conn -> route(conn, secret))
 
 # ---- роутинг: вся «маршрутизация» — это сопоставление с образцом ----
 
