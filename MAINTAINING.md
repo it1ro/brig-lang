@@ -18,7 +18,7 @@
 
 ## 2. Доска: поля и статусы
 
-Поля: **Priority** (P0…P3), **Task type** (fail-fast, full-fix, test-infra, docs, merge, feature), **Effort** — размер задачи (`S · мелкая`, `M · средняя`, `L · крупная`), **Model** — исполнитель (`sonnet · рутина`, `opus · сложное`, `human · вручную`), **Wave** (0-branch … 6-must), **Sprint** (итерации по 2 недели с понедельника 2026-09-28). Поле называется `Task type`, а не `Type`: имя `Type` GitHub зарезервировал под встроенные issue types. В опциях Effort и Model код стоит до ` · `; в тексте и в `board_set` достаточно кода (`Effort L`, `Model opus`).
+Поля: **Priority** (P0…P3), **Task type** (fail-fast, full-fix, test-infra, docs, merge, feature), **Effort** — размер задачи (small / medium / large), **Model** — исполнитель (`sonnet · рутина`, `opus · сложное`, `human · вручную`), **Wave** (0-branch … 6-must), **Sprint** (итерации по 2 недели с понедельника 2026-09-28). Поле называется `Task type`, а не `Type`: имя `Type` GitHub зарезервировал под встроенные issue types. В опциях Model код стоит до ` · `; в тексте и в `board_set` достаточно кода (`Model opus`).
 
 | Статус | Значит | Кто переводит |
 |---|---|---|
@@ -105,7 +105,7 @@ done
 
 Агент — Claude Code или Cursor Agent, запущенный в корне репозитория. Skills из `.claude/skills/` подхватываются автоматически; протокол сессии описан в skill `brig-workflow`, контекст подсистем — в `brig-overview`, `brig-lexer`, `brig-parser-ast`, `brig-sema`, `brig-compiler`, `brig-vm`, `brig-testing-workflow`.
 
-**Модель** берётся из поля Model issue. Для Effort L (T-36, T-39, T-50, T-51, T-53) — только она; S/M — любая. `model-human` агенту не отдаётся (T-07 и design decisions).
+**Модель** берётся из поля Model issue. Для Effort large (T-36, T-39, T-50, T-51, T-53) — только она; small/medium — любая. `human` агенту не отдаётся (T-07 и design decisions).
 
 **Промпт сессии** (скопировать, подставить номер):
 
@@ -115,8 +115,8 @@ done
 Работай строго в рамках DoD и «НЕ делать» из issue. Найденное по пути — новый issue, не правка.
 ```
 
-- **Автономный** — агент доводит до squash-merge при зелёном CI и сам переводит зависимые задачи в Todo (так описано в `CONTRIBUTING.md` §7). Подходит для S/M задач типов fail-fast, test-infra, простых full-fix.
-- **Со сдачей на ревью** — агент останавливается на In Review с открытым PR; merge делает человек. Для всего, что трогает `compiler.go`, `scheduler.go`, `verify.go`, golden/bytecode, и для всех задач Effort L.
+- **Автономный** — агент доводит до squash-merge при зелёном CI и сам переводит зависимые задачи в Todo (так описано в `CONTRIBUTING.md` §7). Подходит для small/medium задач типов fail-fast, test-infra, простых full-fix.
+- **Со сдачей на ревью** — агент останавливается на In Review с открытым PR; merge делает человек. Для всего, что трогает `compiler.go`, `scheduler.go`, `verify.go`, golden/bytecode, и для всех задач Effort large.
 
 **Что агент не делает никогда:** не берёт issue без label `audit` или `spec-gap` и вне доски; не трогает design-decision issues; не правит `docs/`, `README.md`, `CONTRIBUTING.md` вне задач с Task type `docs`; не меняет семантику языка сверх DoD; не делает merge в режиме ревью; не ставит Sprint.
 
@@ -175,9 +175,9 @@ git branch -D iter/regvm && git push origin --delete iter/regvm
 
 ```bash
 gh issue create --repo it1ro/brig-lang --title "T-NN · <имя>" --body-file body.md \
-  --label "<audit|spec-gap>,<task type>,<P>,wave-<wave>,model-<model>"
+  --label "<audit|spec-gap>,<task type>,<P>,wave-<wave>,<model>"
 gh project item-add 5 --owner it1ro --url <url>
-board_set <N> Priority <P>; board_set <N> "Task type" <type>; board_set <N> Effort <S|M|L>
+board_set <N> Priority <P>; board_set <N> "Task type" <type>; board_set <N> Effort <small|medium|large>
 board_set <N> Model <model>; board_set <N> Wave <wave>; board_set <N> Status Todo
 ```
 

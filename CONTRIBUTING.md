@@ -24,7 +24,7 @@ VM — в `docs/02-register-based-virtual-machine.md`. Задачи ведутс
 - Следующая задача — из Todo: сначала меньший Wave, внутри него — выше Priority (P0 первым).
   Задачи, которых нет на доске, не берутся в работу.
 - Новый issue сразу добавляется на доску: `gh project item-add <N> --owner it1ro --url <issue-url>`.
-- Один issue = одна сессия. Не помещается в Effort L — дели на несколько issue.
+- Один issue = одна сессия. Не помещается в Effort large — дели на несколько issue.
 - Обязательные поля: Type, Effort, Model, Wave, Priority.
 - Label происхождения: `audit` — finding из `AUDIT_REPORT.md`, `spec-gap` — пробел реализации относительно спеки (§16). Задача без одного из них не берётся.
 - Статус задачи — только на доске. `TASKS.md` хранит план, зависимости и DoD без статусов.
@@ -116,7 +116,7 @@ Closes #<issue>
 ## 7. Сессии с LLM-агентом
 
 - Сессия начинается с одного issue с доски (п. 2): `gh issue view <N> --json title,body`.
-- Effort S/M — любая модель; L — только модель из поля `Model`.
+- Effort small/medium — любая модель; large — только модель из поля `Model`.
 - Один тикет за сессию. Найденное по пути — новый issue на доске, не правка в этой сессии.
 - Doc-файлы агент меняет только в тикетах с Type `docs`.
 - Finding не воспроизводится — issue в Blocked или закрывается как false-positive.

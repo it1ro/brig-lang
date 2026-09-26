@@ -77,7 +77,7 @@ Findings с тегом `[inferred]`. Задача-фикс не создаётс
 <!-- meta
 priority: P2
 type: design-decision
-effort: S
+effort: small
 model: human
 wave: —
 depends_on: —
@@ -94,7 +94,7 @@ extra_labels: design-decision
 <!-- meta
 priority: P1
 type: design-decision
-effort: S
+effort: small
 model: human
 wave: —
 depends_on: —
@@ -111,7 +111,7 @@ extra_labels: design-decision
 <!-- meta
 priority: P1
 type: design-decision
-effort: S
+effort: small
 model: human
 wave: —
 depends_on: —
@@ -128,7 +128,7 @@ extra_labels: design-decision
 <!-- meta
 priority: P1
 type: design-decision
-effort: S
+effort: small
 model: human
 wave: —
 depends_on: —
@@ -163,7 +163,7 @@ extra_labels: design-decision
 <!-- meta
 priority: P0
 type: fail-fast
-effort: S
+effort: small
 model: sonnet
 wave: 0-branch
 depends_on: —
@@ -179,7 +179,7 @@ findings: [S-F2]
 <!-- meta
 priority: P1
 type: fail-fast
-effort: M
+effort: medium
 model: sonnet
 wave: 0-branch
 depends_on: —
@@ -195,7 +195,7 @@ findings: [S-F3]
 <!-- meta
 priority: P1
 type: fail-fast
-effort: S
+effort: small
 model: sonnet
 wave: 0-branch
 depends_on: —
@@ -211,7 +211,7 @@ findings: [S-F5]
 <!-- meta
 priority: P0
 type: fail-fast
-effort: S
+effort: small
 model: sonnet
 wave: 0-branch
 depends_on: —
@@ -227,7 +227,7 @@ findings: [S-F1]
 <!-- meta
 priority: P0
 type: full-fix
-effort: S
+effort: small
 model: sonnet
 wave: 0-branch
 depends_on: —
@@ -243,7 +243,7 @@ findings: [O-F1]
 <!-- meta
 priority: P0
 type: test-infra
-effort: S
+effort: small
 model: sonnet
 wave: 0-branch
 depends_on: —
@@ -259,7 +259,7 @@ findings: [O-F3]
 <!-- meta
 priority: P0
 type: merge
-effort: S
+effort: small
 model: human
 wave: 0-branch
 depends_on: T-01, T-02, T-03, T-04, T-05, T-06
@@ -275,7 +275,7 @@ findings: []
 <!-- meta
 priority: P0
 type: test-infra
-effort: M
+effort: medium
 model: sonnet
 wave: 1-test-infra
 depends_on: T-07
@@ -291,7 +291,7 @@ findings: [I-F2]
 <!-- meta
 priority: P1
 type: test-infra
-effort: M
+effort: medium
 model: sonnet
 wave: 1-test-infra
 depends_on: T-10
@@ -307,7 +307,7 @@ findings: [S-F13]
 <!-- meta
 priority: P2
 type: docs
-effort: S
+effort: small
 model: sonnet
 wave: 1-test-infra
 depends_on: T-11
@@ -323,7 +323,7 @@ findings: []
 <!-- meta
 priority: P2
 type: test-infra
-effort: S
+effort: small
 model: sonnet
 wave: 1-test-infra
 depends_on: T-07
@@ -340,7 +340,7 @@ extra_labels: verification
 <!-- meta
 priority: P2
 type: test-infra
-effort: S
+effort: small
 model: sonnet
 wave: 1-test-infra
 depends_on: T-07
@@ -357,7 +357,7 @@ extra_labels: verification
 <!-- meta
 priority: P2
 type: test-infra
-effort: S
+effort: small
 model: sonnet
 wave: 1-test-infra
 depends_on: T-07
@@ -374,7 +374,7 @@ extra_labels: verification
 <!-- meta
 priority: P1
 type: full-fix
-effort: S
+effort: small
 model: sonnet
 wave: 2-small
 depends_on: T-11
@@ -390,7 +390,7 @@ findings: [S-F4, S-F12]
 <!-- meta
 priority: P1
 type: full-fix
-effort: S
+effort: small
 model: sonnet
 wave: 2-small
 depends_on: T-11
@@ -406,7 +406,7 @@ findings: [S-F6]
 <!-- meta
 priority: P1
 type: full-fix
-effort: S
+effort: small
 model: sonnet
 wave: 2-small
 depends_on: T-10
@@ -422,7 +422,7 @@ findings: [S-F7]
 <!-- meta
 priority: P2
 type: full-fix
-effort: S
+effort: small
 model: sonnet
 wave: 2-small
 depends_on: T-10
@@ -438,7 +438,7 @@ findings: [S-F11]
 <!-- meta
 priority: P3
 type: full-fix
-effort: M
+effort: medium
 model: sonnet
 wave: 2-small
 depends_on: T-11
@@ -454,7 +454,7 @@ findings: [S-F8, S-F9, S-F10]
 <!-- meta
 priority: P1
 type: test-infra
-effort: M
+effort: medium
 model: sonnet
 wave: 3-major
 depends_on: T-10
@@ -470,7 +470,7 @@ findings: [O-F2]
 <!-- meta
 priority: P1
 type: full-fix
-effort: S
+effort: small
 model: sonnet
 wave: 3-major
 depends_on: T-10
@@ -486,7 +486,7 @@ findings: [A-F2]
 <!-- meta
 priority: P2
 type: full-fix
-effort: M
+effort: medium
 model: opus
 wave: 3-major
 depends_on: T-10
@@ -502,7 +502,7 @@ findings: [A-F2]
 <!-- meta
 priority: P2
 type: full-fix
-effort: M
+effort: medium
 model: opus
 wave: 3-major
 depends_on: T-10
@@ -518,7 +518,7 @@ findings: [A-F2]
 <!-- meta
 priority: P1
 type: full-fix
-effort: S
+effort: small
 model: sonnet
 wave: 3-major
 depends_on: T-10
@@ -534,7 +534,7 @@ findings: [A-F5]
 <!-- meta
 priority: P2
 type: full-fix
-effort: M
+effort: medium
 model: sonnet
 wave: 3-major
 depends_on: T-10
@@ -550,7 +550,7 @@ findings: [A-F6]
 <!-- meta
 priority: P1
 type: full-fix
-effort: L
+effort: large
 model: opus
 wave: 3-major
 depends_on: T-10
@@ -566,7 +566,7 @@ findings: [I-F1]
 <!-- meta
 priority: P1
 type: full-fix
-effort: M
+effort: medium
 model: opus
 wave: 3-major
 depends_on: T-30
@@ -582,7 +582,7 @@ findings: [I-F5]
 <!-- meta
 priority: P1
 type: fail-fast
-effort: S
+effort: small
 model: sonnet
 wave: 3-major
 depends_on: T-10
@@ -598,7 +598,7 @@ findings: [I-F7]
 <!-- meta
 priority: P2
 type: full-fix
-effort: L
+effort: large
 model: opus
 wave: 3-major
 depends_on: T-35, T-38
@@ -614,7 +614,7 @@ findings: [I-F7]
 <!-- meta
 priority: P1
 type: full-fix
-effort: M
+effort: medium
 model: sonnet
 wave: 3-major
 depends_on: T-10
@@ -630,7 +630,7 @@ findings: [I-F9, I-F10]
 <!-- meta
 priority: P2
 type: full-fix
-effort: S
+effort: small
 model: sonnet
 wave: 3-major
 depends_on: T-10
@@ -646,7 +646,7 @@ findings: [O-F4]
 <!-- meta
 priority: P2
 type: full-fix
-effort: M
+effort: medium
 model: sonnet
 wave: 3-major
 depends_on: T-10
@@ -662,7 +662,7 @@ findings: [I-F13]
 <!-- meta
 priority: P2
 type: full-fix
-effort: S
+effort: small
 model: sonnet
 wave: 3-major
 depends_on: T-10
@@ -678,7 +678,7 @@ findings: [I-F15]
 <!-- meta
 priority: P1
 type: full-fix
-effort: L
+effort: large
 model: opus
 wave: 4-blockers
 depends_on: T-11, T-20
@@ -694,7 +694,7 @@ findings: [S-F2]
 <!-- meta
 priority: P1
 type: full-fix
-effort: L
+effort: large
 model: opus
 wave: 4-blockers
 depends_on: T-36, T-50
@@ -710,7 +710,7 @@ findings: [S-F2]
 <!-- meta
 priority: P1
 type: full-fix
-effort: M
+effort: medium
 model: opus
 wave: 4-blockers
 depends_on: T-02, T-51
@@ -726,7 +726,7 @@ findings: [S-F3]
 <!-- meta
 priority: P1
 type: full-fix
-effort: L
+effort: large
 model: opus
 wave: 4-blockers
 depends_on: T-11, T-23
@@ -742,7 +742,7 @@ findings: [S-F1]
 <!-- meta
 priority: P1
 type: full-fix
-effort: M
+effort: medium
 model: sonnet
 wave: 4-blockers
 depends_on: T-53
@@ -758,7 +758,7 @@ findings: [S-F1]
 <!-- meta
 priority: P2
 type: docs
-effort: M
+effort: medium
 model: sonnet
 wave: 5-docs
 depends_on: T-12
@@ -775,7 +775,7 @@ findings: [A-F8]
 <!-- meta
 priority: P3
 type: docs
-effort: S
+effort: small
 model: sonnet
 wave: 5-docs
 depends_on: T-60
@@ -791,7 +791,7 @@ findings: []
 <!-- meta
 priority: P2
 type: docs
-effort: M
+effort: medium
 model: sonnet
 wave: 5-docs
 depends_on: T-91, T-92, T-93
@@ -807,7 +807,7 @@ findings: [A-F3, A-F4, I-F8]
 <!-- meta
 priority: P2
 type: docs
-effort: S
+effort: small
 model: sonnet
 wave: 5-docs
 depends_on: T-61
@@ -823,7 +823,7 @@ findings: []
 <!-- meta
 priority: P1
 type: feature
-effort: M
+effort: medium
 model: opus
 wave: 6-must
 depends_on: —
@@ -839,7 +839,7 @@ findings: [K-8]
 <!-- meta
 priority: P1
 type: feature
-effort: M
+effort: medium
 model: opus
 wave: 6-must
 depends_on: T-70
@@ -855,7 +855,7 @@ findings: [K-8]
 <!-- meta
 priority: P2
 type: feature
-effort: S
+effort: small
 model: sonnet
 wave: 6-must
 depends_on: —
@@ -871,7 +871,7 @@ findings: [A-F8]
 <!-- meta
 priority: P1
 type: feature
-effort: L
+effort: large
 model: opus
 wave: 6-must
 depends_on: —
@@ -887,7 +887,7 @@ findings: [A-F8]
 <!-- meta
 priority: P1
 type: feature
-effort: M
+effort: medium
 model: sonnet
 wave: 6-must
 depends_on: T-73, T-70
@@ -903,7 +903,7 @@ findings: [A-F8]
 <!-- meta
 priority: P2
 type: feature
-effort: S
+effort: small
 model: sonnet
 wave: 6-must
 depends_on: —
@@ -919,7 +919,7 @@ findings: [A-F8]
 <!-- meta
 priority: P2
 type: feature
-effort: M
+effort: medium
 model: sonnet
 wave: 6-must
 depends_on: —
@@ -935,7 +935,7 @@ findings: []
 <!-- meta
 priority: P2
 type: feature
-effort: M
+effort: medium
 model: sonnet
 wave: 6-must
 depends_on: —
@@ -951,7 +951,7 @@ findings: []
 <!-- meta
 priority: P1
 type: feature
-effort: M
+effort: medium
 model: opus
 wave: 6-must
 depends_on: —
@@ -967,7 +967,7 @@ findings: [K-8]
 <!-- meta
 priority: P2
 type: feature
-effort: M
+effort: medium
 model: sonnet
 wave: 6-must
 depends_on: —
@@ -983,7 +983,7 @@ findings: []
 <!-- meta
 priority: P2
 type: docs
-effort: M
+effort: medium
 model: sonnet
 wave: 3-major
 depends_on: T-90, T-13
@@ -992,14 +992,14 @@ findings: [A-F1]
 - **Issue:** [#105](https://github.com/it1ro/brig-lang/issues/105)
 - **Файлы:** docs/architecture.md:148 («1 актор = 1 goroutine»), docs/02-register-based-virtual-machine.md (раздел о планировщике), docs/01-language-design.md §15.2; при варианте B — internal/vm/scheduler.go
 - **Тест-якорь:** `TestVerifyAF1SingleGoroutineScheduler` (internal/vm/af1_test.go:18, существует)
-- **DoD:** при варианте A или C из #40: `rg -n '1 актор = 1 goroutine' docs` пуст; §15.2, architecture.md и doc 02 описывают принятую модель (A: кооперативный однопоточный loop; C: только наблюдаемая семантика — порядок и fairness); детерминизм §15.4 назван явно; `TestVerifyAF1SingleGoroutineScheduler` зелёный; `make check-examples` → `failed 0`. При варианте B эта задача закрывается и разбивается на отдельные full-fix issues (Effort L, model-opus); код в ней не пишется.
+- **DoD:** при варианте A или C из #40: `rg -n '1 актор = 1 goroutine' docs` пуст; §15.2, architecture.md и doc 02 описывают принятую модель (A: кооперативный однопоточный loop; C: только наблюдаемая семантика — порядок и fairness); детерминизм §15.4 назван явно; `TestVerifyAF1SingleGoroutineScheduler` зелёный; `make check-examples` → `failed 0`. При варианте B эта задача закрывается и разбивается на отдельные full-fix issues (Effort large, opus); код в ней не пишется.
 - **НЕ делать:** переписывать scheduler в рамках этой задачи; менять порядок таймерных пробуждений (T-48, сделано); трогать K-2/K-3 и сравнение чисел (T-62); решать другие design decisions.
 
 ### T-81 · JMPIF/JMPIFNOT: не-Bool → :type_error
 <!-- meta
 priority: P1
 type: full-fix
-effort: M
+effort: medium
 model: sonnet
 wave: 3-major
 depends_on: T-91
@@ -1015,7 +1015,7 @@ findings: [A-F3]
 <!-- meta
 priority: P2
 type: full-fix
-effort: M
+effort: medium
 model: sonnet
 wave: 3-major
 depends_on: T-91, T-10
@@ -1031,7 +1031,7 @@ findings: [I-F3]
 <!-- meta
 priority: P1
 type: full-fix
-effort: M
+effort: medium
 model: opus
 wave: 3-major
 depends_on: T-92
@@ -1047,7 +1047,7 @@ findings: [A-F4]
 <!-- meta
 priority: P1
 type: full-fix
-effort: S
+effort: small
 model: sonnet
 wave: 3-major
 depends_on: T-93
@@ -1063,7 +1063,7 @@ findings: [I-F8]
 <!-- meta
 priority: P1
 type: full-fix
-effort: M
+effort: medium
 model: sonnet
 wave: 3-major
 depends_on: T-93
@@ -1079,7 +1079,7 @@ findings: [I-F8]
 <!-- meta
 priority: P1
 type: full-fix
-effort: M
+effort: medium
 model: sonnet
 wave: 3-major
 depends_on: T-93

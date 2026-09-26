@@ -18,8 +18,8 @@ description: >
 - Работа начинается только с issue, у которого label `audit` (finding аудита) или `spec-gap` (пробел относительно спеки §16) и карточка на доске 5 в статусе **Todo**. Нет issue — сначала создать (раздел «Новый issue»), не работать «просто так».
 - Прочитать: `gh issue view <N> --repo it1ro/brig-lang --json title,body,labels`. Body — это контракт: **Файлы**, **Тест-якорь**, **DoD**, **НЕ делать**, строки `> Blocked by #M`.
 - Проверить, что все `Blocked by` закрыты: `gh issue view <M> --json state`. Хоть один открыт — стоп, сообщить.
-- Label `design-decision` или `model-human` — не брать, это работа человека.
-- Effort L — работать только моделью из поля Model (`model-opus` и т.п.).
+- Label `design-decision` или `human` — не брать, это работа человека.
+- Effort large — работать только моделью из поля Model (`opus` и т.п.).
 - Подтянуть skills затронутых подсистем (`brig-compiler`, `brig-vm`, …) и соответствующий finding в `AUDIT_REPORT.md` по ID из meta (`findings: [...]`).
 
 ## Старт
@@ -52,7 +52,7 @@ description: >
 
 - Title `T-NN · <имя>`; T-NN — следующий свободный номер в десятке волны (занятые — `TASKS.md`, `PROMPT_SETUP_KANBAN.log.md`).
 - Body по образцу блоков `TASKS.md`: meta-комментарий (priority, type, effort, model, wave, depends_on, findings), **Файлы**, **Тест-якорь** (существующий или «создать»), бинарный **DoD** (команда → результат, без «улучшить»), **НЕ делать** (≥3 пункта). Зависимости — первыми строками `> Blocked by #M`.
-- Labels: `<audit|spec-gap>,<task type>,<P>,wave-<wave>,model-<model>`, плюс `blocker` для P0. Task type `feature` — реализация фичи из спеки (label `feature`, ветка `feat/`).
+- Labels: `<audit|spec-gap>,<task type>,<P>,wave-<wave>,<model>`, плюс `blocker` для P0. Task type `feature` — реализация фичи из спеки (label `feature`, ветка `feat/`).
 - Добавить на доску (`gh project item-add 5 --owner it1ro --url <url>`) и заполнить Priority, Task type, Effort, Model, Wave, Status. Sprint не ставить.
 
 ## Что уже известно (не переоткрывать)
