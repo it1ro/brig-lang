@@ -19,11 +19,18 @@ const (
 	PatList
 	PatMap
 	PatAs
+	PatRecord
 )
 
 // MapPatPair — пара ключ-паттерн для PatMap.
 type MapPatPair struct {
 	Key   runtime.Value
+	Value *CompiledPattern
+}
+
+// RecordPatField — пара поле-паттерн для PatRecord.
+type RecordPatField struct {
+	Name  string
 	Value *CompiledPattern
 }
 
@@ -42,6 +49,9 @@ type CompiledPattern struct {
 
 	// PatMap
 	Pairs []MapPatPair
+
+	// PatRecord: Tag — имя типа, "" для анонимного паттерна (§4.8)
+	Fields []RecordPatField
 
 	// PatAs
 	AsSlot int
@@ -84,6 +94,10 @@ func (p *CompiledPattern) Slots() []int {
 		case PatMap:
 			for _, pair := range p.Pairs {
 				walk(pair.Value)
+			}
+		case PatRecord:
+			for _, f := range p.Fields {
+				walk(f.Value)
 			}
 		case PatWildcard, PatLiteral:
 			// nothing
@@ -193,6 +207,19 @@ func MatchPattern(v runtime.Value, p *CompiledPattern, locals []runtime.Value) b
 			}
 		}
 		return true
+
+	case PatRecord:
+		// §4.8: вид записи должен совпасть; §9.6: поля — частично.
+		if v.Kind != runtime.KindRecord || v.Record == nil || v.Record.Type != p.Tag {
+			return false
+		}
+		for _, f := range p.Fields {
+			fv, ok := v.Record.Get(f.Name)
+			if !ok || !MatchPattern(fv, f.Value, locals) {
+				return false
+			}
+		}
+		return true
 	}
 	return false
 }
@@ -258,6 +285,15 @@ func FormatCompiledPattern(p *CompiledPattern) string {
 				s += ", "
 			}
 			s += pair.Key.Inspect() + " => " + FormatCompiledPattern(pair.Value)
+		}
+		return s + "}"
+	case PatRecord:
+		s := p.Tag + "{"
+		for i, f := range p.Fields {
+			if i > 0 {
+				s += ", "
+			}
+			s += f.Name + ": " + FormatCompiledPattern(f.Value)
 		}
 		return s + "}"
 	}
