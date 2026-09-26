@@ -11,6 +11,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"sort"
@@ -199,6 +200,12 @@ func runFile(args []string) {
 	mainVal := machine.Global("main")
 	if _, err := machine.RunMain(mainVal); err != nil {
 		fmt.Fprintf(os.Stderr, "brig run: %s: %v\n", args[0], err)
+		var rerr *vm.ErrRaise
+		if errors.As(err, &rerr) {
+			for _, fr := range rerr.Trace {
+				fmt.Fprintf(os.Stderr, "  at %s (%s:%d:%d)\n", fr.Func, args[0], fr.Pos.Line, fr.Pos.Col)
+			}
+		}
 		os.Exit(exitForRunErr(err))
 	}
 }
