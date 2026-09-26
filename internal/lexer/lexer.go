@@ -272,7 +272,9 @@ func (l *lexer) lexLine(pl physLine) error {
 		}
 
 		if c == ':' {
-			if i+1 < n && (isLower(text[i+1]) || text[i+1] == '_') {
+			// §1.5 / B.2: после LOWER_IDENT/UPPER_IDENT/)/]/} всегда COLON;
+			// иначе ':' + [a-z_] → ATOM.
+			if !l.colonAfterValue() && i+1 < n && (isLower(text[i+1]) || text[i+1] == '_') {
 				j := scanIdent(text, i+1)
 				l.addToken(Token{Type: ATOM, Lit: text[i:j]}, pl, i)
 				i = j
@@ -426,6 +428,19 @@ func (l *lexer) addToken(t Token, pl physLine, i int) {
 	l.tokens = append(l.tokens, t)
 }
 
+// colonAfterValue — предыдущий токен заставляет ':' эмититься как COLON
+// (§1.5): LOWER_IDENT, UPPER_IDENT, ')', ']', '}'.
+func (l *lexer) colonAfterValue() bool {
+	if len(l.tokens) == 0 {
+		return false
+	}
+	switch l.tokens[len(l.tokens)-1].Type {
+	case LOWER_IDENT, UPPER_IDENT, RPAREN, RBRACKET, RBRACE:
+		return true
+	}
+	return false
+}
+
 // ---- Вспомогательные сканеры ----
 
 func prefixAt(s string, i int, p string) bool {
@@ -528,17 +543,26 @@ func scanNumber(text string, i, line int) (string, int, error) {
 					j++
 					continue
 				}
-				if c == '_' && j+1 < n && isDigitForBase(text[j+1], base) {
+				// '_' только между цифрами — не сразу после x/b/o (§3.1).
+				if c == '_' && digits > 0 && j+1 < n && isDigitForBase(text[j+1], base) {
 					j++
 					continue
 				}
 				break
 			}
 			if digits == 0 {
+				if j < n && text[j] == '_' {
+					return "", 0, errf(line, j+1, "underscore must be between digits")
+				}
 				return "", 0, errf(line, i+1, "digit expected after radix prefix")
 			}
 			if j < n && text[j] == '_' {
 				return "", 0, errf(line, j+1, "underscore must be between digits")
+			}
+			// Невалидная цифра сразу после литерала (0b102) — ошибка, а не
+			// «отрезать» префикс и оставить хвост отдельным токеном.
+			if j < n && (isDecDigit(text[j]) || isLower(text[j]) || isUpper(text[j])) {
+				return "", 0, errf(line, j+1, "invalid digit in base-%d literal", base)
 			}
 			return text[i:j], j, nil
 		}
