@@ -5,14 +5,14 @@ BIN     ?= bin
 VERSION ?= $(shell git describe --tags --always 2>/dev/null || echo dev)
 
 .PHONY: all build test test-race lint fmt vet check-examples ebnf-check \
-	git-hooks changelog fuzz update-golden update-bytecode clean \
+	git-hooks changelog fuzz update-golden update-bytecode update-examples run-examples clean \
 	test-roundtrip test-ast test-parser test-lexer test-one \
 	test-vm test-compiler run run-hello \
 	fmt-check cover cover-html ci-quick check repl
 
 # `make` без цели: полный локальный прогон всего, что должно быть зелёным.
 # Добавлены цели Трека C: test-vm и test-compiler.
-all: check-smallint fmt vet test lint build
+all: check-smallint fmt vet test lint build check-examples run-examples
 
 ## ---- Сборка ----
 build:
@@ -79,11 +79,17 @@ run:
 	@test -n "$(FILE)" || (echo "usage: make run FILE=<path.brig>"; exit 2)
 	$(GO) run ./cmd/brig run $(FILE)
 
-# Быстрая проверка: исполнить все примеры.
+# Исполнить все примеры и сравнить stdout с examples/X.out (падает с diff).
 run-examples:
 	@for f in examples/*.brig; do \
 		echo "== $$f =="; \
-		$(GO) run ./cmd/brig run $$f || exit 1; \
+		$(GO) run ./cmd/brig run $$f 2>&1 | diff -u $${f%.brig}.out - || exit 1; \
+	done
+
+# Перезаписать examples/*.out по текущему выводу (diff смотреть глазами).
+update-examples:
+	@for f in examples/*.brig; do \
+		$(GO) run ./cmd/brig run $$f > $${f%.brig}.out 2>&1 || exit 1; \
 	done
 
 run-hello:
