@@ -44,6 +44,10 @@ type Compiler struct {
 	// ctors — конструкторы пользовательских вариантов по имени тега
 	// (T-136, §14.2).
 	ctors map[string]userCtor
+	// aliases — `alias M as N` для встроенных модулей: N → M (§11.1).
+	// Заполняется в Compile; alias не встроенного модуля сюда не попадает
+	// (его резолвит loader, T-135).
+	aliases map[string]string
 }
 
 // userCtor — конструктор варианта `type Type { Tag(...) }`. val — значение
@@ -490,6 +494,8 @@ func (c *Compiler) Compile(prog *ast.Program) (image *ProgramImage, err error) {
 		}
 	}()
 
+	c.checkModuleDecls(prog)
+
 	// Записи-декларации — до функций: порядок деклараций свободный (§11.2).
 	for _, d := range prog.Decls {
 		if td, ok := d.(ast.TypeDecl); ok {
@@ -536,6 +542,39 @@ func (c *Compiler) Compile(prog *ast.Program) (image *ProgramImage, err error) {
 		}
 	}
 	return c.image, nil
+}
+
+// checkModuleDecls обрабатывает `alias M as N` (§11.1) для встроенных
+// модулей: N запоминается как псевдоним M, чтобы Mod.method в вызовах
+// прелюдии видел псевдоним как оригинал. `import`/`alias` не встроенного
+// модуля здесь не проверяются: разрешение и ошибка «module X not found»
+// для реального графа модулей — дело loader (T-135, internal/loader);
+// Compile компилирует один файл и о существовании чужих модулей не знает.
+func (c *Compiler) checkModuleDecls(prog *ast.Program) {
+	for _, d := range prog.Decls {
+		ad, ok := d.(ast.AliasDecl)
+		if !ok {
+			continue
+		}
+		orig := ad.AliasOriginal()
+		if !isPreludeModule(orig) {
+			continue
+		}
+		if c.aliases == nil {
+			c.aliases = make(map[string]string)
+		}
+		c.aliases[ad.AliasName()] = orig
+	}
+}
+
+// resolveModule сообщает, что name — встроенный модуль или его псевдоним
+// (§11.1), и возвращает оригинальное имя для диспатча в isPreludeModule.
+func (c *Compiler) resolveModule(name string) (orig string, ok bool) {
+	if isPreludeModule(name) {
+		return name, true
+	}
+	orig, ok = c.aliases[name]
+	return orig, ok
 }
 
 // declareCtors регистрирует конструкторы вариант-декларации (§14.2).
@@ -1587,8 +1626,7 @@ func (fc *funcCompiler) compileCall(call ast.CallExpr, d dest) error {
 	// Модульный dispatch для Vec.*, Map.*, Str.*, Bytes.*, Json.*, Test.*.
 	if me, ok := callee.(ast.MemberExpr); ok {
 		if obj, ok := me.Obj().(ast.VariableExpr); ok {
-			mod := obj.Name()
-			if isPreludeModule(mod) {
+			if mod, ok := fc.compiler.resolveModule(obj.Name()); ok {
 				fullName := mod + "." + me.MemberName()
 				return fc.compileGlobalCall(fullName, call.Args(), d, call)
 			}
@@ -1639,15 +1677,17 @@ func (fc *funcCompiler) compileCall(call ast.CallExpr, d dest) error {
 func (fc *funcCompiler) compilePipe(p ast.PipeExpr, d dest) error {
 	callee := p.PipeRHS()
 	if v, ok := callee.(ast.VariableExpr); ok {
-		if mod, _, dotted := strings.Cut(v.Name(), "."); dotted && !isPreludeModule(mod) {
-			return fmt.Errorf("%d:%d: |>: форма obj.method(a) не поддерживается: %s", p.Pos(), p.End(), v.Name())
+		if mod, rest, dotted := strings.Cut(v.Name(), "."); dotted {
+			orig, ok := fc.compiler.resolveModule(mod)
+			if !ok {
+				return fmt.Errorf("%d:%d: |>: форма obj.method(a) не поддерживается: %s", p.Pos(), p.End(), v.Name())
+			}
+			args := append([]ast.Expr{p.PipeLHS()}, p.PipeArgs()...)
+			fc.pos = posOf(p)
+			return fc.compileGlobalCall(orig+"."+rest, args, d, p)
 		}
 	}
 	args := append([]ast.Expr{p.PipeLHS()}, p.PipeArgs()...)
-	if v, ok := callee.(ast.VariableExpr); ok && strings.Contains(v.Name(), ".") {
-		fc.pos = posOf(p)
-		return fc.compileGlobalCall(v.Name(), args, d, p)
-	}
 	return fc.compileCall(ast.NewCallExpr(callee, args, p.Pos(), p.End()).(ast.CallExpr), d)
 }
 
@@ -1930,8 +1970,10 @@ func (fc *funcCompiler) compileRecord(typ string, call ast.CallExpr, d dest) err
 // compileMember — доступ к полю записи `obj.field` (§4.7). `Mod.name`
 // модуля прелюдии вне позиции вызова не поддерживается.
 func (fc *funcCompiler) compileMember(me ast.MemberExpr, d dest) error {
-	if obj, ok := me.Obj().(ast.VariableExpr); ok && isPreludeModule(obj.Name()) {
-		return fmt.Errorf("срез: неподдерживаемое выражение %s.%s", obj.Name(), me.MemberName())
+	if obj, ok := me.Obj().(ast.VariableExpr); ok {
+		if _, ok := fc.compiler.resolveModule(obj.Name()); ok {
+			return fmt.Errorf("срез: неподдерживаемое выражение %s.%s", obj.Name(), me.MemberName())
+		}
 	}
 	mark := fc.nextReg
 	dst := fc.destReg(d)
