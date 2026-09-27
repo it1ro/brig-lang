@@ -35,7 +35,9 @@ Message}`; `SeverityError` блокирует компиляцию, `SeverityInf
    встречен `LocalFnDecl` после «обычного» стейтмента, это ошибка
    (`checkBlockBody`).
 6. Shadowing имён прелюдии/встроенных вариантов (`Some`, `Ok`, `Error`,
-   `None`, `map`, `filter`, ...) — **info**, не ошибка.
+   `None`, `map`, `filter`, ...) — **info**, не ошибка. Для вариант-
+   деклараций (`checkTypeDecl`, §14.7, T-136): конструктор `Some`/`None`/
+   `Ok`/`Error` и тип `Option`/`Result` — info на позиции `type`.
 
 Sema обходит выражения внутри `InterpExpr` (`checkExpr`, S-F1 / T-53).
 Guard'ы `recv` есть в AST (`RecvBranchArg.Guard`, S-F3 / T-02); `Walk`

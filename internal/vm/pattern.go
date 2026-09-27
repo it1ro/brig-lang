@@ -42,6 +42,8 @@ type CompiledPattern struct {
 	Lit  runtime.Value // PatLiteral
 	Tag  string        // PatCtor
 	Subs []*CompiledPattern
+	// PatCtor: тип пользовательского варианта, "" — встроенный (§14.2)
+	VariantType string
 
 	// PatList
 	HasRest  bool
@@ -138,7 +140,7 @@ func MatchPattern(v runtime.Value, p *CompiledPattern, locals []runtime.Value) b
 		if v.Kind != runtime.KindVariant || v.Variant == nil {
 			return false
 		}
-		if v.Variant.Tag != p.Tag {
+		if v.Variant.Tag != p.Tag || v.Variant.Type != p.VariantType {
 			return false
 		}
 		if len(v.Variant.Args) != len(p.Subs) {

@@ -41,6 +41,17 @@ type Compiler struct {
 	// records — поля записей-деклараций `type X {...}` по имени типа
 	// в порядке объявления (T-73, §4.7).
 	records map[string][]string
+	// ctors — конструкторы пользовательских вариантов по имени тега
+	// (T-136, §14.2).
+	ctors map[string]userCtor
+}
+
+// userCtor — конструктор варианта `type Type { Tag(...) }`. val — значение
+// при ссылке на имя: сам вариант для конструктора без аргументов, иначе
+// native-функция его арности (одна на программу — identity стабильна).
+type userCtor struct {
+	typ string
+	val runtime.Value
 }
 
 // liftedFn — локальная fn после лямбда-лифтинга: захваты передаются
@@ -467,6 +478,7 @@ func (c *Compiler) Compile(prog *ast.Program) (image *ProgramImage, err error) {
 	c.image = &ProgramImage{Functions: make(map[string]*vm.Function)}
 	c.lifted = make(map[string]*liftedFn)
 	c.records = make(map[string][]string)
+	c.ctors = make(map[string]userCtor)
 	defer func() {
 		if r := recover(); r != nil {
 			if ce, ok := r.(compileError); ok {
@@ -483,6 +495,9 @@ func (c *Compiler) Compile(prog *ast.Program) (image *ProgramImage, err error) {
 		if td, ok := d.(ast.TypeDecl); ok {
 			if fields, ok := td.RecordFields(); ok {
 				c.records[td.TypeName()] = fields
+			}
+			if vs, ok := td.Variants(); ok {
+				c.declareCtors(td, vs)
 			}
 		}
 	}
@@ -521,6 +536,30 @@ func (c *Compiler) Compile(prog *ast.Program) (image *ProgramImage, err error) {
 		}
 	}
 	return c.image, nil
+}
+
+// declareCtors регистрирует конструкторы вариант-декларации (§14.2).
+// Один тег в двух декларациях — ошибка компиляции: ссылка неоднозначна.
+func (c *Compiler) declareCtors(td ast.TypeDecl, vs []ast.VariantArg) {
+	typ := td.TypeName()
+	for ord, v := range vs {
+		if prev, dup := c.ctors[v.Name]; dup {
+			pos := posOf(td)
+			panic(compileError{pos: pos, msg: fmt.Sprintf(
+				"constructor %s already declared in type %s", v.Name, prev.typ)})
+		}
+		val := runtime.UserVariant(typ, ord, v.Name)
+		if n := len(v.Fields); n > 0 {
+			tag, ord := v.Name, ord
+			val = runtime.Func(&runtime.FuncValue{
+				Name: tag, Arity: n, IsNative: true,
+				Native: func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+					return runtime.UserVariant(typ, ord, tag, append([]runtime.Value(nil), args...)...), nil
+				},
+			})
+		}
+		c.ctors[v.Name] = userCtor{typ: typ, val: val}
+	}
 }
 
 // verifyImage прогоняет vm.Verify по всем функциям модуля в
@@ -1249,6 +1288,9 @@ func (fc *funcCompiler) compileVar(name string, d dest) error {
 	}
 	if idx, ok := fc.resolveUpvalue(name); ok {
 		return fc.loadUpval(d, idx)
+	}
+	if ct, ok := fc.compiler.ctors[name]; ok {
+		return fc.loadConst(ct.val, d)
 	}
 	return fc.loadGlobal(d, name)
 }
@@ -2771,7 +2813,8 @@ func (fc *funcCompiler) compilePattern(pat ast.Pattern) (*vm.CompiledPattern, er
 			}
 			subs = append(subs, sub)
 		}
-		return &vm.CompiledPattern{Kind: vm.PatCtor, Tag: p.CtorName(), Subs: subs}, nil
+		return &vm.CompiledPattern{Kind: vm.PatCtor, Tag: p.CtorName(), Subs: subs,
+			VariantType: fc.compiler.ctors[p.CtorName()].typ}, nil
 
 	case ast.PatternTuple:
 		subs := make([]*vm.CompiledPattern, 0, len(p.TupleElems()))

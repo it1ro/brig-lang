@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"math/big"
+	"sort"
 	"testing"
 )
 
@@ -24,6 +25,7 @@ func TestCompareTermOrderAcrossKinds(t *testing.T) {
 		{"map", Map(nil)},
 		{"set", Set()},
 		{"nominal record", rec("User", "id", Int(1))},
+		{"user variant", UserVariant("Zeta", 0, "Z")},
 		{"variant", Variant("None")},
 		{"anonymous record", rec("", "a", Int(1))},
 		{"pid", Value{Kind: KindPid, Pid: 1}},
@@ -117,5 +119,42 @@ func TestCompareErrors(t *testing.T) {
 		if _, err := Compare(pair[0], pair[1]); err == nil {
 			t.Errorf("%s: want :type_error", name)
 		}
+	}
+}
+
+// T-136: пользовательские варианты — на ступени номинальных записей
+// (T-123, вариант A): имя типа, порядок тега в декларации, поля.
+func TestCompareUserVariants(t *testing.T) {
+	red := UserVariant("Color", 0, "Red")
+	green := UserVariant("Color", 1, "Green")
+	blue := UserVariant("Color", 2, "Blue")
+	small := func(n int64) Value { return UserVariant("Size", 0, "Small", Int(n)) }
+	big := func(n int64) Value { return UserVariant("Size", 1, "Big", Int(n)) }
+	want := []Value{
+		rec("Apple", "a", Int(1)),
+		red, green, blue,
+		small(1), small(2), big(0),
+		rec("Zebra", "z", Int(1)),
+		Variant("None"),
+	}
+	got := []Value{big(0), Variant("None"), blue, small(2), rec("Zebra", "z", Int(1)),
+		green, small(1), red, rec("Apple", "a", Int(1))}
+	sort.SliceStable(got, func(i, j int) bool {
+		c, err := Compare(got[i], got[j])
+		if err != nil {
+			t.Fatalf("Compare: %v", err)
+		}
+		return c < 0
+	})
+	for i := range want {
+		if !Equal(got[i], want[i]) {
+			t.Fatalf("sorted[%d] = %s, want %s", i, got[i].Inspect(), want[i].Inspect())
+		}
+	}
+	if Equal(UserVariant("A", 0, "X"), UserVariant("B", 0, "X")) {
+		t.Fatal("variants of different types must differ")
+	}
+	if Equal(UserVariant("Opt", 0, "Some", Int(1)), Variant("Some", Int(1))) {
+		t.Fatal("user variant must differ from built-in of the same tag")
 	}
 }

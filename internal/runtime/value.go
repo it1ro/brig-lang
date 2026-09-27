@@ -109,10 +109,14 @@ type ClosureValue struct {
 	Captures []Value
 }
 
-// VariantValue — конструктор варианта.
+// VariantValue — конструктор варианта. Type == "" — встроенный вариант
+// (Option/Result), иначе пользовательский `type Type { ... }` (§14.2);
+// Ord — порядок тега в декларации, для term order (§7.4, T-123).
 type VariantValue struct {
 	Tag  string
 	Args []Value
+	Type string
+	Ord  int
 }
 
 // RecordValue — запись (§4.7). Type == "" — анонимная, иначе номинальная
@@ -265,6 +269,12 @@ func MakeClosure(name string, arity int, fn Code, captures []Value) Value {
 // Variant создаёт значение-вариант.
 func Variant(tag string, args ...Value) Value {
 	return Value{Kind: KindVariant, Variant: &VariantValue{Tag: tag, Args: args}}
+}
+
+// UserVariant создаёт значение пользовательского варианта типа typ;
+// ord — индекс тега в декларации (§14.2).
+func UserVariant(typ string, ord int, tag string, args ...Value) Value {
+	return Value{Kind: KindVariant, Variant: &VariantValue{Tag: tag, Args: args, Type: typ, Ord: ord}}
 }
 
 // Record создаёт запись; typ == "" — анонимная (§4.7).
@@ -539,7 +549,7 @@ func equal(a, b Value, strict bool) bool {
 		}
 		return true
 	case KindVariant:
-		if a.Variant.Tag != b.Variant.Tag ||
+		if a.Variant.Tag != b.Variant.Tag || a.Variant.Type != b.Variant.Type ||
 			len(a.Variant.Args) != len(b.Variant.Args) {
 			return false
 		}
@@ -662,7 +672,9 @@ func Compare(a, b Value) (int, error) {
 		return compareMaps(a.Map, b.Map)
 	case rankSet:
 		return compareSlices(sortedValues(a.Set), sortedValues(b.Set))
-	case rankNominal, rankAnon:
+	case rankNominal:
+		return compareNominal(a, b)
+	case rankAnon:
 		return compareRecords(a.Record, b.Record)
 	case rankVariant:
 		return compareVariants(a.Variant, b.Variant)
@@ -724,6 +736,9 @@ func termRank(v Value) (int, bool) {
 		}
 		return rankNominal, true
 	case KindVariant:
+		if v.Variant.Type != "" {
+			return rankNominal, true
+		}
 		return rankVariant, true
 	case KindPid:
 		return rankPid, true
@@ -902,6 +917,38 @@ func compareVariants(a, b *VariantValue) (int, error) {
 		}
 	}
 	return compareSlices(a.Args, b.Args)
+}
+
+// compareNominal: ступень номинальных значений — записи и пользовательские
+// варианты (T-123, вариант A): имя типа, затем порядок тега в декларации,
+// затем поля.
+func compareNominal(a, b Value) (int, error) {
+	if c := strings.Compare(nominalType(a), nominalType(b)); c != 0 {
+		return c, nil
+	}
+	av, bv := a.Kind == KindVariant, b.Kind == KindVariant
+	switch {
+	case av && bv:
+		if a.Variant.Ord != b.Variant.Ord {
+			return cmpInt(a.Variant.Ord, b.Variant.Ord), nil
+		}
+		return compareSlices(a.Variant.Args, b.Variant.Args)
+	case !av && !bv:
+		return compareRecords(a.Record, b.Record)
+	case av:
+		// Запись и вариант одного имени типа в одной программе не
+		// встречаются; порядок лишь детерминирован.
+		return 1, nil
+	default:
+		return -1, nil
+	}
+}
+
+func nominalType(v Value) string {
+	if v.Kind == KindVariant {
+		return v.Variant.Type
+	}
+	return v.Record.Type
 }
 
 // compareRecords: для номинальных — имя типа; затем число полей и пары
