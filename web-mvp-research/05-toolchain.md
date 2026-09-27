@@ -20,7 +20,7 @@
 | `brig add\|remove\|fetch\|update\|vendor\|why` | зависимости (10) | M |
 | `brig install\|uninstall URL` | утилиты из пакетов одним файлом в `~/.local/bin` (10) | M |
 | `brig lsp` | language server | S |
-| `brig doc` | документация из `@doc` | N |
+| `brig doc` | статическая документация из `##`, типов и `validate/1`; проверка ссылок (22) | S |
 
 Всё — подкоманды одного файла. Никаких `brig-lsp`, `brig-fmt` рядом.
 Команды фреймворка (`calmar new|server|gen|routes|db`) — задачи пакета Calmar;

@@ -1,7 +1,8 @@
 # Доменная запись + валидация входа. Модуль ничего не знает про HTTP.
-# NEEDS: pub fn (03/L3), доступ к полям (03/L4), тип как значение (03/L5, L19),
+# NEEDS: doc-комментарии ## и доктесты (22), pub fn (03/L3), доступ к полям (03/L4), тип как значение (03/L5, L19),
 #        «модуль типа» для validate/to_json/to_param (03/L6), Check + Changeset (09, 06),
 #        Instant (03/L12)
+## Мониторы: создание, валидация и представление для JSON и URL.
 module Lookout.Monitors.Monitor
 
 import Changeset
@@ -45,5 +46,12 @@ pub fn to_json(m) ->
         "last_checked_at" => m.last_checked_at,
     }
 
-# И для путей: Router.path(MonitorController.show, m) → "/monitors/42".
+## Параметр для URL — идентификатор строкой; его использует
+## [Router.path]: `Router.path(MonitorController.show, m)` → `/monitors/42`.
+##
+## ```brig repl
+## > Monitor.to_param(Monitor{ id: 42, name: "a", url: "https://a.test",
+##     interval_ms: 30_000, status: :up, last_checked_at: None })
+## "42"
+## ```
 pub fn to_param(m) -> to_str(m.id)

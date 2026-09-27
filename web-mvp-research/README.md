@@ -106,7 +106,10 @@
     `pub` сейчас; одно формальное чистое подмножество для guard'ов и `quote`;
     `Expr` — вариантный тип stdlib, `Expr.eval` — эталон. Само введение
     `quote` — RFC-0001 при проектировании `Query`.
-28. **Порядок:** закрыть Wave 6 → проектная база (модули, stdlib на Brig) →
+28. **Документация кода (утверждено, 22):** doc-комментарии `##` вместо
+    `@doc`, доктесты в REPL-блоках со сравнением через `==`, `brig doc` и
+    сборка доков пакетов в Chandler; Should, `brig publish` требует документацию.
+29. **Порядок:** закрыть Wave 6 → проектная база (модули, stdlib на Brig) →
     рантайм-механизмы (сразу закрывают нишу скриптинга) → сеть → Calmar.
 
 ## Документы
@@ -116,7 +119,7 @@
 | [00-PROMPT.md](00-PROMPT.md) | промпт, по которому сделано исследование |
 | [01-positioning.md](01-positioning.md) | один файл, ниши, чего не делаем |
 | [02-runtime.md](02-runtime.md) | R1–R15: требования к VM и планировщику |
-| [03-language.md](03-language.md) | L1–L23: пробелы языка |
+| [03-language.md](03-language.md) | L1–L24: пробелы языка |
 | [04-stdlib.md](04-stdlib.md) | батарейки, раскладка VM / Go / Brig / пакеты, бюджет размера |
 | [05-toolchain.md](05-toolchain.md) | CLI, self-contained сборка, манифест, скриптинг, embedded |
 | [06-framework.md](06-framework.md) | архитектура Calmar |
@@ -135,5 +138,6 @@
 | [19-performance.md](19-performance.md) | производительность: бенчмарки, регрессии, цели |
 | [20-ecosystem.md](20-ecosystem.md) | эксплуатация, принятие языка, процесс |
 | [21-quote.md](21-quote.md) | основа `quote`-лямбд, черновик RFC-0001 |
+| [22-docs.md](22-docs.md) | документирование кода и доктесты |
 | [demo/](demo/) | Lookout — uptime-монитор на Calmar |
 | [demo-whelk/](demo-whelk/) | приёмник GitHub-вебхуков на Whelk в одном файле |

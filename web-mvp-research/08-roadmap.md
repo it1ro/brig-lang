@@ -25,7 +25,7 @@
 3. Embedded stdlib на Brig через `go:embed` (L2) — первый модуль: `Result`/`Option`-хелперы.
 4. `Str`/`Bytes`/кодеки (L8), многострочные строки (L9),
    `Instant`/`Date`/`Duration`, `Decimal` в Must (L12), `Json.at`/`Map.get_or` (L16).
-5. `brig fmt`, `brig test` с обнаружением тестов.
+5. `brig fmt`, `brig test` с обнаружением тестов и доктестами `##` (22).
 6. `brig fix` и первая миграция `fn` → `pub fn` (B5).
 7. **Пакетный менеджер** (05): git + MVS + lock + кэш + vendor; пакеты — только Brig-исходники.
 8. Контракты уровня P на `pub fn` за флагом (09).
@@ -88,7 +88,8 @@ run-loop не блокируется.
 
 - Данные: пакет data mapper в духе Ecto (14).
 - Контракты: экспорт/дифф схем (`brig schema export|diff`), импорт OpenAPI/protobuf (09).
-- DX: LSP (сразу после MVP), `brig console`, генераторы `calmar gen`, отладчик.
+- DX: LSP (сразу после MVP), `brig console` с `h`, `brig doc`, генераторы `calmar gen`, отладчик;
+  сборка документации пакетов в Chandler (22).
 - Пакеты: 2FA, passkeys, OAuth/OIDC (18); фоновые задания с персистентной очередью (C5); NATS, Redis, S3,
   OpenTelemetry (D2); Chandler — индекс и прокси; права зависимостей (10/#12).
 - Веб: WebSocket, серверный UI в духе LiveView (C8), метрики Prometheus.
