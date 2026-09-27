@@ -1,0 +1,28 @@
+{# Статус обновляется вживую: браузер слушает /api/monitors/:id/events (SSE).
+   Весь «real-time» на сервере — recv-цикл в api/monitor_controller.brig.
+   NEEDS: шаблоны .bt (15) #}
+{params monitor: Monitor, checks: List<Check>}
+{import LookoutWeb.Components}
+
+<section>
+  <h1>{monitor.name}</h1>
+  <p><code>{monitor.url}</code> · каждые {monitor.interval_ms div 1000} с</p>
+
+  <p>Статус:
+    <strong id="status" data-events={"/api/monitors/\(monitor.id)/events"}>
+      <StatusBadge status={monitor.status} />
+    </strong>
+  </p>
+
+  <table>
+    <thead><tr><th>Когда</th><th>Статус</th><th>Время ответа</th></tr></thead>
+    <tbody>
+      <tr :for={c <- checks}>
+        <td>{Time.format(c.checked_at, :short)}</td>
+        <td><StatusBadge status={c.status} /></td>
+        <td>{c.took_ms} мс</td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+<script src="/assets/live-status.js"></script>

@@ -1,0 +1,56 @@
+#!/usr/bin/env brig
+# Серверный скрипт на том же коде, что и приложение: читает CSV (name,url)
+# из файла или stdin, валидирует тем же changeset'ом и шлёт в API.
+#
+#   ./scripts/import_monitors.brig monitors.csv --api http://localhost:4000
+#   cat list.csv | ./scripts/import_monitors.brig - --dry-run
+#
+# Запускается интерпретатором из того же одного бинарника. В собранном
+# приложении доступен как `lookout run scripts/import_monitors.brig`.
+#
+# NEEDS: shebang (05), Cli.parse (05), File/Stdin (02/R2, 04), Csv (04),
+#        Http.Client (04), Env (04), Sys.exit (04), модули приложения из скрипта (Q-script)
+module Main
+
+import Cli
+import Csv
+import Http.Client
+import Lookout.Monitors.Monitor
+
+fn main() ->
+    opts = Cli.parse(Sys.args(), {
+        positional: [:input],
+        flags: %{
+            "--api"     => { key: :api, default: "http://localhost:4000" },
+            "--dry-run" => { key: :dry_run, default: false },
+        },
+    })
+    token = Env.required("LOOKOUT_API_TOKEN")
+    rows = read_rows(opts.input)
+    results = rows |> map(row -> import_row(row, opts, token))
+    failed = results |> filter(r -> r != :ok) |> len
+    print("imported: \(len(rows) - failed), failed: \(failed)")
+    Sys.exit(if failed == 0 then 0 else 1)
+
+fn read_rows("-")  -> Stdin.read_all() |> Csv.parse({ header: true })
+fn read_rows(path) -> File.read(path) |> Result.unwrap() |> Csv.parse({ header: true })
+
+fn import_row(row, opts, token) ->
+    with
+        Ok(m) <- Monitor.changeset(row)
+        Ok(_) <- if opts.dry_run then Ok(()) else post(m, opts.api, token)
+        :ok
+    else
+        Error((:invalid, cs)) ->
+            eprint("skip \(Map.get_or(row, "url", "?")): \(Changeset.format_errors(cs))")
+            :invalid
+        Error(e) ->
+            eprint("fail \(Map.get_or(row, "url", "?")): \(to_str(e))")
+            :failed
+
+fn post(m, api, token) ->
+    Http.Client.post("\(api)/api/monitors", {
+        headers: [("authorization", "Bearer \(token)")],
+        json: Monitor.to_json(m),
+        timeout: 10_000,
+    }) |> Http.Client.expect_status([201])   # 4xx/5xx → Error((:http_status, resp))

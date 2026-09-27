@@ -1,0 +1,10 @@
+{# Компонент <Field form={cs} name={:url} label="URL" /> — поле формы со
+   значением и ошибками из changeset'а; type — Option, по умолчанию "text".
+   NEEDS: шаблоны .bt (15), Form-хелперы (06) #}
+{params form: Changeset, name: Atom, label: Str, type: Option<Str>}
+
+<label>{label}
+  <input name={Form.input_name(form, name)} type={Option.unwrap_or(type, "text")}
+         value={Form.value(form, name)}>
+</label>
+<small :for={e <- Form.errors(form, name)} class="error">{e}</small>

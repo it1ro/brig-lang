@@ -1,0 +1,15 @@
+{# Форма с ошибками changeset'а; csrf_token кладёт плаг Csrf.protect.
+   Повторяющиеся поля — компонент <Field>.
+   NEEDS: шаблоны .bt (15), Form-хелперы (06) #}
+{params changeset: Changeset, csrf_token: Str}
+{import LookoutWeb.Components}
+
+<form method="post" action={Router.path(MonitorController.create)}>
+  <input type="hidden" name="_csrf" value={csrf_token}>
+
+  <Field form={changeset} name={:name} label="Имя" />
+  <Field form={changeset} name={:url} label="URL" />
+  <Field form={changeset} name={:interval_ms} label="Интервал, мс" type="number" />
+
+  <button>Сохранить</button>
+</form>

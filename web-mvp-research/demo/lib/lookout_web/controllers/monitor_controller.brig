@@ -1,0 +1,43 @@
+# HTML-контроллер. Действие — функция (conn, params) -> Conn | Result<Conn, E>.
+# Error((:not_found, _)) и прочие доменные ошибки превращает в ответ
+# Calmar.Fallback (404/422/...), поэтому `with` без else — нормальный стиль.
+#
+# NEEDS: pub fn (03/L3), map-паттерн в параметре fn (есть в спеке, ждёт T-70),
+#        Conn/render/flash/redirect (06), компилируемые шаблоны (03/L10),
+#        Router.path по функции (03/L5), типизированные параметры пути (17)
+module LookoutWeb.MonitorController
+
+import Calmar.Conn
+import Calmar.Router
+import Lookout.Monitors
+import Changeset
+import Lookout.Monitors.Monitor
+alias LookoutWeb.Templates.Monitors as T
+
+pub fn index(conn, _) ->
+    with
+        Ok(monitors) <- Monitors.list()
+        conn |> Conn.render(T.index, { monitors: monitors })
+
+# id уже Int: роутер привёл его по шаблону {id: Int} (17).
+pub fn show(conn, %{ "id" => id }) ->
+    with
+        Ok(m)      <- Monitors.get(id)
+        Ok(checks) <- Monitors.recent_checks(m.id, 50)
+        conn |> Conn.render(T.show, { monitor: m, checks: checks })
+
+pub fn new(conn, _) ->
+    conn |> Conn.render(T.form, { changeset: Changeset.empty(Monitor) })
+
+pub fn create(conn, %{ "monitor" => attrs }) ->
+    match Monitors.create(attrs)
+        Ok(m) ->
+            conn
+                |> Conn.flash(:info, "Монитор «\(m.name)» добавлен")
+                |> Conn.redirect(Router.path(show, m))
+        Error((:invalid, cs)) ->
+            conn
+                |> Conn.put_status(422)
+                |> Conn.render(T.form, { changeset: cs })
+        Error(_) as err ->
+            err                       # остальное — в Calmar.Fallback (404, 500…)

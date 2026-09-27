@@ -1,0 +1,32 @@
+# Миграция — модуль с up/down, возвращающими SQL. Встраивается в payload
+# бинарника; задача `sql.migrate` применяет в транзакции: `./lookout sql.migrate`
+# на проде, `brig task sql.migrate` (или `calmar db migrate`) в dev (16).
+# NEEDS: pub fn (03/L3), многострочные строки (03/L9), Sql.Migration (04)
+module Migrations.CreateMonitors
+
+pub fn up() ->
+    [
+        """
+        create table monitors (
+            id              integer primary key,
+            name            text not null,
+            url             text not null unique,
+            interval_ms     integer not null,
+            status          text not null default 'unknown',
+            last_checked_at text
+        )
+        """,
+        """
+        create table checks (
+            id          integer primary key,
+            monitor_id  integer not null references monitors(id) on delete cascade,
+            status      text not null,
+            took_ms     integer not null,
+            checked_at  text not null
+        )
+        """,
+        "create index checks_by_monitor on checks (monitor_id, checked_at desc)",
+    ]
+
+pub fn down() ->
+    ["drop table checks", "drop table monitors"]
