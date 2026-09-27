@@ -83,15 +83,17 @@ make update-bytecode
 ## `check-examples` (A2)
 
 `make check-examples` прогоняет все ```` ```brig ```` fenced-блоки из
-`docs/01-language-design.md` через парсер + sanity round-trip. Метки:
-`brig module`, `brig repl`, `brig expr`, `brig stmt`, `brig invalid`,
-`text`/`pseudo` для мета-примеров (не код). Он только **парсит** блоки,
-не компилирует и не исполняет. Ожидаемый результат:
-`blocks: checked 62, failed 0` (68 fenced-блоков, из них 6 `invalid`) —
-если при правке документации это число
-меняется, нужно либо поправить пример, либо (если он специально
-демонстрирует невалидный код) пометить `brig invalid`, либо (если это
-мета-пример вроде обёртки `fn main() -> <expr>`) понизить до `text`.
+`docs/01-language-design.md`: `module`/`stmt`/`expr` — парсер, sema,
+компилятор и round-trip (T-116); `repl` — только парсер (исполнение —
+T-117). Метки: `brig module`, `brig repl`, `brig expr`, `brig stmt`,
+`brig invalid` (опционально `brig invalid "подстрока ошибки"` — блок
+обязан упасть именно с ней), `brig pending(T-NNN)` (блок обязан **не**
+компилироваться, T-NNN ищется в `tasks/*.md`; скомпилировался — снять
+метку), `text`/`pseudo` для мета-примеров. Ожидаемый результат —
+`blocks: checked 63, failed 0, pending 6`. Новый провал: поправить пример;
+демонстрация невалидного кода — `brig invalid "…"`; нереализованная фича —
+`pending(T-NNN)` с задачей; баг реализации — issue, не `pending`;
+мета-пример вроде обёртки `fn main() -> <expr>` — `text`.
 
 ## Регресс-тесты аудита и `t.Skip("blocked: T-NN")`
 

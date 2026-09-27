@@ -43,6 +43,7 @@
 | 6 | T-150 | Ревизия оставшихся «срез:» | T-139, T-144 | sonnet | low | T-151 |
 | 7 | T-151 | Docs: пример §13.2 — снять `text`, пометить `brig` | T-138 | sonnet | low | T-150 |
 | 8 | T-154 | Третий аудит на свежем `main` | T-139, T-146, T-147 | opus | large | — |
+| 9 | T-155 [#209](https://github.com/it1ro/brig-lang/issues/209) | Спред `..` в List/Vector/Map и в любой позиции вызова (§5.2) | — | opus | medium | T-150 |
 
 T-102 и T-103 обе правят `internal/vm/scheduler.go` — по одной.
 
