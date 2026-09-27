@@ -67,9 +67,10 @@ lambda_expr ::=
     | lambda_full
     | lambda_empty
 
-lambda_short ::= LOWER_IDENT "->" expr
+lambda_short ::=
+    ( LOWER_IDENT | "(" LOWER_IDENT { "," LOWER_IDENT } ")" ) "->" expr
 lambda_full ::=
-    "fn" "(" [ params ] ")" "->" fn_body
+    "fn" [ "(" [ params ] ")" ] "->" fn_body
 lambda_empty ::= "(" ")" "->" expr
 
 or_expr  ::= and_expr { "or" and_expr }

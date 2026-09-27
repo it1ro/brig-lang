@@ -37,7 +37,7 @@ T-147 (`cmd/brig`, прелюдия `Test`) и T-148 (Go-native `Str`/`Bytes`)
 
 | # | T-NN | Задача | Ждёт | Модель | Effort | Параллельно с |
 |---|---|---|---|---|---|---|
-| 1 | T-140 | Лямбды `fn ->` и `(a, b) ->` (по #169) | T-100 | opus | medium | T-145, T-147, T-148 |
+| 1 | T-140 [#203](https://github.com/it1ro/brig-lang/issues/203) | Лямбды `fn ->` и `(a, b) ->` (по #169) | T-100 | opus | medium | T-145, T-147, T-148 |
 | 2 | T-141 | Паттерны в параметрах полной лямбды | T-140 | opus | medium | T-145, T-147, T-148 |
 | 3 | T-142 | Record update сохраняет вид; `Record.to_anon` | T-128 | sonnet | low | T-145, T-147, T-148 |
 | 4 | T-143 | `pub fn`: приватность по умолчанию | T-139 | opus | medium | T-145, T-147, T-148 |
@@ -51,25 +51,6 @@ T-147 (`cmd/brig`, прелюдия `Test`) и T-148 (Go-native `Str`/`Bytes`)
 ## Задачи
 
 Задачи со ссылкой на issue в таблице выше заведены на доске: DoD — в issue. Ниже — полные блоки тех, что ещё не заведены.
-
-### T-140 · Лямбды `fn ->` и `(a, b) ->` (реализация #169)
-<!-- meta
-priority: P1
-type: feature
-effort: medium
-model: opus
-wave: 10
-depends_on: T-100
-findings: — (research L22; #169 требует «создать задачу на реализацию» — это она)
--->
-- **Файлы:** `internal/parser/expr.go` (`tryLambda`, `lambda_full` без скобок при нуле параметров, `lambda_short` со списком имён); `internal/ast/format.go` (`fn () ->` → `fn ->`); `internal/compiler` — только если нужен новый путь; `testdata/golden`
-- **Тест-якорь:** создать `TestParseFnArrowNoParams`, `TestParseShortLambdaMultiParam`, `TestFormatFnEmptyParensCanon`, `TestRunShortLambdaMultiParam`
-- **DoD:**
-  - `fn ->` + блок и `(a, b) -> a + b` разбираются и исполняются; `(a, b)` без `->` — по-прежнему кортеж;
-  - `Format` печатает `fn ->` для `fn () ->`; round-trip идемпотентен;
-  - `fn x ->` без скобок — ошибка парсинга;
-  - `pending` по #169 в спеке сняты; `make update-golden` — diff просмотрен; `make all` → 0; `make check-examples` → `failed 0`.
-- **НЕ делать:** мини-блоки (T-138); блочное тело у стрелки; паттерны в параметрах (T-141).
 
 ### T-141 · Паттерны в параметрах полной лямбды `fn ((a, b)) -> …`
 <!-- meta
