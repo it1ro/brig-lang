@@ -348,7 +348,7 @@ func TestEditorHooks(t *testing.T) {
 	scr := newScreen(80)
 	e = newTestEditor("x = 1", io.MultiWriter(&out, scr))
 	e.prompt = "> "
-	e.Highlight = func(src string) string { return strings.ReplaceAll(src, "1", "\x1b[33m1\x1b[0m") }
+	e.Highlight = func(src string, _ int) string { return strings.ReplaceAll(src, "1", "\x1b[33m1\x1b[0m") }
 	var hints []struct {
 		src string
 		pos int

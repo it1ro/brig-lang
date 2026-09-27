@@ -2,6 +2,7 @@ package repl_test
 
 import (
 	"bytes"
+	"io"
 	"testing"
 
 	"github.com/it1ro/brig-lang/internal/repl"
@@ -120,5 +121,21 @@ func TestEvalRedefinedLocalFnSnapshot(t *testing.T) {
 	res, err = s.Eval("c(2)\n")
 	if err != nil || res[0].Value.Inspect() != "7" {
 		t.Fatalf("c(2): got %v, %v; want 7", res, err)
+	}
+}
+
+// TestHighlightEnv — T-203: привязка сессии видна подсветке, прелюдия и
+// хелперы — тоже.
+func TestHighlightEnv(t *testing.T) {
+	s := repl.New(vm.New(), io.Discard)
+	env := s.HighlightEnv()
+	if !env.Prelude["map"] || !env.Helpers["h"] || !env.Modules["Vec"]["len"] {
+		t.Fatalf("prelude/helpers/Vec.len missing: %+v", env)
+	}
+	if _, err := s.Eval("x = 1\n"); err != nil {
+		t.Fatal(err)
+	}
+	if !s.HighlightEnv().Bindings["x"] {
+		t.Fatal("binding x missing")
 	}
 }
