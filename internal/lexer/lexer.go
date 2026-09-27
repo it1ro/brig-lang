@@ -363,7 +363,14 @@ func (l *lexer) lexLine(pl physLine) error {
 			continue
 		}
 		if c == '_' {
-			if i+1 < n && (isLower(text[i+1]) || isUpper(text[i+1]) || isDecDigit(text[i+1])) {
+			if i+1 < n && isLower(text[i+1]) {
+				// §1.2: "_" + [a-z] → LOWER_IDENT (_unused, _msg, ...).
+				j := scanIdent(text, i)
+				l.addToken(Token{Type: LOWER_IDENT, Lit: text[i:j]}, pl, i)
+				i = j
+				continue
+			}
+			if i+1 < n && (isUpper(text[i+1]) || isDecDigit(text[i+1])) {
 				return errf(pl.line, i+1, "identifier must not start with '_'")
 			}
 			l.addToken(Token{Type: WILDCARD, Lit: "_"}, pl, i)
