@@ -21,11 +21,18 @@ decl ::=
     | type_decl
     | fn_decl
 
-(* REPL: каждая введённая строка парсится отдельно как repl_line *)
+(* REPL: порция ввода — одна или несколько repl_line, каждая — своя
+   top-level область (§11.4) *)
+repl_input ::= repl_line { NEWLINE repl_line } [ NEWLINE ]
+
 repl_line ::=
       import_decl
     | alias_decl
     | stmt
+
+(* script: файл без module_decl, запущенный напрямую или загруженный в
+   REPL (§11.3); инструкции исполняются по порядку, как вводы REPL *)
+script ::= [ NEWLINE ] [ repl_input ] EOF
 
 (* ============ Стейтменты ============ *)
 stmt_list ::= stmt { NEWLINE stmt } [ NEWLINE ]
