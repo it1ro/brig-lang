@@ -8,7 +8,7 @@
 |---|---|---|
 | Доска | [github.com/users/it1ro/projects/5](https://github.com/users/it1ro/projects/5), `gh project view 5 --owner it1ro --web` | Единственный список задач и их статусов |
 | Задачи с DoD | issues `it1ro/brig-lang` с label `audit` (findings аудита) или `spec-gap` (пробелы относительно спеки §16; уровень §16 — label `must`) | Body issue — источник DoD (файлы, тест-якорь, DoD, «НЕ делать») |
-| План целиком | `TASKS.md` | Карта плана без статусов и DoD: волны 0–6, зависимости, ссылки на issues, design decisions |
+| План целиком | `tasks/` (`README.md` — индекс, `wave-N.md`, `decisions.md`) | Карта плана без статусов: волны, зависимости, ссылки на issues, design decisions; для задач без issue — полные блоки |
 | Находки | `AUDIT_REPORT.md` | Описание каждого finding (S-F*, A-F*, I-F*, O-F*) и пробных программ |
 | Правила | `CONTRIBUTING.md` | Ветки, коммиты, PR, DoR/DoD, правила для LLM-сессий |
 | Контекст для агентов | `.claude/skills/*/SKILL.md` | Инварианты подсистем и протокол сессии (`brig-workflow`) |
@@ -168,7 +168,7 @@ flowchart LR
 
 ```bash
 git tag stack-vm-final main && git push origin stack-vm-final
-git switch main && git merge --squash iter/regvm   # AUDIT_REPORT.md, TASKS.md и пр. уже в ветке
+git switch main && git merge --squash iter/regvm   # AUDIT_REPORT.md, план работ и пр. уже в ветке
 git commit        # subject с [T-07], в body — список T-01…T-06
 make all && BRIG_VERIFY=1 go test ./...
 git tag regvm-merged && git push origin main regvm-merged
@@ -179,9 +179,9 @@ git branch -D iter/regvm && git push origin --delete iter/regvm
 
 **Пробные программы `p/*.brig` в репозитории нет.** Аудит гонял их во временной копии. Если DoD ссылается на `p/…`, программа восстанавливается по описанию finding в `AUDIT_REPORT.md` и становится тестом, а не файлом в `p/`.
 
-**Verification (T-13…T-15).** Результат — комментарий с выводом команд. Подтвердилось — новый issue по строке таблицы «Verification needed» в `TASKS.md`. Не подтвердилось — label `false-positive`, issue закрыт.
+**Verification (T-13…T-15).** Результат — комментарий с выводом команд. Подтвердилось — новый issue по строке таблицы «Verification needed» в `tasks/README.md`. Не подтвердилось — label `false-positive`, issue закрыт.
 
-**Design decision принят.** Записать вариант в issue (#40–#43) и закрыть. Задачи, ждущие решения (#105–#112, см. `TASKS.md`), уже заведены и стоят в Blocked: у каждой, чьи блокеры закрыты, прочитать DoD — если выбранный вариант её отменяет, закрыть как won't-fix, иначе перевести в Todo.
+**Design decision принят.** Записать вариант в issue (#40–#43) и закрыть. Задачи, ждущие решения (#105–#112, см. `tasks/wave-3.md`), уже заведены и стоят в Blocked: у каждой, чьи блокеры закрыты, прочитать DoD — если выбранный вариант её отменяет, закрыть как won't-fix, иначе перевести в Todo.
 
 **Новый issue, найденный по пути:**
 
@@ -193,7 +193,9 @@ board_set <N> Priority <P>; board_set <N> "Task type" <type>; board_set <N> Effo
 board_set <N> Model <model>; board_set <N> Wave <wave>; board_set <N> Status Todo
 ```
 
-Номер T-NN — следующий свободный в десятке волны (занятые — в `TASKS.md` и `PROMPT_SETUP_KANBAN.log.md`).
+Номер T-NN — следующий свободный в десятке волны (занятые — в `tasks/` и `PROMPT_SETUP_KANBAN.log.md`).
+
+**Перенос запланированной волны на доску.** Задачи идут в порядке очереди из `tasks/backlog.md`. Для каждого блока: body issue = блок без заголовка, плюс `> Blocked by #M` для каждой задачи из `depends_on`, у которой уже есть issue; дальше — команды выше. После создания блок удаляется из `backlog.md`, а строка задачи в `tasks/wave-N.md` получает ссылку на issue. Когда `backlog.md` опустел, туда переезжают блоки следующей волны из её файла.
 
 **Задача требует менять спецификацию или публичный синтаксис.** `CONTRIBUTING.md` §6 требует обновить `docs/` в том же PR, а §7 запрещает агенту трогать doc-файлы вне docs-задач. Как это делать на практике: агент останавливается, пишет в issue, какой раздел спеки нужно поменять, и переводит issue в Blocked; правку спеки делает человек или отдельный issue с Task type `docs`.
 

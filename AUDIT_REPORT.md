@@ -1,6 +1,6 @@
 # Аудит Brig — отчёт
 
-Работы по отчёту: план и статусы — [`TASKS.md`](TASKS.md), доска — [GitHub Projects](https://github.com/users/it1ro/projects/5). Ссылки на issues по каждому finding — в §4.
+Работы по отчёту: план — [`tasks/`](tasks/README.md), статусы — доска — [GitHub Projects](https://github.com/users/it1ro/projects/5). Ссылки на issues по каждому finding — в §4.
 
 Проведён по `AUDIT_PROMPT.md`. Пробные программы и тесты, на которые ссылаются теги `[verified: …]`, лежали во временной копии репозитория и в репозиторий не добавлялись.
 
