@@ -360,6 +360,9 @@ type TypeDecl interface {
 	// RecordFields — имена полей записи-декларации в порядке объявления;
 	// ok == false, если декларация — не запись (вариант или алиас).
 	RecordFields() (names []string, ok bool)
+	// Variants — конструкторы вариант-декларации в порядке объявления;
+	// ok == false, если декларация — не вариант (запись или алиас).
+	Variants() (ctors []VariantArg, ok bool)
 }
 
 func (d *typeDecl) TypeName() string { return d.name }
@@ -372,6 +375,21 @@ func (d *typeDecl) RecordFields() ([]string, bool) {
 		names[i] = f.name
 	}
 	return names, true
+}
+
+func (d *typeDecl) Variants() ([]VariantArg, bool) {
+	if len(d.variants) == 0 {
+		return nil, false
+	}
+	out := make([]VariantArg, len(d.variants))
+	for i, v := range d.variants {
+		fs := make([]Type, len(v.fields))
+		for j, f := range v.fields {
+			fs[j] = f.typ
+		}
+		out[i] = VariantArg{Name: v.name, Fields: fs}
+	}
+	return out, true
 }
 
 // --- trap (v0.4.7, §10.2/§10.3) ---
