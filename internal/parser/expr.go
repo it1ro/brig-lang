@@ -30,24 +30,33 @@ func (p *parser) tryLambda() (ast.Expr, bool, error) {
 		}
 		return ast.NewLambdaEmptyExpr(body, start.Line, start.Col), true, nil
 	}
-	// lambda_short: LOWER_IDENT "->" expr
-	if p.at(lexer.LOWER_IDENT) && p.peek(1).Type == lexer.OP_ARROW {
+	// lambda_short: ( LOWER_IDENT | "(" LOWER_IDENT { "," LOWER_IDENT } ")" ) "->" expr
+	if n := p.shortLambdaHead(); n > 0 {
 		start := p.cur()
-		name := p.advance().Lit
+		var names []string
+		for i := 0; i < n-1; i++ {
+			if t := p.advance(); t.Type == lexer.LOWER_IDENT {
+				names = append(names, t.Lit)
+			}
+		}
 		p.advance() // ->
 		body, err := p.parseExpr()
 		if err != nil {
 			return nil, true, err
 		}
-		return ast.NewLambdaShortExpr(name, body, start.Line, start.Col), true, nil
+		return ast.NewLambdaShortExpr(names, body, start.Line, start.Col), true, nil
 	}
-	// lambda_full: "fn" "(" params ")" "->" fn_body
-	if p.at(lexer.KW_FN) && p.peek(1).Type == lexer.LPAREN {
+	// lambda_full: "fn" [ "(" [ params ] ")" ] "->" fn_body
+	if p.at(lexer.KW_FN) && (p.peek(1).Type == lexer.LPAREN || p.peek(1).Type == lexer.OP_ARROW) {
 		start := p.cur()
 		p.advance() // fn
-		params, err := p.parseParams()
-		if err != nil {
-			return nil, true, err
+		var params []ast.Pattern
+		if p.at(lexer.LPAREN) {
+			var err error
+			params, err = p.parseParams()
+			if err != nil {
+				return nil, true, err
+			}
 		}
 		if _, err := p.expect(lexer.OP_ARROW, "'->'"); err != nil {
 			return nil, true, err
@@ -58,7 +67,31 @@ func (p *parser) tryLambda() (ast.Expr, bool, error) {
 		}
 		return ast.NewLambdaFullExpr(lambdaParamStrings(params), body, start.Line, start.Col), true, nil
 	}
+	// `fn x ->` для одного параметра не вводится (§6.2, §0.2).
+	if p.at(lexer.KW_FN) && p.peek(1).Type == lexer.LOWER_IDENT && p.peek(2).Type == lexer.OP_ARROW {
+		return nil, true, p.errf("lambda parameters need parentheses: fn (%s) -> (§6.2)", p.peek(1).Lit)
+	}
 	return nil, false, nil
+}
+
+// shortLambdaHead — длина головы lambda_short в токенах, включая `->`:
+// `x ->` или `(a, b) ->`; 0 — не короткая лямбда. `(a, b)` без `->` —
+// кортеж.
+func (p *parser) shortLambdaHead() int {
+	if p.at(lexer.LOWER_IDENT) && p.peek(1).Type == lexer.OP_ARROW {
+		return 2
+	}
+	if !p.at(lexer.LPAREN) || p.peek(1).Type != lexer.LOWER_IDENT {
+		return 0
+	}
+	i := 2
+	for p.peek(i).Type == lexer.COMMA && p.peek(i+1).Type == lexer.LOWER_IDENT {
+		i += 2
+	}
+	if p.peek(i).Type == lexer.RPAREN && p.peek(i+1).Type == lexer.OP_ARROW {
+		return i + 2
+	}
+	return 0
 }
 
 // or_expr ::= and_expr { "or" and_expr }
@@ -1057,7 +1090,9 @@ func (p *parser) parseRecv() (ast.Expr, error) {
 
 	if p.at(lexer.KW_AFTER) {
 		p.advance()
-		t, err := p.parseExpr()
+		// Таймаут — or_expr, не полный expr: иначе tryLambda съедает
+		// `ms ->` и `(ms) ->` как короткую лямбду (§6.2, T-140).
+		t, err := p.parseOr()
 		if err != nil {
 			return nil, err
 		}

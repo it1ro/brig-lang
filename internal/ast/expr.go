@@ -268,17 +268,17 @@ func (e *trapExpr) String() string {
 	}
 }
 
-// lambdaShortExpr — короткая лямбда: x -> expr.
+// lambdaShortExpr — короткая лямбда: x -> expr или (a, b) -> expr.
 type lambdaShortExpr struct {
 	posEnd
-	param string
-	body  Expr
+	params []string
+	body   Expr
 }
 
 func (e *lambdaShortExpr) IsExpression() bool { return true }
 func (e *lambdaShortExpr) IsStatement() bool  { return false }
 func (e *lambdaShortExpr) String() string {
-	return fmt.Sprintf("(lambda %s -> %s)", e.param, e.body)
+	return fmt.Sprintf("(lambda %s -> %s)", join(e.params, ", "), e.body)
 }
 
 // lambdaFullExpr — полная лямбда: fn (params) -> block.

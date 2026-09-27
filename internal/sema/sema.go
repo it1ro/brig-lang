@@ -494,7 +494,9 @@ func (c *checker) checkExpr(e ast.Expr) {
 
 	case ast.LambdaShort:
 		c.pushScope()
-		c.bind(x.ParamName(), "param", 0, 0)
+		for _, name := range x.ParamNames() {
+			c.bind(name, "param", 0, 0)
+		}
 		c.checkExpr(x.Body())
 		c.popScope()
 

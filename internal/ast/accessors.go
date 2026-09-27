@@ -200,12 +200,12 @@ func (e *matchExpr) MatchBranches() []MatchBranchArg {
 // LambdaShort — доступ к короткой лямбде.
 type LambdaShort interface {
 	Expr
-	ParamName() string
+	ParamNames() []string
 	Body() Expr
 }
 
-func (e *lambdaShortExpr) ParamName() string { return e.param }
-func (e *lambdaShortExpr) Body() Expr        { return e.body }
+func (e *lambdaShortExpr) ParamNames() []string { return e.params }
+func (e *lambdaShortExpr) Body() Expr           { return e.body }
 
 // LambdaEmpty — доступ к лямбде с пустыми параметрами.
 type LambdaEmpty interface {
