@@ -125,6 +125,18 @@ func RegUse(in Instr) (reads, writes []int, err error) {
 			reads = append(reads, b+i)
 		}
 		return reads, []int{a}, nil
+	case LISTSPREAD, VECSPREAD:
+		reads = nil
+		for i := 0; i < 2*cc; i++ {
+			reads = append(reads, b+i)
+		}
+		return reads, []int{a}, nil
+	case MAPSPREAD:
+		reads = nil
+		for i := 0; i < 3*cc; i++ {
+			reads = append(reads, b+i)
+		}
+		return reads, []int{a}, nil
 	case MAKECLOSURE, RECORD:
 		// R[B] — функция (форма записи); R[B+1..B+C] — захваты (значения).
 		reads = nil
