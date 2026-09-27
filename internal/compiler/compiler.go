@@ -148,6 +148,9 @@ type funcCompiler struct {
 	trapDepth int
 	lambdaSeq int // уникальный суффикс для лямбд этой функции (A-F6)
 	pos       vm.SrcPos
+	// patSlots — предаллоцированные регистры имён паттерна (let-связывания
+	// в trap с ensure); compilePattern берёт слот отсюда вместо allocReg.
+	patSlots map[string]int
 }
 
 // dest — назначение результата выражения (§7).
@@ -1008,7 +1011,7 @@ func (fc *funcCompiler) compileStmt(s ast.Stmt, d dest) (err error) {
 func (fc *funcCompiler) compileLetBind(st ast.LetBind, d dest) error {
 	ip, ok := st.Pat().(ast.IdentPattern)
 	if !ok {
-		return fmt.Errorf("срез: только простые связывания `name = expr`")
+		return fc.compilePatternBind(st, d, nil)
 	}
 	name := ip.IdentName()
 	r := fc.allocReg()
@@ -1017,6 +1020,41 @@ func (fc *funcCompiler) compileLetBind(st ast.LetBind, d dest) error {
 	}
 	fc.bindLocal(name, r)
 	// Значение let-стейтмента — () (совместимо с регистровой VM).
+	return fc.loadUnit(d)
+}
+
+// compilePatternBind — связывание `pattern = expr` (§5.1): значение в
+// vReg, MATCHLOCAL связывает имена паттерна в текущей области;
+// несовпадение — raise (:badmatch, v), v — значение правой части (§10.4).
+// slots — предаллоцированные регистры имён (trap с ensure), иначе nil.
+func (fc *funcCompiler) compilePatternBind(st ast.LetBind, d dest, slots map[string]int) error {
+	vReg := fc.allocReg()
+	if err := fc.compileExpr(st.Val(), val(vReg)); err != nil {
+		return err
+	}
+	fc.patSlots = slots
+	cp, err := fc.compilePattern(st.Pat())
+	fc.patSlots = nil
+	if err != nil {
+		return err
+	}
+	patIdx := fc.chunk.AddPattern(cp)
+
+	fc.emit(vm.ABx(vm.MATCHLOCAL, vReg, patIdx))
+	jFail := fc.emitJump(vm.JMP, 0)
+	jOk := fc.emitJump(vm.JMP, 0)
+
+	fc.patchHere(jFail)
+	mark := fc.nextReg
+	w0 := fc.allocReg()
+	w1 := fc.allocReg()
+	fc.emit(vm.ABx(vm.LOADK, w0, fc.konst(runtime.Atom("badmatch"))))
+	fc.emit(vm.ABC(vm.MOVE, w1, vReg, 0))
+	fc.emit(vm.ABC(vm.TUPLE, w0, w0, 2))
+	fc.emit(vm.ABC(vm.RAISE, w0, 0, 0))
+	fc.releaseToMark(mark)
+
+	fc.patchHere(jOk)
 	return fc.loadUnit(d)
 }
 
@@ -2122,13 +2160,11 @@ func (fc *funcCompiler) compileTrapWithEnsure(stmts []ast.Stmt, ensures []ast.Ex
 		if !ok {
 			continue
 		}
-		ip, ok := lb.Pat().(ast.IdentPattern)
-		if !ok {
-			continue
+		for _, name := range patternNames(lb.Pat(), nil) {
+			r := fc.allocReg()
+			fc.emit(vm.ABx(vm.LOADK, r, unitIdx))
+			letRegs[name] = r
 		}
-		r := fc.allocReg()
-		fc.emit(vm.ABx(vm.LOADK, r, unitIdx))
-		letRegs[ip.IdentName()] = r
 	}
 
 	fc.trapDepth++
@@ -2266,7 +2302,7 @@ func (fc *funcCompiler) compileTrapBodyWithEnsures(
 func (fc *funcCompiler) compileTrapLetBind(st ast.LetBind, d dest, letRegs map[string]int) error {
 	ip, ok := st.Pat().(ast.IdentPattern)
 	if !ok {
-		return fmt.Errorf("срез: только простые связывания `name = expr`")
+		return fc.compilePatternBind(st, d, letRegs)
 	}
 	name := ip.IdentName()
 	r, ok := letRegs[name]
@@ -2666,10 +2702,56 @@ func (fc *funcCompiler) compileLambda(name string, params []string, body ast.Exp
 
 // ---- patterns ----
 
+// patternNames — имена, которые связывает паттерн, в порядке обхода
+// compilePattern (`_` и безымянный `..` не связывают).
+func patternNames(pat ast.Pattern, acc []string) []string {
+	switch p := pat.(type) {
+	case ast.IdentPattern:
+		acc = append(acc, p.IdentName())
+	case ast.PatternCtor:
+		for _, a := range p.CtorArgs() {
+			acc = patternNames(a, acc)
+		}
+	case ast.PatternTuple:
+		for _, a := range p.TupleElems() {
+			acc = patternNames(a, acc)
+		}
+	case ast.PatternList:
+		for _, a := range p.ListElems() {
+			acc = patternNames(a, acc)
+		}
+		if p.ListHasRest() && p.ListRestName() != "" {
+			acc = append(acc, p.ListRestName())
+		}
+	case ast.PatternMapAccessor:
+		for _, pair := range p.MapPairsAccessor() {
+			acc = patternNames(pair.Pat, acc)
+		}
+	case ast.PatternRecord:
+		for _, f := range p.RecordFields() {
+			acc = patternNames(f.Pat, acc)
+		}
+	case ast.PatternAs:
+		acc = patternNames(p.AsInner(), acc)
+		acc = append(acc, p.AsName())
+	}
+	return acc
+}
+
+// patSlot — регистр для имени паттерна: предаллоцированный из
+// fc.patSlots (trap с ensure) или новый.
+func (fc *funcCompiler) patSlot(name string) int {
+	if r, ok := fc.patSlots[name]; ok {
+		delete(fc.patSlots, name)
+		return r
+	}
+	return fc.allocReg()
+}
+
 func (fc *funcCompiler) compilePattern(pat ast.Pattern) (*vm.CompiledPattern, error) {
 	switch p := pat.(type) {
 	case ast.IdentPattern:
-		slot := fc.allocReg()
+		slot := fc.patSlot(p.IdentName())
 		fc.bindLocal(p.IdentName(), slot)
 		return &vm.CompiledPattern{Kind: vm.PatIdent, Slot: slot}, nil
 
@@ -2713,7 +2795,7 @@ func (fc *funcCompiler) compilePattern(pat ast.Pattern) (*vm.CompiledPattern, er
 		}
 		restSlot := -1
 		if p.ListHasRest() && p.ListRestName() != "" {
-			restSlot = fc.allocReg()
+			restSlot = fc.patSlot(p.ListRestName())
 			fc.bindLocal(p.ListRestName(), restSlot)
 		}
 		return &vm.CompiledPattern{
@@ -2771,7 +2853,7 @@ func (fc *funcCompiler) compilePattern(pat ast.Pattern) (*vm.CompiledPattern, er
 		if err != nil {
 			return nil, err
 		}
-		slot := fc.allocReg()
+		slot := fc.patSlot(p.AsName())
 		fc.bindLocal(p.AsName(), slot)
 		return &vm.CompiledPattern{
 			Kind: vm.PatAs, Inner: inner, AsSlot: slot,
