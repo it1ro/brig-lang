@@ -139,30 +139,62 @@ func (p *parser) parseModule() (*ast.Program, error) {
 	return prog, nil
 }
 
-// repl_line ::= import_decl | alias_decl | stmt
+// ParseReplInput разбирает порцию ввода REPL (repl_input, §11.4): одну
+// или несколько repl_line. Каждая repl_line — отдельный Program (своя
+// top-level область), порядок — порядок ввода.
+func ParseReplInput(src string) ([]*ast.Program, error) {
+	toks, err := lexer.Lex(src)
+	if err != nil {
+		return nil, err
+	}
+	p := &parser{toks: toks, mode: ModeRepl}
+	return p.parseReplInput()
+}
+
+// parseRepl — ModeRepl для ParseProgram: repl_input одним Program.
 func (p *parser) parseRepl() (*ast.Program, error) {
+	lines, err := p.parseReplInput()
+	if err != nil {
+		return nil, err
+	}
 	prog := &ast.Program{}
+	for _, l := range lines {
+		prog.Decls = append(prog.Decls, l.Decls...)
+		prog.Stmts = append(prog.Stmts, l.Stmts...)
+	}
+	return prog, nil
+}
+
+// repl_input ::= repl_line { NEWLINE repl_line } [ NEWLINE ]
+func (p *parser) parseReplInput() ([]*ast.Program, error) {
+	var lines []*ast.Program
 	p.skipNewlines()
-	if p.at(lexer.EOF) {
-		return prog, nil
-	}
-	if p.at(lexer.KW_IMPORT) {
-		d, err := p.parseImportDecl()
+	for !p.at(lexer.EOF) {
+		l, err := p.parseReplLine()
 		if err != nil {
 			return nil, err
 		}
-		if err := p.expectReplEnd(); err != nil {
+		lines = append(lines, l)
+		if err := p.expectReplLineEnd(); err != nil {
 			return nil, err
 		}
-		prog.Decls = append(prog.Decls, d)
-		return prog, nil
+		p.skipNewlines()
 	}
-	if p.at(lexer.KW_ALIAS) {
-		d, err := p.parseAliasDecl()
-		if err != nil {
-			return nil, err
+	return lines, nil
+}
+
+// repl_line ::= import_decl | alias_decl | stmt
+func (p *parser) parseReplLine() (*ast.Program, error) {
+	prog := &ast.Program{}
+	if p.at(lexer.KW_IMPORT) || p.at(lexer.KW_ALIAS) {
+		var d ast.Decl
+		var err error
+		if p.at(lexer.KW_IMPORT) {
+			d, err = p.parseImportDecl()
+		} else {
+			d, err = p.parseAliasDecl()
 		}
-		if err := p.expectReplEnd(); err != nil {
+		if err != nil {
 			return nil, err
 		}
 		prog.Decls = append(prog.Decls, d)
@@ -172,20 +204,18 @@ func (p *parser) parseRepl() (*ast.Program, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := p.expectReplEnd(); err != nil {
-		return nil, err
-	}
 	prog.Stmts = append(prog.Stmts, s)
 	return prog, nil
 }
 
-// expectReplEnd проверяет, что после единственного repl_line не осталось
-// значащих токенов (T-156 #211): repl_line — ровно один import_decl,
-// alias_decl или stmt, а не первый из нескольких. Раньше хвост (в том
-// числе следующий стейтмент после NEWLINE) молча отбрасывался.
-func (p *parser) expectReplEnd() error {
-	p.skipNewlines()
-	if !p.at(lexer.EOF) {
+// expectReplLineEnd проверяет, что repl_line кончается NEWLINE, EOF или
+// блоком (DEDENT), как стейтмент в stmt_list (T-156 #211): хвост на той
+// же строке не отбрасывается молча.
+func (p *parser) expectReplLineEnd() error {
+	if p.pos > 0 && p.toks[p.pos-1].Type == lexer.DEDENT {
+		return nil
+	}
+	if !p.at(lexer.NEWLINE) && !p.at(lexer.EOF) {
 		return p.errf("unexpected token after repl statement: %s", p.cur().Type)
 	}
 	return nil
