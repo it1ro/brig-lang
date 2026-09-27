@@ -155,6 +155,15 @@ func decArithErr(a, b runtime.Value, op string) error {
 	return typeErr(op, runtime.Tuple(a, b))
 }
 
+// parseErr — ловимый raise (:parse_error, (op, val)) (§10.4), для
+// случаев, когда значение имело допустимый тип, но не разобралось
+// (например Str, не являющаяся валидным числом в to_int/to_float).
+func parseErr(op string, val runtime.Value) error {
+	return &ErrRaise{Val: runtime.Tuple(
+		runtime.Atom("parse_error"),
+		runtime.Tuple(runtime.Atom(op), val))}
+}
+
 func add(a, b runtime.Value) (runtime.Value, error) {
 	if a.Kind == runtime.KindDecimal || b.Kind == runtime.KindDecimal {
 		ar, ok1 := numToRat(a)
