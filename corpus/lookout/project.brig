@@ -1,0 +1,22 @@
+# Манифест проекта — обычный Brig-модуль, а не TOML/YAML.
+# needs: T-143, horizon
+#   pub fn (03/L3) — T-143;
+#   horizon: манифест как модуль (05, Q-manifest), пакеты и права (10).
+module Project
+
+pub fn project() ->
+    {
+        name: "lookout",
+        version: "0.1.0",
+        brig: ">= 0.6",
+        # Канонические URL (10); версия — минимальная (MVS), точная — в project.lock.
+        # allow — права, выданные зависимости (как в Deno, 10/#12); код самого
+        # приложения не ограничен.
+        deps: [
+            { src: "brig.dev/calmar", version: "v0.1.0", allow: [:net, :file, :env, :signal] },
+        ],
+        build: {
+            assets: ["priv/static", "priv/migrations"],
+            targets: ["linux/amd64", "linux/arm64"],
+        },
+    }

@@ -1,0 +1,20 @@
+# Записи: номинальные и анонимные, обновление, паттерны, равенство (§4.7, §4.8, §9.6).
+
+type User { id: Int, name: Str }
+
+fn rename(u, name) -> User{ ..u, name: name }
+
+fn greet(User{ name: name }) -> "hello, \(name)"
+
+fn main() ->
+    u = User{ id: 1, name: "ann" }
+    print(u.id, u.name)
+    print(greet(rename(u, "bob")))
+    print(u == User{ id: 1, name: "ann" }, u == rename(u, "bob"))
+    anon = { id: 1, name: "ann" }
+    print(anon.name, anon == { name: "ann", id: 1 })
+    print(u == anon)
+    print({ ..anon, name: "eve" })
+    match u
+        User{ id: 2 } -> print("two")
+        User{ id: id } -> print("id", id)

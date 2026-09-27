@@ -1,0 +1,31 @@
+# Конфиг — функции, возвращающие записи (единственный эффект — чтение env).
+# Слои: defaults() → <env>() (dev/test/prod), мерж — `{ ..a, ..b }` вглубь.
+# Config.load валидирует результат на старте: приложение не поднимется
+# с кривым конфигом, ошибка укажет на поле.
+# needs: T-143, horizon
+#   pub fn (03/L3) — T-143;
+#   horizon: Config (04), Env (04), модули как значения (03/L5).
+module Lookout.Config
+
+pub fn defaults() ->
+    {
+        port: 4000,
+        repo: { path: "lookout.db", pool_size: 4 },
+        checks: { timeout_ms: 5_000, history: 500 },
+        api_token: None,
+        secret_key_base: None,
+    }
+
+pub fn dev() ->
+    { repo: { path: "lookout_dev.db", pool_size: 2 } }
+
+pub fn test() ->
+    { repo: { path: ":memory:", pool_size: 1 }, api_token: Some("test") }
+
+pub fn prod() ->
+    {
+        port: Env.int("PORT", 8080),
+        repo: { path: Env.required("LOOKOUT_DB"), pool_size: 8 },
+        api_token: Some(Env.required("LOOKOUT_API_TOKEN")),
+        secret_key_base: Some(Env.required("SECRET_KEY_BASE")),
+    }

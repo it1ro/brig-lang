@@ -25,7 +25,7 @@ description: >
 3. **`make test-race`** — обязателен при любой правке `internal/vm`
    (акторы, замыкания) перед тем, как считать задачу завершённой.
 4. **`make all`** — `check-smallint` + `fmt` + `vet` + `test` + `lint` +
-   `build`; его же запускает CI (`.github/workflows/ci.yml`) на push и PR
+   `build` + `check-examples` + `run-examples` + `corpus`; его же запускает CI (`.github/workflows/ci.yml`) на push и PR
    в `main`. Вместе с `BRIG_VERIFY=1 go test ./...` — обязательный гейт
    перед PR (`CONTRIBUTING.md` §5).
 5. **`make fuzz`** — 3×60s (лексер, парсер, round-trip). Не входит в
@@ -95,6 +95,21 @@ REPL-сессии, строка ответа после `> ввод` разби�
 демонстрация невалидного кода — `brig invalid "…"`; нереализованная фича —
 `pending(T-NNN)` с задачей; баг реализации — issue, не `pending`;
 мета-пример вроде обёртки `fn main() -> <expr>` — `text`.
+
+## Корпус библиотечного кода (`corpus/`, T-115)
+
+`make corpus` (`cmd/corpus`, логика — `internal/corpus`) проверяет каждый
+файл из `corpus/manifest.tsv` до его уровня: `parse` — парсер; `check` —
+sema и компиляция; `run` — `brig run`, код 0 и stdout = `X.out`, если он
+есть. Строка `(L, fail)` значит «проходит уровни ниже L и падает на L»,
+`needs` — `T-NNN` из `tasks/` или `horizon` и совпадает со строкой
+`# needs:` в файле. Падает на регрессии, на неожиданном проходе и на needs
+с несуществующей задачей. Задача, после которой файл корпуса неожиданно
+прошёл, в том же PR снимает себя из его `needs` и поднимает уровень:
+`make update-corpus` поднимает уровень и переписывает `X.out`, needs
+правятся руками. Demo в корпусе не переписывать под текущий язык: он
+показывает, чего не хватает. `corpus/lang/` — программы по примерам спеки
+(pipe-map, `with`, записи), уровень `run`.
 
 ## Регресс-тесты аудита и `t.Skip("blocked: T-NN")`
 

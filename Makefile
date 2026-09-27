@@ -6,13 +6,14 @@ VERSION ?= $(shell git describe --tags --always 2>/dev/null || echo dev)
 
 .PHONY: all build test test-race lint fmt vet check-examples ebnf-check \
 	git-hooks changelog fuzz update-golden update-bytecode update-examples run-examples clean \
+	corpus update-corpus \
 	test-roundtrip test-ast test-parser test-lexer test-one \
 	test-vm test-compiler run run-hello \
 	fmt-check cover cover-html ci-quick check repl
 
 # `make` без цели: полный локальный прогон всего, что должно быть зелёным.
 # Добавлены цели Трека C: test-vm и test-compiler.
-all: check-smallint fmt vet test lint build check-examples run-examples
+all: check-smallint fmt vet test lint build check-examples run-examples corpus
 
 ## ---- Сборка ----
 build:
@@ -91,6 +92,17 @@ update-examples:
 	@for f in examples/*.brig; do \
 		$(GO) run ./cmd/brig run $$f > $${f%.brig}.out 2>&1 || exit 1; \
 	done
+
+# Корпус библиотечного кода (T-115): каждый файл из corpus/manifest.tsv —
+# до своего уровня parse/check/run. Падает на регрессии, неожиданном проходе
+# и needs с несуществующей задачей; печатает сводку по уровням и needs.
+corpus: build
+	$(GO) run ./cmd/corpus -brig $(BIN)/brig
+
+# Поднять уровни неожиданно прошедших файлов и перезаписать X.out
+# (diff манифеста смотреть глазами, выполненные задачи из needs снять вручную).
+update-corpus: build
+	$(GO) run ./cmd/corpus -brig $(BIN)/brig -update
 
 run-hello:
 	$(GO) run ./cmd/brig run examples/hello.brig

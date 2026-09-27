@@ -1,0 +1,7 @@
+Ok((:saved, 50))
+Error((:invalid, -1))
+Error((:too_big, 5000))
+valid 3
+Ok(4)
+Error((:invalid, 0))
+Some(2) None

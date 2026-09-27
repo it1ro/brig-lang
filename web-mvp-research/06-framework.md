@@ -83,7 +83,7 @@ fn deny(conn) -> conn |> Conn.json(401, %{ "error" => "unauthorized" })
 маршрут не совпал), хелперы путей по функции-действию, `forward` любого
 `Conn -> Conn`, автоматические `HEAD`/`OPTIONS`/`405`, `308` на канон без
 слэша, проверки на старте, `brig task calmar.routes`, `Router.match`.
-Пример — `demo/lib/lookout_web/router.brig`.
+Пример — `corpus/lookout/lib/lookout_web/router.brig`.
 
 ## Контроллеры
 

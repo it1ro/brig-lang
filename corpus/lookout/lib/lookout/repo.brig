@@ -1,0 +1,37 @@
+# Repo — тонкая обёртка над Sql-пулом под именем :repo.
+# Никакого ORM: SQL-строки + маппинг строк в записи по Type.fields.
+# needs: T-143, T-146, horizon
+#   pub fn (03/L3) — T-143; Result.map (04) — T-146;
+#   horizon: Sql + встроенный Sqlite (04, Q-db), тип как значение + Type.fields (03/L5, L11).
+module Lookout.Repo
+
+import Sql
+import Sql.Sqlite
+
+pub fn child_spec(config) ->
+    Sql.Pool.child_spec({
+        name: :repo,
+        adapter: Sqlite,
+        path: config.path,
+        size: config.pool_size,
+        migrations: "priv/migrations",   # читаются из payload бинарника
+    })
+
+pub fn all(schema, sql, params) ->
+    Sql.query(:repo, sql, params) |> Result.map(rows -> map(rows, r -> Sql.to_record(schema, r)))
+
+pub fn one(schema, sql, params) ->
+    match all(schema, sql, params)
+        Ok([r])  -> Ok(r)
+        Ok([])   -> Error((:not_found, (schema, params)))
+        Ok(_)    -> Error((:multiple_results, (schema, params)))
+        Error(e) -> Error(e)
+
+pub fn rows(sql, params) -> Sql.query(:repo, sql, params)
+
+pub fn insert(table, record) -> Sql.insert(:repo, table, record)
+
+pub fn exec(tx, sql, params) -> Sql.exec(tx, sql, params)
+
+# fun получает транзакцию; Ok(_) → commit, Error(_) или raise → rollback.
+pub fn transaction(fun) -> Sql.transaction(:repo, fun)

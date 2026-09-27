@@ -1,0 +1,26 @@
+# Задача проекта (аналог rake db:seed): `brig task db.seed [--count N]`.
+# Не попадает в релиз (release: false) — сиды нужны только в dev.
+# needs: T-135, T-137, T-143, T-146, horizon
+#   pub fn (03/L3) — T-143; List.take, Result.all (04) — T-146; модули проекта — T-135, T-137;
+#   horizon: задачи tasks/ и Task.run (16), Cli.parse (05).
+module Tasks.Db.Seed
+
+import Cli
+import Lookout.Monitors
+
+pub fn about() -> { summary: "Заполнить базу примерами мониторов", release: false }
+
+pub fn run(args) ->
+    opts = Cli.parse(args, { flags: %{ "--count" => { key: :count, default: 3 } } })
+    Task.run("sql.migrate", [])            # явная зависимость, один раз за запуск
+    samples()
+        |> List.take(opts.count)
+        |> map(params -> Monitors.create(params))
+        |> Result.all()
+
+fn samples() ->
+    [
+        %{ "name" => "brig site", "url" => "https://brig.dev" },
+        %{ "name" => "example", "url" => "https://example.org" },
+        %{ "name" => "status", "url" => "https://status.example.org", "interval_ms" => 60_000 },
+    ]

@@ -1,0 +1,109 @@
+#!/usr/bin/env brig
+# Приёмник GitHub-вебхуков на Whelk — весь сервис в одном файле.
+#
+#   GITHUB_SECRET=… ./hook.brig
+#   brig build hook.brig -o hook && ./hook --domain hooks.example.com
+#
+#   POST /github          — вебхук (подпись X-Hub-Signature-256)
+#   GET  /events          — последние 100 событий, JSON
+#   GET  /events/stream   — новые события вживую (SSE)
+#
+# needs: T-146, T-155, T-164, T-165, T-166, horizon
+#   реестр имён (02/R5) — T-164; await/reply по ref (02/R12) — T-165; Time.now (02/R7) — T-166;
+#   Option.unwrap, Result.unwrap_or, List.take (04) — T-146; спред в List/Map (§5.2) — T-155;
+#   horizon: fn project() в скрипте (12/#2), Whelk (12), Http.Plug/Sse (04, B2),
+#   Crypto.hmac/secure_compare, Hex, Env (04).
+#   Доступ к полям (03/L4) уже работает.
+module Main
+
+import Whelk
+import Http.Sse
+
+fn project() ->
+    {
+        # allow — права зависимости (10/#12); сам скрипт не ограничен.
+        deps: [{ src: "brig.dev/whelk", version: "v0.1.0", allow: [:net] }],
+    }
+
+fn main() ->
+    secret = Env.required("GITHUB_SECRET")
+    start_events()
+    Whelk.run({ port: 4000 }, conn -> route(conn, secret))
+
+# ---- роутинг: вся «маршрутизация» — это сопоставление с образцом ----
+
+fn route(conn, secret) -> dispatch(conn, conn.method, conn.segments, secret)
+
+fn dispatch(conn, :post, ["github"], secret) ->
+    conn |> verify_signature(secret) |> accept_event()
+fn dispatch(conn, :get, ["events"], _) ->
+    Whelk.json(conn, %{ "events" => recent_events() })
+fn dispatch(conn, :get, ["events", "stream"], _) ->
+    send(events_pid(), (:subscribe, self()))
+    conn |> Sse.start() |> stream()
+fn dispatch(conn, _, _, _) ->
+    Whelk.not_found(conn)
+
+# ---- плаг: Conn -> Conn; задал ответ — дальше не идём ----
+
+fn verify_signature(conn, secret) ->
+    with
+        Some(sig)  <- Http.header(conn, "x-hub-signature-256")
+        Ok(body)   <- Http.read_body(conn)
+        expected   <- "sha256=\(Hex.encode(Crypto.hmac(:sha256, secret, body)))"
+        true       <- Crypto.secure_compare(sig, expected)
+        Http.assign(conn, :body, body)
+    else
+        _ -> Whelk.status(conn, 401) |> Whelk.text("bad signature")
+
+fn accept_event(conn) when conn.resp != None -> conn
+fn accept_event(conn) ->
+    kind = Http.header(conn, "x-github-event") |> Option.unwrap_or("unknown")
+    match Json.decode(conn.assigns[:body] |> Option.unwrap())
+        Ok(payload) ->
+            send(events_pid(), (:event, { kind: kind, payload: payload, at: Time.now() }))
+            Whelk.status(conn, 202) |> Whelk.text("ok")
+        Error(_) ->
+            Whelk.bad_request(conn, "invalid json")
+
+# ---- SSE: recv-цикл в акторе запроса ----
+
+fn stream(conn) ->
+    recv
+        (:new_event, ev) ->
+            continue_or_close(Sse.event(conn, ev.kind, Json.encode(ev)))
+        (:http_closed, req) when req == conn.port ->
+            :closed
+    after 15_000 ->
+        continue_or_close(Sse.comment(conn, "ping"))
+
+fn continue_or_close(Ok(conn))       -> stream(conn)
+fn continue_or_close(Error(:closed)) -> :closed
+
+# ---- состояние: актор с кольцевым буфером и подписчиками ----
+
+fn start_events() ->
+    pid = spawn_linked(() -> events_loop({ events: [], subscribers: %{} }))
+    register(:events, pid)
+
+fn events_pid() -> whereis(:events) |> Option.unwrap()
+
+fn recent_events() ->
+    ref = make_ref()
+    send(events_pid(), (:recent, self(), ref))
+    await(ref, 1_000) |> Result.unwrap_or([])
+
+fn events_loop(state) ->
+    recv
+        (:event, ev) ->
+            Map.values(state.subscribers) |> map(pid -> send(pid, (:new_event, ev)))
+            events_loop({ ..state, events: [ev, ..state.events] |> List.take(100) })
+        (:subscribe, pid) ->
+            ref = watch(pid)
+            events_loop({ ..state, subscribers: %{ ..state.subscribers, ref => pid } })
+        (:recent, from, ref) ->
+            reply(from, ref, state.events)
+            events_loop(state)
+        # Подписчик (актор SSE-запроса) завершился — снимаем подписку.
+        (:down, ref, _) ->
+            events_loop({ ..state, subscribers: Map.remove(state.subscribers, ref) })

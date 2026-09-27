@@ -1,0 +1,59 @@
+# Доменная запись + валидация входа. Модуль ничего не знает про HTTP.
+# needs: T-143, T-147, horizon
+#   pub fn (03/L3) — T-143; doc-комментарии ## и доктесты (22) — T-147;
+#   horizon: тип как значение (03/L5, L19), «модуль типа» для validate/to_json/to_param (03/L6),
+#   Check + Changeset (09, 06), Instant (03/L12).
+#   Доступ к полям (03/L4) уже работает.
+## Мониторы: создание, валидация и представление для JSON и URL.
+module Lookout.Monitors.Monitor
+
+import Changeset
+
+type Monitor {
+    id: Int,
+    name: Str,
+    url: Str,
+    interval_ms: Int,
+    status: Atom,                  # :unknown | :up | :down
+    last_checked_at: Option<Instant>,
+}
+
+# Правила — одна функция по конвенции «модуль типа» (09): её вызывают
+# Json.decode_as, Changeset и экспорт JSON Schema. Декларативные Check
+# переводятся в схему (minLength, pattern, minimum/maximum, enum).
+pub fn validate(m) ->
+    Check.all(m, [
+        Check.length(:name, 1 to 200),
+        Check.format(:url, :http_url),
+        Check.range(:interval_ms, 5_000 to 3_600_000),
+        Check.one_of(:status, [:unknown, :up, :down]),
+    ])
+
+# params: Map<Str, Any> прямо из формы/JSON.
+# Результат: Ok(Monitor{..}) без id или Error((:invalid, changeset)).
+pub fn changeset(params) ->
+    params
+        |> Changeset.cast(Monitor, [:name, :url, :interval_ms])
+        |> Changeset.defaults({ interval_ms: 30_000, status: :unknown, last_checked_at: None })
+        |> Changeset.validate()          # форма из аннотаций типа + Monitor.validate/1
+
+# Конвенция «модуль типа» (03/L6): Json.encode(Monitor{..}) найдёт эту функцию.
+pub fn to_json(m) ->
+    %{
+        "id" => m.id,
+        "name" => m.name,
+        "url" => m.url,
+        "interval_ms" => m.interval_ms,
+        "status" => to_str(m.status),
+        "last_checked_at" => m.last_checked_at,
+    }
+
+## Параметр для URL — идентификатор строкой; его использует
+## [Router.path]: `Router.path(MonitorController.show, m)` → `/monitors/42`.
+##
+## ```brig repl
+## > Monitor.to_param(Monitor{ id: 42, name: "a", url: "https://a.test",
+##     interval_ms: 30_000, status: :up, last_checked_at: None })
+## "42"
+## ```
+pub fn to_param(m) -> to_str(m.id)

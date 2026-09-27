@@ -1,0 +1,39 @@
+# Динамический супервизор чекеров: на старте поднимает по чекеру на каждый
+# монитор из БД, дальше добавляет новые по запросу.
+# needs: T-135, T-137, T-143, T-146, T-164, T-167, T-170, horizon
+#   pub fn (03/L3) — T-143; Supervisor.start_dynamic, Server.call (04) — T-170; реестр имён (02/R5) — T-164;
+#   глобальный read-only конфиг (02/R13) — T-167; Result.all (04) — T-146; модули проекта — T-135, T-137;
+#   horizon: Config.get (04).
+module Lookout.Monitors.Supervisor
+
+import Supervisor
+import Lookout.Monitors
+import Lookout.Monitors.Checker
+
+pub fn child_spec(opts) ->
+    {
+        id: :checkers,
+        start: () -> Supervisor.start_dynamic({
+            name: :checkers,
+            max_restarts: 50,
+            within: 60_000,
+            on_start: () -> start_all(opts),
+        }),
+        restart: :permanent,
+    }
+
+fn start_all(opts) ->
+    with
+        Ok(monitors) <- Monitors.list()
+        Ok(_) <- monitors |> map(m -> start_checker(m, opts)) |> Result.all()
+        Ok(())
+
+pub fn start_checker(monitor) -> start_checker(monitor, Config.get(:checks))
+
+pub fn start_checker(monitor, opts) ->
+    Supervisor.start_child(:checkers, Checker.child_spec(monitor, opts))
+
+pub fn check_now(monitor_id) ->
+    match whereis((:checker, monitor_id))
+        Some(pid) -> Server.call(pid, :check_now, 10_000)
+        None      -> Error((:not_found, (:checker, monitor_id)))

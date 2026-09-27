@@ -1,0 +1,60 @@
+# JSON API + стриминг через Server-Sent Events.
+#
+# Главная демонстрация модели: SSE-хендлер — это обычный recv-цикл в
+# акторе запроса. Он одновременно ждёт события PubSub, закрытие соединения
+# клиентом и тишину (keep-alive ping через after). Ни async, ни каналов,
+# ни колбэков, ни отдельного «event loop»-API.
+#
+# needs: T-135, T-137, T-143, T-170, horizon
+#   pub fn (03/L3) — T-143; Server.call (04) — T-170; модули проекта — T-135, T-137;
+#   horizon: Conn.json/read_json (06), Calmar.Sse, PubSub, Log (04),
+#   Json.encode через to_json (03/L6).
+#   Guard с полем в recv уже работает.
+module LookoutWeb.Api.MonitorController
+
+import Calmar.Conn
+import Calmar.PubSub
+import Calmar.Sse
+import Lookout.Monitors
+import Changeset
+alias Lookout.Monitors.Supervisor as Checkers
+
+pub fn index(conn, _) ->
+    with
+        Ok(monitors) <- Monitors.list()
+        conn |> Conn.json(200, %{ "data" => monitors })
+
+pub fn create(conn, params) ->
+    match Monitors.create(params)
+        Ok(m)                 -> conn |> Conn.json(201, %{ "data" => m })
+        Error((:invalid, cs)) -> conn |> Conn.json(422, %{ "errors" => Changeset.errors(cs) })
+        Error(_) as err       -> err
+
+pub fn check_now(conn, %{ "id" => id }) ->
+    with
+        Ok(status) <- Checkers.check_now(id)
+        conn |> Conn.json(200, %{ "status" => to_str(status) })
+
+pub fn events(conn, %{ "id" => id }) ->
+    with
+        Ok(m)  <- Monitors.get(id)
+        Ok(_)  <- PubSub.subscribe(:pubsub, "monitor:\(m.id)")
+        conn |> Sse.start() |> stream()
+
+# Хвостовая рекурсия (TCO) — цикл живёт сколько угодно без роста стека.
+fn stream(conn) ->
+    recv
+        (:status_changed, event) ->
+            continue_or_close(Sse.event(conn, "status", Json.encode(event)))
+        # Клиент ушёл: Go-транспорт отменил контекст запроса, порт прислал
+        # обычное сообщение (02/R2, B2).
+        (:http_closed, req) when req == conn.port ->
+            Sse.done(conn)
+    else msg
+        Log.debug("sse: unexpected message", { msg: msg })
+        stream(conn)
+    after 15_000 ->
+        continue_or_close(Sse.comment(conn, "ping"))
+
+fn continue_or_close(Ok(conn))        -> stream(conn)
+fn continue_or_close(Error(:closed))  -> :closed

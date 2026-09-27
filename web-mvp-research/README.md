@@ -131,7 +131,7 @@
 | [09-contracts.md](09-contracts.md) | контракты данных: гибрид code-first, цена проверок, JSON Schema |
 | [10-packages.md](10-packages.md) | пакетный менеджер, Chandler, лаунчер `calmar` |
 | [11-memory.md](11-memory.md) | память и изоляция: бюджеты, счётчики, замеры, обратимость |
-| [12-whelk.md](12-whelk.md) | Whelk — микро-фреймворк; однофайловое демо в [demo-whelk/](demo-whelk/) |
+| [12-whelk.md](12-whelk.md) | Whelk — микро-фреймворк; однофайловое демо в [corpus/whelk/](../corpus/whelk/) |
 | [13-microservices.md](13-microservices.md) | Brig для микросервисов: сильные стороны, риски, что добавить |
 | [14-data.md](14-data.md) | доступ к данным: data mapper в духе Ecto, а не ActiveRecord |
 | [15-views.md](15-views.md) | view-слой: формат шаблонов `.bt` |
@@ -143,5 +143,5 @@
 | [21-quote.md](21-quote.md) | основа `quote`-лямбд, черновик RFC-0001 |
 | [22-docs.md](22-docs.md) | документирование кода и доктесты |
 | [23-heap-measurements.md](23-heap-measurements.md) | замеры Z1–Z4 для модели heap; стенд в [bench-heap/](bench-heap/) |
-| [demo/](demo/) | Lookout — uptime-монитор на Calmar |
-| [demo-whelk/](demo-whelk/) | приёмник GitHub-вебхуков на Whelk в одном файле |
+| [corpus/lookout/](../corpus/lookout/) | Lookout — uptime-монитор на Calmar; шаблоны `.bt` — в [demo/](demo/) |
+| [corpus/whelk/](../corpus/whelk/) | приёмник GitHub-вебхуков на Whelk в одном файле |

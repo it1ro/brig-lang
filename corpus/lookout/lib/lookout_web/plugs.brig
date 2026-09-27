@@ -1,0 +1,18 @@
+# Плаг — функция Conn -> Conn. Если плаг задал ответ (conn.resp = Some),
+# раннер дальше не идёт — отдельного halt нет.
+# needs: T-143, horizon
+#   pub fn (03/L3) — T-143;
+#   horizon: Conn (06), Crypto.secure_compare (04), Config.get (04).
+module LookoutWeb.Plugs
+
+import Calmar.Conn
+
+pub fn require_token(conn) -> authorize(conn, Conn.bearer(conn), Config.get(:api_token))
+
+# Нет токена в запросе или не настроен токен сервера — отказ одной клаузой.
+fn authorize(conn, Some(token), Some(expected)) ->
+    if Crypto.secure_compare(token, expected) then conn else deny(conn)
+fn authorize(conn, _, _) -> deny(conn)
+
+fn deny(conn) ->
+    conn |> Conn.json(401, %{ "error" => "unauthorized" })

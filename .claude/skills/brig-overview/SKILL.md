@@ -73,7 +73,7 @@ finding (см. `AUDIT_REPORT.md`), а не «фактическое поведе
 ## Структура репозитория
 
 ```
-cmd/                    # brig (CLI), check-examples
+cmd/                    # brig (CLI), check-examples, corpus
 internal/
   lexer/                # токены + offside
   parser/               # recursive descent → AST
@@ -84,8 +84,10 @@ internal/
   runtime/              # Value, Kind, Equal, Json, Serialize
   repl/                 # persistent REPL
   examples/             # A2-инструмент (check-examples)
+  corpus/               # раннер корпуса (make corpus)
 docs/                   # спецификация, дизайн VM, архитектура
 examples/               # .brig-программы (make run-examples)
+corpus/                 # код библиотек + manifest.tsv (make corpus, T-115)
 testdata/               # golden, bytecode, negative, positive
 .claude/skills/         # skills для агентов (этот файл и соседи)
 CONTRIBUTING.md         # правила работы
