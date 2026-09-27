@@ -36,7 +36,7 @@
 2. `exit`, `spawn_watched`, реестр, `Global` (R3–R5, R13).
 3. `await(ref)` (R12), `Timer` (R6), `Time` (R7).
    Бюджет «хода» и счётчики на актор (11/M1–M2), `--memory-limit` (11/M3).
-   `Telemetry` с событиями VM, `Term` (16).
+   `Telemetry` с событиями VM, `Term` (16), пул Go-воркеров для тяжёлых native (R15).
 4. `File`, `Proc`, `Stdin` (R2) → **скриптинг-ниша закрыта**
    (shebang, режим `script` Q-script).
 5. `Supervisor`, `Server` (`call`/`reply`) на Brig.
@@ -76,6 +76,7 @@ run-loop не блокируется.
 9. Лаунчер `calmar` (`brig install brig.dev/calmar`): `calmar new` (и `--api`), `calmar server`
    (на `brig run --watch`), `calmar db migrate`; `brig build` (payload с зависимостями).
 10. `brig task` и `tasks/`; команды релиза `start`/`console`/`eval` (16).
+11. `calmar gen auth`, `Calmar.authorize` (18).
 
 **Выход:** demo/`lookout` собирается `brig build` в один файл и работает.
 
@@ -84,7 +85,7 @@ run-loop не блокируется.
 - Данные: пакет data mapper в духе Ecto (14).
 - Контракты: экспорт/дифф схем (`brig schema export|diff`), импорт OpenAPI/protobuf (09).
 - DX: LSP (сразу после MVP), `brig console`, генераторы `calmar gen`, отладчик.
-- Пакеты: фоновые задания с персистентной очередью (C5); NATS, Redis, S3,
+- Пакеты: 2FA, passkeys, OAuth/OIDC (18); фоновые задания с персистентной очередью (C5); NATS, Redis, S3,
   OpenTelemetry (D2); Chandler — индекс и прокси; права зависимостей (10/#12).
 - Веб: WebSocket, серверный UI в духе LiveView (C8), метрики Prometheus.
 - Рантайм: N:M (R10), Go-embedding API (R11), порты `Serial`/`Gpio`,

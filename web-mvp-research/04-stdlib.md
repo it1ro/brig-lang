@@ -23,7 +23,7 @@
 | `Term` | бинарная сериализация значений Brig: CBOR + теги (16) | Go | M |
 | `Time`, `Timer` | `monotonic_ms`, `now`, `send_after`, форматы RFC3339/HTTP-date; встроенная база часовых поясов (C1) | VM+Go | M |
 | `Unicode`, `Plural` | нормализация, регистр, CLDR-правила плюрализации (C4); переводы — пакет | Go | M |
-| `Crypto` | `sha256`, `hmac`, `random_bytes`, `secure_compare`, `argon2id`/`bcrypt` | Go | M (сессии, CSRF, пароли) |
+| `Crypto` | `sha256`, `hmac`, `random_bytes`, `secure_compare`, `sign`/`seal`, `argon2id`/`bcrypt` (вне run-loop, R15) | Go | M (сессии, CSRF, пароли) |
 | `Tcp`, `Tls` | порты | VM+Go | M |
 | `Acme` | автоматический HTTPS (Let's Encrypt): HTTP-01 + TLS-ALPN-01, хранение в каталоге состояния, продление супервизируемым актором; интегрирован с `HttpServer` (`--domain`) (B1) | Go + Brig-актор | M |
 | `Cache` | шардированные акторы-кэши с TTL: сессии, rate limiting (B3) | Brig | M |
