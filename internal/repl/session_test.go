@@ -3,6 +3,7 @@ package repl_test
 import (
 	"bytes"
 	"io"
+	"strings"
 	"testing"
 
 	"github.com/it1ro/brig-lang/internal/repl"
@@ -137,5 +138,27 @@ func TestHighlightEnv(t *testing.T) {
 	}
 	if !s.HighlightEnv().Bindings["x"] {
 		t.Fatal("binding x missing")
+	}
+}
+
+// TestReplUndefinedStillRuntime — T-139: строка REPL видит функции
+// предыдущих строк; неизвестное имя остаётся ошибкой рантайма, не check.
+func TestReplUndefinedStillRuntime(t *testing.T) {
+	var out bytes.Buffer
+	s := repl.New(vm.New(), &out)
+	if _, err := s.Eval("fn f(x) -> x\n"); err != nil {
+		t.Fatalf("def: %v (diag %s)", err, out.String())
+	}
+	res, err := s.Eval("f(1)\n")
+	if err != nil || len(res) != 1 || res[0].Value.Inspect() != "1" {
+		t.Fatalf("f from previous line: %v, %v (diag %s)", res, err, out.String())
+	}
+	out.Reset()
+	_, err = s.Eval("nope(1)\n")
+	if err == nil || !strings.Contains(err.Error(), "undefined") {
+		t.Fatalf("err = %v, want runtime undefined", err)
+	}
+	if strings.Contains(out.String(), "undefined function") {
+		t.Fatalf("REPL reported a check error:\n%s", out.String())
 	}
 }

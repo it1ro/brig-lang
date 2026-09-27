@@ -38,6 +38,15 @@ Message}`; `SeverityError` блокирует компиляцию, `SeverityInf
    `None`, `map`, `filter`, ...) — **info**, не ошибка. Для вариант-
    деклараций (`checkTypeDecl`, §14.7, T-136): конструктор `Some`/`None`/
    `Ok`/`Error` и тип `Option`/`Result` — info на позиции `type`.
+7. Неизвестное имя и арность (§F.3, T-139) — `CheckNames`, не `Check`.
+   Вызов, который не связан как значение, не является функцией своего
+   модуля, прелюдии или видимого модуля и не имеет такой арности
+   (с учётом variadic): `undefined function nope/1`, для `M.f` —
+   `undefined function Util.nope/0`. Модуль программы без import —
+   `module X is not imported`. Вызов значения из переменной и вызов со
+   спредом по арности не проверяются. `Check` этого не делает: REPL
+   вызывает его и оставляет неизвестное имя ошибкой рантайма (§11.4).
+   `brig check`/`run` вызывают `CheckNames` по графу модулей.
 
 Sema обходит выражения внутри `InterpExpr` (`checkExpr`, S-F1 / T-53).
 Guard'ы `recv` есть в AST (`RecvBranchArg.Guard`, S-F3 / T-02); `Walk`

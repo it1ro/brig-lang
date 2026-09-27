@@ -1,0 +1,431 @@
+package sema
+
+import (
+	"strings"
+
+	"github.com/it1ro/brig-lang/internal/ast"
+)
+
+// Проход имён (§F.3, T-139): вызов имени, которое не связано как значение,
+// не является функцией своего модуля, прелюдии или видимого модуля, либо
+// не имеет функции этой арности, — ошибка
+// `undefined function name/arity`. Вызов значения из переменной и вызов со
+// спредом по арности не проверяются. REPL этот проход не вызывает:
+// неизвестное имя остаётся ошибкой рантайма (§11.4).
+
+// Module — модуль программы для NewWorld. Name — имя, под которым модуль
+// виден импортёрам (как его разрешил загрузчик).
+type Module struct {
+	Name string
+	Prog *ast.Program
+}
+
+// World — сигнатуры функций и конструкторов пользовательских модулей.
+type World struct {
+	mods map[string]map[string]sig
+}
+
+// NewWorld собирает сигнатуры модулей. Встроенные модули сюда не входят.
+func NewWorld(mods []Module) *World {
+	w := &World{mods: make(map[string]map[string]sig, len(mods))}
+	for _, m := range mods {
+		if m.Name == "" || m.Prog == nil {
+			continue
+		}
+		w.mods[m.Name] = signatures(m.Prog)
+	}
+	return w
+}
+
+func (w *World) lookup(mod, fn string) (sig, bool) {
+	if w == nil {
+		return sig{}, false
+	}
+	m := w.mods[mod]
+	if m == nil {
+		return sig{}, false
+	}
+	s, ok := m[fn]
+	return s, ok
+}
+
+func (w *World) has(mod string) bool {
+	if w == nil {
+		return false
+	}
+	_, ok := w.mods[mod]
+	return ok
+}
+
+// CheckNames — контекстный анализ плюс разрешение имён по world.
+// world == nil: видны только функции этого файла и встроенные модули.
+func CheckNames(prog *ast.Program, world *World) *Result {
+	c := &checker{
+		prelude: preludeNames(),
+		resolve: true,
+		world:   world,
+		own:     signatures(prog),
+		imports: importMap(prog),
+	}
+	c.checkProgram(prog)
+	return &Result{Diagnostics: c.diags}
+}
+
+// sig — допустимые арности. varMin >= 0 — вариадик: любой вызов с argc >= varMin.
+// exact — точные арности (у не-вариадика; у mailbox_size — 0 и 1).
+type sig struct {
+	exact  []int
+	varMin int
+}
+
+func exact(ns ...int) sig { return sig{exact: ns, varMin: -1} }
+
+func variadic(fixed int) sig { return sig{varMin: fixed} }
+
+func (s sig) matches(n int) bool {
+	if s.varMin >= 0 && n >= s.varMin {
+		return true
+	}
+	for _, a := range s.exact {
+		if a == n {
+			return true
+		}
+	}
+	return false
+}
+
+// bareBuiltins — голые имена прелюдии, конструкторы и акторные опкоды (§11.5).
+// Список функций совпадает с InstallPrelude / InstallJSONPrelude / InstallTestPrelude.
+var bareBuiltins = map[string]sig{
+	"map": exact(2), "filter": exact(2), "find": exact(2),
+	"all": exact(2), "any": exact(2), "fold": exact(3),
+	"len": exact(1), "list": variadic(0), "set": variadic(0),
+	"to_str": exact(1), "to_int": exact(1), "to_float": exact(1),
+	"print": variadic(0), "eprint": variadic(0), "log": variadic(0),
+	"assert": exact(1), "raise": exact(1),
+	"Some": exact(1), "Ok": exact(1), "Error": exact(1),
+	"send": exact(2), "spawn": exact(1), "spawn_linked": exact(1),
+	"link": exact(1), "watch": exact(1), "unwatch": exact(1),
+	"self": exact(0), "make_ref": exact(0), "mailbox_size": exact(0, 1),
+}
+
+// modBuiltins — функции встроенных модулей. Json.encode — 1 или 2
+// аргумента (§4.7), не открытый вариадик.
+var modBuiltins = map[string]map[string]sig{
+	"Vec":   {"push": exact(2), "set": exact(3), "get": exact(2), "len": exact(1)},
+	"Map":   {"put": exact(3), "get": exact(2), "remove": exact(2), "keys": exact(1)},
+	"Str":   {"to_bytes": exact(1)},
+	"Bytes": {"to_str": exact(1)},
+	"Json":  {"encode": exact(1, 2), "decode": exact(1)},
+	"Test": {
+		"describe": exact(1), "it": exact(2), "run": exact(0),
+		"assert_eq": exact(2), "assert_ne": exact(2), "assert": exact(1), "fail": exact(1),
+	},
+	"Sys": {"args": exact(0)},
+}
+
+// isBuiltinMod совпадает с loader.builtinModules и compiler.isPreludeModule.
+func isBuiltinMod(name string) bool {
+	switch name {
+	case "Vec", "Map", "Str", "Bytes", "Json", "Test", "Sys", "Prelude":
+		return true
+	}
+	return false
+}
+
+func lookupBuiltin(mod, member string) (sig, bool) {
+	if mod == "Prelude" {
+		// Акторные примитивы — опкоды, не глобалы Prelude.* (aliasPrelude).
+		if actorPrimitives[member] {
+			return sig{}, false
+		}
+		s, ok := bareBuiltins[member]
+		return s, ok
+	}
+	m := modBuiltins[mod]
+	if m == nil {
+		return sig{}, false
+	}
+	s, ok := m[member]
+	return s, ok
+}
+
+func signatures(prog *ast.Program) map[string]sig {
+	out := map[string]sig{}
+	if prog == nil {
+		return out
+	}
+	for _, d := range prog.Decls {
+		switch d := d.(type) {
+		case ast.TypeDecl:
+			vs, ok := d.Variants()
+			if !ok {
+				continue
+			}
+			for _, v := range vs {
+				// Конструктор без полей — значение, не функция.
+				if n := len(v.Fields); n > 0 {
+					out[v.Name] = exact(n)
+				}
+			}
+		case ast.FuncDecl:
+			out[d.FnName()] = sigOfFn(d.FuncClauses())
+		}
+	}
+	return out
+}
+
+func sigOfFn(clauses []ast.FnClauseArg) sig {
+	lists := make([][]ast.Pattern, len(clauses))
+	for i, cl := range clauses {
+		lists[i] = cl.Params
+	}
+	return sigFrom(lists)
+}
+
+func sigFrom(paramLists [][]ast.Pattern) sig {
+	s := sig{varMin: -1}
+	for _, ps := range paramLists {
+		n := len(ps)
+		variadic := false
+		if n > 0 {
+			if _, ok := ps[n-1].(ast.SpreadPattern); ok {
+				variadic = true
+				n--
+			}
+		}
+		if variadic {
+			if s.varMin < 0 || n < s.varMin {
+				s.varMin = n
+			}
+			continue
+		}
+		s.exact = append(s.exact, n)
+	}
+	return s
+}
+
+func importMap(prog *ast.Program) map[string]string {
+	out := map[string]string{}
+	if prog == nil {
+		return out
+	}
+	add := func(local, full string) {
+		if local != "" {
+			out[local] = full
+		}
+	}
+	for _, d := range prog.Decls {
+		switch d := d.(type) {
+		case ast.ImportDecl:
+			full := d.ImportedModule()
+			add(full, full)
+			add(lastSeg(full), full)
+		case ast.AliasDecl:
+			full := d.AliasOriginal()
+			add(d.AliasName(), full)
+			add(full, full)
+			add(lastSeg(full), full)
+		}
+	}
+	return out
+}
+
+func lastSeg(name string) string {
+	if i := strings.LastIndex(name, "."); i >= 0 {
+		return name[i+1:]
+	}
+	return name
+}
+
+func (c *checker) prebindLocalFns(stmts []ast.Stmt) {
+	if !c.resolve {
+		return
+	}
+	for _, s := range stmts {
+		lfd, ok := s.(ast.LocalFnDecl)
+		if !ok {
+			continue
+		}
+		var lists [][]ast.Pattern
+		for _, cl := range lfd.Clauses() {
+			lists = append(lists, cl.Params)
+		}
+		line, col := posOf(s)
+		c.bindLocalFn(lfd.FnName(), sigFrom(lists), line, col)
+	}
+}
+
+func (c *checker) bindLocalFn(name string, s sig, line, col int) {
+	c.bind(name, "local fn", line, col)
+	scope := c.topScope()
+	b, ok := scope[name]
+	if !ok || b.kind != "local fn" {
+		return
+	}
+	b.isFn = true
+	b.sig = s
+	scope[name] = b
+}
+
+func (c *checker) checkCall(call ast.CallExpr) {
+	if !c.resolve {
+		return
+	}
+	switch cal := call.Callee().(type) {
+	case ast.VariableExpr:
+		c.checkNamed(cal.Name(), call.Args(), cal)
+	case ast.MemberExpr:
+		segs, ok := modulePath(cal)
+		if !ok {
+			return // obj.method(a) — вызов значения, не имени функции
+		}
+		mod, member := splitPath(segs)
+		c.checkQual(mod, member, call.Args(), pathStart(cal))
+	}
+}
+
+func (c *checker) checkPipeName(v ast.VariableExpr, p ast.PipeExpr) {
+	if !c.resolve {
+		return
+	}
+	args := make([]ast.Expr, 0, 1+len(p.PipeArgs()))
+	args = append(args, p.PipeLHS())
+	args = append(args, p.PipeArgs()...)
+	c.checkNamed(v.Name(), args, v)
+}
+
+func (c *checker) checkNamed(name string, args []ast.Expr, at ast.Node) {
+	if isSpecialCall(name) {
+		return
+	}
+	if mod, member, ok := qualName(name); ok {
+		c.checkQual(mod, member, args, at)
+		return
+	}
+	s, dynamic, found := c.bareSig(name)
+	c.finish(name, s, found, dynamic, args, at)
+}
+
+func (c *checker) checkQual(mod, member string, args []ast.Expr, at ast.Node) {
+	s, found, missingImport := c.qualSig(mod, member)
+	if missingImport {
+		line, col := posOf(at)
+		c.err(line, col, "module %s is not imported", mod)
+		return
+	}
+	c.finish(mod+"."+member, s, found, false, args, at)
+}
+
+// qualSig разрешает Mod.f: import/alias, затем встроенный модуль (§11.1).
+// missingImport — модуль есть в программе, но в этом файле не импортирован.
+func (c *checker) qualSig(mod, member string) (s sig, found, missingImport bool) {
+	full, imported := c.imports[mod]
+	switch {
+	case imported:
+		// full — имя модуля
+	case isBuiltinMod(mod):
+		full = mod
+	case c.world.has(mod):
+		return sig{}, false, true
+	default:
+		return sig{}, false, false
+	}
+	if isBuiltinMod(full) {
+		s, found = lookupBuiltin(full, member)
+		return s, found, false
+	}
+	s, found = c.world.lookup(full, member)
+	return s, found, false
+}
+
+// bareSig: переменная области → динамический вызов; иначе локальная fn,
+// функция своего модуля, прелюдия.
+func (c *checker) bareSig(name string) (s sig, dynamic, found bool) {
+	for i := len(c.scopes) - 1; i >= 0; i-- {
+		b, ok := c.scopes[i][name]
+		if !ok {
+			continue
+		}
+		if b.isFn {
+			return b.sig, false, true
+		}
+		return sig{}, true, true
+	}
+	if s, ok := c.own[name]; ok {
+		return s, false, true
+	}
+	if s, ok := bareBuiltins[name]; ok {
+		return s, false, true
+	}
+	return sig{}, false, false
+}
+
+func (c *checker) finish(display string, s sig, found, dynamic bool, args []ast.Expr, at ast.Node) {
+	if dynamic {
+		return
+	}
+	argc, spread := argcOf(args)
+	if found && (spread || s.matches(argc)) {
+		return
+	}
+	line, col := posOf(at)
+	c.err(line, col, "undefined function %s/%d", display, argc)
+}
+
+func argcOf(args []ast.Expr) (n int, spread bool) {
+	for _, a := range args {
+		if u, ok := a.(ast.UnaryExpr); ok && u.OpStr() == ".." {
+			spread = true
+		}
+	}
+	return len(args), spread
+}
+
+func isSpecialCall(name string) bool {
+	switch name {
+	case "()", "[]", "%[]", "%{}", "{}":
+		return true
+	}
+	return strings.HasSuffix(name, "{}")
+}
+
+func qualName(name string) (mod, member string, ok bool) {
+	i := strings.LastIndex(name, ".")
+	if i <= 0 || i == len(name)-1 {
+		return "", "", false
+	}
+	mod, member = name[:i], name[i+1:]
+	return mod, member, isUpper(mod)
+}
+
+func isUpper(s string) bool { return s != "" && s[0] >= 'A' && s[0] <= 'Z' }
+
+func modulePath(e ast.Expr) (segs []string, ok bool) {
+	switch x := e.(type) {
+	case ast.VariableExpr:
+		segs = strings.Split(x.Name(), ".")
+		return segs, isUpper(segs[0])
+	case ast.MemberExpr:
+		segs, ok = modulePath(x.Obj())
+		if !ok {
+			return nil, false
+		}
+		return append(segs, x.MemberName()), true
+	}
+	return nil, false
+}
+
+func splitPath(segs []string) (mod, member string) {
+	return strings.Join(segs[:len(segs)-1], "."), segs[len(segs)-1]
+}
+
+func pathStart(e ast.Expr) ast.Expr {
+	for {
+		me, ok := e.(ast.MemberExpr)
+		if !ok {
+			return e
+		}
+		e = me.Obj()
+	}
+}

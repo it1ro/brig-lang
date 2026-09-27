@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/it1ro/brig-lang/internal/ast"
 	"github.com/it1ro/brig-lang/internal/parser"
 	"github.com/it1ro/brig-lang/internal/sema"
 )
@@ -470,4 +471,86 @@ fn main() ->
 fn f(_unused) -> 1
 fn main() -> f(1)
 `)
+}
+
+func checkNames(t *testing.T, src string, world *sema.World) *sema.Result {
+	t.Helper()
+	prog, err := parser.ParseProgram(parser.ModeModule, src)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	return sema.CheckNames(prog, world)
+}
+
+func TestNames(t *testing.T) {
+	errAt := func(src, msg string, line, col int) {
+		t.Helper()
+		r := checkNames(t, src, nil)
+		for _, d := range r.Diagnostics {
+			if d.Severity == sema.SeverityError && d.Message == msg && d.Line == line && d.Col == col {
+				return
+			}
+		}
+		t.Fatalf("want %d:%d %q, got %v", line, col, msg, r.Diagnostics)
+	}
+	ok := func(src string) {
+		t.Helper()
+		if r := checkNames(t, src, nil); r.HasErrors() {
+			t.Fatalf("unexpected: %v", r.Diagnostics)
+		}
+	}
+
+	errAt("fn main() -> nope(1)\n", "undefined function nope/1", 1, 14)
+	errAt("fn main() -> Json.nope(1)\n", "undefined function Json.nope/1", 1, 14)
+	errAt("fn main() -> Util.nope()\n", "undefined function Util.nope/0", 1, 14)
+	errAt("fn main() -> len(1, 2)\n", "undefined function len/2", 1, 14)
+	errAt("fn f(a) -> a\nfn main() -> f()\n", "undefined function f/0", 2, 14)
+	errAt("fn g(x, ..xs) -> x\nfn main() -> g()\n", "undefined function g/0", 2, 14)
+
+	ok("fn main() -> print(1, 2, 3)\n")
+	ok("fn g(x, ..xs) -> x\nfn main() -> g(1, 2)\n")
+	ok("fn main() -> Json.encode(1)\n")
+	ok("fn main() -> Json.encode(1, %{})\n")
+	ok("fn main() ->\n    f = len\n    f(1, 2)\n")
+	ok("fn main() ->\n    xs = [1]\n    len(..xs)\n")
+	ok("fn main() ->\n    fn a() -> b()\n    fn b() -> 1\n    a()\n")
+	ok("fn add(a, b) -> a + b\nfn main() -> [1, 2] |> map(add) |> len()\n")
+	ok("fn main() -> mailbox_size()\n")
+	ok("fn main() -> mailbox_size(self())\n")
+	errAt("fn main() -> self(1)\n", "undefined function self/1", 1, 14)
+
+	util := checkNamesProg(t, "module Util\nfn twice(x) -> x * 2\n")
+	world := sema.NewWorld([]sema.Module{{Name: "Util", Prog: util}})
+	mainSrc := "module Main\nimport Util\nfn main() -> Util.twice(3)\n"
+	if r := checkNames(t, mainSrc, world); r.HasErrors() {
+		t.Fatalf("Util.twice: %v", r.Diagnostics)
+	}
+	bad := "module Main\nimport Util\nfn main() -> Util.twice()\n"
+	r := checkNames(t, bad, world)
+	if !hasMsg(r, "undefined function Util.twice/0") {
+		t.Fatalf("arity: %v", r.Diagnostics)
+	}
+	noimp := "module Main\nfn main() -> Util.twice(1)\n"
+	r = checkNames(t, noimp, world)
+	if !hasMsg(r, "module Util is not imported") {
+		t.Fatalf("import: %v", r.Diagnostics)
+	}
+}
+
+func checkNamesProg(t *testing.T, src string) *ast.Program {
+	t.Helper()
+	prog, err := parser.ParseProgram(parser.ModeModule, src)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	return prog
+}
+
+func hasMsg(r *sema.Result, msg string) bool {
+	for _, d := range r.Diagnostics {
+		if d.Message == msg {
+			return true
+		}
+	}
+	return false
 }

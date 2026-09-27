@@ -145,7 +145,7 @@ func loadTestModule(path, src string) (*ast.Program, *compiler.ProgramImage, boo
 		reportCompileError(path, err)
 		return nil, nil, false
 	}
-	semaRes := sema.Check(prog)
+	semaRes := sema.CheckNames(prog, nil)
 	reportDiagnostics(path, semaRes)
 	if semaRes.HasErrors() {
 		return nil, nil, false

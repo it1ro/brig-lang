@@ -37,7 +37,7 @@ type Level int
 const (
 	None  Level = iota // не пройден ни один уровень
 	Parse              // лексер и парсер
-	Check              // + sema и компиляция в байткод (после T-139 — и имена)
+	Check              // + sema (включая имена, T-139) и компиляция в байткод
 	Run                // + brig run: код 0, stdout совпадает с X.out, если он есть
 )
 
@@ -319,7 +319,7 @@ func evaluate(cfg Config, e Entry, upTo Level) Result {
 	if upTo < Check {
 		return stop(Parse, "")
 	}
-	for _, d := range sema.Check(prog).Diagnostics {
+	for _, d := range sema.CheckNames(prog, nil).Diagnostics {
 		if d.Severity == sema.SeverityError {
 			return stop(Parse, fmt.Sprintf("sema %d:%d: %s", d.Line, d.Col, d.Message))
 		}

@@ -10,6 +10,10 @@
 //  6. локальные `fn` — только в начале тела блока (§6.5);
 //  7. shadowing прелюдии и встроенных вариантов — info-диагностика (§11.5,
 //     §14.7), включая конструкторы и типы вариант-деклараций.
+//
+// Неизвестные имена и арность (§F.3, T-139) — отдельный проход CheckNames:
+// Check его не делает, потому что REPL оставляет неизвестное имя ошибкой
+// рантайма (§11.4).
 package sema
 
 import (
@@ -64,11 +68,20 @@ type checker struct {
 	diags   []Diagnostic
 	prelude map[string]bool
 	scopes  []map[string]binding // стек областей видимости
+
+	// resolve — проход имён (CheckNames). Check оставляет false.
+	resolve bool
+	world   *World
+	own     map[string]sig
+	imports map[string]string // локальное имя модуля → полное
 }
 
 type binding struct {
 	// kind — для диагностики: "param" | "let" | "local fn"
 	kind string
+	// isFn — локальная fn: вызов проверяется по sig, а не как значение.
+	isFn bool
+	sig  sig
 }
 
 func (c *checker) pushScope() { c.scopes = append(c.scopes, map[string]binding{}) }
@@ -251,6 +264,8 @@ func (c *checker) checkBlockBody(blk *ast.BlockStmt) {
 			seenNonFn = true
 		}
 	}
+	// Локальные fn видны во всём блоке, включая тела друг друга.
+	c.prebindLocalFns(blk.Stmts())
 	for _, s := range blk.Stmts() {
 		c.checkStmt(s)
 	}
@@ -271,7 +286,11 @@ func (c *checker) checkStmt(s ast.Stmt) {
 		c.checkExprAllowTrap(x.ExprValue())
 	case ast.LocalFnDecl:
 		line, col := posOf(s)
-		c.bind(x.FnName(), "local fn", line, col)
+		// CheckNames уже связал имя в prebindLocalFns — повторный bind
+		// был бы rebinding. Check связывает здесь, как раньше.
+		if !c.resolve {
+			c.bind(x.FnName(), "local fn", line, col)
+		}
 		for _, cl := range x.Clauses() {
 			c.pushScope()
 			c.checkParams(cl.Params, s)
@@ -451,6 +470,7 @@ func (c *checker) checkExpr(e ast.Expr) {
 		c.checkExpr(x.Index())
 
 	case ast.CallExpr:
+		c.checkCall(x)
 		c.checkExpr(x.Callee())
 		for _, a := range x.Args() {
 			c.checkExpr(a)
@@ -610,6 +630,8 @@ func (c *checker) checkPipe(p ast.PipeExpr) {
 				line, col := posOf(callee)
 				c.err(line, col,
 					"actor primitive %q is not allowed as pipe RHS (§7.5)", base)
+			} else {
+				c.checkPipeName(v, p)
 			}
 		}
 	}

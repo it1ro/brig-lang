@@ -2,7 +2,7 @@
 #
 # Колонки через TAB: путь от корня репозитория, уровень, ожидание, needs.
 #   уровень:   parse — лексер и парсер;
-#              check — + sema и компиляция в байткод (после T-139 — имена);
+#              check — + sema (включая имена и арность, T-139) и компиляция;
 #              run   — + brig run: код 0, stdout совпадает с X.out, если он есть.
 #   ожидание:  pass — файл проходит все уровни до указанного включительно;
 #              fail — проходит уровни ниже указанного и падает на нём.
@@ -36,7 +36,7 @@ corpus/lookout/lib/lookout_web/controllers/api/monitor_controller.brig	parse	fai
 corpus/lookout/lib/lookout_web/controllers/monitor_controller.brig	parse	fail	T-135, T-137, T-143, T-144, horizon
 corpus/lookout/lib/lookout_web/plugs.brig	parse	fail	T-143, horizon
 corpus/lookout/lib/lookout_web/router.brig	parse	fail	T-135, T-137, T-143, T-144, horizon
-corpus/lookout/lib/main.brig	run	fail	T-135, T-137, T-168, T-170, horizon
+corpus/lookout/lib/main.brig	check	fail	T-135, T-137, T-168, T-170, horizon
 corpus/lookout/priv/migrations/001_create_monitors.brig	parse	fail	T-143, T-145, horizon
 corpus/lookout/project.brig	parse	fail	T-143, horizon
 corpus/lookout/scripts/import_monitors.brig	check	fail	T-135, T-137, T-146, T-176, horizon

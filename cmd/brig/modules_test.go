@@ -110,7 +110,7 @@ func TestBrigModuleGraph(t *testing.T) {
 			"util.brig": "fn f() -> [1] |> Nope.g\n",
 		})
 		out, code := brig(t, dir, "run", "main.brig")
-		want := "error: util.brig:1:18: fn f: unknown module Nope\n"
+		want := "error: util.brig:1:18: undefined function Nope.g/1\n"
 		if code != exitParse || out != want {
 			t.Fatalf("exit %d, out %q; want %d, %q", code, out, exitParse, want)
 		}
