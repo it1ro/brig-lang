@@ -70,7 +70,9 @@ func TestRoundTripRepl(t *testing.T) {
 		"if ready\n    start()\nelse\n    wait()\n",
 		"match v\n    Some(u) -> u\n    None -> 0\n",
 		"result = trap(1 + 1)\n",
-		"result = trap\n    f1()\nensure close_f1()\nresult\n",
+		// ensure — trap_item внутри INDENT-блока trap (T-156 #211: раньше
+		// хвост после первого trap_item молча отбрасывался).
+		"result = trap\n    f1()\n    ensure close_f1()\n",
 		"0 .A\n",
 		"x = 0 .A\n",
 	}

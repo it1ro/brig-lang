@@ -151,12 +151,18 @@ func (p *parser) parseRepl() (*ast.Program, error) {
 		if err != nil {
 			return nil, err
 		}
+		if err := p.expectReplEnd(); err != nil {
+			return nil, err
+		}
 		prog.Decls = append(prog.Decls, d)
 		return prog, nil
 	}
 	if p.at(lexer.KW_ALIAS) {
 		d, err := p.parseAliasDecl()
 		if err != nil {
+			return nil, err
+		}
+		if err := p.expectReplEnd(); err != nil {
 			return nil, err
 		}
 		prog.Decls = append(prog.Decls, d)
@@ -166,8 +172,23 @@ func (p *parser) parseRepl() (*ast.Program, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := p.expectReplEnd(); err != nil {
+		return nil, err
+	}
 	prog.Stmts = append(prog.Stmts, s)
 	return prog, nil
+}
+
+// expectReplEnd проверяет, что после единственного repl_line не осталось
+// значащих токенов (T-156 #211): repl_line — ровно один import_decl,
+// alias_decl или stmt, а не первый из нескольких. Раньше хвост (в том
+// числе следующий стейтмент после NEWLINE) молча отбрасывался.
+func (p *parser) expectReplEnd() error {
+	p.skipNewlines()
+	if !p.at(lexer.EOF) {
+		return p.errf("unexpected token after repl statement: %s", p.cur().Type)
+	}
+	return nil
 }
 
 // decl ::= import_decl | alias_decl | type_decl | fn_decl
