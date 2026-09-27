@@ -2,31 +2,48 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
+	"strings"
 
 	"github.com/it1ro/brig-lang/internal/repl"
+	"github.com/it1ro/brig-lang/internal/repl/term"
 	"github.com/it1ro/brig-lang/internal/vm"
 )
+
+const (
+	replBanner = "brig repl (persistent): введите выражение; пустая строка закрывает блок; Ctrl-D — выход"
+	contPrompt = "   ...> "
+)
+
+func prompt(next int) string { return fmt.Sprintf("brig[%d]> ", next) }
 
 // replLoop — REPL (§11.4, N12) поверх repl.Session.
 //
 // Ввод продолжается, пока repl.NeedMore: открытые скобки и литералы,
 // заголовок блока, открытый offside-блок (его закрывает пустая строка).
-// Без TTY (`brig repl < file`) — plain-фронтенд без приглашений.
+// На терминале — редактор строки с историей (consoleLoop); без TTY
+// (`brig repl < file`) — plain-фронтенд без приглашений.
 func replLoop() {
 	s := repl.New(vm.New(), os.Stderr)
-	fe := repl.Plain{In: os.Stdin, Out: os.Stdout, Err: os.Stderr}
-	tty := isTerminal(os.Stdin)
-	if tty {
-		fmt.Fprintln(os.Stderr, "brig repl (persistent): введите выражение; пустая строка закрывает блок; Ctrl-D — выход")
-		fe.Prompt = func(next int, more bool) string {
-			if more {
-				return "   ...> "
+	tty := term.IsTerminal(os.Stdin)
+	var err error
+	if tty && term.IsTerminal(os.Stdout) {
+		err = consoleLoop(s)
+	} else {
+		fe := repl.Plain{In: os.Stdin, Out: os.Stdout, Err: os.Stderr}
+		if tty {
+			fmt.Fprintln(os.Stderr, replBanner)
+			fe.Prompt = func(next int, more bool) string {
+				if more {
+					return contPrompt
+				}
+				return prompt(next)
 			}
-			return fmt.Sprintf("brig[%d]> ", next)
 		}
+		err = fe.Run(s)
 	}
-	if err := fe.Run(s); err != nil {
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(exitInternal)
 	}
@@ -35,8 +52,52 @@ func replLoop() {
 	}
 }
 
-// isTerminal — f подключён к терминалу (символьное устройство).
-func isTerminal(f *os.File) bool {
-	fi, err := f.Stat()
-	return err == nil && fi.Mode()&os.ModeCharDevice != 0
+// consoleLoop — REPL на терминале: редактор строки (term.Terminal) и
+// история в term.DefaultHistoryPath; значения и ошибки печатаются так
+// же, как в plain-фронтенде.
+func consoleLoop(s *repl.Session) error {
+	fmt.Fprintln(os.Stderr, replBanner)
+	t := term.NewTerminal(os.Stdin, os.Stdout)
+	t.NeedMore = s.NeedMore
+	t.Indent = repl.Indent
+	t.IndentWidth = repl.IndentWidth
+	t.History = openHistory()
+
+	fe := repl.Plain{Out: os.Stdout, Err: os.Stderr}
+	s.SetOutput(os.Stderr)
+	for {
+		src, err := t.ReadInput(prompt(s.Next()), contPrompt)
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if strings.TrimSpace(src) == "" {
+			continue
+		}
+		if err := t.History.Add(src); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: history: %v\n", err)
+			t.History.Path = ""
+		}
+		if err := fe.Eval(s, src); err != nil {
+			return err
+		}
+	}
+}
+
+// openHistory загружает историю консоли. Файл недоступен — предупреждение
+// и история только в памяти.
+func openHistory() *term.History {
+	path, err := term.DefaultHistoryPath()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: history: %v\n", err)
+		return &term.History{}
+	}
+	h, err := term.LoadHistory(path)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: history: %v\n", err)
+		h.Path = ""
+	}
+	return h
 }
