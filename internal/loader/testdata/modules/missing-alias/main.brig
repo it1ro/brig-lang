@@ -1,0 +1,5 @@
+module Main
+
+alias Util.Missing as Util
+
+fn main() -> 0

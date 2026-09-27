@@ -103,6 +103,20 @@ func TestLoadMissingModule(t *testing.T) {
 	}
 }
 
+// T-134 (§11.1): `alias` неизвестного модуля — та же ошибка, что и у
+// `import` выше: loader не различает директивы при резолве.
+func TestLoadMissingModuleAlias(t *testing.T) {
+	file := fixture("missing-alias", "main.brig")
+	_, err := Load(file)
+	if err == nil {
+		t.Fatal("Load: want error for missing aliased module")
+	}
+	want := file + ":3:1: module Util.Missing not found"
+	if err.Error() != want {
+		t.Errorf("err = %q, want %q", err.Error(), want)
+	}
+}
+
 func TestPathName(t *testing.T) {
 	for _, tc := range []struct{ name, rel string }{
 		{"Util", "util.brig"},
