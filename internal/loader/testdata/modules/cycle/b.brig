@@ -1,0 +1,4 @@
+import A
+import Main
+
+fn b() -> 2
