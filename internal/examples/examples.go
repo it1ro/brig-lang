@@ -1,31 +1,42 @@
 // Package examples implements the check-examples tool (A2): extracting
-// ```brig fenced blocks from design docs and running them through the parser.
+// ```brig fenced blocks from design docs and running them through the
+// parser, sema and compiler.
 package examples
 
 import (
+	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 
 	"github.com/it1ro/brig-lang/internal/ast"
+	"github.com/it1ro/brig-lang/internal/compiler"
+	"github.com/it1ro/brig-lang/internal/lexer"
 	"github.com/it1ro/brig-lang/internal/parser"
+	"github.com/it1ro/brig-lang/internal/sema"
 )
 
-// Result — отчёт по одному блоку (A2).
+// Result — отчёт по одному блоку (A2). Line:Col — позиция в markdown:
+// ошибки — строка и колонка ошибки, иначе — строка fence.
 type Result struct {
-	File   string
-	Line   int
-	Col    int
-	Mode   string
-	OK     bool
-	ErrMsg string
+	File    string
+	Line    int
+	Col     int
+	Mode    string
+	OK      bool
+	Pending string // T-NNN из метки pending(T-NNN), если блок ждёт задачу
+	ErrMsg  string
 }
 
 func (r Result) String() string {
 	status := "ok"
-	if !r.OK {
+	switch {
+	case !r.OK:
 		status = "FAIL"
+	case r.Pending != "":
+		status = "pending(" + r.Pending + ")"
 	}
 	if r.ErrMsg == "" {
 		return fmt.Sprintf("%s:%d:%d — %s", r.File, r.Line, r.Col, status)
@@ -33,8 +44,9 @@ func (r Result) String() string {
 	return fmt.Sprintf("%s:%d:%d — %s — [%s]", r.File, r.Line, r.Col, status, r.ErrMsg)
 }
 
-// CheckFile прогоняет все brig-блоки файла через парсер (A2).
-func CheckFile(path string) ([]Result, error) {
+// CheckFile прогоняет все brig-блоки файла через парсер, sema и компилятор
+// (A2, T-116). tasks — известные номера задач для меток pending(T-NNN).
+func CheckFile(path string, tasks map[string]bool) ([]Result, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
@@ -42,9 +54,35 @@ func CheckFile(path string) ([]Result, error) {
 	blocks := extractBlocks(path, string(data))
 	results := make([]Result, 0, len(blocks))
 	for _, b := range blocks {
-		results = append(results, checkBlock(b))
+		results = append(results, checkBlock(b, tasks))
 	}
 	return results, nil
+}
+
+// taskRe — номер задачи T-NNN в tasks/*.md.
+var taskRe = regexp.MustCompile(`\bT-\d+\b`)
+
+// LoadTasks собирает номера задач, упомянутые в dir/*.md (T-116): метка
+// pending(T-NNN) обязана ссылаться на существующую задачу.
+func LoadTasks(dir string) (map[string]bool, error) {
+	files, err := filepath.Glob(filepath.Join(dir, "*.md"))
+	if err != nil {
+		return nil, err
+	}
+	if len(files) == 0 {
+		return nil, fmt.Errorf("no *.md in %s", dir)
+	}
+	tasks := map[string]bool{}
+	for _, f := range files {
+		data, err := os.ReadFile(f)
+		if err != nil {
+			return nil, err
+		}
+		for _, id := range taskRe.FindAllString(string(data), -1) {
+			tasks[id] = true
+		}
+	}
+	return tasks, nil
 }
 
 // block — один fenced-блок с метаданными.
@@ -106,6 +144,12 @@ func modeByMeta(meta string) string {
 	return ""
 }
 
+// pendingRe — метка pending(T-NNN) (T-116): блок ждёт фичу задачи T-NNN.
+var pendingRe = regexp.MustCompile(`(^|\s)pending(\((T-\d+)\))?(\s|$)`)
+
+// reasonRe — ожидаемая подстрока ошибки invalid-блока: invalid "...".
+var reasonRe = regexp.MustCompile(`^invalid\s+"([^"]*)"`)
+
 // heuristicMode — единственная оставшаяся эвристика: блок целиком из строк
 // с '>' → repl. Остальное — stmt (G.4: дизайн-док обязан использовать
 // явные метки).
@@ -130,44 +174,150 @@ func heuristicMode(raw string) string {
 	return "stmt"
 }
 
-// checkBlock: выбор режима, обёртка expr/stmt, парсинг, sanity-check.
-func checkBlock(b block) Result {
+// checkBlock: выбор режима, обёртка expr/stmt, парсинг, sema, компиляция.
+func checkBlock(b block, tasks map[string]bool) Result {
 	meta := strings.TrimSpace(strings.TrimPrefix(b.lang, "brig"))
 	mode := modeByMeta(meta)
+	pending := ""
+	if m := pendingRe.FindStringSubmatch(meta); m != nil {
+		if m[3] == "" {
+			return fail(b, mode, "pending без номера задачи: нужна метка pending(T-NNN)")
+		}
+		pending = m[3]
+		if mode == "" {
+			meta = strings.TrimSpace(pendingRe.ReplaceAllString(meta, " "))
+			mode = modeByMeta(meta)
+		}
+	}
 	if mode == "" {
 		mode = heuristicMode(b.raw)
 	}
 
+	if pending != "" {
+		if mode == "invalid" || mode == "repl" {
+			return fail(b, mode, "pending(T-NNN) допустим только для module/stmt/expr")
+		}
+		if !tasks[pending] {
+			return fail(b, mode, fmt.Sprintf("pending(%s): задачи %s нет в tasks/", pending, pending))
+		}
+	}
+
 	if mode == "invalid" {
-		if err := parser.Parse(parser.ModeModule, b.raw); err == nil {
-			return fail(b, mode, "invalid block parsed successfully")
+		err := compile(b.raw)
+		if err == nil {
+			return fail(b, mode, "invalid block compiled successfully")
+		}
+		if m := reasonRe.FindStringSubmatch(meta); m != nil && !strings.Contains(err.Error(), m[1]) {
+			r := failAt(b, mode, 0, err)
+			r.ErrMsg = fmt.Sprintf("invalid: want error containing %q, got %s", m[1], r.ErrMsg)
+			return r
 		}
 		return Result{File: b.file, Line: b.line, Col: 1, Mode: mode, OK: true}
 	}
 
 	src := wrapForMode(mode, b.raw)
 
-	switch mode {
-	case "repl":
+	if mode == "repl" {
 		if err := parseRepl(src); err != nil {
 			return fail(b, mode, err.Error())
 		}
 		return Result{File: b.file, Line: b.line, Col: 1, Mode: mode, OK: true}
-	default:
-		prog, err := parser.ParseProgram(parser.ModeModule, src)
-		if err != nil {
-			return fail(b, mode, err.Error())
-		}
-		formatted := ast.Format(prog)
-		prog2, err := parser.ParseProgram(parser.ModeModule, formatted)
-		if err != nil {
-			return fail(b, mode, fmt.Sprintf("format round-trip re-parse: %v", err))
-		}
-		if !ast.Equal(prog, prog2) {
-			return fail(b, mode, "format round-trip mismatch")
-		}
-		return Result{File: b.file, Line: b.line, Col: 1, Mode: mode, OK: true}
 	}
+
+	indent := 0
+	if mode != "module" {
+		indent = 4
+	}
+	err := compile(src)
+	if pending != "" {
+		if err == nil {
+			return fail(b, mode, fmt.Sprintf("блок компилируется — снять pending(%s)", pending))
+		}
+		return Result{File: b.file, Line: b.line, Col: 1, Mode: mode, OK: true, Pending: pending}
+	}
+	if err != nil {
+		return failAt(b, mode, indent, err)
+	}
+	if err := roundTrip(src); err != nil {
+		return fail(b, mode, err.Error())
+	}
+	return Result{File: b.file, Line: b.line, Col: 1, Mode: mode, OK: true}
+}
+
+// compile: парсинг (module), sema (§F.3) и компиляция в байткод. Ошибка —
+// *lexer.Error, *parser.Error, *compiler.Error или *semaError.
+func compile(src string) error {
+	prog, err := parser.ParseProgram(parser.ModeModule, src)
+	if err != nil {
+		return err
+	}
+	for _, d := range sema.Check(prog).Diagnostics {
+		if d.Severity == sema.SeverityError {
+			return &semaError{d}
+		}
+	}
+	_, err = compiler.New().Compile(prog)
+	return err
+}
+
+// roundTrip: parse → Format → parse даёт то же AST.
+func roundTrip(src string) error {
+	prog, err := parser.ParseProgram(parser.ModeModule, src)
+	if err != nil {
+		return err
+	}
+	prog2, err := parser.ParseProgram(parser.ModeModule, ast.Format(prog))
+	if err != nil {
+		return fmt.Errorf("format round-trip re-parse: %v", err)
+	}
+	if !ast.Equal(prog, prog2) {
+		return errors.New("format round-trip mismatch")
+	}
+	return nil
+}
+
+type semaError struct{ d sema.Diagnostic }
+
+func (e *semaError) Error() string {
+	return fmt.Sprintf("sema %d:%d: %s", e.d.Line, e.d.Col, e.d.Message)
+}
+
+// errPos — позиция ошибки в исходнике блока (0, 0 — неизвестна).
+func errPos(err error) (line, col int) {
+	var le *lexer.Error
+	var pe *parser.Error
+	var ce *compiler.Error
+	var se *semaError
+	switch {
+	case errors.As(err, &le):
+		return le.Line, le.Col
+	case errors.As(err, &pe):
+		return pe.Line, pe.Col
+	case errors.As(err, &ce):
+		return ce.Line, ce.Col
+	case errors.As(err, &se):
+		return se.d.Line, se.d.Col
+	}
+	return 0, 0
+}
+
+// failAt: FAIL с позицией ошибки в markdown. Строка 1 исходника — первая
+// строка тела блока (у обёртки stmt/expr первая строка fn main() -> стоит
+// на месте fence), indent — отступ, добавленный обёрткой.
+func failAt(b block, mode string, indent int, err error) Result {
+	r := fail(b, mode, err.Error())
+	line, col := errPos(err)
+	if line == 0 {
+		return r
+	}
+	if indent == 0 {
+		line++ // module/invalid: строка 1 — первая строка после fence
+	}
+	r.Line = b.line + line - 1
+	if line > 1 && col > indent {
+		r.Col = col - indent
+	}
+	return r
 }
 
 func fail(b block, mode, msg string) Result {
