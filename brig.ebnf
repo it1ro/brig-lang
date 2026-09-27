@@ -44,7 +44,7 @@ local_fn_decl ::= fn_clause+
 fn_decl ::= fn_clause+
 
 fn_clause ::=
-    "fn" LOWER_IDENT "(" [ params ] ")" [ "when" expr ] "->" fn_body
+    "fn" LOWER_IDENT "(" [ params ] ")" [ "when" or_expr ] "->" fn_body
 
 fn_body ::=
       expr
@@ -223,11 +223,11 @@ recv_branch_list ::=
     recv_branch { NEWLINE recv_branch } [ NEWLINE ]
 
 recv_branch ::=
-      pattern [ "when" expr ] "->" expr
-    | pattern [ "when" expr ] "->" NEWLINE INDENT stmt_list DEDENT
+      pattern [ "when" or_expr ] "->" expr
+    | pattern [ "when" or_expr ] "->" NEWLINE INDENT stmt_list DEDENT
 
 recv_branch_inline ::=
-    pattern [ "when" expr ] "->" expr
+    pattern [ "when" or_expr ] "->" expr
 
 else_clause ::=
     "else" LOWER_IDENT NEWLINE INDENT stmt_list DEDENT
