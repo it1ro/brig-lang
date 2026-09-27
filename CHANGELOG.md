@@ -1,5 +1,9 @@
 ## [unreleased]
 
+### 💥 Breaking
+
+- *(cli)* `brig` больше не имеет подкоманд `run` и `repl`. Файл запускается как `brig app.brig [args…]` (всё после файла — `Sys.args()`), без аргументов на TTY открывается REPL, без TTY stdin исполняется как script. `brig -e` и `brig -` исполняют код и выходят. Файл без `module` — режим script (§11.3).
+
 ### 🚀 Features
 
 - *(lexer)* Add token set and offside-aware scanner (A3/A5)

@@ -1,5 +1,7 @@
 # Записи: номинальные и анонимные, обновление, паттерны, равенство (§4.7, §4.8, §9.6).
 
+module Main
+
 type User { id: Int, name: Str }
 
 fn rename(u, name) -> User{ ..u, name: name }

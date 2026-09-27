@@ -38,7 +38,7 @@ const (
 	None  Level = iota // не пройден ни один уровень
 	Parse              // лексер и парсер
 	Check              // + sema (включая имена, T-139) и компиляция в байткод
-	Run                // + brig run: код 0, stdout совпадает с X.out, если он есть
+	Run                // + brig <file>: код 0, stdout совпадает с X.out, если он есть
 )
 
 var levelNames = [...]string{None: "none", Parse: "parse", Check: "check", Run: "run"}
@@ -68,7 +68,7 @@ type Entry struct {
 	Line  int // строка в манифесте, с 1
 }
 
-// Runner исполняет файл как `brig run` и возвращает его stdout. Ошибка —
+// Runner исполняет файл как `brig <file>` и возвращает его stdout. Ошибка —
 // ненулевой код выхода или невозможность запуска.
 type Runner func(path string) (stdout string, err error)
 
@@ -496,24 +496,24 @@ func dropNeedsHeader(path string) error {
 	return os.WriteFile(path, append(data[:loc[0]:loc[0]], data[end:]...), 0o644)
 }
 
-// ExecRunner — Runner через бинарник brig: `brig run <file>` с таймаутом.
+// ExecRunner — Runner через бинарник brig: `brig <file>` с таймаутом.
 func ExecRunner(brig string, timeout time.Duration) Runner {
 	return func(path string) (string, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), timeout)
 		defer cancel()
 		var stdout, stderr bytes.Buffer
-		cmd := exec.CommandContext(ctx, brig, "run", path)
+		cmd := exec.CommandContext(ctx, brig, path)
 		cmd.Stdout, cmd.Stderr = &stdout, &stderr
 		err := cmd.Run()
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-			return stdout.String(), fmt.Errorf("brig run: таймаут %s", timeout)
+			return stdout.String(), fmt.Errorf("brig: таймаут %s", timeout)
 		}
 		if err != nil {
 			msg := strings.TrimSpace(stderr.String())
 			if i := strings.IndexByte(msg, '\n'); i >= 0 {
 				msg = msg[:i]
 			}
-			return stdout.String(), fmt.Errorf("brig run: %v: %s", err, msg)
+			return stdout.String(), fmt.Errorf("brig: %v: %s", err, msg)
 		}
 		return stdout.String(), nil
 	}

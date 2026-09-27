@@ -313,7 +313,20 @@ func FuzzParse(f *testing.F) {
 	f.Fuzz(func(_ *testing.T, data string) {
 		_ = Parse(ModeRepl, data)
 		_ = Parse(ModeModule, data)
+		_ = Parse(ModeScript, data)
 	})
+}
+
+// TestParseScriptMode — T-207 (§11.3): script — те же инструкции, что REPL;
+// type, pub fn и module в нём — ошибка парсинга. Shebang — комментарий.
+func TestParseScriptMode(t *testing.T) {
+	mustParse(t, ModeScript, "x = 1\nprint(x)\n")
+	mustParse(t, ModeScript, "#!/usr/bin/env brig\nprint(1)\n")
+	mustParse(t, ModeScript, "fn main() -> 1\nprint(2)\n")
+	mustParse(t, ModeScript, "\n\nx = 1\n")
+	mustFail(t, ModeScript, "type User { id: Int }\n", "type")
+	mustFail(t, ModeScript, "pub fn f() -> 1\n", "pub")
+	mustFail(t, ModeScript, "module Main\nfn main() -> 1\n", "module")
 }
 
 // TestParseReplInputLines — T-201: repl_input — одна или несколько

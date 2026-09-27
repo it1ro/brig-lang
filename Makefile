@@ -78,19 +78,19 @@ test-one:
 # make run FILE=examples/hello.brig
 run:
 	@test -n "$(FILE)" || (echo "usage: make run FILE=<path.brig>"; exit 2)
-	$(GO) run ./cmd/brig run $(FILE)
+	$(GO) run ./cmd/brig $(FILE)
 
 # Исполнить все примеры и сравнить stdout с examples/X.out (падает с diff).
 run-examples:
 	@for f in examples/*.brig; do \
 		echo "== $$f =="; \
-		$(GO) run ./cmd/brig run $$f 2>&1 | diff -u $${f%.brig}.out - || exit 1; \
+		$(GO) run ./cmd/brig $$f 2>&1 | diff -u $${f%.brig}.out - || exit 1; \
 	done
 
 # Перезаписать examples/*.out по текущему выводу (diff смотреть глазами).
 update-examples:
 	@for f in examples/*.brig; do \
-		$(GO) run ./cmd/brig run $$f > $${f%.brig}.out 2>&1 || exit 1; \
+		$(GO) run ./cmd/brig $$f > $${f%.brig}.out 2>&1 || exit 1; \
 	done
 
 # Корпус библиотечного кода (T-115): каждый файл из corpus/manifest.tsv —
@@ -105,7 +105,7 @@ update-corpus: build
 	$(GO) run ./cmd/corpus -brig $(BIN)/brig -update
 
 run-hello:
-	$(GO) run ./cmd/brig run examples/hello.brig
+	$(GO) run ./cmd/brig examples/hello.brig
 
 ## ---- Быстрый локальный прогон ----
 # Не требует golangci-lint. Включает фронтенд + бэкенд + исполнение примеров.
@@ -149,7 +149,7 @@ check:
 	$(GO) run ./cmd/brig check $(FILE)
 
 repl:
-	$(GO) run ./cmd/brig repl
+	$(GO) run ./cmd/brig
 
 check-smallint:
 	@if grep -rn '\.Int\b' internal/ --include='*.go' \

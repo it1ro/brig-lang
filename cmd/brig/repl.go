@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	replBanner = "brig repl (persistent): введите выражение; пустая строка закрывает блок; Ctrl-D — выход"
+	replBanner = "brig: введите выражение; пустая строка закрывает блок; Ctrl-D — выход"
 	contPrompt = "   ...> "
 )
 
@@ -25,7 +25,8 @@ func prompt(next int) string { return fmt.Sprintf("brig[%d]> ", next) }
 // Ввод продолжается, пока repl.NeedMore: открытые скобки и литералы,
 // заголовок блока, открытый offside-блок (его закрывает пустая строка).
 // На терминале — редактор строки с историей (consoleLoop); без TTY
-// (`brig repl < file`) — plain-фронтенд без приглашений.
+// (`brig < file` без аргументов) сюда не попадает: stdin исполняется
+// как script и значения не печатаются.
 func replLoop() {
 	s := repl.New(vm.New(), os.Stderr)
 	defer s.Close()

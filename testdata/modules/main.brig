@@ -1,5 +1,5 @@
 # T-137: программа из нескольких модулей (§11.1). Запуск из этого
-# каталога: brig run main.brig; ожидаемый вывод — main.out.
+# каталога: brig main.brig; ожидаемый вывод — main.out.
 module Main
 
 import Util

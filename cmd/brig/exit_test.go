@@ -75,7 +75,7 @@ func TestBrigRunExitCodes(t *testing.T) {
 			if err := os.WriteFile(path, []byte(tc.src), 0o644); err != nil {
 				t.Fatal(err)
 			}
-			cmd := exec.Command(bin, "run", path)
+			cmd := exec.Command(bin, path)
 			out, err := cmd.CombinedOutput()
 			got := 0
 			if err != nil {
