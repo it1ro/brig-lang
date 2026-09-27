@@ -5,10 +5,11 @@
 **Откуда:**
 - решение автора языка от 2026-09-27: REPL из отладочного режима становится
   основным инструментом исследования кода и базой для консоли приложения
-  (`brig console` ≈ `iex -S mix`, консоль Calmar ≈ `rails c`);
+  (`brig -i` ≈ `iex -S mix`, `calmar c` ≈ `rails c`);
 - research: `web-mvp-research/05-toolchain.md` (`brig console` — S),
-  `08-roadmap.md` (`brig console` с `h`), `16-infrastructure.md:76`
-  (`./app console` к работающему процессу);
+  `08-roadmap.md` (`brig console` с `h`; подкоманду заменяет `-i`,
+  решение 5), `16-infrastructure.md:76` (`./app console` к работающему
+  процессу);
 - §11.4 (REPL), §16 (REPL и горячая перезагрузка — Nice).
 
 **Что сейчас:**
@@ -40,9 +41,31 @@
 3. REPL — долгоживущий актор со стабильным pid и ящиком. Планировщик
    работает между вводами, Ctrl-C прерывает текущий ввод, сессия остаётся
    жива.
+4. CLI: `brig` — интерпретатор без подкоманд `run`, `repl`, `console`.
+   - `brig` без аргументов: на TTY — REPL, без TTY — stdin исполняется как
+     скрипт; `brig -` — программа из stdin; `brig -e 'expr'` — исполнить и
+     выйти.
+   - `brig app.brig a b`: первый аргумент с `.brig` или `/` — файл-вход,
+     остальное — `Sys.args()`; флаги `brig` — только до файла; аргумент без
+     `.brig` и `/` — подкоманда (`check`, `test`, …).
+   - Файл без `module` исполняется в режиме `script` (research Q-script, B).
+5. `brig -i files` загружает файлы в REPL, `main` не вызывает; script-файл
+   исполняется как вводы. `brig -i .` грузит проект по `project.brig`.
+   `-e` вместе с `-i` исполняется до первого приглашения. Ошибка загрузки
+   печатается, но REPL открывается. Не-`pub` функции своих модулей видны,
+   у зависимостей — только `pub`. Автоматически грузится только
+   `~/.config/brig/init.brig` (`--no-init`). `brig -i -` — REPL без
+   приглашений на stdin.
+6. Консоль Calmar — `calmar c`, сахар (binstub) над
+   `brig -i -e 'Calmar.console()' .`.
+7. Подсветка — общий сервис `internal/highlight` (Go-лексер + словарь
+   классов) для ввода, вывода, ошибок, `h()`, позже `brig doc` и LSP.
+   Лексер + проверка имён как в fish (неизвестное имя красное до Enter),
+   16 ANSI-цветов терминала + `BRIG_COLORS`. Плюс: парные скобки,
+   направляющие отступов, подсказки из истории, сигнатура при вызове.
 
 **Вход:**
-- T-137 (#195), компиляция программы из нескольких модулей — для T-207;
+- T-137 (#195), компиляция программы из нескольких модулей — для T-209;
 - остальные задачи волны от других волн не зависят.
 
 **Зачем:** Brig — язык с акторами и неизменяемыми данными. Его основной
@@ -52,35 +75,41 @@
 транспорту сразу закладывает remote console и LSP.
 
 **Выход:**
-- в `brig repl` вводятся многострочные `fn`/`match`/`recv`, работают
-  история, Ctrl-R, Tab и подсветка;
+- в `brig` вводятся многострочные `fn`/`match`/`recv`, работают история,
+  Ctrl-R, bracketed paste, Tab, подсказки из истории и подсветка с
+  проверкой имён;
 - значения печатаются по ширине терминала, ошибки — с позицией, строкой
   кода и stack trace;
 - `self()` стабилен между вводами, заспавненные акторы работают в фоне,
   `flush()` показывает ящик, Ctrl-C не убивает сессию;
 - `h`, `i`, `v`, `bindings`, `reset`, `load`, `time`, `dis`, `recompile`
   работают; фреймворк регистрирует свои хелперы;
-- `brig console` в проекте поднимает граф модулей.
+- `brig -i -e '…' .` поднимает проект и стартует его — на этом строится
+  `calmar c`;
+- `brig run` и `brig repl` удалены.
 
 **Вне волны:** remote console к работающему процессу (сокет 0600,
 `./app console`) ставится на `repl.Session` (T-201), когда появится
 `brig build`. Хелперы Calmar (`routes()`, `app()`) — в пакете Calmar через
-API из T-206.
+API из T-206. `--watch` для `-i`, post-mortem после raise, `-I` пути
+загрузки, truecolor-темы, tree-sitter/TextMate — не планируются.
 
 ## Порядок и параллельность
 
 | # | T-NN | Задача | Ждёт | Модель | Effort | Параллельно с |
 |---|---|---|---|---|---|---|
-| 1 | T-200 [#238](https://github.com/it1ro/brig-lang/issues/238) | Спека §11.4: REPL-актор, многострочный ввод, хелперы | — | opus | medium | — |
+| 1 | T-200 [#238](https://github.com/it1ro/brig-lang/issues/238) | Спека §11.3–11.4: script-режим, REPL-актор, ввод, загрузка, хелперы | — | opus | medium | — |
 | 2 | T-201 [#239](https://github.com/it1ro/brig-lang/issues/239) | `repl.Session`: ядро без транспорта, полнота ввода по лексеру | T-200 | opus | medium | — |
-| 3 | T-202 [#240](https://github.com/it1ro/brig-lang/issues/240) | Редактор строки на `x/term`, история | T-201 | opus | large | T-204, T-205 |
-| 4 | T-203 [#241](https://github.com/it1ro/brig-lang/issues/241) | Подсветка и Tab-completion | T-202 | sonnet | medium | T-205, T-206 |
-| 5 | T-204 [#242](https://github.com/it1ro/brig-lang/issues/242) | Вывод: pretty-printer, ошибки с кодом и stack trace | T-201 | sonnet | medium | T-202, T-205 |
-| 6 | T-205 [#243](https://github.com/it1ro/brig-lang/issues/243) | VM: REPL-актор, фоновый планировщик, прерывание | T-200, T-201 | opus | large | T-202, T-204 |
-| 7 | T-206 [#244](https://github.com/it1ro/brig-lang/issues/244) | Хелперы консоли и API регистрации | T-201, T-205 | opus | medium | T-203 |
-| 8 | T-207 [#245](https://github.com/it1ro/brig-lang/issues/245) | `brig console`: приложение в консоли | T-137, T-206 | opus | medium | T-208 |
+| 3 | T-202 [#240](https://github.com/it1ro/brig-lang/issues/240) | Редактор строки на `x/term`, история, bracketed paste | T-201 | opus | large | T-205, T-207 |
+| 4 | T-203 [#241](https://github.com/it1ro/brig-lang/issues/241) | Подсветка: `internal/highlight`, проверка имён, скобки, отступы | T-202 | opus | large | T-205, T-206 |
+| 5 | T-204 [#242](https://github.com/it1ro/brig-lang/issues/242) | Вывод: pretty-printer, ошибки с кодом и stack trace | T-201, T-203 | sonnet | medium | T-206 |
+| 6 | T-205 [#243](https://github.com/it1ro/brig-lang/issues/243) | VM: REPL-актор, фоновый планировщик, прерывание | T-200, T-201 | opus | large | T-202, T-203 |
+| 7 | T-206 [#244](https://github.com/it1ro/brig-lang/issues/244) | Хелперы консоли и API регистрации | T-201, T-205 | opus | medium | T-203, T-204 |
+| 8 | T-207 [#245](https://github.com/it1ro/brig-lang/issues/245) | CLI: `brig` без подкоманд — файл-вход, `-e`, `-`, script-режим | T-200, T-201 | opus | medium | T-202…T-206 |
 | 9 | T-208 [#246](https://github.com/it1ro/brig-lang/issues/246) | DD: семантика `recompile()` | T-200 | human | low | всё после T-200 |
-| 10 | T-209 [#247](https://github.com/it1ro/brig-lang/issues/247) | `recompile()` | T-207, T-208 | opus | large | — |
+| 10 | T-209 [#247](https://github.com/it1ro/brig-lang/issues/247) | `brig -i`: файлы и проект в REPL, `-e` до приглашения, init | T-137, T-206, T-207 | opus | medium | T-211 |
+| 11 | T-210 [#250](https://github.com/it1ro/brig-lang/issues/250) | `recompile()` | T-208, T-209 | opus | large | T-211 |
+| 12 | T-211 [#251](https://github.com/it1ro/brig-lang/issues/251) | Tab-completion, подсказки из истории, сигнатуры | T-203, T-206 | sonnet | medium | T-209, T-210 |
 
 ## Задачи
 
