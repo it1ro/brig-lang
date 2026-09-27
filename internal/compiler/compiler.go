@@ -38,21 +38,56 @@ type Compiler struct {
 	image *ProgramImage
 	// lifted — лифтнутые локальные fn по mangled-имени (T-51, T-39).
 	lifted map[string]*liftedFn
+	// mods — модули программы по имени (T-137, §11.1); entry — входной,
+	// cur — модуль, функции которого компилируются сейчас.
+	mods  map[string]*module
+	entry *module
+	cur   *module
+}
+
+// Module — модуль программы для CompileProgram (§11.1): имя, путь файла
+// (для stack trace и ошибок) и AST.
+type Module struct {
+	Name, Path string
+	Prog       *ast.Program
+}
+
+// module — декларации модуля программы, видимые при компиляции тел
+// функций любого модуля.
+type module struct {
+	name, path string
+	// prefix — префикс глобальных имён fn модуля: у входного пустой
+	// (`main`, как в программе из одного файла), у остальных `Name.`
+	// (`Util.f`). Им же квалифицируются типы записей и вариантов в
+	// рантайме: одноимённые типы двух модулей различны.
+	prefix string
+	// fns — имена fn модуля.
+	fns map[string]bool
 	// records — поля записей-деклараций `type X {...}` по имени типа
 	// в порядке объявления (T-73, §4.7).
 	records map[string][]string
 	// ctors — конструкторы пользовательских вариантов по имени тега
 	// (T-136, §14.2).
 	ctors map[string]userCtor
-	// aliases — `alias M as N` для встроенных модулей: N → M (§11.1).
-	// Заполняется в Compile; alias не встроенного модуля сюда не попадает
-	// (его резолвит loader, T-135).
-	aliases map[string]string
+	// locals — локальные имена модулей в файле (§11.1): `import A.B` —
+	// `A.B` и `B`, `alias A.B as X` — `X` и `A.B`; значение — полное имя.
+	locals map[string]string
+}
+
+func newModule(name, path, prefix string) *module {
+	return &module{
+		name: name, path: path, prefix: prefix,
+		fns:     map[string]bool{},
+		records: map[string][]string{},
+		ctors:   map[string]userCtor{},
+		locals:  map[string]string{},
+	}
 }
 
 // userCtor — конструктор варианта `type Type { Tag(...) }`. val — значение
 // при ссылке на имя: сам вариант для конструктора без аргументов, иначе
 // native-функция его арности (одна на программу — identity стабильна).
+// typ — имя типа в рантайме (с префиксом модуля).
 type userCtor struct {
 	typ string
 	val runtime.Value
@@ -71,8 +106,12 @@ type liftedFn struct {
 	caps     []upvalueInfo
 }
 
-// New создаёт компилятор.
-func New() *Compiler { return &Compiler{} }
+// New создаёт компилятор. До CompileProgram текущий модуль — пустой
+// входной (REPL).
+func New() *Compiler {
+	m := newModule("", "", "")
+	return &Compiler{entry: m, cur: m}
+}
 
 // Image возвращает собранный ProgramImage (для REPL).
 func (c *Compiler) Image() *ProgramImage { return c.image }
@@ -87,8 +126,10 @@ type compileError struct {
 func (e compileError) Error() string { return e.msg }
 
 // Error — ошибка компиляции с позицией узла AST (§E.1: line и col с 1,
-// col в code points). Line == 0 — позиция неизвестна.
+// col в code points). Line == 0 — позиция неизвестна. File — путь
+// модуля, в котором ошибка (CompileProgram); в Error() не входит.
 type Error struct {
+	File      string
 	Line, Col int
 	Msg       string
 }
@@ -186,10 +227,12 @@ func posOf(n ast.Node) vm.SrcPos {
 }
 
 func (c *Compiler) newFuncCompiler(parent *funcCompiler) *funcCompiler {
+	chunk := vm.NewChunk()
+	chunk.File = c.cur.path
 	return &funcCompiler{
 		compiler: c,
 		parent:   parent,
-		chunk:    vm.NewChunk(),
+		chunk:    chunk,
 		localFns: make(map[string]string),
 		consts:   make(map[constKey]int),
 		scopes:   []scope{{names: map[string]int{}, mark: 0}},
@@ -477,60 +520,77 @@ func (fc *funcCompiler) operandInto(e ast.Expr, into int) (int, error) {
 
 // ---- entry points ----
 
-// Compile — входная точка модуля.
-func (c *Compiler) Compile(prog *ast.Program) (image *ProgramImage, err error) {
+// Compile компилирует программу из одного модуля.
+func (c *Compiler) Compile(prog *ast.Program) (*ProgramImage, error) {
+	return c.CompileProgram([]Module{{Name: prog.Module, Prog: prog}})
+}
+
+// CompileProgram компилирует программу из нескольких модулей (§11.1,
+// T-137); mods[0] — входной модуль. Сначала собираются декларации всех
+// модулей (fn, типы, конструкторы, локальные имена модулей), затем тела
+// функций: порядок деклараций и модулей свободный, циклы импорта
+// допустимы. Функции входного модуля в образе — под своими именами,
+// остальных — `Модуль.f`; Main — `main` входного модуля.
+func (c *Compiler) CompileProgram(mods []Module) (image *ProgramImage, err error) {
 	c.image = &ProgramImage{Functions: make(map[string]*vm.Function)}
 	c.lifted = make(map[string]*liftedFn)
-	c.records = make(map[string][]string)
-	c.ctors = make(map[string]userCtor)
+	c.mods = make(map[string]*module, len(mods))
+	c.entry, c.cur = nil, nil
 	defer func() {
 		if r := recover(); r != nil {
 			if ce, ok := r.(compileError); ok {
 				image = nil
-				err = &Error{Line: int(ce.pos.Line), Col: int(ce.pos.Col), Msg: ce.msg}
+				err = &Error{File: c.cur.path, Line: int(ce.pos.Line), Col: int(ce.pos.Col), Msg: ce.msg}
 				return
 			}
 			panic(r)
 		}
 	}()
 
-	c.checkModuleDecls(prog)
+	all := make([]*module, len(mods))
+	for i, m := range mods {
+		prefix := ""
+		if i > 0 {
+			prefix = m.Name + "."
+		}
+		all[i] = newModule(m.Name, m.Path, prefix)
+		c.mods[m.Name] = all[i]
+	}
+	c.entry = all[0]
 
-	// Записи-декларации — до функций: порядок деклараций свободный (§11.2).
-	for _, d := range prog.Decls {
-		if td, ok := d.(ast.TypeDecl); ok {
-			if fields, ok := td.RecordFields(); ok {
-				c.records[td.TypeName()] = fields
+	for i, m := range mods {
+		c.cur = all[i]
+		c.declareModule(m.Prog)
+	}
+
+	for i, m := range mods {
+		c.cur = all[i]
+		for _, d := range m.Prog.Decls {
+			fd, ok := d.(ast.FuncDecl)
+			if !ok {
+				continue
 			}
-			if vs, ok := td.Variants(); ok {
-				c.declareCtors(td, vs)
+			clauses := fd.FuncClauses()
+			if len(clauses) == 0 {
+				continue
+			}
+			name := c.cur.prefix + fd.FnName()
+			fn, cerr := c.compileNamedFn(name, clauses)
+			if cerr != nil {
+				return nil, c.cur.fileErr(wrapCtx(posOf(fd), cerr, "fn %s", fd.FnName()))
+			}
+			c.image.Functions[name] = fn
+			if c.cur == c.entry && fd.FnName() == "main" {
+				c.image.Main = fn
 			}
 		}
 	}
 
-	for _, d := range prog.Decls {
-		fd, ok := d.(ast.FuncDecl)
-		if !ok {
-			continue
-		}
-		clauses := fd.FuncClauses()
-		if len(clauses) == 0 {
-			continue
-		}
-		fn, cerr := c.compileNamedFn(fd.FnName(), clauses)
-		if cerr != nil {
-			return nil, wrapCtx(posOf(fd), cerr, "fn %s", fd.FnName())
-		}
-		c.image.Functions[fd.FnName()] = fn
-		if fd.FnName() == "main" {
-			c.image.Main = fn
-		}
-	}
-
-	if len(prog.Stmts) > 0 {
+	c.cur = c.entry
+	if prog := mods[0].Prog; len(prog.Stmts) > 0 {
 		fn, cerr := c.compileBlock("__repl__", nil, prog.Stmts)
 		if cerr != nil {
-			return nil, cerr
+			return nil, c.cur.fileErr(cerr)
 		}
 		c.image.Functions["__repl__"] = fn
 		c.image.Main = fn
@@ -544,45 +604,107 @@ func (c *Compiler) Compile(prog *ast.Program) (image *ProgramImage, err error) {
 	return c.image, nil
 }
 
-// checkModuleDecls обрабатывает `alias M as N` (§11.1) для встроенных
-// модулей: N запоминается как псевдоним M, чтобы Mod.method в вызовах
-// прелюдии видел псевдоним как оригинал. `import`/`alias` не встроенного
-// модуля здесь не проверяются: разрешение и ошибка «module X not found»
-// для реального графа модулей — дело loader (T-135, internal/loader);
-// Compile компилирует один файл и о существовании чужих модулей не знает.
-func (c *Compiler) checkModuleDecls(prog *ast.Program) {
+// fileErr приписывает ошибке компиляции путь модуля m.
+func (m *module) fileErr(err error) error {
+	var ce *Error
+	if errors.As(err, &ce) {
+		out := *ce
+		out.File = m.path
+		return &out
+	}
+	return &Error{File: m.path, Msg: err.Error()}
+}
+
+// declareModule собирает декларации текущего модуля: локальные имена
+// модулей (§11.1), записи и конструкторы (до функций: порядок
+// деклараций свободный, §11.2), имена fn.
+func (c *Compiler) declareModule(prog *ast.Program) {
+	m := c.cur
 	for _, d := range prog.Decls {
-		ad, ok := d.(ast.AliasDecl)
-		if !ok {
-			continue
+		switch d := d.(type) {
+		case ast.ImportDecl:
+			full := d.ImportedModule()
+			m.addLocal(full, full, d)
+			m.addLocal(full[strings.LastIndex(full, ".")+1:], full, d)
+		case ast.AliasDecl:
+			full := d.AliasOriginal()
+			m.addLocal(d.AliasName(), full, d)
+			m.addLocal(full, full, d)
+		case ast.TypeDecl:
+			if fields, ok := d.RecordFields(); ok {
+				m.records[d.TypeName()] = fields
+			}
+			if vs, ok := d.Variants(); ok {
+				c.declareCtors(d, vs)
+			}
+		case ast.FuncDecl:
+			m.fns[d.FnName()] = true
 		}
-		orig := ad.AliasOriginal()
-		if !isPreludeModule(orig) {
-			continue
-		}
-		if c.aliases == nil {
-			c.aliases = make(map[string]string)
-		}
-		c.aliases[ad.AliasName()] = orig
 	}
 }
 
-// resolveModule сообщает, что name — встроенный модуль или его псевдоним
-// (§11.1), и возвращает оригинальное имя для диспатча в isPreludeModule.
-func (c *Compiler) resolveModule(name string) (orig string, ok bool) {
-	if isPreludeModule(name) {
-		return name, true
+// addLocal связывает локальное имя модуля name с модулем full. Одно
+// локальное имя для двух разных модулей — ошибка компиляции (§11.1):
+// развести — через alias.
+func (m *module) addLocal(name, full string, at ast.Node) {
+	if prev, ok := m.locals[name]; ok && prev != full {
+		panic(compileError{pos: posOf(at), msg: fmt.Sprintf(
+			"module name %s already refers to %s", name, prev)})
 	}
-	orig, ok = c.aliases[name]
-	return orig, ok
+	m.locals[name] = full
+}
+
+// modRef — модуль, на который ссылается локальное имя: встроенный
+// (builtin — его имя) или пользовательский (full; mod == nil, если
+// модуля нет среди компилируемых — Compile одного файла).
+type modRef struct {
+	builtin string
+	full    string
+	mod     *module
+}
+
+// resolveModule разрешает локальное имя модуля в текущем модуле:
+// сначала import/alias файла, затем встроенные модули (доступны без
+// import, §11.1).
+func (c *Compiler) resolveModule(name string) (modRef, bool) {
+	full, ok := c.cur.locals[name]
+	if !ok {
+		if !isPreludeModule(name) {
+			return modRef{}, false
+		}
+		full = name
+	}
+	if isPreludeModule(full) {
+		return modRef{builtin: full, full: full}, true
+	}
+	return modRef{full: full, mod: c.mods[full]}, true
+}
+
+// isModule сообщает, что name — локальное имя модуля в текущем модуле.
+func (c *Compiler) isModule(name string) bool {
+	_, ok := c.resolveModule(name)
+	return ok
+}
+
+// global — глобальное имя функции fn модуля r.
+func (r modRef) global(fn string) string {
+	switch {
+	case r.builtin != "":
+		return r.builtin + "." + fn
+	case r.mod != nil:
+		return r.mod.prefix + fn
+	}
+	return r.full + "." + fn
 }
 
 // declareCtors регистрирует конструкторы вариант-декларации (§14.2).
-// Один тег в двух декларациях — ошибка компиляции: ссылка неоднозначна.
+// Один тег в двух декларациях модуля — ошибка компиляции: ссылка
+// неоднозначна.
 func (c *Compiler) declareCtors(td ast.TypeDecl, vs []ast.VariantArg) {
-	typ := td.TypeName()
+	m := c.cur
+	typ := m.prefix + td.TypeName()
 	for ord, v := range vs {
-		if prev, dup := c.ctors[v.Name]; dup {
+		if prev, dup := m.ctors[v.Name]; dup {
 			pos := posOf(td)
 			panic(compileError{pos: pos, msg: fmt.Sprintf(
 				"constructor %s already declared in type %s", v.Name, prev.typ)})
@@ -597,7 +719,7 @@ func (c *Compiler) declareCtors(td ast.TypeDecl, vs []ast.VariantArg) {
 				},
 			})
 		}
-		c.ctors[v.Name] = userCtor{typ: typ, val: val}
+		m.ctors[v.Name] = userCtor{typ: typ, val: val}
 	}
 }
 
@@ -1277,7 +1399,7 @@ func (fc *funcCompiler) compileInterp(ie ast.InterpExpr, d dest) error {
 		iterMark := fc.nextReg
 
 		strReg := fc.allocReg()
-		if err := fc.compileGlobalCall("to_str", []ast.Expr{expr}, val(strReg), ie); err != nil {
+		if err := fc.compileGlobalCall(fc.compiler.bareGlobal("to_str"), []ast.Expr{expr}, val(strReg), ie); err != nil {
 			return err
 		}
 		fc.pos = posOf(ie)
@@ -1328,10 +1450,108 @@ func (fc *funcCompiler) compileVar(name string, d dest) error {
 	if idx, ok := fc.resolveUpvalue(name); ok {
 		return fc.loadUpval(d, idx)
 	}
-	if ct, ok := fc.compiler.ctors[name]; ok {
+	if strings.Contains(name, ".") {
+		// `x |> Mod.Ctor` — pipe держит путь одним именем.
+		return fc.compileModulePath(strings.Split(name, "."), fc.pos, d)
+	}
+	if ct, ok := fc.compiler.cur.ctors[name]; ok {
 		return fc.loadConst(ct.val, d)
 	}
-	return fc.loadGlobal(d, name)
+	return fc.loadGlobal(d, fc.compiler.bareGlobal(name))
+}
+
+// bareGlobal — глобальное имя для голого имени name в текущем модуле:
+// своя fn модуля, иначе прелюдия. fn входного модуля лежат под голыми
+// именами и затеняют прелюдию только в нём самом: в других модулях имя
+// прелюдии, совпавшее с fn входного, берётся как `Prelude.name` (§11.5).
+func (c *Compiler) bareGlobal(name string) string {
+	switch {
+	case c.cur.fns[name]:
+		return c.cur.prefix + name
+	case c.cur != c.entry && c.entry.fns[name]:
+		return "Prelude." + name
+	}
+	return name
+}
+
+// modulePath разбирает выражение-путь `A.B.x` (переменная с заглавной
+// буквы и цепочка членов; у pipe — одно имя с точками) на сегменты.
+// ok == false — не путь модуля (например, `rec.field`).
+func modulePath(e ast.Expr) (segs []string, ok bool) {
+	switch x := e.(type) {
+	case ast.VariableExpr:
+		segs = strings.Split(x.Name(), ".")
+		return segs, isUpperName(segs[0])
+	case ast.MemberExpr:
+		segs, ok = modulePath(x.Obj())
+		if !ok {
+			return nil, false
+		}
+		return append(segs, x.MemberName()), true
+	}
+	return nil, false
+}
+
+func isUpperName(s string) bool { return s != "" && s[0] >= 'A' && s[0] <= 'Z' }
+
+// errAt — ошибка компиляции в позиции p.
+func errAt(p vm.SrcPos, format string, args ...any) error {
+	return &Error{Line: int(p.Line), Col: int(p.Col), Msg: fmt.Sprintf(format, args...)}
+}
+
+// resolvePath разрешает путь `Mod.x`: всё до последнего сегмента —
+// локальное имя модуля. Неизвестный модуль — ошибка в позиции пути at.
+func (fc *funcCompiler) resolvePath(segs []string, at vm.SrcPos) (modRef, string, error) {
+	name, member := splitPath(segs)
+	ref, ok := fc.compiler.resolveModule(name)
+	if !ok {
+		return modRef{}, "", errAt(at, "unknown module %s", name)
+	}
+	return ref, member, nil
+}
+
+// splitPath делит путь на имя модуля и член: `A.B.f` → `A.B`, `f`.
+func splitPath(segs []string) (mod, member string) {
+	return strings.Join(segs[:len(segs)-1], "."), segs[len(segs)-1]
+}
+
+// pathStart — позиция начала пути (первого сегмента).
+func pathStart(e ast.Expr) vm.SrcPos {
+	for {
+		me, ok := e.(ast.MemberExpr)
+		if !ok {
+			return posOf(e)
+		}
+		e = me.Obj()
+	}
+}
+
+// moduleCtor — конструктор tag пользовательского модуля ref.
+func moduleCtor(ref modRef, tag string, at vm.SrcPos) (userCtor, error) {
+	if ref.mod != nil {
+		if ct, ok := ref.mod.ctors[tag]; ok {
+			return ct, nil
+		}
+	}
+	return userCtor{}, errAt(at, "unknown constructor %s in module %s", tag, ref.full)
+}
+
+// compileModulePath — значение пути `Mod.x` вне позиции вызова:
+// конструктор пользовательского модуля. Функция модуля как значение и
+// члены встроенных модулей — срез (T-144).
+func (fc *funcCompiler) compileModulePath(segs []string, at vm.SrcPos, d dest) error {
+	ref, member, err := fc.resolvePath(segs, at)
+	if err != nil {
+		return err
+	}
+	if ref.builtin != "" || !isUpperName(member) {
+		return fmt.Errorf("срез: неподдерживаемое выражение %s", strings.Join(segs, "."))
+	}
+	ct, err := moduleCtor(ref, member, at)
+	if err != nil {
+		return err
+	}
+	return fc.loadConst(ct.val, d)
 }
 
 // loadLocalFn — локальная fn как значение. Без захватов это глобальная
@@ -1623,12 +1843,24 @@ func (fc *funcCompiler) compileBranch(body ast.Expr, d dest) error {
 func (fc *funcCompiler) compileCall(call ast.CallExpr, d dest) error {
 	callee := call.Callee()
 
-	// Модульный dispatch для Vec.*, Map.*, Str.*, Bytes.*, Json.*, Test.*.
+	// `Mod.f(a…)`: функция встроенного (Vec.*, Json.*, …) или
+	// пользовательского модуля (§11.1). `Mod.Ctor(a…)` — обычный вызов
+	// значения конструктора (compileMember).
+	// Модуль программы без import/alias не виден (§11.1); неизвестный
+	// модуль — вызов глобала `Mod.f` и ошибка рантайма (ошибка компиляции
+	// — T-139).
 	if me, ok := callee.(ast.MemberExpr); ok {
-		if obj, ok := me.Obj().(ast.VariableExpr); ok {
-			if mod, ok := fc.compiler.resolveModule(obj.Name()); ok {
-				fullName := mod + "." + me.MemberName()
-				return fc.compileGlobalCall(fullName, call.Args(), d, call)
+		if segs, ok := modulePath(me); ok {
+			name, member := splitPath(segs)
+			ref, known := fc.compiler.resolveModule(name)
+			if !known {
+				if fc.compiler.mods[name] != nil {
+					return errAt(pathStart(me), "module %s is not imported", name)
+				}
+				ref = modRef{full: name}
+			}
+			if !known || ref.builtin != "" || !isUpperName(member) {
+				return fc.compileGlobalCall(ref.global(member), call.Args(), d, call)
 			}
 		}
 	}
@@ -1672,22 +1904,26 @@ func (fc *funcCompiler) compileCall(call ast.CallExpr, d dest) error {
 	return fc.compileGenericCall(call, d)
 }
 
-// compilePipe: `x |> f(a…)` — вызов `f(x, a…)` (§7.5). Форма `obj.method(a)`
-// (RHS с точкой вне модулей прелюдии) до методов — ошибка компиляции.
+// compilePipe: `x |> f(a…)` — вызов `f(x, a…)` (§7.5); `x |> Mod.f(a…)` —
+// вызов функции модуля, неизвестный модуль — ошибка с его именем (G-10).
+// Форма `obj.method(a)` до методов — ошибка компиляции.
 func (fc *funcCompiler) compilePipe(p ast.PipeExpr, d dest) error {
 	callee := p.PipeRHS()
-	if v, ok := callee.(ast.VariableExpr); ok {
-		if mod, rest, dotted := strings.Cut(v.Name(), "."); dotted {
-			orig, ok := fc.compiler.resolveModule(mod)
-			if !ok {
-				return fmt.Errorf("%d:%d: |>: форма obj.method(a) не поддерживается: %s", p.Pos(), p.End(), v.Name())
-			}
-			args := append([]ast.Expr{p.PipeLHS()}, p.PipeArgs()...)
+	args := append([]ast.Expr{p.PipeLHS()}, p.PipeArgs()...)
+	if v, ok := callee.(ast.VariableExpr); ok && strings.Contains(v.Name(), ".") {
+		segs, ok := modulePath(v)
+		if !ok {
+			return fmt.Errorf("%d:%d: |>: форма obj.method(a) не поддерживается: %s", p.Pos(), p.End(), v.Name())
+		}
+		ref, member, err := fc.resolvePath(segs, posOf(v))
+		if err != nil {
+			return err
+		}
+		if ref.builtin != "" || !isUpperName(member) {
 			fc.pos = posOf(p)
-			return fc.compileGlobalCall(orig+"."+rest, args, d, p)
+			return fc.compileGlobalCall(ref.global(member), args, d, p)
 		}
 	}
-	args := append([]ast.Expr{p.PipeLHS()}, p.PipeArgs()...)
 	return fc.compileCall(ast.NewCallExpr(callee, args, p.Pos(), p.End()).(ast.CallExpr), d)
 }
 
@@ -1903,13 +2139,13 @@ type recordSlot struct {
 // R[base+1..]; RECORD собирает запись.
 func (fc *funcCompiler) compileRecord(typ string, call ast.CallExpr, d dest) error {
 	var declared []string
+	rtType := ""
 	if typ != "" {
-		fields, ok := fc.compiler.records[typ]
-		if !ok {
-			p := posOf(call.Callee())
-			return &Error{Line: int(p.Line), Col: int(p.Col), Msg: "неизвестный тип записи " + typ}
+		var err error
+		rtType, declared, err = fc.recordType(typ, posOf(call.Callee()))
+		if err != nil {
+			return err
 		}
-		declared = fields
 	}
 
 	slots := make([]recordSlot, 0, len(call.Args()))
@@ -1946,7 +2182,7 @@ func (fc *funcCompiler) compileRecord(typ string, call ast.CallExpr, d dest) err
 	for i, s := range slots {
 		names[i] = runtime.Str(s.name)
 	}
-	shape := runtime.Tuple(runtime.Str(typ), runtime.Tuple(decl...), runtime.Tuple(names...))
+	shape := runtime.Tuple(runtime.Str(rtType), runtime.Tuple(decl...), runtime.Tuple(names...))
 
 	mark := fc.nextReg
 	dst := fc.destReg(d)
@@ -1967,12 +2203,57 @@ func (fc *funcCompiler) compileRecord(typ string, call ast.CallExpr, d dest) err
 	return nil
 }
 
-// compileMember — доступ к полю записи `obj.field` (§4.7). `Mod.name`
-// модуля прелюдии вне позиции вызова не поддерживается.
+// recordType разрешает имя типа записи в литерале или паттерне (§11.1,
+// T-122 п.3): `T` — тип своего модуля, иначе тип `T` импортированного
+// модуля `….T` (тип = последний сегмент модуля); `Mod.T` — тип модуля
+// Mod. Возвращает имя типа в рантайме и объявленные поля.
+func (fc *funcCompiler) recordType(written string, at vm.SrcPos) (string, []string, error) {
+	unknown := errAt(at, "неизвестный тип записи %s", written)
+	if strings.Contains(written, ".") {
+		ref, typ, err := fc.resolvePath(strings.Split(written, "."), at)
+		if err != nil {
+			return "", nil, err
+		}
+		if ref.mod == nil {
+			return "", nil, unknown
+		}
+		fields, ok := ref.mod.records[typ]
+		if !ok {
+			return "", nil, unknown
+		}
+		return ref.mod.prefix + typ, fields, nil
+	}
+	cur := fc.compiler.cur
+	if fields, ok := cur.records[written]; ok {
+		return cur.prefix + written, fields, nil
+	}
+	var found []string
+	for _, full := range cur.locals {
+		m := fc.compiler.mods[full]
+		if m == nil || full[strings.LastIndex(full, ".")+1:] != written || slices.Contains(found, full) {
+			continue
+		}
+		if _, ok := m.records[written]; ok {
+			found = append(found, full)
+		}
+	}
+	switch len(found) {
+	case 0:
+		return "", nil, unknown
+	case 1:
+		m := fc.compiler.mods[found[0]]
+		return m.prefix + written, m.records[written], nil
+	}
+	sort.Strings(found)
+	return "", nil, errAt(at, "тип записи %s неоднозначен: %s", written, strings.Join(found, ", "))
+}
+
+// compileMember — доступ к полю записи `obj.field` (§4.7) или путь
+// модуля `Mod.x` (compileModulePath).
 func (fc *funcCompiler) compileMember(me ast.MemberExpr, d dest) error {
-	if obj, ok := me.Obj().(ast.VariableExpr); ok {
-		if _, ok := fc.compiler.resolveModule(obj.Name()); ok {
-			return fmt.Errorf("срез: неподдерживаемое выражение %s.%s", obj.Name(), me.MemberName())
+	if segs, ok := modulePath(me); ok {
+		if name, _ := splitPath(segs); fc.compiler.isModule(name) {
+			return fc.compileModulePath(segs, pathStart(me), d)
 		}
 	}
 	mark := fc.nextReg
@@ -2855,8 +3136,20 @@ func (fc *funcCompiler) compilePattern(pat ast.Pattern) (*vm.CompiledPattern, er
 			}
 			subs = append(subs, sub)
 		}
-		return &vm.CompiledPattern{Kind: vm.PatCtor, Tag: p.CtorName(), Subs: subs,
-			VariantType: fc.compiler.ctors[p.CtorName()].typ}, nil
+		name, typ := p.CtorName(), fc.compiler.cur.ctors[p.CtorName()].typ
+		if strings.Contains(name, ".") {
+			at := posOf(p)
+			ref, tag, err := fc.resolvePath(strings.Split(name, "."), at)
+			if err != nil {
+				return nil, err
+			}
+			ct, err := moduleCtor(ref, tag, at)
+			if err != nil {
+				return nil, err
+			}
+			name, typ = tag, ct.typ
+		}
+		return &vm.CompiledPattern{Kind: vm.PatCtor, Tag: name, Subs: subs, VariantType: typ}, nil
 
 	case ast.PatternTuple:
 		subs := make([]*vm.CompiledPattern, 0, len(p.TupleElems()))
@@ -2908,12 +3201,13 @@ func (fc *funcCompiler) compilePattern(pat ast.Pattern) (*vm.CompiledPattern, er
 	case ast.PatternRecord:
 		at := posOf(p)
 		var declared []string
+		tag := ""
 		if t := p.RecordType(); t != "" {
-			fs, ok := fc.compiler.records[t]
-			if !ok {
-				return nil, &Error{Line: int(at.Line), Col: int(at.Col), Msg: "неизвестный тип записи " + t}
+			var err error
+			tag, declared, err = fc.recordType(t, at)
+			if err != nil {
+				return nil, err
 			}
-			declared = fs
 		}
 		fields := make([]vm.RecordPatField, 0, len(p.RecordFields()))
 		seen := map[string]bool{}
@@ -2931,7 +3225,7 @@ func (fc *funcCompiler) compilePattern(pat ast.Pattern) (*vm.CompiledPattern, er
 			}
 			fields = append(fields, vm.RecordPatField{Name: f.Name, Value: sub})
 		}
-		return &vm.CompiledPattern{Kind: vm.PatRecord, Tag: p.RecordType(), Fields: fields}, nil
+		return &vm.CompiledPattern{Kind: vm.PatRecord, Tag: tag, Fields: fields}, nil
 
 	case ast.PatternAs:
 		inner, err := fc.compilePattern(p.AsInner())

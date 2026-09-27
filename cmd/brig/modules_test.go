@@ -77,15 +77,42 @@ func TestBrigModuleGraph(t *testing.T) {
 		}
 	})
 
-	t.Run("run with several modules is a slice", func(t *testing.T) {
+	// T-137: e2e-фикстура testdata/modules — вывод совпадает с main.out.
+	t.Run("run several modules", func(t *testing.T) {
+		dir := filepath.Join("..", "..", "testdata", "modules")
+		want, err := os.ReadFile(filepath.Join(dir, "main.out"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		out, code := brig(t, dir, "run", "main.brig")
+		if code != exitOK || out != string(want) {
+			t.Fatalf("exit %d, out:\n%s\nwant:\n%s", code, out, want)
+		}
+	})
+
+	t.Run("stack trace names module function and its file", func(t *testing.T) {
 		dir := t.TempDir()
 		write(t, dir, map[string]string{
-			"main.brig": "import Util\n\nfn main() -> 0\n",
-			"util.brig": "fn one() -> 1\n",
+			"main.brig": "import Util\n\nfn main() ->\n    r = Util.f(1)\n    print(r)\n",
+			"util.brig": "fn g(x) ->\n    raise(:boom)\n\nfn f(x) ->\n    y = g(x)\n    y\n",
 		})
 		out, code := brig(t, dir, "run", "main.brig")
-		if code != exitParse || !strings.Contains(out, "срез: несколько модулей") {
-			t.Fatalf("exit %d, want %d with «срез: несколько модулей»\n%s", code, exitParse, out)
+		want := "  at Util.g (util.brig:2:5)\n  at Util.f (util.brig:5:9)\n  at main (main.brig:4:13)\n"
+		if code != exitRuntime || !strings.HasSuffix(out, want) {
+			t.Fatalf("exit %d, want %d with trace\n%s\ngot:\n%s", code, exitRuntime, want, out)
+		}
+	})
+
+	t.Run("compile error in imported module names its file", func(t *testing.T) {
+		dir := t.TempDir()
+		write(t, dir, map[string]string{
+			"main.brig": "import Util\n\nfn main() -> Util.f()\n",
+			"util.brig": "fn f() -> [1] |> Nope.g\n",
+		})
+		out, code := brig(t, dir, "run", "main.brig")
+		want := "error: util.brig:1:18: fn f: unknown module Nope\n"
+		if code != exitParse || out != want {
+			t.Fatalf("exit %d, out %q; want %d, %q", code, out, exitParse, want)
 		}
 	})
 

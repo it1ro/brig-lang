@@ -1,0 +1,3 @@
+module Http.Client
+
+fn get(path) -> "GET \(path)"
