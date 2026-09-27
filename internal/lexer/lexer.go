@@ -78,8 +78,27 @@ type lexer struct {
 	lastEndedNL bool // предыдущая физическая строка закончилась \n
 	tokens      []Token
 
-	// A5.4 offside-мини-блоки внутри скобок.
-	blockDepth int
+	// §2.5, §D.6: offside-мини-блоки внутри скобок.
+	lineIndent int         // отступ текущей логической строки; внутри скобок — строки элемента
+	opener     *opener     // блочный открыватель внутри скобок на текущей строке
+	mini       []miniFrame // стек активных мини-блоков
+}
+
+// opener — `fn`/`match`/`recv`/`with`/`trap`/`if` внутри скобок, после
+// которого на следующей строке может начаться блок (§D.6).
+type opener struct {
+	kw    string
+	depth int // parenDepth в момент открывателя
+	base  int // якорь блока (T-124): отступ логической строки открывателя
+}
+
+// miniFrame — внешний контекст, сохранённый при открытии мини-блока.
+type miniFrame struct {
+	base        int
+	indentStack []int
+	parenDepth  int
+	stmtIndent  int
+	lineIndent  int
 }
 
 func newLexer(src string) *lexer {
@@ -88,7 +107,6 @@ func newLexer(src string) *lexer {
 		indentStack: []int{0},
 		firstLine:   true,
 		line:        1,
-		blockDepth:  0,
 	}
 }
 
@@ -106,6 +124,9 @@ func (l *lexer) run() ([]Token, error) {
 		}
 	}
 
+	if len(l.mini) > 0 {
+		return nil, errf(l.line, 1, "unclosed bracket at EOF")
+	}
 	if !l.firstLine {
 		l.emit(NEWLINE, "\n")
 	}
@@ -122,37 +143,50 @@ func (l *lexer) run() ([]Token, error) {
 
 // processLine обрабатывает одну непустую физическую строку по A5.2.
 func (l *lexer) processLine(pl physLine) error {
-	// A5.4: offside-мини-блоки внутри скобок.
-	if l.blockDepth > 0 {
-		if !l.firstLine {
-			l.emit(NEWLINE, "\n")
-		}
-		indent := countLeadingSpaces(pl.text)
-		if indent <= l.top() {
-			l.blockDepth = 0
-		}
-		return l.lexLine(pl)
-	}
-
-	// parenDepth > 0 без активного mini-block: offside отключён, но
-	// NEWLINE может эмитироваться как разделитель элементов (A5.4 §D.5).
-	if l.parenDepth > 0 {
-		ft := firstToken(pl.text)
-		if isBlockOpener(ft) && l.blockDepth == 0 {
-			l.parenDepth = 0
-			l.blockDepth = 1
-			l.stmtIndent = 0
-			return l.lexLine(pl)
-		}
-		if !l.firstLine && shouldEmitBracketNewline(l.lastTokenLit(), ft) {
-			l.emit(NEWLINE, "\n")
-		}
-		l.firstLine = false
-		return l.lexLine(pl)
-	}
-
 	indent := countLeadingSpaces(pl.text)
 	ft := firstToken(pl.text)
+	op := l.opener
+	l.opener = nil
+	if op != nil && !op.headerEnds(l.lastTokenLit()) {
+		op = nil
+	}
+
+	// §D.6: строка с отступом ≤ base_indent завершает мини-блок; клауза
+	// `else`/`after` на уровне base_indent продолжает конструкцию (§D.8).
+	if len(l.mini) > 0 && l.parenDepth == 0 && !continuationOps[ft] &&
+		l.endsMini(indent, ft) {
+		l.closeMini()
+		if !isCloser(ft) && !continuationOps[ft] {
+			l.emit(NEWLINE, "\n")
+		}
+		return l.lexBracketLine(pl, indent, ft)
+	}
+
+	if l.parenDepth > 0 {
+		// §D.6: предыдущая строка закончилась заголовком блока внутри
+		// скобок, эта глубже якоря — открыть изолированный мини-блок.
+		if op != nil && op.depth == l.parenDepth && indent > op.base &&
+			!isCloser(ft) && !continuationOps[ft] {
+			l.mini = append(l.mini, miniFrame{
+				base:        op.base,
+				indentStack: l.indentStack,
+				parenDepth:  l.parenDepth,
+				stmtIndent:  l.stmtIndent,
+				lineIndent:  l.lineIndent,
+			})
+			l.indentStack = []int{op.base}
+			l.parenDepth = 0
+			l.stmtIndent = op.base
+		} else {
+			// Offside отключён, но NEWLINE может эмитироваться как
+			// разделитель элементов (§D.5).
+			if !l.firstLine && shouldEmitBracketNewline(l.lastTokenLit(), ft) {
+				l.emit(NEWLINE, "\n")
+			}
+			return l.lexBracketLine(pl, indent, ft)
+		}
+	}
+
 	if !l.firstLine && ft != "" && continuationOps[ft] {
 		if indent <= l.stmtIndent {
 			return errf(pl.line, 1, "continuation must be indented more than statement")
@@ -179,8 +213,69 @@ func (l *lexer) processLine(pl physLine) error {
 	}
 
 	l.stmtIndent = indent
+	l.lineIndent = indent
 	l.firstLine = false
 	return l.lexLine(pl)
+}
+
+// lexBracketLine сканирует строку внутри скобок (offside отключён). Строка,
+// начинающая новый элемент, задаёт якорь для блоков в этом элементе.
+func (l *lexer) lexBracketLine(pl physLine, indent int, ft string) error {
+	if !continuationOps[ft] && !isCloser(ft) {
+		l.lineIndent = indent
+	}
+	l.firstLine = false
+	return l.lexLine(pl)
+}
+
+// closeMini завершает тело активного мини-блока (NEWLINE, DEDENT до
+// base_indent) и восстанавливает внешний скобочный контекст (§D.6).
+func (l *lexer) closeMini() {
+	if len(l.tokens) > 0 && l.tokens[len(l.tokens)-1].Type != NEWLINE {
+		l.emit(NEWLINE, "\n")
+	}
+	for len(l.indentStack) > 1 {
+		l.indentStack = l.indentStack[:len(l.indentStack)-1]
+		l.emit(DEDENT, "")
+	}
+	f := l.mini[len(l.mini)-1]
+	l.mini = l.mini[:len(l.mini)-1]
+	l.indentStack = f.indentStack
+	l.parenDepth = f.parenDepth
+	l.stmtIndent = f.stmtIndent
+	l.lineIndent = f.lineIndent
+}
+
+func (l *lexer) endsMini(indent int, ft string) bool {
+	base := l.mini[len(l.mini)-1].base
+	return indent < base || (indent == base && !isClauseKeyword(ft))
+}
+
+// headerEnds — строка закончилась на месте, где грамматика ждёт
+// `NEWLINE INDENT` блока: `fn … ->`, `trap`/`recv`/`with` без продолжения,
+// `match e`/`if e` (brig.ebnf).
+func (o *opener) headerEnds(last string) bool {
+	switch o.kw {
+	case "fn":
+		return last == "->"
+	case "trap", "recv", "with":
+		return last == o.kw
+	}
+	return last != ","
+}
+
+// isCloser — токен, который не начинает элемент внутри скобок.
+func isCloser(tok string) bool {
+	switch tok {
+	case ")", "]", "}", ",":
+		return true
+	}
+	return false
+}
+
+// isClauseKeyword — клауза, продолжающая конструкцию после DEDENT (§D.8).
+func isClauseKeyword(tok string) bool {
+	return tok == "else" || tok == "after"
 }
 
 func (l *lexer) top() int { return l.indentStack[len(l.indentStack)-1] }
@@ -353,6 +448,9 @@ func (l *lexer) lexLine(pl physLine) error {
 			word := text[i:j]
 			if !hasSuffixQ(word) {
 				if kw, ok := keywords[word]; ok {
+					if l.parenDepth > 0 && isBlockOpener(word) {
+						l.opener = &opener{kw: word, depth: l.parenDepth, base: l.lineIndent}
+					}
 					l.addToken(Token{Type: kw, Lit: word}, pl, i)
 					i = j
 					continue
@@ -434,32 +532,46 @@ func (l *lexer) scanOperator(text string, i int) (int, TokenType, bool) {
 		l.parenDepth++
 		return 1, LPAREN, true
 	case ')':
-		if l.parenDepth > 0 {
-			l.parenDepth--
-		}
+		l.closeBracket()
 		return 1, RPAREN, true
 	case '[':
 		l.parenDepth++
 		return 1, LBRACKET, true
 	case ']':
-		if l.parenDepth > 0 {
-			l.parenDepth--
-		}
+		l.closeBracket()
 		return 1, RBRACKET, true
 	case '{':
 		l.parenDepth++
 		return 1, LBRACE, true
 	case '}':
-		if l.parenDepth > 0 {
-			l.parenDepth--
-		}
+		l.closeBracket()
 		return 1, RBRACE, true
 	case ',':
+		if l.parenDepth == 0 && len(l.mini) > 0 {
+			l.closeMini()
+		}
+		if l.opener != nil && l.opener.depth == l.parenDepth {
+			l.opener = nil
+		}
 		return 1, COMMA, true
 	case ';':
 		return 1, SEMICOLON, true
 	}
 	return 0, ILLEGAL, false
+}
+
+// closeBracket учитывает закрывающую скобку. На нулевой глубине мини-блока
+// она принадлежит внешнему контексту и сначала завершает мини-блок (§D.6).
+func (l *lexer) closeBracket() {
+	if l.parenDepth == 0 && len(l.mini) > 0 {
+		l.closeMini()
+	}
+	if l.parenDepth > 0 {
+		l.parenDepth--
+	}
+	if l.opener != nil && l.opener.depth > l.parenDepth {
+		l.opener = nil
+	}
 }
 
 func isBlockOpener(tok string) bool {
