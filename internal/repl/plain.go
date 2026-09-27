@@ -46,7 +46,7 @@ func (p Plain) Run(s *Session) error {
 		if s.NeedMore(buf.String()) {
 			continue
 		}
-		if err := p.eval(s, buf.String()); err != nil {
+		if err := p.Eval(s, buf.String()); err != nil {
 			return err
 		}
 		buf.Reset()
@@ -55,13 +55,14 @@ func (p Plain) Run(s *Session) error {
 		return err
 	}
 	if strings.TrimSpace(buf.String()) != "" {
-		return p.eval(s, buf.String())
+		return p.Eval(s, buf.String())
 	}
 	return nil
 }
 
-// eval исполняет порцию и печатает её значение или ошибку.
-func (p Plain) eval(s *Session, src string) error {
+// Eval исполняет порцию src и печатает в Out её значение (кроме `()`),
+// а в Err — ошибку. Возвращает только ошибку записи.
+func (p Plain) Eval(s *Session, src string) error {
 	res, err := s.Eval(src)
 	if err != nil {
 		_, werr := fmt.Fprintf(p.Err, "error: %v\n", err)
