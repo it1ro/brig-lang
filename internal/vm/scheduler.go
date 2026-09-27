@@ -1,10 +1,10 @@
 package vm
 
 import (
+	"container/heap"
 	"errors"
 	"fmt"
 	"math"
-	"sort"
 	"time"
 
 	"github.com/it1ro/brig-lang/internal/runtime"
@@ -237,6 +237,8 @@ type Actor struct {
 	// timerSeq — порядковый номер взвода таймера: разрешает равные
 	// recvDeadline в wakeExpired (§15.4).
 	timerSeq uint64
+	// timerPos — позиция в Scheduler.timers плюс 1; 0 — таймер не в куче.
+	timerPos int
 }
 
 // Scheduler — единый run-loop (§15.2).
@@ -246,10 +248,16 @@ type Scheduler struct {
 	nextPid int
 	nextRef int
 	nextSeq uint64
+	// timers — min-куча взведённых таймеров recv … after по
+	// (recvDeadline, timerSeq): обслуживание таймера не обходит s.actors.
+	timers  timerHeap
 	ready   []*Actor
 	reds    int
 	mainPid int
 	active  *Actor
+	// timerVisits — сколько записей кучи осмотрели nextDeadline/wakeExpired
+	// (якорь сложности таймеров, T-102).
+	timerVisits uint64
 }
 
 // NewScheduler создаёт планировщик.
@@ -363,6 +371,7 @@ func (s *Scheduler) notifyWatchers(a *Actor, reason runtime.Value) {
 // reapActor удаляет завершённый актор из таблицы (I-F9). mainPid
 // оставляем: runMain читает его result/err после выхода из цикла.
 func (s *Scheduler) reapActor(a *Actor) {
+	s.clearTimer(a)
 	if a.pid != s.mainPid {
 		delete(s.actors, a.pid)
 	}
@@ -431,44 +440,91 @@ func (s *Scheduler) runMain(mainFn runtime.Value, args []runtime.Value) (runtime
 	}
 }
 
-func (s *Scheduler) nextDeadline() time.Time {
-	var best time.Time
-	for _, a := range s.actors {
-		if a.status != actorBlocked || a.recvDeadline.IsZero() {
-			continue
-		}
-		if best.IsZero() || a.recvDeadline.Before(best) {
-			best = a.recvDeadline
-		}
+// armTimer взводит таймер recv … after актора: новый seq, позиция в куче.
+func (s *Scheduler) armTimer(a *Actor, deadline time.Time) {
+	a.recvDeadline = deadline
+	a.timerSeq = s.nextSeq
+	s.nextSeq++
+	if a.timerPos > 0 {
+		heap.Fix(&s.timers, a.timerPos-1)
+		return
 	}
-	return best
+	heap.Push(&s.timers, a)
 }
 
-// wakeExpired будит актёров с истёкшим таймером в порядке (deadline, seq):
-// обход map недетерминирован, а порядок пробуждений наблюдаем (§15.4).
+// clearTimer снимает таймер актора (сообщение пришло раньше, таймаут
+// сработал, актор завершился).
+func (s *Scheduler) clearTimer(a *Actor) {
+	a.recvDeadline = time.Time{}
+	if a.timerPos > 0 {
+		heap.Remove(&s.timers, a.timerPos-1)
+	}
+}
+
+// nextDeadline — ближайший взведённый таймер. Зовётся при пустой ready:
+// все акторы в куче в этот момент заблокированы (готовые — в ready,
+// завершившиеся сняты в reapActor).
+func (s *Scheduler) nextDeadline() time.Time {
+	if len(s.timers) == 0 {
+		return time.Time{}
+	}
+	s.timerVisits++
+	return s.timers[0].recvDeadline
+}
+
+// wakeExpired будит актёров с истёкшим таймером в порядке (deadline, seq)
+// (§15.4). Снятый с кучи актор сохраняет recvDeadline: по нему RECVTAKE
+// уходит в ветку after.
 func (s *Scheduler) wakeExpired() {
 	now := time.Now()
-	var expired []*Actor
-	for _, a := range s.actors {
-		if a.status != actorBlocked {
-			continue
+	for len(s.timers) > 0 {
+		s.timerVisits++
+		a := s.timers[0]
+		if a.recvDeadline.After(now) {
+			return
 		}
-		if a.recvDeadline.IsZero() || a.recvDeadline.After(now) {
-			continue
+		heap.Pop(&s.timers)
+		if a.status == actorBlocked {
+			a.status = actorReady
+			s.ready = append(s.ready, a)
 		}
-		expired = append(expired, a)
 	}
-	sort.Slice(expired, func(i, j int) bool {
-		a, b := expired[i], expired[j]
-		if !a.recvDeadline.Equal(b.recvDeadline) {
-			return a.recvDeadline.Before(b.recvDeadline)
-		}
-		return a.timerSeq < b.timerSeq
-	})
-	for _, a := range expired {
-		a.status = actorReady
-		s.ready = append(s.ready, a)
+}
+
+// timerHeap — min-куча акторов по (recvDeadline, timerSeq); Actor.timerPos
+// хранит позицию для heap.Fix/heap.Remove.
+type timerHeap []*Actor
+
+func (h timerHeap) Len() int { return len(h) }
+
+func (h timerHeap) Less(i, j int) bool {
+	a, b := h[i], h[j]
+	if !a.recvDeadline.Equal(b.recvDeadline) {
+		return a.recvDeadline.Before(b.recvDeadline)
 	}
+	return a.timerSeq < b.timerSeq
+}
+
+func (h timerHeap) Swap(i, j int) {
+	h[i], h[j] = h[j], h[i]
+	h[i].timerPos = i + 1
+	h[j].timerPos = j + 1
+}
+
+func (h *timerHeap) Push(x any) {
+	a := x.(*Actor)
+	a.timerPos = len(*h) + 1
+	*h = append(*h, a)
+}
+
+func (h *timerHeap) Pop() any {
+	old := *h
+	n := len(old)
+	a := old[n-1]
+	old[n-1] = nil
+	a.timerPos = 0
+	*h = old[:n-1]
+	return a
 }
 
 // ---- runSlice ----
@@ -1091,9 +1147,7 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 				}
 				return fail(err)
 			}
-			a.recvDeadline = time.Now().Add(d)
-			a.timerSeq = s.nextSeq
-			s.nextSeq++
+			s.armTimer(a, time.Now().Add(d))
 			f.ip++
 
 		case RECVTAKE:
@@ -1103,7 +1157,7 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 			if len(a.downMsgs) > 0 {
 				msg := a.downMsgs[0]
 				a.downMsgs = a.downMsgs[1:]
-				a.recvDeadline = time.Time{}
+				s.clearTimer(a)
 				regs[slot] = msg
 				f.ip++
 				continue
@@ -1111,14 +1165,14 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 			if len(a.mailbox) > 0 {
 				msg := a.mailbox[0]
 				a.mailbox = a.mailbox[1:]
-				a.recvDeadline = time.Time{}
+				s.clearTimer(a)
 				regs[slot] = msg
 				f.ip++
 				continue
 			}
 
 			if !a.recvDeadline.IsZero() && !time.Now().Before(a.recvDeadline) {
-				a.recvDeadline = time.Time{}
+				s.clearTimer(a)
 				if sbx != 0 {
 					f.ip += 1 + sbx
 					continue

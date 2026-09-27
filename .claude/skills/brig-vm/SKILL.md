@@ -119,6 +119,13 @@ description: >
   (T-48 #61; `timerSeq` взводится в `RECVTIMER` из `s.nextSeq`) — не
   возвращать обход `map` напрямую в `ready` (§15.4); якорь
   `TestWakeExpiredDeterministicOrder`. Модель scheduler: решено C (#40).
+  Таймеры живут в min-куче `Scheduler.timers` по `(recvDeadline,
+  timerSeq)` (T-102 #171): `nextDeadline`/`wakeExpired` не обходят
+  `s.actors`. Взвод — только `armTimer`, снятие — только `clearTimer`
+  (удаляет из кучи по `Actor.timerPos`; зовётся в `RECVTAKE` и
+  `reapActor`); не писать `a.recvDeadline` напрямую. Якоря
+  `TestTimerCostIndependentOfIdleActors`,
+  `TestTimerRemovedWhenMessageArrivesFirst`.
 - Равенство: Int×Float сравниваются точно (T-85 #110, решение #43:
   `runtime.Equal`/`Compare`, быстрый путь для |Int| <= 2^53, иначе
   `big.Float`; `Inf` по знаку). `NaN != NaN`, `<`/`>`/`<=`/`>=` с NaN —
