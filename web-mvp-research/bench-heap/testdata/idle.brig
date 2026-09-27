@@ -1,0 +1,22 @@
+module Main
+
+# Z2: n простаивающих акторов. Каждый порождает следующего и блокируется
+# в recv; последний сообщает main. К моменту :done все n заблокированы.
+
+fn idle() ->
+    recv
+        (:stop) -> :ok
+
+fn chain(0, parent) -> send(parent, :done)
+fn chain(n, parent) ->
+    spawn(() -> chain(n - 1, parent))
+    idle()
+
+fn main() ->
+    me = self()
+    n = bench_n()
+    probe(:before)
+    spawn(() -> chain(n, me))
+    recv
+        (:done) -> :ok
+    probe(:after)
