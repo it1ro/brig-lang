@@ -74,6 +74,8 @@ type Chunk struct {
 	NumRegs   int
 	NumParams int
 	Variadic  bool
+	// File — путь модуля-источника (stack trace, T-137); "" — неизвестен.
+	File string
 }
 
 // NewChunk создаёт пустой чанк.

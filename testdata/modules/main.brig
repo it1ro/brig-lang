@@ -1,0 +1,24 @@
+# T-137: программа из нескольких модулей (§11.1). Запуск из этого
+# каталога: brig run main.brig; ожидаемый вывод — main.out.
+module Main
+
+import Util
+import Accounts.User
+alias Http.Client as Http
+
+fn describe(s) ->
+    match s
+        Util.Circle(r) -> "circle \(r)"
+        Util.Square(a) -> "square \(a)"
+
+fn f() -> "Main.f"
+
+fn main() ->
+    print(f(), Util.f())
+    print(Http.get("/users"))
+    print([1, 2, 3] |> Util.scale(10))
+    print(describe(Util.Circle(2)), describe(Util.unit()))
+    u = User.new("Ada")
+    match u
+        User{ name: n } -> print("user \(n)")
+    print(Util.countdown(100000))

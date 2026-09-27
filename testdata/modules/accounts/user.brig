@@ -1,0 +1,5 @@
+module Accounts.User
+
+type User { id: Int, name: Str }
+
+fn new(name) -> User{ id: 0, name: name }

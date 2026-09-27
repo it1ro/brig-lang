@@ -119,6 +119,9 @@ func reportCompileError(file string, err error) {
 		if ce.Line > 0 {
 			line, col = ce.Line, ce.Col
 		}
+		if ce.File != "" {
+			file = ce.File
+		}
 		msg = ce.Msg
 	}
 	fmt.Fprintf(os.Stderr, "error: %s:%d:%d: %s\n", file, line, col, msg)
@@ -181,14 +184,12 @@ func runFile(args []string) {
 		os.Exit(exitParse)
 	}
 	g := loadProgram("run", args[0])
-	// Компиляция нескольких модулей — T-137.
-	if len(g.Modules) > 1 {
-		reportCompileError(args[0], errors.New("срез: несколько модулей"))
-		os.Exit(exitParse)
+	mods := make([]compiler.Module, len(g.Modules))
+	for i, m := range g.Modules {
+		mods[i] = compiler.Module{Name: m.Name, Path: m.Path, Prog: m.Prog}
 	}
-	prog := g.Entry.Prog
 
-	img, err := compiler.New().Compile(prog)
+	img, err := compiler.New().CompileProgram(mods)
 	if err != nil {
 		reportCompileError(args[0], err)
 		os.Exit(exitForCompileErr(err))
@@ -236,7 +237,11 @@ func runFile(args []string) {
 		var rerr *vm.ErrRaise
 		if errors.As(err, &rerr) {
 			for _, fr := range rerr.Trace {
-				fmt.Fprintf(os.Stderr, "  at %s (%s:%d:%d)\n", fr.Func, args[0], fr.Pos.Line, fr.Pos.Col)
+				file := fr.File
+				if file == "" {
+					file = args[0]
+				}
+				fmt.Fprintf(os.Stderr, "  at %s (%s:%d:%d)\n", fr.Func, file, fr.Pos.Line, fr.Pos.Col)
 			}
 		}
 		os.Exit(exitForRunErr(err))

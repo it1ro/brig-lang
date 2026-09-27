@@ -1667,7 +1667,7 @@ func attachTrace(a *Actor) {
 		if i != n-1 {
 			ip--
 		}
-		trace = append(trace, TraceFrame{Func: f.name, Pos: f.chunk.PosAt(ip)})
+		trace = append(trace, TraceFrame{Func: f.name, File: f.chunk.File, Pos: f.chunk.PosAt(ip)})
 	}
 	rerr.Trace = trace
 }

@@ -250,6 +250,29 @@ func (p *parser) scanModuleName() (string, error) {
 	return joinDots(parts), nil
 }
 
+// scanQualified дочитывает ModuleName после прочитанного первого
+// сегмента first: `{ "." UPPER_IDENT }`. Квалифицированное имя в
+// record_literal, record_pattern, constructor_pattern и type_primary —
+// последний сегмент тип или конструктор, предыдущие — локальное имя
+// модуля (§11.1, §A.1 п.13).
+func (p *parser) scanQualified(first string) string {
+	for p.at(lexer.OP_DOT) && p.peek(1).Type == lexer.UPPER_IDENT {
+		p.advance()
+		first += "." + p.advance().Lit
+	}
+	return first
+}
+
+// qualifiedRecordAhead: с текущего UPPER_IDENT начинается литерал записи
+// `A.B.T{` (ModuleName, затем "{").
+func (p *parser) qualifiedRecordAhead() bool {
+	i := 1
+	for p.peek(i).Type == lexer.OP_DOT && p.peek(i+1).Type == lexer.UPPER_IDENT {
+		i += 2
+	}
+	return p.peek(i).Type == lexer.LBRACE
+}
+
 func joinDots(parts []string) string {
 	out := ""
 	for i, s := range parts {

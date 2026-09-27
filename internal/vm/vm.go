@@ -30,9 +30,11 @@ type ErrRaise struct {
 	Trace []TraceFrame
 }
 
-// TraceFrame — кадр stack trace: функция и позиция инструкции в ней.
+// TraceFrame — кадр stack trace: функция, файл её модуля (Chunk.File) и
+// позиция инструкции в ней.
 type TraceFrame struct {
 	Func string
+	File string
 	Pos  SrcPos
 }
 
