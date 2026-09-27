@@ -55,14 +55,26 @@ type Session struct {
 	history []runtime.Value // значения пронумерованных вводов, history[n-1] — ввод n
 }
 
-// New создаёт сессию поверх ВМ. out — куда писать диагностику и info.
+// New создаёт сессию поверх ВМ и запускает её актор (§11.4): планировщик
+// работает и между вводами. out — куда писать диагностику и info.
+// Сессию закрывает Close.
 func New(m *vm.VM, out io.Writer) *Session {
-	return &Session{
+	s := &Session{
 		vm:  m,
 		env: make(map[string]runtime.Value),
 		out: out,
 	}
+	if err := m.StartSession(); err != nil {
+		panic(err)
+	}
+	return s
 }
+
+// Close останавливает фоновый планировщик. Повторный вызов ничего не делает.
+func (s *Session) Close() { s.vm.CloseSession() }
+
+// Interrupt снимает текущий ввод, не завершая актор сессии (§11.4).
+func (s *Session) Interrupt() { s.vm.Interrupt() }
 
 // SetOutput меняет, куда пишутся диагностика и info.
 func (s *Session) SetOutput(out io.Writer) { s.out = out }
@@ -123,10 +135,12 @@ func (s *Session) evalLine(prog *ast.Program) (Result, error) {
 		return Result{}, err
 	}
 
-	// Регистрируем вложенные функции (из лямбд/локальных fn) как глобалы,
-	// чтобы OpGetGlobal их видел.
+	// Вложенные функции (лямбды и локальные fn) — глобалы, чтобы OpGetGlobal
+	// их видел. Пишет их горутина планировщика вместе с вводом: карта
+	// глобалов с фоновым циклом иначе гоняется.
+	defs := make(map[string]runtime.Value, len(c.Image().Functions))
 	for name, f := range c.Image().Functions {
-		s.vm.DefineGlobal(name, vm.FuncValue(f))
+		defs[name] = vm.FuncValue(f)
 	}
 
 	// Аргументы — текущие значения видимых имён.
@@ -135,7 +149,7 @@ func (s *Session) evalLine(prog *ast.Program) (Result, error) {
 		args[i] = s.env[n]
 	}
 
-	val, err := s.vm.RunMainWithArgs(vm.FuncValue(fn), args)
+	val, err := s.vm.SessionEval(vm.FuncValue(fn), args, defs)
 	if err != nil {
 		return Result{}, err
 	}

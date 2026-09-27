@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/it1ro/brig-lang/internal/runtime"
@@ -379,14 +381,35 @@ type Scheduler struct {
 	// timerVisits — сколько записей кучи осмотрели nextDeadline/wakeExpired
 	// (якорь сложности таймеров, T-102).
 	timerVisits uint64
+
+	// Режим сессии REPL (§11.4, T-205). sessionPid == -1 — режим выключен;
+	// акторы по-прежнему крутит только runMain, по одному слайсу, без
+	// фоновой горутины. Поля ниже читает и пишет горутина sessionLoop,
+	// кроме jobs/wake/stop/interrupt: их трогает ещё поток, который сдаёт
+	// ввод и шлёт прерывание.
+	session        bool
+	sessionPid     int
+	jobs           chan *sessionJob
+	wake           chan struct{}
+	stop           chan struct{}
+	loopDone       chan struct{}
+	current        *sessionJob
+	pending        *sessionJob
+	interrupt      atomic.Bool
+	afterInterrupt atomic.Uint64
+	stopOnce       sync.Once
+	// redCount — необязательный счётчик редукций (тест границы прерывания).
+	// Указатель пишется до старта sessionLoop.
+	redCount *atomic.Uint64
 }
 
 // NewScheduler создаёт планировщик.
 func NewScheduler(vm *VM) *Scheduler {
 	return &Scheduler{
-		vm:     vm,
-		actors: make(map[int]*Actor),
-		reds:   defaultReductions,
+		vm:         vm,
+		actors:     make(map[int]*Actor),
+		reds:       defaultReductions,
+		sessionPid: -1,
 	}
 }
 
@@ -435,10 +458,16 @@ func (s *Scheduler) sendDown(to int, down runtime.Value) {
 }
 
 func (s *Scheduler) wakeIfBlocked(a *Actor) {
-	if a.status == actorBlocked {
-		a.status = actorReady
-		s.ready = append(s.ready, a)
+	if a.status != actorBlocked {
+		return
 	}
+	// Простаивающий актор сессии не крутится из-за почты: сообщения копятся
+	// в ящике до следующего ввода. Иначе каждый send будил бы пустой стек.
+	if a.pid == s.sessionPid && s.current == nil && len(a.frames) == 0 {
+		return
+	}
+	a.status = actorReady
+	s.ready = append(s.ready, a)
 }
 
 // Watch регистрирует наблюдение. Возвращает ref.
@@ -519,6 +548,9 @@ func (s *Scheduler) RunMainWithArgs(mainFn runtime.Value, args []runtime.Value) 
 }
 
 func (s *Scheduler) runMain(mainFn runtime.Value, args []runtime.Value) (runtime.Value, error) {
+	if s.session {
+		return runtime.Unit, errors.New("internal: RunMain during repl session")
+	}
 	pid, err := s.Spawn(mainFn, args)
 	if err != nil {
 		return runtime.Unit, err
@@ -648,9 +680,16 @@ func (h *timerHeap) Pop() any {
 // ---- runSlice ----
 
 func (s *Scheduler) runSlice(a *Actor) {
+	if s.sessionInterrupted(a) {
+		s.abortSession(a)
+		return
+	}
 	reds := s.reds
 	for reds > 0 {
 		if len(a.frames) == 0 {
+			if s.parkSession(a) {
+				return
+			}
 			a.status = actorDone
 			a.result = runtime.Unit
 			s.notifyWatchers(a, runtime.Atom("normal"))
@@ -663,8 +702,11 @@ func (s *Scheduler) runSlice(a *Actor) {
 		switch outcome {
 		case stepDone:
 			a.popFrame()
-			reds--
+			s.burn(a, &reds)
 			if len(a.frames) == 0 {
+				if s.finishSessionJob(a, nil) {
+					return
+				}
 				a.status = actorDone
 				s.notifyWatchers(a, runtime.Atom("normal"))
 				s.reapActor(a)
@@ -678,8 +720,11 @@ func (s *Scheduler) runSlice(a *Actor) {
 				attachTrace(a)
 			}
 			if s.tryUnwindRaise(a) {
-				reds--
+				s.burn(a, &reds)
 				continue
+			}
+			if s.finishSessionJob(a, a.err) {
+				return
 			}
 			a.status = actorFailed
 			s.notifyWatchers(a, downRaiseReason(a))
@@ -692,7 +737,7 @@ func (s *Scheduler) runSlice(a *Actor) {
 			return
 
 		case stepYield, stepContinue:
-			reds--
+			s.burn(a, &reds)
 		}
 	}
 

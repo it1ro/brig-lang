@@ -11,6 +11,7 @@ import (
 	"math"
 	"math/big"
 	"strings"
+	"sync/atomic"
 
 	"github.com/it1ro/brig-lang/internal/runtime"
 )
@@ -126,6 +127,33 @@ func (vm *VM) RunMain(mainFn runtime.Value) (runtime.Value, error) {
 // RunMainWithArgs — вариант RunMain с аргументами (Sprint 6.2, REPL).
 func (vm *VM) RunMainWithArgs(mainFn runtime.Value, args []runtime.Value) (runtime.Value, error) {
 	return vm.scheduler.RunMainWithArgs(mainFn, args)
+}
+
+// StartSession поднимает долгоживущий актор сессии и фоновый планировщик (§11.4).
+func (vm *VM) StartSession() error { return vm.scheduler.StartSession() }
+
+// CloseSession останавливает фоновый планировщик сессии.
+func (vm *VM) CloseSession() { vm.scheduler.CloseSession() }
+
+// Interrupt снимает текущий ввод сессии (§11.4). Не raise.
+func (vm *VM) Interrupt() { vm.scheduler.Interrupt() }
+
+// SessionEval исполняет fn(args) актором сессии. defs попадают в глобалы
+// на горутине планировщика до запуска ввода.
+func (vm *VM) SessionEval(fn runtime.Value, args []runtime.Value, defs map[string]runtime.Value) (runtime.Value, error) {
+	return vm.scheduler.Submit(fn, args, defs)
+}
+
+// CountSessionReductions включает счёт редукций актора сессии в c.
+// Вызывать до StartSession.
+func (vm *VM) CountSessionReductions(c *atomic.Uint64) {
+	vm.scheduler.CountSessionReductions(c)
+}
+
+// ReductionsAfterInterrupt — сколько редукций актор сессии сделал после
+// последнего Interrupt, пока ввод ещё не сняли. Не больше одного слайса.
+func (vm *VM) ReductionsAfterInterrupt() uint64 {
+	return vm.scheduler.afterInterrupt.Load()
 }
 
 // ---- арифметика (§7.3, §7.4) ----
