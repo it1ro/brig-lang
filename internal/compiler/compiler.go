@@ -1102,8 +1102,13 @@ func (fc *funcCompiler) resolveLocalFn(name string) (string, *funcCompiler, bool
 	return "", nil, false
 }
 
-// CompileReplLine компилирует одну REPL-строку как функцию от видимых имён.
-func (c *Compiler) CompileReplLine(names []string, s ast.Stmt) (fn *vm.Function, newName string, err error) {
+// CompileReplLine компилирует одну инструкцию REPL как функцию от видимых
+// имён. Функция возвращает значение нового связывания newName: у
+// `name = expr` — значение expr, у локальной fn — её значение-функцию.
+// seq различает инструкции сессии: глобальные имена вложенных fn
+// (`__repl__<seq>$…`) у разных инструкций не совпадают, и переопределение
+// fn не подменяет её у ранее созданных замыканий (лексический снимок).
+func (c *Compiler) CompileReplLine(seq int, names []string, s ast.Stmt) (fn *vm.Function, newName string, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			if ce, ok := r.(compileError); ok {
@@ -1120,15 +1125,23 @@ func (c *Compiler) CompileReplLine(names []string, s ast.Stmt) (fn *vm.Function,
 	c.lifted = make(map[string]*liftedFn)
 
 	fc := c.newFuncCompiler(nil)
-	fc.prefix = "__repl__$"
+	fc.prefix = fmt.Sprintf("__repl__%d$", seq)
 	fc.chunk.NumParams = len(names)
 
+	// Локальная fn затеняет одноимённое имя сессии и в своём теле:
+	// рекурсивный вызов идёт в новую fn, а не в прежнее значение.
+	var fnName string
+	if lfd, ok := s.(ast.LocalFnDecl); ok {
+		fnName = lfd.FnName()
+	}
 	for i, n := range names {
 		r := fc.allocReg()
 		if r != i {
 			return nil, "", fmt.Errorf("internal: repl param %d in r%d", i, r)
 		}
-		fc.bindLocal(n, i)
+		if n != fnName {
+			fc.bindLocal(n, i)
+		}
 	}
 
 	switch st := s.(type) {
@@ -1140,6 +1153,19 @@ func (c *Compiler) CompileReplLine(names []string, s ast.Stmt) (fn *vm.Function,
 		newName = ip.IdentName()
 		r := fc.allocReg()
 		if err := fc.compileExpr(st.Val(), val(r)); err != nil {
+			return nil, "", err
+		}
+		fc.emit(vm.ABC(vm.RETURN, r, 0, 0))
+	case ast.LocalFnDecl:
+		newName = st.FnName()
+		if err := fc.declareLocalFns([]ast.Stmt{st}); err != nil {
+			return nil, "", err
+		}
+		if err := fc.compileLocalFn(st, discard); err != nil {
+			return nil, "", err
+		}
+		r := fc.allocReg()
+		if err := fc.compileVar(newName, val(r)); err != nil {
 			return nil, "", err
 		}
 		fc.emit(vm.ABC(vm.RETURN, r, 0, 0))

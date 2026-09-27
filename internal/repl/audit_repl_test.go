@@ -35,7 +35,7 @@ func TestAuditReplSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("eval `f() == 5`: %v (diag: %s)", err, out.String())
 	}
-	if res.Kind != runtime.KindBool || !res.Bool {
-		t.Fatalf("f() == 5: got %s, want true (lexical snapshot of x=5)", res.Inspect())
+	if len(res) != 1 || res[0].Value.Kind != runtime.KindBool || !res[0].Value.Bool {
+		t.Fatalf("f() == 5: got %v, want true (lexical snapshot of x=5)", res)
 	}
 }

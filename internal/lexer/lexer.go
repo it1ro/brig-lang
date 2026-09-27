@@ -10,6 +10,10 @@ import (
 type Error struct {
 	Line, Col int
 	Msg       string
+	// Incomplete — ввод оборвался внутри конструкции: скобка не закрыта
+	// к EOF, строковый литерал или интерполяция не закрыты к концу строки.
+	// REPL по нему решает, что ввод продолжается (§11.4).
+	Incomplete bool
 }
 
 func (e *Error) Error() string {
@@ -18,6 +22,13 @@ func (e *Error) Error() string {
 
 func errf(line, col int, format string, args ...any) *Error {
 	return &Error{Line: line, Col: col, Msg: fmt.Sprintf(format, args...)}
+}
+
+// incompletef — errf для ввода, оборванного внутри конструкции.
+func incompletef(line, col int, format string, args ...any) *Error {
+	e := errf(line, col, format, args...)
+	e.Incomplete = true
+	return e
 }
 
 // Lex токенизирует src: полный список токенов программы, включая
@@ -125,7 +136,7 @@ func (l *lexer) run() ([]Token, error) {
 	}
 
 	if len(l.mini) > 0 {
-		return nil, errf(l.line, 1, "unclosed bracket at EOF")
+		return nil, incompletef(l.line, 1, "unclosed bracket at EOF")
 	}
 	if !l.firstLine {
 		l.emit(NEWLINE, "\n")
@@ -135,7 +146,7 @@ func (l *lexer) run() ([]Token, error) {
 		l.emit(DEDENT, "")
 	}
 	if l.parenDepth > 0 {
-		return nil, errf(l.line, 1, "unclosed bracket at EOF")
+		return nil, incompletef(l.line, 1, "unclosed bracket at EOF")
 	}
 	l.emit(EOF, "")
 	return l.tokens, nil
@@ -828,7 +839,7 @@ func scanString(text string, i, line int) (string, int, error) {
 			j++
 		}
 	}
-	return "", 0, errf(line, i+1, "unclosed string literal")
+	return "", 0, incompletef(line, i+1, "unclosed string literal")
 }
 
 func scanInterpolation(text string, open int, line int) (int, error) {
@@ -839,6 +850,9 @@ func scanInterpolation(text string, open int, line int) (int, error) {
 		case '"':
 			_, end, err := scanString(text, i, line)
 			if err != nil {
+				if le, ok := err.(*Error); ok && le.Incomplete {
+					return 0, incompletef(line, open-1, "unclosed interpolation '\\(' (П-003)")
+				}
 				return 0, errf(line, open-1, "unclosed interpolation '\\(' (П-003)")
 			}
 			i = end
@@ -853,7 +867,7 @@ func scanInterpolation(text string, open int, line int) (int, error) {
 		}
 		i++
 	}
-	return 0, errf(line, open-1, "unclosed interpolation '\\(' (П-003)")
+	return 0, incompletef(line, open-1, "unclosed interpolation '\\(' (П-003)")
 }
 
 func scanBytes(text string, i, line int) (string, int, error) {
@@ -889,7 +903,7 @@ func scanBytes(text string, i, line int) (string, int, error) {
 			j++
 		}
 	}
-	return "", 0, errf(line, i+1, "unclosed bytes literal")
+	return "", 0, incompletef(line, i+1, "unclosed bytes literal")
 }
 
 func scanRegex(text string, i, line int) (string, int, error) {
@@ -912,7 +926,7 @@ func scanRegex(text string, i, line int) (string, int, error) {
 			j++
 		}
 	}
-	return "", 0, errf(line, i+1, "unclosed regex literal")
+	return "", 0, incompletef(line, i+1, "unclosed regex literal")
 }
 
 func scanDecimal(text string, i, line int) (string, int, error) {
@@ -926,7 +940,7 @@ func scanDecimal(text string, i, line int) (string, int, error) {
 		j++
 	}
 	if j >= n {
-		return "", 0, errf(line, i+1, "unclosed decimal literal")
+		return "", 0, incompletef(line, i+1, "unclosed decimal literal")
 	}
 	body := text[bodyStart:j]
 	if err := validateDecimalBody(body, line, bodyStart+1); err != nil {

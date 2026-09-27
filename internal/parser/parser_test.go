@@ -279,8 +279,12 @@ func TestParseReplRejectsTrailingTokens(t *testing.T) {
 	mustFail(t, ModeRepl, "f = 1 -> a\n", "->")
 
 	// Второй стейтмент после NEWLINE — тоже не может быть тихо
-	// отброшен: repl_line допускает ровно один top-level стейтмент.
-	mustFail(t, ModeRepl, "x = 1\ny = 2\n", "")
+	// отброшен: порция ввода — repl_input (T-201), он разбирается
+	// следующей repl_line.
+	prog, err := ParseProgram(ModeRepl, "x = 1\ny = 2\n")
+	if err != nil || len(prog.Stmts) != 2 {
+		t.Fatalf("Parse(repl, \"x = 1\\ny = 2\\n\"): stmts=%v err=%v, want 2 stmts", prog, err)
+	}
 
 	// Тот же вход в module-режиме — предсказуемая, отдельно проверенная
 	// ошибка (не тема этой задачи, но фиксирует контраст из issue).
@@ -310,4 +314,21 @@ func FuzzParse(f *testing.F) {
 		_ = Parse(ModeRepl, data)
 		_ = Parse(ModeModule, data)
 	})
+}
+
+// TestParseReplInputLines — T-201: repl_input — одна или несколько
+// repl_line по порядку, в том числе после блочной инструкции (DEDENT
+// без NEWLINE) и вперемешку с import.
+func TestParseReplInputLines(t *testing.T) {
+	src := "fn f(x) ->\n    x + 1\nimport Map\ny = f(1)\n"
+	lines, err := ParseReplInput(src)
+	if err != nil {
+		t.Fatalf("ParseReplInput: %v", err)
+	}
+	if len(lines) != 3 || len(lines[0].Stmts) != 1 || len(lines[1].Decls) != 1 || len(lines[2].Stmts) != 1 {
+		t.Fatalf("ParseReplInput(%q): got %v, want fn, import, let", src, lines)
+	}
+	if _, err := ParseReplInput("x = 1 y = 2\n"); err == nil {
+		t.Fatalf("two statements on one line: want error")
+	}
 }

@@ -1,56 +1,42 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/it1ro/brig-lang/internal/repl"
 	"github.com/it1ro/brig-lang/internal/vm"
 )
 
-// replLoop — persistent REPL (§11.4, N12).
+// replLoop — REPL (§11.4, N12) поверх repl.Session.
 //
-// Строки читаются построчно; незакрытые скобки/интерполяции активируют
-// продолжение ввода. Каждая полная строка исполняется в persistent ВМ.
-// Многострочные offside-блоки (fn/match/recv) в MVP REPL не поддерживаются —
-// для них используйте `.brig`-файл и `brig run`.
+// Ввод продолжается, пока repl.NeedMore: открытые скобки и литералы,
+// заголовок блока, открытый offside-блок (его закрывает пустая строка).
+// Без TTY (`brig repl < file`) — plain-фронтенд без приглашений.
 func replLoop() {
-	machine := vm.New()
-	r := repl.New(machine, os.Stderr)
-
-	sc := bufio.NewScanner(os.Stdin)
-	fmt.Fprintln(os.Stderr, "brig repl (persistent): введите выражение; Ctrl-D — выход")
-	in := 0
-	for {
-		fmt.Printf("brig[%d]> ", in+1)
-		if !sc.Scan() {
-			break
-		}
-		line := sc.Text()
-		if strings.TrimSpace(line) == "" {
-			continue
-		}
-		// Многострочный ввод при незакрытых скобках.
-		buf := line
-		for repl.IsContinuation(buf) {
-			fmt.Print("      ... ")
-			if !sc.Scan() {
-				break
+	s := repl.New(vm.New(), os.Stderr)
+	fe := repl.Plain{In: os.Stdin, Out: os.Stdout, Err: os.Stderr}
+	tty := isTerminal(os.Stdin)
+	if tty {
+		fmt.Fprintln(os.Stderr, "brig repl (persistent): введите выражение; пустая строка закрывает блок; Ctrl-D — выход")
+		fe.Prompt = func(next int, more bool) string {
+			if more {
+				return "   ...> "
 			}
-			buf += "\n" + sc.Text()
+			return fmt.Sprintf("brig[%d]> ", next)
 		}
-
-		res, err := r.Eval(buf + "\n")
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "  ! %v\n", err)
-			continue
-		}
-		if res.Kind != 0 { // KindUnit == 0
-			fmt.Printf("  => %s\n", res.Inspect())
-		}
-		in++
 	}
-	fmt.Fprintln(os.Stderr, "bye")
+	if err := fe.Run(s); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(exitInternal)
+	}
+	if tty {
+		fmt.Fprintln(os.Stderr, "bye")
+	}
+}
+
+// isTerminal — f подключён к терминалу (символьное устройство).
+func isTerminal(f *os.File) bool {
+	fi, err := f.Stat()
+	return err == nil && fi.Mode()&os.ModeCharDevice != 0
 }
