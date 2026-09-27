@@ -77,3 +77,65 @@ func TestNeedMoreBrackets(t *testing.T) {
 		{"x\t= 1\n", false},     // прочие ошибки лексера ввод завершают
 	})
 }
+
+// TestIndent — T-202: отступ новой строки — ведущие пробелы последней
+// строки текста до курсора; если она кончается заголовком блока, на
+// уровень глубже. Открытая скобка и инлайн-форма уровень не добавляют.
+func TestIndent(t *testing.T) {
+	const (
+		lv1 = "    "
+		lv2 = "        "
+		lv3 = "            "
+	)
+	cases := []struct {
+		src  string
+		want string
+	}{
+		{"", ""},
+		{"x = 1", ""},
+		{"fn f(x) -> x + 1", ""},
+		{"x = if ready then 1 else 0", ""},
+		{"if ready then", ""}, // блочный if — без then
+		{"xs |> map(x -> x + 1)", ""},
+		{"r = trap(f())", ""},
+		{"ensure cleanup", ""}, // ensure expr — инлайн
+		{"1 +", ""},
+		{"\"abc", ""}, // оборванный литерал: уровень не добавляется
+		{"xs = [1,", ""},
+
+		{"fn f(x) ->", lv1},
+		{"match v", lv1},
+		{"y = match v", lv1},
+		{"recv", lv1},
+		{"r = trap", lv1},
+		{"with", lv1},
+		{"if ready", lv1},
+		{"g = fn (x) ->", lv1},
+		{"else", lv1},
+		{"else reason", lv1},
+		{"ensure", lv1},
+		{"0 ->", lv1},
+
+		{"fn f(x) ->\n    x + 1", lv1},
+		{"    x + 1", lv1},
+		{"    xs = [1,", lv1},
+		{"fn f(x) ->\n    match x", lv2},
+		{"    match x", lv2},
+		{"        0 -> 1", lv2},
+		{"        0 ->", lv3},
+
+		{"fn f(x) ->\n", ""}, // курсор в начале пустой строки
+		{"    ", lv1},
+		{"# комментарий", ""},
+		{"    # комментарий", lv1},
+		{"    x = 1\nfn f() ->", lv1}, // смотрит только последнюю строку
+	}
+	for _, c := range cases {
+		if got := repl.Indent(c.src); got != c.want {
+			t.Errorf("Indent(%q) = %q, want %q", c.src, got, c.want)
+		}
+	}
+	if repl.IndentWidth != 4 {
+		t.Errorf("IndentWidth = %d, want 4", repl.IndentWidth)
+	}
+}

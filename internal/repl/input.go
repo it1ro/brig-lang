@@ -110,3 +110,20 @@ func expectsBlock(line []lexer.Token) bool {
 	}
 	return false
 }
+
+// IndentWidth — ширина уровня отступа, который ставит автоотступ консоли.
+const IndentWidth = 4
+
+// Indent — отступ новой строки ввода после src (текст до курсора):
+// отступ последней строки src, а если она кончается заголовком блока
+// (NeedMore, п. 2) — на уровень глубже.
+func Indent(src string) string {
+	line := src[strings.LastIndexByte(src, '\n')+1:]
+	body := strings.TrimLeft(line, " ")
+	indent := line[:len(line)-len(body)]
+	toks, err := lexer.Lex(body)
+	if err == nil && expectsBlock(lastLogicalLine(toks)) {
+		indent += strings.Repeat(" ", IndentWidth)
+	}
+	return indent
+}
