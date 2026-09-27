@@ -24,9 +24,11 @@ type Editor struct {
 	// IndentWidth — ширина уровня отступа: Backspace в конце отступа
 	// снимает уровень. 0 — Backspace удаляет один пробел.
 	IndentWidth int
-	// Highlight раскрашивает буфер ANSI-последовательностями, не меняя
-	// видимый текст и число строк. nil — простой текст.
-	Highlight func(src string) string
+	// Highlight раскрашивает буфер. cursor — индекс руны, где стоит
+	// курсор. Результат сохраняет число строк: ANSI-коды места не
+	// занимают, направляющая отступа может заменить пробел на символ
+	// той же ширины. nil — простой текст.
+	Highlight func(src string, cursor int) string
 	// Hint — «серый хвост» после курсора в конце его строки (первая
 	// строка результата); pos — курсор в рунах. nil — без хвоста.
 	Hint func(src string, pos int) string
@@ -304,7 +306,7 @@ func (e *Editor) render() {
 	lines := strings.Split(src, "\n")
 	shown := lines
 	if e.Highlight != nil {
-		if h := strings.Split(e.Highlight(src), "\n"); len(h) == len(lines) {
+		if h := strings.Split(e.Highlight(src, e.buf.pos), "\n"); len(h) == len(lines) {
 			shown = h
 		}
 	}

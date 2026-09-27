@@ -20,6 +20,7 @@ import (
 
 	"github.com/it1ro/brig-lang/internal/ast"
 	"github.com/it1ro/brig-lang/internal/compiler"
+	"github.com/it1ro/brig-lang/internal/highlight"
 	"github.com/it1ro/brig-lang/internal/parser"
 	"github.com/it1ro/brig-lang/internal/runtime"
 	"github.com/it1ro/brig-lang/internal/sema"
@@ -154,6 +155,17 @@ func (s *Session) evalLine(prog *ast.Program) (Result, error) {
 // NeedMore сообщает, что ввод src не завершён и REPL ждёт следующей
 // строки (§11.4 «Ввод»).
 func (s *Session) NeedMore(src string) bool { return NeedMore(src) }
+
+// HighlightEnv — имена для подсветки ввода: привязки сессии поверх
+// прелюдии, хелперов и встроенных модулей. Загруженные модули
+// пользователя добавятся сюда вместе с загрузкой (T-209).
+func (s *Session) HighlightEnv() highlight.Env {
+	env := highlight.REPLEnv()
+	for _, b := range s.Bindings() {
+		env.Bindings[b.Name] = true
+	}
+	return env
+}
 
 // Bindings возвращает видимые привязки в порядке появления имён.
 func (s *Session) Bindings() []Binding {

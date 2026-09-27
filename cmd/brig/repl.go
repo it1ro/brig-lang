@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/it1ro/brig-lang/internal/highlight"
 	"github.com/it1ro/brig-lang/internal/repl"
 	"github.com/it1ro/brig-lang/internal/repl/term"
 	"github.com/it1ro/brig-lang/internal/vm"
@@ -62,6 +63,10 @@ func consoleLoop(s *repl.Session) error {
 	t.Indent = repl.Indent
 	t.IndentWidth = repl.IndentWidth
 	t.History = openHistory()
+	pal := highlight.PaletteFromEnv(nil)
+	t.Highlight = func(src string, cursor int) string {
+		return highlight.Highlight(src, cursor, s.HighlightEnv(), pal)
+	}
 
 	fe := repl.Plain{Out: os.Stdout, Err: os.Stderr}
 	s.SetOutput(os.Stderr)
