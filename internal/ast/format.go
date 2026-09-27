@@ -274,14 +274,22 @@ func (p *printer) exprString(e Expr, indent int) string {
 		return p.trapString(v, indent)
 
 	case *lambdaShortExpr:
-		return v.param + " -> " + p.exprString(v.body, indent)
+		if len(v.params) == 1 {
+			return v.params[0] + " -> " + p.exprString(v.body, indent)
+		}
+		return "(" + strings.Join(v.params, ", ") + ") -> " + p.exprString(v.body, indent)
 	case *lambdaEmptyExpr:
 		return "() -> " + p.exprString(v.body, indent)
 	case *lambdaFullExpr:
 		var sb strings.Builder
-		sb.WriteString("fn (")
-		sb.WriteString(strings.Join(v.params, ", "))
-		sb.WriteString(") ->\n")
+		// Канон пустой полной лямбды — `fn ->` (§6.2).
+		if len(v.params) == 0 {
+			sb.WriteString("fn ->\n")
+		} else {
+			sb.WriteString("fn (")
+			sb.WriteString(strings.Join(v.params, ", "))
+			sb.WriteString(") ->\n")
+		}
 		p.writeBlock(&sb, v.body, indent+1)
 		return strings.TrimSuffix(sb.String(), "\n")
 

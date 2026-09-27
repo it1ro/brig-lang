@@ -218,7 +218,11 @@ func prettyExpr(buf *bytes.Buffer, e Expr, indent int) {
 		}
 		buf.WriteString(")")
 	case *lambdaShortExpr:
-		fmt.Fprintf(buf, "(lambda %s ", n.param)
+		if len(n.params) == 1 {
+			fmt.Fprintf(buf, "(lambda %s ", n.params[0])
+		} else {
+			fmt.Fprintf(buf, "(lambda (%s) ", join(n.params, " "))
+		}
 		prettyNode(buf, n.body, indent)
 		buf.WriteString(")")
 	case *lambdaFullExpr:

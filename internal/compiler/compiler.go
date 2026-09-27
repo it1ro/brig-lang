@@ -1124,7 +1124,7 @@ func (fc *funcCompiler) compileExpr(e ast.Expr, d dest) (err error) {
 	case ast.MemberExpr:
 		return fc.compileMember(ex, d)
 	case ast.LambdaShort:
-		return fc.compileLambda("", []string{ex.ParamName()}, ex.Body(), d)
+		return fc.compileLambda("", ex.ParamNames(), ex.Body(), d)
 	case ast.LambdaEmpty:
 		return fc.compileLambda("", nil, ex.Body(), d)
 	case ast.LambdaFull:

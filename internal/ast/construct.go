@@ -182,8 +182,8 @@ func NewTrapExpr(expr Expr, body Stmt, ensures []EnsureArg, pos, end int) Expr {
 }
 
 // NewLambdaShortExpr creates an expression node.
-func NewLambdaShortExpr(param string, body Expr, pos, end int) Expr {
-	return &lambdaShortExpr{posEnd{pos, end}, param, body}
+func NewLambdaShortExpr(params []string, body Expr, pos, end int) Expr {
+	return &lambdaShortExpr{posEnd{pos, end}, params, body}
 }
 
 // NewLambdaFullExpr creates an expression node.

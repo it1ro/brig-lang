@@ -1,5 +1,7 @@
 package ast
 
+import "slices"
+
 // Equal — структурное равенство двух узлов AST.
 //
 // Pos/End сознательно НЕ сравниваются: они отражают исходный текст и
@@ -226,7 +228,7 @@ func equalNodes(a, b Node) bool {
 
 	case *lambdaShortExpr:
 		y, ok := b.(*lambdaShortExpr)
-		return ok && x.param == y.param && equalNodes(x.body, y.body)
+		return ok && slices.Equal(x.params, y.params) && equalNodes(x.body, y.body)
 
 	case *lambdaFullExpr:
 		y, ok := b.(*lambdaFullExpr)
