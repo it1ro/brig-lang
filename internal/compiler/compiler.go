@@ -1872,9 +1872,11 @@ func (fc *funcCompiler) compileCall(call ast.CallExpr, d dest) error {
 	// `Mod.f(a…)`: функция встроенного (Vec.*, Json.*, …) или
 	// пользовательского модуля (§11.1). `Mod.Ctor(a…)` — обычный вызов
 	// значения конструктора (compileMember).
-	// Модуль программы без import/alias не виден (§11.1); неизвестный
-	// модуль — вызов глобала `Mod.f` и ошибка рантайма (ошибка компиляции
-	// — T-139).
+	// Модуль программы без import/alias не виден (§11.1). Неизвестная
+	// функция и неверная арность — ошибка sema.CheckNames (§F.3, T-139):
+	// её сообщают brig check/run. Здесь неизвестный модуль по-прежнему
+	// компилируется в GETGLOBAL — REPL и прямой Compile проход имён не
+	// гоняют, и имя падает в рантайме (`undefined: Mod.f`).
 	if me, ok := callee.(ast.MemberExpr); ok {
 		if segs, ok := modulePath(me); ok {
 			name, member := splitPath(segs)

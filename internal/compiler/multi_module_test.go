@@ -115,9 +115,10 @@ fn down(n) -> if n == 0 then :done else Main.go(n - 1)
 		runModules(t, mods...)
 	})
 
-	// Модуль программы без import/alias не виден (§11.1). Модуль вне
-	// программы — глобал `Mod.f` и ошибка рантайма (ошибка компиляции —
-	// T-139).
+	// Модуль программы без import/alias не виден (§11.1). Прямой Compile
+	// проход имён не гоняет: модуль вне программы — глобал `Mod.f`.
+	// Ошибку `undefined function` даёт sema.CheckNames (T-139); REPL
+	// этот проход не вызывает.
 	t.Run("module without import is not visible", func(t *testing.T) {
 		compileModulesErr(t, "3:14: fn main: module Util is not imported",
 			src{"Main", "module Main\nimport Other\nfn main() -> Util.f()\n"},
