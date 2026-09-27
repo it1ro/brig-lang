@@ -44,7 +44,7 @@ pub fn tests() ->
         app = HT.start(Lookout.Application, { env: :test })
         Test.assert_eq(HT.get(app, "/api/monitors", {}).status, 401))
 
-    Test.describe("SSE /api/monitors/:id/events")
+    Test.describe("SSE /api/monitors/{id}/events")
 
     Test.it("шлёт событие при смене статуса", fn ->
         app = HT.start(Lookout.Application, { env: :test })

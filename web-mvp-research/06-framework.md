@@ -124,7 +124,8 @@ WebSocket (как Phoenix LiveView) — модель акторов Brig под�
 - Параметры пути приводит роутер по шаблону (`{id: Int}`, 17); для query и
   тела — `Params.int`, `Params.bool`, … → `Result`, ошибка — 400 через fallback.
 - Миграции — модули с `pub fn up()`/`down()`, возвращающими SQL;
-  `calmar db migrate` применяет в транзакции.
+  задача `sql.migrate` применяет их в транзакции: в dev — `brig task sql.migrate`
+  (или сахар `calmar db migrate`), на проде — `./lookout sql.migrate` (16).
 
 ## Фон и real-time
 

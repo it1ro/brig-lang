@@ -41,7 +41,7 @@ record-паттерны (T-74). Без них ни pipeline над `conn`, ни 
 
 ## L5. Модули и типы как значения — M
 
-**Сценарий:** `resources("/monitors", MonitorController)`,
+**Сценарий:** `Router.resources("/monitors/{id: Int}", MonitorController, […])` (17),
 `Repo.all(Monitor)`, `Json.decode_as(Monitor, body)`, и уже в спеке — MFA
 `{ module: M, function: F, args: A }` (§13.1). Спека неявно требует
 модуль-значение, но нигде его не определяет.
