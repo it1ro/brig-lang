@@ -204,11 +204,13 @@ func TestParseTrapInline(t *testing.T) {
 }
 
 func TestParseTrapBlock(t *testing.T) {
+	// ensure — trap_item внутри INDENT-блока trap (T-156 #211: раньше
+	// хвост после первого trap_item молча отбрасывался, и этот тест не
+	// проверял ни ensure, ни f2()).
 	src := `result = trap
     f1()
-ensure close_f1()
+    ensure close_f1()
     f2()
-result
 `
 	mustParse(t, ModeRepl, src)
 }
@@ -266,6 +268,28 @@ func TestParseErrors(t *testing.T) {
 	for _, c := range cases {
 		mustFail(t, c.mode, c.src, c.sub)
 	}
+}
+
+// TestParseReplRejectsTrailingTokens — T-156 (#211): repl_line ::= stmt
+// разбирает ровно один стейтмент; всё, что осталось после него, раньше
+// молча отбрасывалось (`parseRepl` не проверял NEWLINE/EOF после стейтмента).
+func TestParseReplRejectsTrailingTokens(t *testing.T) {
+	// Хвост на той же строке (короткая лямбда без скобок вокруг параметра
+	// съедает только "1", "-> a" остаётся неразобранным).
+	mustFail(t, ModeRepl, "f = 1 -> a\n", "->")
+
+	// Второй стейтмент после NEWLINE — тоже не может быть тихо
+	// отброшен: repl_line допускает ровно один top-level стейтмент.
+	mustFail(t, ModeRepl, "x = 1\ny = 2\n", "")
+
+	// Тот же вход в module-режиме — предсказуемая, отдельно проверенная
+	// ошибка (не тема этой задачи, но фиксирует контраст из issue).
+	mustFail(t, ModeModule, "module M\nfn main() ->\n    f = 1 -> a\n", "NEWLINE")
+
+	// `(a, 1)` — не валидный список параметров короткой лямбды (`1` не
+	// идентификатор), поэтому `(a, 1)` разбирается как кортеж, а
+	// оставшееся `-> a` теперь тоже ошибка, а не тихо отброшенный хвост.
+	mustFail(t, ModeRepl, "f = (a, 1) -> a\n", "->")
 }
 
 // ---- Fuzz ----
