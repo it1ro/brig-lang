@@ -9,7 +9,7 @@ import (
 	"github.com/it1ro/brig-lang/internal/lexer"
 )
 
-// Mode выбирает диалект разбора: модуль или REPL (§9.3).
+// Mode выбирает диалект разбора: модуль, REPL или script (§11.3).
 type Mode int
 
 const (
@@ -17,6 +17,8 @@ const (
 	ModeModule Mode = iota // ModeModule is module parsing mode
 	// ModeRepl selects REPL parsing mode.
 	ModeRepl // ModeRepl is REPL parsing mode
+	// ModeScript — файл без module (§11.3): те же инструкции, что repl_input.
+	ModeScript
 )
 
 // Parse — совместимая обёртка: только проверка без возврата AST.
@@ -33,10 +35,14 @@ func ParseProgram(mode Mode, src string) (*ast.Program, error) {
 		return nil, err
 	}
 	p := &parser{toks: toks, mode: mode}
-	if mode == ModeRepl {
+	switch mode {
+	case ModeRepl, ModeScript:
+		// script ::= [ NEWLINE ] [ repl_input ] EOF (§11.3).
+		// Пустые строки блок не закрывают: это делает лексер файла, не парсер.
 		return p.parseRepl()
+	default:
+		return p.parseModule()
 	}
-	return p.parseModule()
 }
 
 // Error — ошибка парсинга с позицией (формат E.1).
@@ -184,7 +190,17 @@ func (p *parser) parseReplInput() ([]*ast.Program, error) {
 }
 
 // repl_line ::= import_decl | alias_decl | stmt
+//
+// type и pub fn в script и REPL — ошибка парсинга (§11.3): им место в модуле.
 func (p *parser) parseReplLine() (*ast.Program, error) {
+	switch p.cur().Type {
+	case lexer.KW_TYPE:
+		return nil, p.errf("type is not allowed in script or repl")
+	case lexer.KW_PUB:
+		return nil, p.errf("pub fn is not allowed in script or repl")
+	case lexer.KW_MODULE:
+		return nil, p.errf("module is not allowed in script or repl")
+	}
 	prog := &ast.Program{}
 	if p.at(lexer.KW_IMPORT) || p.at(lexer.KW_ALIAS) {
 		var d ast.Decl

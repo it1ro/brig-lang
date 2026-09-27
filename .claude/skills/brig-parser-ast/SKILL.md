@@ -10,8 +10,9 @@ description: >
 # Brig — парсер и AST (`internal/parser`, `internal/ast`)
 
 Нормативный источник: `brig.ebnf` + `docs/01-language-design.md` Part II A.
-Парсер — один код с флагом `Mode` (`ModeModule` / `ModeRepl`), не два
-разных парсера.
+Парсер — один код с флагом `Mode` (`ModeModule` / `ModeRepl` / `ModeScript`).
+`ModeScript` разбирает `script` (§11.3) теми же инструкциями, что
+`repl_input`; `type`, `pub fn` и `module` в нём — ошибка парсинга.
 
 ## Инварианты грамматики
 
