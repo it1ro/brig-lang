@@ -84,13 +84,14 @@ make update-bytecode
 
 `make check-examples` прогоняет все ```` ```brig ```` fenced-блоки из
 `docs/01-language-design.md`: `module`/`stmt`/`expr` — парсер, sema,
-компилятор и round-trip (T-116); `repl` — только парсер (исполнение —
-T-117). Метки: `brig module`, `brig repl`, `brig expr`, `brig stmt`,
+компилятор и round-trip (T-116); `repl` — исполняется в одной
+REPL-сессии, строка ответа после `> ввод` разбирается как выражение и
+сравнивается через `==`, `raise <терм>` — ожидаемый raise (T-117). Метки: `brig module`, `brig repl`, `brig expr`, `brig stmt`,
 `brig invalid` (опционально `brig invalid "подстрока ошибки"` — блок
 обязан упасть именно с ней), `brig pending(T-NNN)` (блок обязан **не**
 компилироваться, T-NNN ищется в `tasks/*.md`; скомпилировался — снять
 метку), `text`/`pseudo` для мета-примеров. Ожидаемый результат —
-`blocks: checked 63, failed 0, pending 6`. Новый провал: поправить пример;
+`blocks: checked 65, failed 0, pending 6`. Новый провал: поправить пример;
 демонстрация невалидного кода — `brig invalid "…"`; нереализованная фича —
 `pending(T-NNN)` с задачей; баг реализации — issue, не `pending`;
 мета-пример вроде обёртки `fn main() -> <expr>` — `text`.
