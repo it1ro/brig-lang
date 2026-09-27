@@ -762,6 +762,15 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 			regs[in.A()] = r
 			f.ip++
 
+		case CONCAT:
+			// компилятор кладёт сюда только Str (to_str и литеральные части)
+			if regs[in.B()].Kind != runtime.KindStr || regs[in.C()].Kind != runtime.KindStr {
+				return fail(fmt.Errorf("internal: CONCAT: operands %s, %s",
+					regs[in.B()].Inspect(), regs[in.C()].Inspect()))
+			}
+			regs[in.A()] = runtime.Str(regs[in.B()].Str + regs[in.C()].Str)
+			f.ip++
+
 		case SUB:
 			r, err := sub(regs[in.B()], regs[in.C()])
 			if err != nil {
@@ -1542,7 +1551,7 @@ func vmMakeRecord(shape runtime.Value, vals []runtime.Value) (runtime.Value, err
 }
 
 // vmGetField — доступ к полю записи. Отсутствующее поле — raise
-// (:field_error, (:field, record)).
+// (:no_field, (:field, record)).
 func vmGetField(obj, name runtime.Value) (runtime.Value, error) {
 	if name.Kind != runtime.KindStr {
 		return runtime.Unit, fmt.Errorf("internal: GETFIELD: field name %s", name.Inspect())
@@ -1554,7 +1563,7 @@ func vmGetField(obj, name runtime.Value) (runtime.Value, error) {
 		return v, nil
 	}
 	return runtime.Unit, &ErrRaise{Val: runtime.Tuple(
-		runtime.Atom("field_error"),
+		runtime.Atom("no_field"),
 		runtime.Tuple(runtime.Atom(name.Str), obj))}
 }
 
