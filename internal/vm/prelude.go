@@ -129,7 +129,7 @@ func InstallPrelude(vm *VM) {
 	// из байткода состояние обхода живёт в кадре актора, колбэк исполняется
 	// обычным кадром и тратит редукции. Через Caller (vm.Call) — синхронно.
 	defResumable("map", 2, func(args []runtime.Value) (nativeCont, error) {
-		f, xs := args[0], args[1]
+		xs, f := args[0], args[1]
 		if xs.Kind != runtime.KindList {
 			return nil, typeErr("map", xs)
 		}
@@ -145,7 +145,7 @@ func InstallPrelude(vm *VM) {
 	})
 
 	defResumable("filter", 2, func(args []runtime.Value) (nativeCont, error) {
-		f, xs := args[0], args[1]
+		xs, f := args[0], args[1]
 		if xs.Kind != runtime.KindList {
 			return nil, typeErr("filter", xs)
 		}
@@ -166,7 +166,7 @@ func InstallPrelude(vm *VM) {
 	})
 
 	defResumable("find", 2, func(args []runtime.Value) (nativeCont, error) {
-		f, xs := args[0], args[1]
+		xs, f := args[0], args[1]
 		if xs.Kind != runtime.KindList {
 			return nil, typeErr("find", xs)
 		}
@@ -183,7 +183,7 @@ func InstallPrelude(vm *VM) {
 	})
 
 	defResumable("all", 2, func(args []runtime.Value) (nativeCont, error) {
-		f, xs := args[0], args[1]
+		xs, f := args[0], args[1]
 		if xs.Kind != runtime.KindList {
 			return nil, typeErr("all", xs)
 		}
@@ -200,7 +200,7 @@ func InstallPrelude(vm *VM) {
 	})
 
 	defResumable("any", 2, func(args []runtime.Value) (nativeCont, error) {
-		f, xs := args[0], args[1]
+		xs, f := args[0], args[1]
 		if xs.Kind != runtime.KindList {
 			return nil, typeErr("any", xs)
 		}
@@ -217,7 +217,7 @@ func InstallPrelude(vm *VM) {
 	})
 
 	defResumable("fold", 3, func(args []runtime.Value) (nativeCont, error) {
-		f, acc, xs := args[0], args[1], args[2]
+		xs, acc, f := args[0], args[1], args[2]
 		if xs.Kind != runtime.KindList {
 			return nil, typeErr("fold", xs)
 		}
