@@ -1,11 +1,13 @@
 # Один актор на монитор. Вместо cron + очереди + воркеров — рекурсивный recv.
 # Упал (кривой ответ, баг в парсинге) — супервизор перезапустит только его.
 #
-# NEEDS: pub fn (03/L3), реестр имён с кортежным ключом (02/R5, Q-reg),
-#        Timer.send_after (02/R6), Time.monotonic_ms/now (02/R7),
-#        Http.Client (04), Server.call/reply (04), доступ к полям (03/L4),
-#        ref-ожидание без чужих сообщений внутри Http.Client (02/R12, Q-await),
-#        опровержимый паттерн в `=` (03/L21)
+# needs: T-133, T-135, T-137, T-143, T-164, T-165, T-166, T-170, horizon
+#   pub fn (03/L3) — T-143; реестр имён с кортежным ключом (02/R5, Q-reg) — T-164;
+#   Timer.send_after (02/R6), Time.monotonic_ms/now (02/R7) — T-166; Server.call/reply (04) — T-170;
+#   ref-ожидание внутри Http.Client (02/R12, Q-await) — T-165; опровержимый паттерн в `=` (03/L21) — T-133;
+#   модули проекта — T-135, T-137;
+#   horizon: Http.Client (04).
+#   Доступ к полям (03/L4) уже работает.
 module Lookout.Monitors.Checker
 
 import Http.Client

@@ -1,7 +1,9 @@
 # Миграция — модуль с up/down, возвращающими SQL. Встраивается в payload
 # бинарника; задача `sql.migrate` применяет в транзакции: `./lookout sql.migrate`
 # на проде, `brig task sql.migrate` (или `calmar db migrate`) в dev (16).
-# NEEDS: pub fn (03/L3), многострочные строки (03/L9), Sql.Migration (04)
+# needs: T-143, T-145, horizon
+#   pub fn (03/L3) — T-143; многострочные строки (03/L9) — T-145;
+#   horizon: Sql.Migration (04).
 module Migrations.CreateMonitors
 
 pub fn up() ->

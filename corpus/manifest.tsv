@@ -1,0 +1,56 @@
+# Манифест корпуса библиотечного кода (T-115). Прогон — make corpus.
+#
+# Колонки через TAB: путь от корня репозитория, уровень, ожидание, needs.
+#   уровень:   parse — лексер и парсер;
+#              check — + sema и компиляция в байткод (после T-139 — имена);
+#              run   — + brig run: код 0, stdout совпадает с X.out, если он есть.
+#   ожидание:  pass — файл проходит все уровни до указанного включительно;
+#              fail — проходит уровни ниже указанного и падает на нём.
+#   needs:     задачи, которых файл ждёт: T-NNN из tasks/ или horizon — фича
+#              за горизонтом плана (tasks/README.md, «Горизонт после Wave 13»).
+#              У pass — «-». У .brig совпадает со строкой `# needs:` в файле;
+#              причины — в комментарии под ней.
+#
+# make corpus падает на регрессии, на неожиданном проходе (fail с needs
+# прошёл свой уровень: снять выполненные задачи из needs и поднять уровень —
+# make update-corpus поднимает уровень сам) и на needs с несуществующей
+# задачей. Каждый *.brig в corpus/ обязан иметь строку.
+#
+# Шаблоны .bt в корпус не переносятся: парсера шаблонов нет (research 15),
+# они перечислены здесь со ссылкой на research.
+
+# ---- lang ----
+corpus/lang/pipe_map.brig	run	pass	-
+corpus/lang/records.brig	run	pass	-
+corpus/lang/with.brig	run	pass	-
+
+# ---- lookout ----
+corpus/lookout/config/config.brig	parse	fail	T-143, horizon
+corpus/lookout/lib/lookout/application.brig	parse	fail	T-135, T-137, T-143, T-163, T-170, horizon
+corpus/lookout/lib/lookout/monitors.brig	parse	fail	T-135, T-137, T-138, T-143, T-145, T-146, horizon
+corpus/lookout/lib/lookout/monitors/checker.brig	parse	fail	T-133, T-135, T-137, T-143, T-164, T-165, T-166, T-170, horizon
+corpus/lookout/lib/lookout/monitors/monitor.brig	parse	fail	T-143, T-147, horizon
+corpus/lookout/lib/lookout/monitors/supervisor.brig	parse	fail	T-135, T-137, T-143, T-146, T-164, T-167, T-170, horizon
+corpus/lookout/lib/lookout/repo.brig	parse	fail	T-143, T-146, horizon
+corpus/lookout/lib/lookout_web/controllers/api/monitor_controller.brig	parse	fail	T-135, T-137, T-143, T-170, horizon
+corpus/lookout/lib/lookout_web/controllers/monitor_controller.brig	parse	fail	T-135, T-137, T-143, T-144, horizon
+corpus/lookout/lib/lookout_web/plugs.brig	parse	fail	T-143, horizon
+corpus/lookout/lib/lookout_web/router.brig	parse	fail	T-135, T-137, T-143, T-144, horizon
+corpus/lookout/lib/main.brig	run	fail	T-135, T-137, T-168, T-170, horizon
+corpus/lookout/priv/migrations/001_create_monitors.brig	parse	fail	T-143, T-145, horizon
+corpus/lookout/project.brig	parse	fail	T-143, horizon
+corpus/lookout/scripts/import_monitors.brig	check	fail	T-135, T-137, T-146, T-176, horizon
+corpus/lookout/tasks/db/seed.brig	parse	fail	T-135, T-137, T-143, T-146, horizon
+corpus/lookout/test/monitors_test.brig	parse	fail	T-133, T-135, T-137, T-138, T-143, T-147, horizon
+corpus/lookout/test/web/api_test.brig	parse	fail	T-133, T-138, T-143, T-147, T-176, horizon
+
+# ---- whelk ----
+corpus/whelk/hook.brig	check	fail	T-146, T-155, T-164, T-165, T-166, horizon
+
+# ---- шаблоны .bt (web-mvp-research/demo) ----
+web-mvp-research/demo/lib/lookout_web/components/field.html.bt	parse	fail	horizon
+web-mvp-research/demo/lib/lookout_web/components/status_badge.html.bt	parse	fail	horizon
+web-mvp-research/demo/lib/lookout_web/templates/layouts/app.html.bt	parse	fail	horizon
+web-mvp-research/demo/lib/lookout_web/templates/monitors/form.html.bt	parse	fail	horizon
+web-mvp-research/demo/lib/lookout_web/templates/monitors/index.html.bt	parse	fail	T-144, horizon
+web-mvp-research/demo/lib/lookout_web/templates/monitors/show.html.bt	parse	fail	horizon

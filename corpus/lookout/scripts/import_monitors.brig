@@ -8,8 +8,12 @@
 # Запускается интерпретатором из того же одного бинарника. В собранном
 # приложении доступен как `lookout run scripts/import_monitors.brig`.
 #
-# NEEDS: shebang (05), Cli.parse (05), File/Stdin (02/R2, 04), Csv (04),
-#        Http.Client (04), Env (04), Sys.exit (04), модули приложения из скрипта (Q-script)
+# needs: T-135, T-137, T-146, T-176, horizon
+#   модули приложения из скрипта (Q-script) — T-135, T-137; Result.unwrap (04) — T-146;
+#   Map.get_or (03/L16) — T-176;
+#   horizon: Cli.parse (05), File/Stdin (02/R2, 04), Csv, Http.Client, Env, Sys.exit (04),
+#   Changeset (06).
+#   Shebang (05) уже работает: `#` — комментарий.
 module Main
 
 import Cli

@@ -5,9 +5,11 @@
 # клиентом и тишину (keep-alive ping через after). Ни async, ни каналов,
 # ни колбэков, ни отдельного «event loop»-API.
 #
-# NEEDS: pub fn (03/L3), Conn.json/read_json (06), Calmar.Sse (04),
-#        PubSub (04, 02/R5), guard с полем в recv (есть в спеке, ждёт T-73/L4),
-#        Json.encode через to_json (03/L6), Server.call (04)
+# needs: T-135, T-137, T-143, T-170, horizon
+#   pub fn (03/L3) — T-143; Server.call (04) — T-170; модули проекта — T-135, T-137;
+#   horizon: Conn.json/read_json (06), Calmar.Sse, PubSub, Log (04),
+#   Json.encode через to_json (03/L6).
+#   Guard с полем в recv уже работает.
 module LookoutWeb.Api.MonitorController
 
 import Calmar.Conn

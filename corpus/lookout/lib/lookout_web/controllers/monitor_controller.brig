@@ -2,9 +2,11 @@
 # Error((:not_found, _)) и прочие доменные ошибки превращает в ответ
 # Calmar.Fallback (404/422/...), поэтому `with` без else — нормальный стиль.
 #
-# NEEDS: pub fn (03/L3), map-паттерн в параметре fn (есть в спеке, ждёт T-70),
-#        Conn/render/flash/redirect (06), компилируемые шаблоны (03/L10),
-#        Router.path по функции (03/L5), типизированные параметры пути (17)
+# needs: T-135, T-137, T-143, T-144, horizon
+#   pub fn (03/L3) — T-143; Router.path по функции (03/L5) — T-144; модули проекта — T-135, T-137;
+#   horizon: Conn/render/flash/redirect (06), компилируемые шаблоны (03/L10),
+#   типизированные параметры пути (17).
+#   Map-паттерн в параметре fn уже работает.
 module LookoutWeb.MonitorController
 
 import Calmar.Conn

@@ -1,7 +1,9 @@
 # Доменная запись + валидация входа. Модуль ничего не знает про HTTP.
-# NEEDS: doc-комментарии ## и доктесты (22), pub fn (03/L3), доступ к полям (03/L4), тип как значение (03/L5, L19),
-#        «модуль типа» для validate/to_json/to_param (03/L6), Check + Changeset (09, 06),
-#        Instant (03/L12)
+# needs: T-143, T-147, horizon
+#   pub fn (03/L3) — T-143; doc-комментарии ## и доктесты (22) — T-147;
+#   horizon: тип как значение (03/L5, L19), «модуль типа» для validate/to_json/to_param (03/L6),
+#   Check + Changeset (09, 06), Instant (03/L12).
+#   Доступ к полям (03/L4) уже работает.
 ## Мониторы: создание, валидация и представление для JSON и URL.
 module Lookout.Monitors.Monitor
 

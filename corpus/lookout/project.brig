@@ -1,5 +1,7 @@
 # Манифест проекта — обычный Brig-модуль, а не TOML/YAML.
-# NEEDS: pub fn (03/L3), манифест как модуль (05, Q-manifest), пакеты и права (10)
+# needs: T-143, horizon
+#   pub fn (03/L3) — T-143;
+#   horizon: манифест как модуль (05, Q-manifest), пакеты и права (10).
 module Project
 
 pub fn project() ->

@@ -1,0 +1,40 @@
+# Цепочки `with` по Result и Option: §8.2, §10.1.
+
+fn validate(n) when n > 0 -> Ok(n)
+fn validate(n)            -> Error((:invalid, n))
+
+fn transform(n) -> Ok(n * 10)
+
+fn save(n) when n < 1000 -> Ok((:saved, n))
+fn save(n)               -> Error((:too_big, n))
+
+fn process(input) ->
+    with
+        Ok(a) <- validate(input)
+        Ok(b) <- transform(a)
+        Ok(c) <- save(b)
+        Ok(c)
+    else
+        Error(e) -> Error(e)
+
+# Без else — несовпавшее значение возвращается как есть.
+fn propagate(input) ->
+    with
+        Ok(a) <- validate(input)
+        _     <- print("valid", a)
+        y     <- a + 1
+        Ok(y)
+
+fn lookup(m, k) ->
+    with
+        Some(v) <- Map.get(m, k)
+        Some(v * 2)
+
+fn main() ->
+    print(process(5))
+    print(process(-1))
+    print(process(500))
+    print(propagate(3))
+    print(propagate(0))
+    m = %{ "a" => 1 }
+    print(lookup(m, "a"), lookup(m, "b"))

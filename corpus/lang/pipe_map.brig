@@ -1,0 +1,17 @@
+# Коллекции через pipe в стиле библиотечного кода: §4.2, §6.2, §7.5, §11.5.
+# Значение подставляется первым аргументом, коллекция — первая (T-120).
+
+fn double(x) -> x * 2
+
+fn main() ->
+    nums = [1, 2, 3, 4, 5]
+    print(nums |> map(x -> x * 2))
+    print(nums |> filter(x -> x > 2) |> map(double))
+    print(nums |> fold(0, (acc, x) -> acc + x))
+    print(nums |> find(x -> x > 3))
+    print(nums |> find(x -> x > 10))
+    print(nums |> all(x -> x > 0), nums |> any(x -> x > 4))
+    print(nums |> map(x -> x**2) |> len())
+    words = ["b", "a", "c"]
+    print(words |> map(to_str) |> fold("", (acc, w) -> "\(acc)\(w)"))
+    print(list(1 to 4) |> map(x -> x * 10))

@@ -1,8 +1,11 @@
 # Lookout — uptime-монитор на Calmar (фантазийный проект)
 
 Написан так, будто Brig 0.6 и Calmar 0.1 уже вышли. Каждое место, где нужна
-несуществующая фича, помечено в заголовке файла строкой `# NEEDS: …` со
-ссылкой на требование (02/R*, 03/L*, 04, 05, 06, Q-* в 07).
+несуществующая фича, помечено в заголовке файла строкой `# needs: T-NNN, …`
+(задачи из `tasks/`; `horizon` — фича за горизонтом плана), под ней —
+причины со ссылками на требования research (02/R*, 03/L*, 04, 05, 06, Q-* в 07).
+Ожидаемый уровень каждого файла — в [`corpus/manifest.tsv`](../manifest.tsv),
+проверка — `make corpus`.
 
 ## Что делает
 
@@ -41,8 +44,8 @@ $ ./scripts/import_monitors.brig list.csv --api http://edge-01:8080
 | `lib/lookout_web/plugs.brig` | плаг = `Conn -> Conn` |
 | `lib/lookout_web/controllers/…` | HTML/JSON, ошибки через fallback |
 | `lib/lookout_web/controllers/api/monitor_controller.brig` | **SSE как `recv`-цикл** |
-| `lib/lookout_web/templates/**/*.html.bt` | шаблоны `.bt` (15): параметры, `:if`/`:else`, лэйаут |
-| `lib/lookout_web/components/*.html.bt` | компоненты `<StatusBadge>` (`:case`/`:of`) и `<Field>` |
+| [`web-mvp-research/demo/…/templates/**/*.html.bt`](../../web-mvp-research/demo/lib/lookout_web/templates/) | шаблоны `.bt` (15): параметры, `:if`/`:else`, лэйаут |
+| [`web-mvp-research/demo/…/components/*.html.bt`](../../web-mvp-research/demo/lib/lookout_web/components/) | компоненты `<StatusBadge>` (`:case`/`:of`) и `<Field>` |
 | `priv/migrations/…` | миграции модулями |
 | `test/…` | юнит-тесты домена и in-memory интеграционные тесты |
 | `scripts/import_monitors.brig` | серверный скрипт на shebang, общий код с приложением |
@@ -76,12 +79,11 @@ $ ./scripts/import_monitors.brig list.csv --api http://edge-01:8080
 
 ## Проверка текущим парсером
 
-`bin/brig check` по всем 18 `.brig`-файлам Calmar-демо и `demo-whelk/hook.brig`
-(с заменой `pub fn` → `fn`): **15 из 19 разбираются без ошибок** (компилятор
-не запускался: модулей Calmar нет). Оставшиеся 4 падают только на ещё не
-реализованном синтаксисе, который уже решён:
-- многострочные строки `"""` — L9 (`monitors.brig`, миграция);
-- блочная лямбда `fn ->` в аргументах вызова — L22 (#169) и offside внутри
-  скобок (#2) (оба теста).
+Раньше — ручной прогон `bin/brig check` (снимок research: 15 из 19 файлов
+разбирались после замены `pub fn` → `fn`). Теперь файлы лежат в корпусе как
+есть, и `make corpus` проверяет каждый до уровня из манифеста: регрессия или
+неожиданный проход роняют CI, сводка показывает, какие задачи разблокируют
+больше файлов.
 
-Шаблоны `.bt` — отдельный формат (15), парсером Brig не проверяются.
+Шаблоны `.bt` — отдельный формат (15), парсером Brig не проверяются и
+остались в `web-mvp-research/demo/`; в манифесте они перечислены с `needs`.
