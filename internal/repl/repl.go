@@ -40,6 +40,9 @@ func New(m *vm.VM, out io.Writer) *REPL {
 	}
 }
 
+// SetOutput меняет, куда пишутся диагностика и info.
+func (r *REPL) SetOutput(out io.Writer) { r.out = out }
+
 // Eval выполняет одну REPL-строку и возвращает её значение.
 //
 // `src` должен содержать ровно один top-level стейтмент (repl_line).

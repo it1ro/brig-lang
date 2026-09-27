@@ -1,11 +1,12 @@
 // Package examples implements the check-examples tool (A2): extracting
 // ```brig fenced blocks from design docs and running them through the
-// parser, sema and compiler.
+// parser, sema and compiler; REPL blocks are executed (T-117).
 package examples
 
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -15,7 +16,10 @@ import (
 	"github.com/it1ro/brig-lang/internal/compiler"
 	"github.com/it1ro/brig-lang/internal/lexer"
 	"github.com/it1ro/brig-lang/internal/parser"
+	"github.com/it1ro/brig-lang/internal/repl"
+	"github.com/it1ro/brig-lang/internal/runtime"
 	"github.com/it1ro/brig-lang/internal/sema"
+	"github.com/it1ro/brig-lang/internal/vm"
 )
 
 // Result — отчёт по одному блоку (A2). Line:Col — позиция в markdown:
@@ -218,8 +222,13 @@ func checkBlock(b block, tasks map[string]bool) Result {
 	src := wrapForMode(mode, b.raw)
 
 	if mode == "repl" {
-		if err := parseRepl(src); err != nil {
-			return fail(b, mode, err.Error())
+		if err := runRepl(src); err != nil {
+			r := fail(b, mode, err.Error())
+			var re *replError
+			if errors.As(err, &re) {
+				r.Line = b.line + re.line
+			}
+			return r
 		}
 		return Result{File: b.file, Line: b.line, Col: 1, Mode: mode, OK: true}
 	}
@@ -346,36 +355,137 @@ func wrapForMode(mode, raw string) string {
 	return raw
 }
 
-// parseRepl: каждая строка — отдельный top-level стейтмент (§10.7).
-func parseRepl(src string) error {
-	for _, ln := range strings.Split(src, "\n") {
+// replError — провал REPL-блока на строке line тела блока (с 1).
+type replError struct {
+	line int
+	msg  string
+}
+
+func (e *replError) Error() string { return e.msg }
+
+// runRepl исполняет REPL-блок (§G.5, T-117): строки `> ввод` — в одной
+// REPL-сессии; строка после ввода без `>` — ответ: выражение, которое
+// вычисляется в отдельной чистой сессии и сравнивается с результатом
+// через `==` (runtime.Equal), или `raise <терм>` — ожидаемый непойманный
+// raise. Ввод без ответа исполняется, но не сравнивается; неожиданный
+// raise — провал. Ошибка — *replError.
+func runRepl(src string) error {
+	session := repl.New(vm.New(), io.Discard)
+	oracle := repl.New(vm.New(), io.Discard)
+
+	var (
+		input     string // последний ввод, ещё без ответа
+		inputLine int
+		res       runtime.Value
+		runErr    error
+		answered  bool
+	)
+	// finish: ввод без ответа — только неожиданный raise или ошибка.
+	finish := func() error {
+		if input == "" || answered || runErr == nil {
+			return nil
+		}
+		return &replError{inputLine, fmt.Sprintf("> %s: %v", input, runErr)}
+	}
+	for i, ln := range strings.Split(src, "\n") {
 		line := strings.TrimSpace(ln)
 		if line == "" {
 			continue
 		}
 		if strings.HasPrefix(line, ">") {
-			line = strings.TrimSpace(strings.TrimPrefix(line, ">"))
-		}
-		if line == "" {
+			if err := finish(); err != nil {
+				return err
+			}
+			input = strings.TrimSpace(strings.TrimPrefix(line, ">"))
+			inputLine, answered = i+1, false
+			res, runErr = evalLine(session, input)
+			if runErr != nil && !isRaise(runErr) {
+				return &replError{inputLine, fmt.Sprintf("> %s: %v", input, runErr)}
+			}
 			continue
 		}
-		if isReplOutput(line) {
-			continue
+		if input == "" {
+			return &replError{i + 1, fmt.Sprintf("ответ %q без строки ввода `>`", line)}
 		}
-		if _, err := parser.ParseProgram(parser.ModeRepl, line+"\n"); err != nil {
-			return fmt.Errorf("repl line %q: %w", line, err)
+		if answered {
+			return &replError{i + 1, fmt.Sprintf("> %s: больше одной строки ответа", input)}
 		}
+		answered = true
+		if err := compareAnswer(oracle, input, line, res, runErr); err != nil {
+			return &replError{i + 1, err.Error()}
+		}
+	}
+	return finish()
+}
+
+// evalLine: одна строка ввода; сообщения sema — в текст ошибки.
+func evalLine(r *repl.REPL, src string) (runtime.Value, error) {
+	var diag strings.Builder
+	r.SetOutput(&diag)
+	defer r.SetOutput(io.Discard)
+	v, err := r.Eval(src + "\n")
+	if err != nil && diag.Len() > 0 {
+		return v, fmt.Errorf("%w: %s", err, strings.TrimSpace(diag.String()))
+	}
+	return v, err
+}
+
+// compareAnswer сверяет результат ввода со строкой ответа.
+func compareAnswer(oracle *repl.REPL, input, answer string, res runtime.Value, runErr error) error {
+	wantRaise := false
+	term := answer
+	if rest, ok := strings.CutPrefix(answer, "raise "); ok {
+		wantRaise, term = true, rest
+	}
+	want, err := evalAnswer(oracle, term)
+	if err != nil {
+		return fmt.Errorf("> %s: ответ %q: %v", input, answer, err)
+	}
+	got := "raise " + runErrVal(runErr).Inspect()
+	if runErr == nil {
+		got = res.Inspect()
+	}
+	wantStr := want.Inspect()
+	if wantRaise {
+		wantStr = "raise " + wantStr
+	}
+	if wantRaise != (runErr != nil) {
+		return fmt.Errorf("> %s: want %s, got %s", input, wantStr, got)
+	}
+	if wantRaise {
+		res = runErrVal(runErr)
+	}
+	if !runtime.Equal(res, want) {
+		return fmt.Errorf("> %s: want %s, got %s", input, wantStr, got)
 	}
 	return nil
 }
 
-// isReplOutput: строка без '=' и операторов/скобок — вероятный вывод (A2).
-func isReplOutput(line string) bool {
-	if strings.ContainsAny(line, "=()[]{}<>+*%|:") {
-		return false
+// evalAnswer: ответ — одно выражение (не связывание), вычисляется в
+// чистой сессии, чтобы ответ не видел имён блока.
+func evalAnswer(oracle *repl.REPL, src string) (runtime.Value, error) {
+	prog, err := parser.ParseProgram(parser.ModeRepl, src+"\n")
+	if err != nil {
+		return runtime.Unit, err
 	}
-	if !regexp.MustCompile(`^[A-Za-z0-9_]+$`).MatchString(line) {
-		return false
+	if len(prog.Stmts) != 1 {
+		return runtime.Unit, errors.New("ответ — ровно одно выражение")
 	}
-	return true
+	if _, ok := prog.Stmts[0].(ast.ExprStmt); !ok {
+		return runtime.Unit, errors.New("ответ — выражение, а не связывание")
+	}
+	return evalLine(oracle, src)
+}
+
+func isRaise(err error) bool {
+	var re *vm.ErrRaise
+	return errors.As(err, &re)
+}
+
+func runErrVal(err error) runtime.Value {
+	var re *vm.ErrRaise
+	if errors.As(err, &re) {
+		return re.Val
+	}
+	return runtime.Unit
 }
