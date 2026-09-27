@@ -26,8 +26,8 @@ type testCase struct {
 //	Test.it("...", () -> Test.assert_eq(2 + 2, 4))
 //	assert(Test.run() == 0)
 //
-// Exit code остаётся в ведении CLI (см. cmd/brig/main.go):
-// если main возвращает ненулевое, brig run завершится с exitRuntime.
+// Exit code — в ведении CLI: `brig test` (cmd/brig/test.go) завершается
+// с 1, если упал хоть один тест.
 func InstallTestPrelude(vm *VM) {
 	def := func(name string, arity int, fn runtime.NativeFunc) {
 		vm.globals[name] = runtime.Func(&runtime.FuncValue{
@@ -120,12 +120,19 @@ func InstallTestPrelude(vm *VM) {
 	})
 }
 
-// runTests — синхронный прогон всех зарегистрированных тестов.
-// Возвращает Int(n_failed). Ошибка не возвращается: каждый тест
-// изолирован, падение одного не прерывает остальные.
+// runTests — синхронный прогон всех зарегистрированных тестов (Test.run).
+// Возвращает Int(n_failed).
 func (vm *VM) runTests() (runtime.Value, error) {
-	passed := 0
-	failed := 0
+	passed, failed := vm.RunTests()
+	fmt.Printf("\n%d passed, %d failed\n", passed, failed)
+	return runtime.Int(int64(failed)), nil
+}
+
+// RunTests прогоняет тесты, зарегистрированные Test.it, и сбрасывает
+// реестр: повторный прогон не запускает старые тесты. Каждый тест
+// изолирован, падение одного не прерывает остальные. Итог — для
+// Test.run и `brig test` (T-147).
+func (vm *VM) RunTests() (passed, failed int) {
 	for _, tc := range vm.tests {
 		full := tc.name
 		if tc.group != "" {
@@ -140,9 +147,7 @@ func (vm *VM) runTests() (runtime.Value, error) {
 			fmt.Printf("ok   %s\n", full)
 		}
 	}
-	fmt.Printf("\n%d passed, %d failed\n", passed, failed)
-	// Сбрасываем реестр, чтобы повторный run не запускал старые тесты.
 	vm.tests = nil
 	vm.currentGroup = ""
-	return runtime.Int(int64(failed)), nil
+	return passed, failed
 }
