@@ -1,0 +1,4 @@
+fn main() ->
+    add = (a, b) -> a + b
+    one = x -> x + 1
+    add(one(1), 2)

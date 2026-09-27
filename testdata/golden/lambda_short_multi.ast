@@ -1,0 +1,1 @@
+(program (fn main (clause (params) (block (let add (lambda (a b) (+ (var a) (var b)))) (let one (lambda x (+ (var x) (lit 1)))) (call (var add) (call (var one) (lit 1)) (lit 2))))))
