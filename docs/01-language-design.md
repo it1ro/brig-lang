@@ -290,7 +290,7 @@ x = "value: \(if ready then 1 else 0)"
 
 ### 4.1 Кортежи (`Tuple`)
 
-```brig
+```brig pending(T-133)
 t = (1, "a", :ok)
 (a, b, c) = t
 ```
@@ -312,7 +312,7 @@ t = (1, "a", :ok)
 
 `[1, 2, ..]` в позиции **выражения** — запрещено: `..` без операнда допустим только в паттерне.
 
-```brig invalid
+```brig invalid "expected expression, got ]"
 fn main() ->
     xs = [1, 2, ..]
 ```
@@ -350,7 +350,7 @@ len(v)
 
 ### 4.5 `Map`
 
-```brig
+```brig pending(T-155)
 m = %{ "a" => 1, "b" => 2 }
 m["a"]                 # Option
 Map.put(m, "c", 3)
@@ -432,7 +432,7 @@ Json.encode(User{ id: 1 }, { type_tag: true })   # {"__type__": "User", "id": 1}
 - В любом количестве, в любой позиции.
 - В позиции **аргумента вызова** форма `..` требует выражения: `f(..xs)` корректен, `f(..)` — ошибка парсинга.
 
-```brig
+```brig pending(T-155)
 [0, ..xs, 99]
 { ..user, name: "Bob" }
 { ..a, ..b, x: 1 }
@@ -535,7 +535,7 @@ fn ->
 
 ### 6.3 Вариадические параметры и спред аргументов
 
-```brig
+```brig pending(T-126)
 fn log_all(..args) ->
     args |> List.each(log)
 
@@ -798,7 +798,7 @@ fn foo((:ok, _) as full) -> full
 
 ### 9.3 Конструкторы
 
-```brig
+```brig pending(T-126)
 Some(x)
 Ok(v)
 Error(e)
@@ -831,7 +831,7 @@ fn p_mixed([1, 2, _, ..rest]) -> rest
 
 ### 9.6 Record-паттерны
 
-```brig
+```brig pending(T-126)
 User{ id: id, name: name }
 User{ id: id }   # частичный
 ```
@@ -1910,7 +1910,7 @@ fn main() ->
 
 **Пример (некорректный):** `ensure` **вне** `INDENT`-блока `trap` — синтаксическая ошибка:
 
-```brig invalid
+```brig invalid "expected expression, got ensure"
 fn main() ->
     result = trap
         f1()
@@ -2171,7 +2171,16 @@ tools/check-examples
 ```brig expr
 ```brig stmt
 ```brig invalid
+```brig invalid "expected expression"
+```brig pending(T-NNN)
+```brig module pending(T-NNN)
 ````
+
+Блоки `module`, `stmt` и `expr` проходят парсер, контекстный анализ (§F.3) и компилятор. Ошибка на любом этапе — провал с `line:col` в markdown-файле.
+
+`invalid "текст"` — необязательная ожидаемая подстрока ошибки: блок обязан упасть именно с ней, иначе провал.
+
+`pending(T-NNN)` — блок ждёт задачу T-NNN (нереализованная фича или правка примера). Такой блок обязан **не** компилироваться — если компилируется, провал «снять pending». T-NNN обязан существовать в `tasks/`. Режим задаётся как обычно (`brig pending(T-NNN)` — эвристика, `brig module pending(T-NNN)` — явно). Блок, который падает из-за бага реализации, помечается не `pending`, а заводится issue.
 
 Блок без метки обрабатывается только если эвристика однозначна. Если эвристика неоднозначна, скрипт обязан выдать ошибку и потребовать явную метку.
 
@@ -2266,7 +2275,7 @@ fn main() ->
 
 Блок обязан не парситься. Если блок с меткой `invalid` успешно парсится, `tools/check-examples` завершается ошибкой.
 
-```brig invalid
+```brig invalid "expected expression, got ]"
 fn main() ->
     x = [1, ..]
     x
