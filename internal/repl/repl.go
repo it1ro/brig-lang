@@ -76,7 +76,7 @@ func (r *REPL) Eval(src string) (runtime.Value, error) {
 	}
 
 	c := compiler.New()
-	fn, newName, err := c.CompileReplLine(r.order, stmt)
+	fn, newName, err := c.CompileReplLine(0, r.order, stmt)
 	if err != nil {
 		return runtime.Unit, err
 	}
