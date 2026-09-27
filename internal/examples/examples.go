@@ -424,20 +424,24 @@ func runRepl(src string, m *vm.VM) error {
 	return finish()
 }
 
-// evalLine: одна строка ввода; сообщения sema — в текст ошибки.
-func evalLine(r *repl.REPL, src string) (runtime.Value, error) {
+// evalLine: одна строка ввода, её значение — значение последней
+// инструкции; сообщения sema — в текст ошибки.
+func evalLine(r *repl.Session, src string) (runtime.Value, error) {
 	var diag strings.Builder
 	r.SetOutput(&diag)
 	defer r.SetOutput(io.Discard)
-	v, err := r.Eval(src + "\n")
+	res, err := r.Eval(src + "\n")
 	if err != nil && diag.Len() > 0 {
-		return v, fmt.Errorf("%w: %s", err, strings.TrimSpace(diag.String()))
+		return runtime.Unit, fmt.Errorf("%w: %s", err, strings.TrimSpace(diag.String()))
 	}
-	return v, err
+	if err != nil || len(res) == 0 {
+		return runtime.Unit, err
+	}
+	return res[len(res)-1].Value, nil
 }
 
 // compareAnswer сверяет результат ввода со строкой ответа.
-func compareAnswer(oracle *repl.REPL, input, answer string, res runtime.Value, runErr error) error {
+func compareAnswer(oracle *repl.Session, input, answer string, res runtime.Value, runErr error) error {
 	wantRaise := false
 	term := answer
 	if rest, ok := strings.CutPrefix(answer, "raise "); ok {
@@ -469,7 +473,7 @@ func compareAnswer(oracle *repl.REPL, input, answer string, res runtime.Value, r
 
 // evalAnswer: ответ — одно выражение (не связывание), вычисляется в
 // чистой сессии, чтобы ответ не видел имён блока.
-func evalAnswer(oracle *repl.REPL, src string) (runtime.Value, error) {
+func evalAnswer(oracle *repl.Session, src string) (runtime.Value, error) {
 	prog, err := parser.ParseProgram(parser.ModeRepl, src+"\n")
 	if err != nil {
 		return runtime.Unit, err

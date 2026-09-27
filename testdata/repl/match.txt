@@ -1,0 +1,19 @@
+v = (:ok, 42)
+match v
+    (:ok, 0) -> 0
+    (:ok, n) -> n + 1
+    _ -> 0
+
+r = match (:error, :nope)
+    (:ok, n) -> n
+    (:error, why) -> why
+
+r
+match 7
+    0 -> :zero
+-- output --
+(:ok, 42)
+43
+:nope
+:nope
+error: raise: (:case_clause, 7)

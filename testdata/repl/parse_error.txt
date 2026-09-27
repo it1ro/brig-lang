@@ -1,0 +1,23 @@
+x = 5
+fn f() -> x
+y = )
+z = [1,
+  )
+fn broken(n) ->
+
+x = 10
+[x, f()]
+fn g(n) ->
+    n + x
+    )
+
+g(1)
+-- output --
+5
+error: parse error 1:5: expected expression, got )
+error: parse error 2:3: expected expression, got )
+error: parse error 3:1: expected INDENT, got EOF
+10
+[10, 5]
+error: parse error 3:5: expected expression, got )
+error: undefined: g

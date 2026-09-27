@@ -1,14 +1,16 @@
-// Package repl — persistent REPL (§11.4, N12, Sprint 6.2).
+// Package repl — сессия REPL (§11.4, N12) без привязки к транспорту:
+// консоль на TTY, ввод из pipe и (позже) сокет работают поверх Session.
 //
-// Каждая введённая строка — новая top-level лексическая область.
-// Имена из предыдущих строк видны. Повторное связывание того же имени —
+// Порция ввода — одна или несколько top-level инструкций (repl_input).
+// Каждая инструкция — новая top-level лексическая область. Имена из
+// предыдущих инструкций видны. Повторное связывание того же имени —
 // shadowing между областями, не rebinding (принцип #12 соблюдён).
 //
-// Реализация: строка компилируется как `fn (<видимые имена...>) -> <stmt>`.
+// Реализация: инструкция компилируется как `fn (<видимые имена...>) -> <stmt>`.
 // Видимые имена передаются как параметры (локалы), а не как глобалы.
-// Лямбды внутри строки захватывают их как upvalues — это даёт лексический
-// снимок (N12): позже переопределённое имя не влияет на ранее созданное
-// замыкание.
+// Лямбды внутри инструкции захватывают их как upvalues — это даёт
+// лексический снимок (N12): позже переопределённое имя не влияет на ранее
+// созданное замыкание.
 package repl
 
 import (
@@ -16,6 +18,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/it1ro/brig-lang/internal/ast"
 	"github.com/it1ro/brig-lang/internal/compiler"
 	"github.com/it1ro/brig-lang/internal/parser"
 	"github.com/it1ro/brig-lang/internal/runtime"
@@ -23,17 +26,37 @@ import (
 	"github.com/it1ro/brig-lang/internal/vm"
 )
 
-// REPL — persistent-состояние интерактивной сессии.
-type REPL struct {
-	vm    *vm.VM
-	order []string // порядок появления имён
-	env   map[string]runtime.Value
-	out   io.Writer
+// Result — итог одной инструкции ввода.
+type Result struct {
+	// Input — номер ввода (§11.4 «Нумерация»): его получает ввод, значение
+	// которого (значение последней инструкции) не `()`. 0 — номера нет.
+	Input int
+	// Name — имя связывания, созданного инструкцией; "" — связывания нет.
+	Name string
+	// Value — значение инструкции: у `name = expr` — значение expr, у
+	// локальной fn, import и alias — `()`.
+	Value runtime.Value
 }
 
-// New создаёт REPL поверх ВМ. out — куда писать диагностику и info.
-func New(m *vm.VM, out io.Writer) *REPL {
-	return &REPL{
+// Binding — видимая привязка сессии.
+type Binding struct {
+	Name  string
+	Value runtime.Value
+}
+
+// Session — состояние интерактивной сессии.
+type Session struct {
+	vm      *vm.VM
+	order   []string // порядок появления имён
+	env     map[string]runtime.Value
+	out     io.Writer
+	seq     int             // счётчик инструкций: префикс глобальных имён
+	history []runtime.Value // значения пронумерованных вводов, history[n-1] — ввод n
+}
+
+// New создаёт сессию поверх ВМ. out — куда писать диагностику и info.
+func New(m *vm.VM, out io.Writer) *Session {
+	return &Session{
 		vm:  m,
 		env: make(map[string]runtime.Value),
 		out: out,
@@ -41,22 +64,39 @@ func New(m *vm.VM, out io.Writer) *REPL {
 }
 
 // SetOutput меняет, куда пишутся диагностика и info.
-func (r *REPL) SetOutput(out io.Writer) { r.out = out }
+func (s *Session) SetOutput(out io.Writer) { s.out = out }
 
-// Eval выполняет одну REPL-строку и возвращает её значение.
-//
-// `src` должен содержать ровно один top-level стейтмент (repl_line).
-// Ошибки парсинга/sema/runtime возвращаются как error.
-func (r *REPL) Eval(src string) (runtime.Value, error) {
-	prog, err := parser.ParseProgram(parser.ModeRepl, src)
+// Eval исполняет порцию ввода: инструкции по порядку, каждая — своя
+// область. Ошибка разбора — ни одна инструкция не исполняется. Ошибка
+// инструкции (sema, компиляция, raise) останавливает ввод: результаты и
+// привязки инструкций до неё сохраняются и возвращаются вместе с ошибкой.
+func (s *Session) Eval(src string) ([]Result, error) {
+	lines, err := parser.ParseReplInput(src)
 	if err != nil {
-		return runtime.Unit, err
+		return nil, err
 	}
+	var results []Result
+	for _, prog := range lines {
+		res, err := s.evalLine(prog)
+		if err != nil {
+			return results, err
+		}
+		results = append(results, res)
+	}
+	if n := len(results); n > 0 && results[n-1].Value.Kind != runtime.KindUnit {
+		s.history = append(s.history, results[n-1].Value)
+		for i := range results {
+			results[i].Input = len(s.history)
+		}
+	}
+	return results, nil
+}
+
+// evalLine исполняет одну инструкцию (repl_line).
+func (s *Session) evalLine(prog *ast.Program) (Result, error) {
 	if len(prog.Stmts) == 0 {
-		return runtime.Unit, nil
-	}
-	if len(prog.Stmts) > 1 {
-		return runtime.Unit, fmt.Errorf("repl: expected one statement per line")
+		// import/alias: модули в сессии — T-209.
+		return Result{Value: runtime.Unit}, nil
 	}
 	stmt := prog.Stmts[0]
 
@@ -67,58 +107,80 @@ func (r *REPL) Eval(src string) (runtime.Value, error) {
 		if d.Severity == sema.SeverityInfo {
 			sev = "info"
 		}
-		if _, err := fmt.Fprintf(r.out, "%s: <repl>:%d:%d: %s\n", sev, d.Line, d.Col, d.Message); err != nil {
-			return runtime.Unit, err
+		if _, err := fmt.Fprintf(s.out, "%s: <repl>:%d:%d: %s\n", sev, d.Line, d.Col, d.Message); err != nil {
+			return Result{}, err
 		}
 	}
 	if semaRes.HasErrors() {
-		return runtime.Unit, fmt.Errorf("sema: %d error(s)", countErrors(semaRes))
+		return Result{}, fmt.Errorf("sema: %d error(s)", countErrors(semaRes))
 	}
 
+	s.seq++
 	c := compiler.New()
-	fn, newName, err := c.CompileReplLine(0, r.order, stmt)
+	fn, newName, err := c.CompileReplLine(s.seq, s.order, stmt)
 	if err != nil {
-		return runtime.Unit, err
+		return Result{}, err
 	}
 
 	// Регистрируем вложенные функции (из лямбд/локальных fn) как глобалы,
 	// чтобы OpGetGlobal их видел.
 	for name, f := range c.Image().Functions {
-		r.vm.DefineGlobal(name, vm.FuncValue(f))
+		s.vm.DefineGlobal(name, vm.FuncValue(f))
 	}
 
 	// Аргументы — текущие значения видимых имён.
-	args := make([]runtime.Value, len(r.order))
-	for i, n := range r.order {
-		args[i] = r.env[n]
+	args := make([]runtime.Value, len(s.order))
+	for i, n := range s.order {
+		args[i] = s.env[n]
 	}
 
-	res, err := r.vm.RunMainWithArgs(vm.FuncValue(fn), args)
+	val, err := s.vm.RunMainWithArgs(vm.FuncValue(fn), args)
 	if err != nil {
-		return runtime.Unit, err
+		return Result{}, err
 	}
 
 	if newName != "" {
-		if _, exists := r.env[newName]; !exists {
-			r.order = append(r.order, newName)
+		if _, exists := s.env[newName]; !exists {
+			s.order = append(s.order, newName)
 		}
-		r.env[newName] = res
+		s.env[newName] = val
 	}
-	return res, nil
+	if _, ok := stmt.(ast.LocalFnDecl); ok {
+		val = runtime.Unit
+	}
+	return Result{Name: newName, Value: val}, nil
 }
 
-// Bindings возвращает имена в порядке появления (для отладки).
-func (r *REPL) Bindings() []string {
-	out := make([]string, len(r.order))
-	copy(out, r.order)
+// NeedMore сообщает, что ввод src не завершён и REPL ждёт следующей
+// строки (§11.4 «Ввод»).
+func (s *Session) NeedMore(src string) bool { return NeedMore(src) }
+
+// Bindings возвращает видимые привязки в порядке появления имён.
+func (s *Session) Bindings() []Binding {
+	out := make([]Binding, len(s.order))
+	for i, n := range s.order {
+		out[i] = Binding{Name: n, Value: s.env[n]}
+	}
 	return out
 }
 
-// Reset очищает состояние.
-func (r *REPL) Reset() {
-	r.order = nil
-	r.env = make(map[string]runtime.Value)
+// Next — номер, который получит следующий ввод со значением (приглашение
+// `brig[n]>`, §11.4).
+func (s *Session) Next() int { return len(s.history) + 1 }
+
+// Reset снимает все привязки сессии.
+func (s *Session) Reset() {
+	s.order = nil
+	s.env = make(map[string]runtime.Value)
 }
+
+// Complete — варианты дополнения ввода (src, pos): src — текст, pos — позиция курсора.
+// Заготовка: T-211.
+func (s *Session) Complete(_ string, _ int) []string { return nil }
+
+// Doc — документация функции `M.f`/`f` или модуля по имени, для `h/1`.
+// Заготовка: T-206.
+func (s *Session) Doc(_ string) (string, bool) { return "", false }
 
 func countErrors(res *sema.Result) int {
 	n := 0
@@ -128,63 +190,6 @@ func countErrors(res *sema.Result) int {
 		}
 	}
 	return n
-}
-
-// IsContinuation сообщает, нужна ли ещё строка для завершения ввода
-// (незакрытые скобки или незакрытая интерполяция).
-func IsContinuation(src string) bool {
-	return countUnbalanced(src) > 0
-}
-
-// countUnbalanced — грубая оценка баланса (), [], {}, %[, %{ с учётом
-// строковых литералов и комментариев.
-func countUnbalanced(s string) int {
-	depth := 0
-	inStr := false
-	inBytes := false
-	esc := false
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		if c == '#' && !inStr && !inBytes {
-			break
-		}
-		if inStr || inBytes {
-			if esc {
-				esc = false
-				continue
-			}
-			if c == '\\' {
-				esc = true
-				continue
-			}
-			if c == '"' {
-				inStr = false
-				inBytes = false
-			}
-			continue
-		}
-		if c == '"' {
-			inStr = true
-			continue
-		}
-		if c == 'b' && i+1 < len(s) && s[i+1] == '"' {
-			inBytes = true
-			i++
-			continue
-		}
-		switch c {
-		case '(', '[', '{':
-			depth++
-		case ')', ']', '}':
-			depth--
-		case '%':
-			if i+1 < len(s) && (s[i+1] == '[' || s[i+1] == '{') {
-				depth++
-				i++
-			}
-		}
-	}
-	return depth
 }
 
 // TrimLeadingPrompt удаляет префикс "> " из строки, если он есть.
