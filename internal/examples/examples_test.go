@@ -321,11 +321,11 @@ func TestCheckBlockCompiles(t *testing.T) {
 		}
 	}
 
-	// Парсится, но не компилируется: деструктурирующее связывание.
-	b := block{file: "t.md", line: 10, lang: "brig stmt", raw: "t = (1, 2, 3)\n(a, b, c) = t"}
+	// Парсится, но не компилируется: запись необъявленного типа.
+	b := block{file: "t.md", line: 10, lang: "brig stmt", raw: "t = (1, 2, 3)\nFoo{a: t}"}
 	r := checkBlock(b, tasks)
 	if r.OK {
-		t.Fatalf("destructuring bind: want FAIL, got %s", r)
+		t.Fatalf("unknown record type: want FAIL, got %s", r)
 	}
 	// Fence на строке 10, стейтмент — на 12-й строке markdown, колонка 1.
 	if r.Line != 12 || r.Col != 1 {
@@ -333,7 +333,7 @@ func TestCheckBlockCompiles(t *testing.T) {
 	}
 
 	// module без обёртки: строка 2 блока — 12-я строка markdown, колонка та же.
-	b = block{file: "t.md", line: 10, lang: "brig module", raw: "fn main() ->\n    (a, b) = (1, 2)"}
+	b = block{file: "t.md", line: 10, lang: "brig module", raw: "fn main() ->\n    Foo{a: 1}"}
 	if r := checkBlock(b, tasks); r.OK || r.Line != 12 || r.Col != 5 {
 		t.Errorf("module position: want FAIL at 12:5, got %s", r)
 	}
@@ -350,7 +350,7 @@ func TestCheckBlockCompiles(t *testing.T) {
 // компилироваться и ссылаться на существующую задачу (T-116).
 func TestCheckBlockPendingNeedsTask(t *testing.T) {
 	tasks := map[string]bool{"T-500": true}
-	notCompiling := "t = (1, 2, 3)\n(a, b, c) = t"
+	notCompiling := "t = (1, 2, 3)\nFoo{a: t}"
 
 	cases := []struct {
 		name, lang, raw string
@@ -394,7 +394,7 @@ func TestCheckInvalidReason(t *testing.T) {
 		{"без причины", "brig invalid", s2, true},
 		{"причина парсера", `brig invalid "expected expression"`, "fn main() ->\n    x = [1, ..]", true},
 		{"блок компилируется", `brig invalid "whatever"`, "fn main() ->\n    1", false},
-		{"ошибка компилятора", `brig invalid "простые связывания"`, "fn main() ->\n    (a, b) = (1, 2)", true},
+		{"ошибка компилятора", `brig invalid "неизвестный тип записи"`, "fn main() ->\n    Foo{a: 1}", true},
 	}
 	for _, c := range cases {
 		r := checkBlock(block{file: "t.md", line: 1, lang: c.lang, raw: c.raw}, tasks)
