@@ -14,7 +14,7 @@ import (
 // отдаёт готовый список, n() — его длину: сама программа ничего не строит.
 var callAllocProgs = map[string]string{
 	"map_lambda": `module Main
-fn main() -> map(fn (x) -> x + 1, input())
+fn main() -> map(input(), fn (x) -> x + 1)
 `,
 	"call_loop": `module Main
 fn inc(x) -> x + 1
@@ -135,8 +135,8 @@ fn main() ->
     recv
         m -> assert(m == (:ensured, 30))
     assert(sum(20000) == 200010000)
-    cs = map(fn (i) -> mk(i, i * 2), [1, 2, 3])
+    cs = map([1, 2, 3], fn (i) -> mk(i, i * 2))
     clobber(0, 0, 0)
-    assert(map(fn (g) -> g(), cs) == [(1, 2), (2, 4), (3, 6)])
+    assert(map(cs, fn (g) -> g()) == [(1, 2), (2, 4), (3, 6)])
 `)
 }

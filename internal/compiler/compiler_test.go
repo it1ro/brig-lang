@@ -172,7 +172,7 @@ func TestLambdaShort(t *testing.T) {
 	runModule(t, `module Main
 fn main() ->
     xs = [1, 2, 3]
-    ys = map(x -> x * 2, xs)
+    ys = map(xs, x -> x * 2)
     print(ys)
 `)
 }
@@ -500,7 +500,7 @@ func TestPreludeFilter(t *testing.T) {
 	runModule(t, `module Main
 fn main() ->
     xs = [1, 2, 3, 4, 5]
-    ys = filter(x -> x rem 2 == 0, xs)
+    ys = filter(xs, x -> x rem 2 == 0)
     print(ys)
 `)
 }
@@ -509,18 +509,18 @@ func TestPreludeFind(t *testing.T) {
 	runModule(t, `module Main
 fn main() ->
     xs = [1, 2, 3]
-    print(find(x -> x == 2, xs))
-    print(find(x -> x == 99, xs))
+    print(find(xs, x -> x == 2))
+    print(find(xs, x -> x == 99))
 `)
 }
 
 func TestPreludeAllAny(t *testing.T) {
 	runModule(t, `module Main
 fn main() ->
-    print(all(x -> x > 0, [1, 2, 3]))
-    print(all(x -> x > 0, [1, -2, 3]))
-    print(any(x -> x > 2, [1, 2, 3]))
-    print(any(x -> x > 9, [1, 2, 3]))
+    print(all([1, 2, 3], x -> x > 0))
+    print(all([1, -2, 3], x -> x > 0))
+    print(any([1, 2, 3], x -> x > 2))
+    print(any([1, 2, 3], x -> x > 9))
 `)
 }
 
