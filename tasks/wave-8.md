@@ -34,7 +34,7 @@
 | 8 | T-100 | [#169](https://github.com/it1ro/brig-lang/issues/169) Spec: `fn ->` и `(a, b) ->` (§6.2) | — | sonnet | low | T-126 |
 | 9 | T-127 [#186](https://github.com/it1ro/brig-lang/issues/186) | Docs: спека по T-120, T-121, T-124 | T-120, T-121, T-124, T-126 | sonnet | medium | T-128 |
 | 10 | T-128 [#187](https://github.com/it1ro/brig-lang/issues/187) | Docs: спека — пакет research A (модули, записи, ошибки, `pub`) | T-122, T-126 | opus | large | T-127 |
-| 11 | T-129 | Docs: спека — пакет research B (§16, `"""`, `##`) | T-122, T-126 | sonnet | medium | T-127, T-128 |
+| 11 | T-129 [#264](https://github.com/it1ro/brig-lang/issues/264) | Docs: спека — пакет research B (§16, `"""`, `##`) | T-122, T-126 | sonnet | medium | T-127, T-128 |
 
 Все правки спеки идут через `docs/01-language-design.md`: T-126, T-127,
 T-128, T-129 и T-100 правят один файл, поэтому их мержат по одной, в
@@ -42,23 +42,4 @@ T-128, T-129 и T-100 правят один файл, поэтому их мер
 
 ## Задачи
 
-Задачи со ссылкой на issue в таблице выше заведены на доске: DoD — в issue. Ниже — полные блоки тех, что ещё не заведены.
-
-### T-129 · Docs: спека — пакет research B (§16, `"""`, `##`)
-<!-- meta
-priority: P2
-type: docs
-effort: medium
-model: sonnet
-wave: 8
-depends_on: T-122, T-126
-findings: R-1; research 03 L7, L9, L12, L24, 22
-extra_labels: edit-spec
--->
-- **Файлы:** `docs/01-language-design.md` §16 (kwargs убрать из Should; `Decimal`, многострочные строки — в Must; docstrings `@doc` → `##`, Nice → Should; «тест-фреймворк» и «заделы горячей перезагрузки» — по T-125), §3.5 и §C.7 (формат `"""`: отступ по закрывающим, интерполяция и escape как в `Str`, ошибки лексера), §F.1 (`"""` больше не «not implemented»), новый подраздел «Doc-комментарии `##`» (формат, доктесты — по research 22)
-- **Тест-якорь:** `make check-examples`
-- **DoD:**
-  - §16 совпадает с решениями L7, L9, L12, L24 и T-125;
-  - пример `"""` — блок `brig pending(T-145)`; пример `##` с доктестом — блок `brig pending(T-147)`;
-  - запись в Part III v0.4.8; `make check-examples` → `failed 0`.
-- **НЕ делать:** писать код; менять пакет A (T-128); описывать `brig doc` и Chandler (горизонт).
+Все задачи волны заведены на доске: DoD — в issues по ссылкам из таблицы.
