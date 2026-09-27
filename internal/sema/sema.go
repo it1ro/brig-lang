@@ -8,7 +8,8 @@
 //  4. variadic-параметр должен быть последним (§6.3);
 //  5. rebinding имени в одной лексической области (§6.6, принцип #12);
 //  6. локальные `fn` — только в начале тела блока (§6.5);
-//  7. shadowing прелюдии и встроенных вариантов — info-диагностика (§11.5).
+//  7. shadowing прелюдии и встроенных вариантов — info-диагностика (§11.5,
+//     §14.7), включая конструкторы и типы вариант-деклараций.
 package sema
 
 import (
@@ -167,7 +168,32 @@ func (c *checker) checkProgram(prog *ast.Program) {
 	}
 }
 
+// builtinVariantNames — встроенные варианты и их типы (§14.7).
+var builtinVariantNames = map[string]bool{
+	"Option": true, "Result": true,
+	"Some": true, "None": true, "Ok": true, "Error": true,
+}
+
+// checkTypeDecl: затенение встроенного варианта или его типа
+// пользовательской декларацией — info (§14.7).
+func (c *checker) checkTypeDecl(td ast.TypeDecl) {
+	line, col := posOf(td)
+	if builtinVariantNames[td.TypeName()] {
+		c.info(line, col, "type `%s` shadows built-in type (§14.7)", td.TypeName())
+	}
+	vs, _ := td.Variants()
+	for _, v := range vs {
+		if builtinVariantNames[v.Name] {
+			c.info(line, col, "constructor `%s` shadows built-in variant (§14.7)", v.Name)
+		}
+	}
+}
+
 func (c *checker) checkDecl(d ast.Decl) {
+	if td, ok := d.(ast.TypeDecl); ok {
+		c.checkTypeDecl(td)
+		return
+	}
 	fd, ok := d.(ast.FuncDecl)
 	if !ok {
 		return

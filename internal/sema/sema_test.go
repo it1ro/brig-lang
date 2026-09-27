@@ -426,3 +426,17 @@ fn g() ->
     h(1)
 `, "send")
 }
+
+// ---- shadowing встроенных вариантов декларацией типа (§14.7, T-136) ----
+
+func TestUserVariantShadowBuiltinInfo(t *testing.T) {
+	src := "module Main\ntype Opt { Some(Int), None, Ok(Int), Error(Int) }\nfn main() -> 1\n"
+	for _, name := range []string{"Some", "None", "Ok", "Error"} {
+		wantInfo(t, src, "constructor `"+name+"` shadows built-in variant")
+	}
+	wantOK(t, src)
+	wantInfo(t, "module Main\ntype Result { Good }\nfn main() -> 1\n", "type `Result` shadows built-in type")
+	if r := check(t, "module Main\ntype Color { Red, Green }\nfn main() -> 1\n"); len(r.Diagnostics) != 0 {
+		t.Fatalf("unexpected diagnostics: %v", r.Diagnostics)
+	}
+}
