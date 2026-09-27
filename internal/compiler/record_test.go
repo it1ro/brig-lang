@@ -85,10 +85,10 @@ type User { id: Int, name: Str }
 fn main() ->
     u = User{ id: 1 }
     r = trap(u.name)
-    assert(r == Error((:field_error, (:name, u))))
+    assert(r == Error((:no_field, (:name, u))))
     a = { id: 1 }
     q = trap(a.nope)
-    assert(q == Error((:field_error, (:nope, a))))
+    assert(q == Error((:no_field, (:nope, a))))
 `)
 
 	err := runModuleErr(t, `module Main
@@ -96,8 +96,8 @@ fn main() ->
     r = { id: 1 }
     r.name
 `)
-	if err == nil || !strings.Contains(err.Error(), "field_error") {
-		t.Fatalf("want uncaught field_error raise, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), "no_field") {
+		t.Fatalf("want uncaught no_field raise, got %v", err)
 	}
 }
 

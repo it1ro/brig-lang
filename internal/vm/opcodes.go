@@ -80,6 +80,8 @@ const (
 	// R[A+B] — List, чьи элементы разворачиваются в аргументы.
 	CALLSPREAD     // R[C] = R[A](R[A+1..A+B-1], ..R[A+B])
 	TAILCALLSPREAD // замена кадра: R[A](R[A+1..A+B-1], ..R[A+B])
+
+	CONCAT // R[A] = R[B] ++ R[C], оба Str; только для интерполяции (T-131)
 )
 
 // opNames индексируется OpCode; размер массива фиксирован числом опкодов.
@@ -138,6 +140,7 @@ var opNames = [...]string{
 
 	CALLSPREAD:     "CALLSPREAD",
 	TAILCALLSPREAD: "TAILCALLSPREAD",
+	CONCAT:         "CONCAT",
 }
 
 func (op OpCode) String() string {

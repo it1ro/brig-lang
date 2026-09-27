@@ -87,7 +87,7 @@ func RegUse(in Instr) (reads, writes []int, err error) {
 		return nil, []int{a}, nil
 	case MOVE, NEG, NOT, MAKEOK, MAKEERROR, WATCH, UNWATCH, MAILBOXSIZE:
 		return []int{b}, []int{a}, nil
-	case ADD, SUB, MUL, DIV, INTDIV, REM, POW,
+	case ADD, SUB, MUL, DIV, INTDIV, REM, POW, CONCAT,
 		EQ, NEQ, LT, GT, LE, GE, RANGE, INDEX, GETFIELD:
 		return []int{b, cc}, []int{a}, nil
 	case SETGLOBAL, RETURN, RAISE:

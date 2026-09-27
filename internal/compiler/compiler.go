@@ -1165,7 +1165,7 @@ func (fc *funcCompiler) compileInterp(ie ast.InterpExpr, d dest) error {
 			return err
 		}
 		fc.pos = posOf(ie)
-		fc.emit(vm.ABC(vm.ADD, dst, dst, strReg))
+		fc.emit(vm.ABC(vm.CONCAT, dst, dst, strReg))
 
 		if parts[i+1] != "" {
 			partReg := fc.allocReg()
@@ -1173,7 +1173,7 @@ func (fc *funcCompiler) compileInterp(ie ast.InterpExpr, d dest) error {
 				return err
 			}
 			fc.pos = posOf(ie)
-			fc.emit(vm.ABC(vm.ADD, dst, dst, partReg))
+			fc.emit(vm.ABC(vm.CONCAT, dst, dst, partReg))
 		}
 
 		fc.releaseToMark(iterMark)
