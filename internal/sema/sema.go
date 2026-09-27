@@ -81,7 +81,7 @@ func (c *checker) topScope() map[string]binding {
 // bind — объявление имени в текущей области. Rebinding в той же области
 // (по имени и любой форме) — ошибка (§F.3). Shadowing прелюдии — info.
 func (c *checker) bind(name, kind string, line, col int) {
-	if name == "" || name == "_" {
+	if name == "" || name == "_" || isNamedWildcard(name) {
 		return
 	}
 	scope := c.topScope()
@@ -93,6 +93,12 @@ func (c *checker) bind(name, kind string, line, col int) {
 	if c.prelude[name] {
 		c.info(line, col, "`%s` shadows prelude binding; use `Prelude.%s` if prelude was intended", name, name)
 	}
+}
+
+// isNamedWildcard reports whether name is a named wildcard (`_msg`,
+// `_unused`, §1.2): lexically LOWER_IDENT, but never binds.
+func isNamedWildcard(name string) bool {
+	return len(name) > 1 && name[0] == '_'
 }
 
 func (c *checker) err(line, col int, format string, args ...any) {
@@ -406,8 +412,20 @@ func (c *checker) checkExpr(e ast.Expr) {
 	case *ast.BlockStmt:
 		c.checkBlock(x)
 
+	case ast.VariableExpr:
+		// Именованный wildcard (`_msg`, `_unused`, §1.2) лексически —
+		// LOWER_IDENT, но не связывается ни в каком паттерне/параметре
+		// (bind() пропускает такие имена). Обращение к нему в теле —
+		// ошибка контекстного анализа (§F.3), независимо от того, есть
+		// ли в области видимости одноимённое связывание.
+		if isNamedWildcard(x.Name()) {
+			line, col := posOf(x)
+			c.err(line, col,
+				"reference to named wildcard %q is not allowed (§1.2): it never binds", x.Name())
+		}
+
 	case ast.LiteralExpr, ast.BytesExpr, ast.DecimalExpr, ast.RegexExpr,
-		ast.AtomExpr, ast.VariableExpr:
+		ast.AtomExpr:
 		// leaf
 
 	case ast.InterpExpr:

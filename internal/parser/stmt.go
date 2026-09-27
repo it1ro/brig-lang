@@ -208,6 +208,15 @@ func (p *parser) parseFnDecl() (ast.Decl, error) {
 	var name string
 	start := p.cur()
 
+	// Имя fn обязано быть LOWER_IDENT (в т.ч. не ключевым словом, как
+	// `pub`/`quote`, T-132 #190) — иначе без этой проверки цикл ниже
+	// не входит в тело ни разу, p.pos не двигается, и caller
+	// (parseTopDecl) зацикливается на этом же токене `fn`.
+	if !p.at(lexer.KW_FN) || p.peek(1).Type != lexer.LOWER_IDENT {
+		p.advance() // consume 'fn' so the caller makes progress
+		return nil, p.errf("expected function name after 'fn', got %s", p.cur().Type)
+	}
+
 	for p.at(lexer.KW_FN) && p.peek(1).Type == lexer.LOWER_IDENT {
 		p.advance()
 		n := p.advance().Lit

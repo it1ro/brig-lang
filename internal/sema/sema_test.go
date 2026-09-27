@@ -440,3 +440,34 @@ func TestUserVariantShadowBuiltinInfo(t *testing.T) {
 		t.Fatalf("unexpected diagnostics: %v", r.Diagnostics)
 	}
 }
+
+// ---- именованный wildcard `_name` не связывается (§1.2, T-132) ----
+
+func TestSemaUnderscoreNameNotBound(t *testing.T) {
+	// Параметр функции.
+	wantErr(t, `module Main
+fn f(_unused) -> _unused
+fn main() -> f(1)
+`, "named wildcard")
+
+	// Паттерн match.
+	wantErr(t, `module Main
+fn main() ->
+    match (1)
+        _msg -> _msg
+`, "named wildcard")
+
+	// Лямбда.
+	wantErr(t, `module Main
+fn main() ->
+    g = fn (_x) -> _x
+    g(1)
+`, "named wildcard")
+
+	// Именованный wildcard, который просто игнорируется (не читается в
+	// теле) — не ошибка.
+	wantOK(t, `module Main
+fn f(_unused) -> 1
+fn main() -> f(1)
+`)
+}

@@ -292,6 +292,14 @@ func TestParseReplRejectsTrailingTokens(t *testing.T) {
 	mustFail(t, ModeRepl, "f = (a, 1) -> a\n", "->")
 }
 
+// TestParsePubQuoteReservedAsFnName — T-132 (#190): `pub`/`quote` —
+// ключевые слова лексера, парсер отвергает их в позиции идентификатора
+// (имя fn, LHS присваивания) как любое другое ключевое слово.
+func TestParsePubQuoteReservedAsFnName(t *testing.T) {
+	mustFail(t, ModeModule, "module M\nfn pub() -> 1\n", "")
+	mustFail(t, ModeRepl, "quote = 1\n", "")
+}
+
 // ---- Fuzz ----
 
 func FuzzParse(f *testing.F) {

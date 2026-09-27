@@ -191,6 +191,44 @@ func TestLexPositions(t *testing.T) {
 }
 
 // TestLexErrors — негативные кейсы (A3.3, A4, КР-004/005/006).
+// TestLexPubQuoteKeywords — T-132 (#190, G-6/R-7/S-4): `pub` и `quote`
+// становятся ключевыми словами; `:pub`/`:quote` остаются атомами.
+func TestLexPubQuoteKeywords(t *testing.T) {
+	eqTypes(t, "pub", []TokenType{KW_PUB, NEWLINE, EOF}...)
+	eqTypes(t, "quote", []TokenType{KW_QUOTE, NEWLINE, EOF}...)
+	eqTypes(t, ":pub", []TokenType{ATOM, NEWLINE, EOF}...)
+	eqTypes(t, ":quote", []TokenType{ATOM, NEWLINE, EOF}...)
+	// `pub?`/`quote?` — не keyword (шаг 11a), как и все остальные.
+	eqTypes(t, "pub?", []TokenType{LOWER_IDENT, NEWLINE, EOF}...)
+	eqTypes(t, "quote?", []TokenType{LOWER_IDENT, NEWLINE, EOF}...)
+
+	// В позиции идентификатора (имя fn, LHS присваивания) `pub`/`quote`
+	// теперь лексятся как ключевые слова, а не LOWER_IDENT — грамматика
+	// (parser) отвергает их там же, где раньше стоял идентификатор.
+	eqTypes(t, "fn pub() -> 1", []TokenType{
+		KW_FN, KW_PUB, LPAREN, RPAREN, OP_ARROW, INT, NEWLINE, EOF,
+	}...)
+	eqTypes(t, "quote = 1", []TokenType{KW_QUOTE, OP_ASSIGN, INT, NEWLINE, EOF}...)
+}
+
+// TestLexUnderscoreName — T-132 (#190, §1.2): `_msg`, `_unused` лексятся
+// как LOWER_IDENT (именованный wildcard), не как ошибка. `_1`/`_X` —
+// по-прежнему ошибка ("identifier must not start with '_'").
+func TestLexUnderscoreName(t *testing.T) {
+	eqTypes(t, "_unused", []TokenType{LOWER_IDENT, NEWLINE, EOF}...)
+	eqTypes(t, "_msg", []TokenType{LOWER_IDENT, NEWLINE, EOF}...)
+	eqTypes(t, "_x1", []TokenType{LOWER_IDENT, NEWLINE, EOF}...)
+	eqTypes(t, "_ready?", []TokenType{LOWER_IDENT, NEWLINE, EOF}...)
+	eqTypes(t, "_", []TokenType{WILDCARD, NEWLINE, EOF}...)
+
+	for _, src := range []string{"_1", "_X"} {
+		_, err := Lex(src)
+		if err == nil || !strings.Contains(err.Error(), "start with '_'") {
+			t.Errorf("Lex(%q): want \"start with '_'\" error, got %v", src, err)
+		}
+	}
+}
+
 func TestLexErrors(t *testing.T) {
 	cases := []struct {
 		src string
@@ -201,7 +239,7 @@ func TestLexErrors(t *testing.T) {
 		{"1__0", "underscore"},
 		{"1_", "underscore"},
 		{"_1", "start with '_'"},
-		{"_x", "start with '_'"},
+		{"_X", "start with '_'"},
 		{"0x", "digit expected"},
 		{`dec".5"`, "invalid decimal"},
 		{`dec"1."`, "invalid decimal"},

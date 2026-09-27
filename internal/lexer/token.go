@@ -53,6 +53,8 @@ const (
 	KW_TRUE
 	KW_FALSE
 	KW_AS
+	KW_PUB
+	KW_QUOTE
 
 	// Operators (longest-match: |>  **  ==  !=  <=  >=  ..  ->  <-  =>).
 	OP_PIPE // |>
@@ -101,7 +103,7 @@ func (t Token) String() string {
 }
 
 // IsKeyword reports whether t is one of the reserved words.
-func (t Token) IsKeyword() bool { return t.Type >= KW_FN && t.Type <= KW_AS }
+func (t Token) IsKeyword() bool { return t.Type >= KW_FN && t.Type <= KW_QUOTE }
 
 // Postfixable reports whether t can precede a postfix `.` (x.name / x.f / x[i]).
 func (t Token) Postfixable() bool {
@@ -146,7 +148,7 @@ func (t TokenType) String() string {
 	case REGEX:
 		return "REGEX"
 	}
-	if t >= KW_FN && t <= KW_AS {
+	if t >= KW_FN && t <= KW_QUOTE {
 		return keywordNames[t]
 	}
 	switch t {
@@ -220,7 +222,7 @@ var keywordNames = map[TokenType]string{
 	KW_MODULE: "module", KW_TYPE: "type", KW_ENSURE: "ensure",
 	KW_TRAP: "trap", KW_AND: "and", KW_OR: "or", KW_NOT: "not",
 	KW_DIV: "div", KW_REM: "rem", KW_TO: "to", KW_TRUE: "true",
-	KW_FALSE: "false", KW_AS: "as",
+	KW_FALSE: "false", KW_AS: "as", KW_PUB: "pub", KW_QUOTE: "quote",
 }
 
 // keywords maps source word → keyword kind (A3.1, step 11a of A3.2).
@@ -231,7 +233,7 @@ var keywords = map[string]TokenType{
 	"module": KW_MODULE, "type": KW_TYPE, "ensure": KW_ENSURE,
 	"trap": KW_TRAP, "and": KW_AND, "or": KW_OR, "not": KW_NOT,
 	"div": KW_DIV, "rem": KW_REM, "to": KW_TO, "true": KW_TRUE,
-	"false": KW_FALSE, "as": KW_AS,
+	"false": KW_FALSE, "as": KW_AS, "pub": KW_PUB, "quote": KW_QUOTE,
 }
 
 // continuationOps — leading operators that make a line a continuation (A5.3).
