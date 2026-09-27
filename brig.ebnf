@@ -41,7 +41,10 @@ expr_stmt ::= expr
 local_fn_decl ::= fn_clause+
 
 (* ============ Функции ============ *)
-fn_decl ::= fn_clause+
+(* pub — видимость функции модуля (§11.2): стоит перед каждым клозом;
+   клозы одной функции с pub и без — ошибка контекстного анализа.
+   local_fn_decl pub не принимает. *)
+fn_decl ::= ( [ "pub" ] fn_clause )+
 
 fn_clause ::=
     "fn" LOWER_IDENT "(" [ params ] ")" [ "when" or_expr ] "->" fn_body
@@ -156,8 +159,11 @@ map_elem ::=
       expr "=>" expr
     | ".." expr
 
+(* ModuleName в record_literal, record_pattern, constructor_pattern,
+   type_primary: последний сегмент — тип или конструктор, предыдущие —
+   локальное имя модуля (§11.1, §A.1 п.13). *)
 record_literal ::=
-    [ UPPER_IDENT ] "{" [ record_elem { sep record_elem } [ sep ] ] "}"
+    [ ModuleName ] "{" [ record_elem { sep record_elem } [ sep ] ] "}"
 record_elem ::=
       LOWER_IDENT ":" expr
     | ".." expr
@@ -177,7 +183,7 @@ pattern_atom ::=
     | "(" pattern ")"
 
 constructor_pattern ::=
-    UPPER_IDENT [ "(" [ pattern { "," pattern } [ "," ] ] ")" ]
+    ModuleName [ "(" [ pattern { "," pattern } [ "," ] ] ")" ]
 
 tuple_pattern ::=
     "(" pattern "," [ pattern { "," pattern } ] [ "," ] ")"
@@ -193,7 +199,7 @@ map_pattern ::=
 map_pair ::= expr "=>" pattern
 
 record_pattern ::=
-    [ UPPER_IDENT ] "{" [ field_pattern { "," field_pattern } [ "," ] ] "}"
+    [ ModuleName ] "{" [ field_pattern { "," field_pattern } [ "," ] ] "}"
 field_pattern ::= LOWER_IDENT ":" pattern
 
 (* ============ Управляющие конструкции ============ *)
@@ -291,7 +297,7 @@ field ::= LOWER_IDENT ":" type_expr
 type_expr ::= type_primary [ "->" type_expr ]
 
 type_primary ::=
-      UPPER_IDENT [ "<" type_expr { "," type_expr } [ "," ] ">" ]
+      ModuleName [ "<" type_expr { "," type_expr } [ "," ] ">" ]
     | "()"
     | "(" type_inner ")"
 
@@ -300,6 +306,11 @@ type_inner ::= [ type_expr { "," type_expr } [ "," ] ]
 (* ============ Лексические категории ============ *)
 LOWER_IDENT ::=
     ( [a-z] | "_" [a-z] ) [a-zA-Z0-9_]* [ "?" ]
+
+(* LOWER_IDENT не совпадает с ключевым словом (без финального "?"):
+   fn match recv with else if then after when alias import module type
+   ensure trap and or not div rem to true false as pub quote
+   quote зарезервирован: продукций нет (§1.3). *)
 
 UPPER_IDENT ::= [A-Z] [a-zA-Z0-9_]*
 
