@@ -47,12 +47,13 @@ type Binding struct {
 
 // Session — состояние интерактивной сессии.
 type Session struct {
-	vm      *vm.VM
-	order   []string // порядок появления имён
-	env     map[string]runtime.Value
-	out     io.Writer
-	seq     int             // счётчик инструкций: префикс глобальных имён
-	history []runtime.Value // значения пронумерованных вводов, history[n-1] — ввод n
+	vm       *vm.VM
+	order    []string // порядок появления имён
+	env      map[string]runtime.Value
+	out      io.Writer
+	diagFile string          // имя в диагностике sema; у REPL — `<repl>`
+	seq      int             // счётчик инструкций: префикс глобальных имён
+	history  []runtime.Value // значения пронумерованных вводов, history[n-1] — ввод n
 }
 
 // New создаёт сессию поверх ВМ и запускает её актор (§11.4): планировщик
@@ -60,9 +61,10 @@ type Session struct {
 // Сессию закрывает Close.
 func New(m *vm.VM, out io.Writer) *Session {
 	s := &Session{
-		vm:  m,
-		env: make(map[string]runtime.Value),
-		out: out,
+		vm:       m,
+		env:      make(map[string]runtime.Value),
+		out:      out,
+		diagFile: "<repl>",
 	}
 	if err := m.StartSession(); err != nil {
 		panic(err)
@@ -78,6 +80,14 @@ func (s *Session) Interrupt() { s.vm.Interrupt() }
 
 // SetOutput меняет, куда пишутся диагностика и info.
 func (s *Session) SetOutput(out io.Writer) { s.out = out }
+
+// SetDiagFile задаёт имя файла в диагностике sema. Пустое имя оставляет
+// текущее. CLI script-режима подставляет путь файла (§E.1); REPL — `<repl>`.
+func (s *Session) SetDiagFile(name string) {
+	if name != "" {
+		s.diagFile = name
+	}
+}
 
 // Eval исполняет порцию ввода: инструкции по порядку, каждая — своя
 // область. Ошибка разбора — ни одна инструкция не исполняется. Ошибка
@@ -120,7 +130,7 @@ func (s *Session) evalLine(prog *ast.Program) (Result, error) {
 		if d.Severity == sema.SeverityInfo {
 			sev = "info"
 		}
-		if _, err := fmt.Fprintf(s.out, "%s: <repl>:%d:%d: %s\n", sev, d.Line, d.Col, d.Message); err != nil {
+		if _, err := fmt.Fprintf(s.out, "%s: %s:%d:%d: %s\n", sev, s.diagFile, d.Line, d.Col, d.Message); err != nil {
 			return Result{}, err
 		}
 	}

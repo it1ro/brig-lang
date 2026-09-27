@@ -16,7 +16,7 @@ func runBrigSrc(t *testing.T, src string) (string, int) {
 	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(bin, "run", path)
+	cmd := exec.Command(bin, path)
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
 	err := cmd.Run()

@@ -100,7 +100,7 @@ REPL-сессии, строка ответа после `> ввод` разби�
 
 `make corpus` (`cmd/corpus`, логика — `internal/corpus`) проверяет каждый
 файл из `corpus/manifest.tsv` до его уровня: `parse` — парсер; `check` —
-sema и компиляция; `run` — `brig run`, код 0 и stdout = `X.out`, если он
+sema и компиляция; `run` — `brig <file>`, код 0 и stdout = `X.out`, если он
 есть. Строка `(L, fail)` значит «проходит уровни ниже L и падает на L»,
 `needs` — `T-NNN` из `tasks/` или `horizon` и совпадает со строкой
 `# needs:` в файле. Падает на регрессии, на неожиданном проходе и на needs

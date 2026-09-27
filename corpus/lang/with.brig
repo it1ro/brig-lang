@@ -1,5 +1,7 @@
 # Цепочки `with` по Result и Option: §8.2, §10.1.
 
+module Main
+
 fn validate(n) when n > 0 -> Ok(n)
 fn validate(n)            -> Error((:invalid, n))
 

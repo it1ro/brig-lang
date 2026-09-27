@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// T-75, §16 Must: `brig run p.brig a b` — Sys.args() возвращает ["a", "b"].
+// T-75, §16 Must: `brig p.brig a b` — Sys.args() возвращает ["a", "b"].
 func TestBrigRunSysArgs(t *testing.T) {
 	bin := buildBrig(t)
 	path := filepath.Join(t.TempDir(), "p.brig")
@@ -15,7 +15,7 @@ func TestBrigRunSysArgs(t *testing.T) {
 	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	out, err := exec.Command(bin, "run", path, "a", "b").CombinedOutput()
+	out, err := exec.Command(bin, path, "a", "b").CombinedOutput()
 	if err != nil {
 		t.Fatalf("run: %v\n%s", err, out)
 	}
