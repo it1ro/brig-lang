@@ -11,25 +11,25 @@ func TestPreludeTypeErrorsAreCatchable(t *testing.T) {
 		// прелюдия
 		"len": `r = trap(len(5))
     assert(r == Error((:type_error, (:len, 5))))`,
-		"map": `r = trap(map(fn (x) -> x, 5))
+		"map": `r = trap(map(5, fn (x) -> x))
     assert(r == Error((:type_error, (:map, 5))))`,
-		"filter": `r = trap(filter(fn (x) -> x, 5))
+		"filter": `r = trap(filter(5, fn (x) -> x))
     assert(r == Error((:type_error, (:filter, 5))))`,
-		"find": `r = trap(find(fn (x) -> x, 5))
+		"find": `r = trap(find(5, fn (x) -> x))
     assert(r == Error((:type_error, (:find, 5))))`,
-		"all": `r = trap(all(fn (x) -> x, 5))
+		"all": `r = trap(all(5, fn (x) -> x))
     assert(r == Error((:type_error, (:all, 5))))`,
-		"any": `r = trap(any(fn (x) -> x, 5))
+		"any": `r = trap(any(5, fn (x) -> x))
     assert(r == Error((:type_error, (:any, 5))))`,
-		"fold": `r = trap(fold(fn (a, x) -> a, 0, 5))
+		"fold": `r = trap(fold(5, 0, fn (a, x) -> a))
     assert(r == Error((:type_error, (:fold, 5))))`,
-		"filter_predicate": `r = trap(filter(fn (x) -> 1, [1]))
+		"filter_predicate": `r = trap(filter([1], fn (x) -> 1))
     assert(r == Error((:type_error, (:filter_predicate, 1))))`,
-		"find_predicate": `r = trap(find(fn (x) -> 1, [1]))
+		"find_predicate": `r = trap(find([1], fn (x) -> 1))
     assert(r == Error((:type_error, (:find_predicate, 1))))`,
-		"all_predicate": `r = trap(all(fn (x) -> 1, [1]))
+		"all_predicate": `r = trap(all([1], fn (x) -> 1))
     assert(r == Error((:type_error, (:all_predicate, 1))))`,
-		"any_predicate": `r = trap(any(fn (x) -> 1, [1]))
+		"any_predicate": `r = trap(any([1], fn (x) -> 1))
     assert(r == Error((:type_error, (:any_predicate, 1))))`,
 		"vec_push": `r = trap(Vec.push(5, 1))
     assert(to_str(r) == "Error((:type_error, (:Vec.push, 5)))")`,
@@ -120,7 +120,7 @@ fn main() ->
     assert(r1 == Error((:function_clause, [1, 2])))
     r2 = trap(tailn(3))
     assert(r2 == Error((:function_clause, [3, 3])))
-    r3 = trap(map(fn (a, b) -> a, [1]))
+    r3 = trap(map([1], fn (a, b) -> a))
     assert(r3 == Error((:function_clause, [1])))
 `)
 }

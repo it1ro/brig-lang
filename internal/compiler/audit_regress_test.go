@@ -334,7 +334,7 @@ fn value(base) ->
     h(1)
 fn higher(k, xs) ->
     fn scale(x) -> x * k
-    map(scale, xs)
+    map(xs, scale)
 fn rec_value(base) ->
     fn go(0) -> base
     fn go(n) -> go(n - 1)
@@ -464,7 +464,7 @@ fn main() ->
     cb = fn (x) ->
         r = trap(g(x))
         r
-    ys = map(cb, [1, 2])
+    ys = map([1, 2], cb)
     assert(ys == [Ok(1), Error(:bad)])
 `); err != nil {
 		t.Errorf("trap across callSync: %v", err)
