@@ -78,6 +78,7 @@ internal/
   lexer/                # токены + offside
   parser/               # recursive descent → AST
   ast/                  # узлы, форматтер, Equal, visitor
+  loader/               # граф модулей из файлов (§11.1, T-135); run >1 модуля — срез до T-137
   sema/                 # контекстный анализ (§F.3)
   compiler/             # AST → регистровый байткод
   vm/                   # регистровая ВМ + scheduler + прелюдия + Verify

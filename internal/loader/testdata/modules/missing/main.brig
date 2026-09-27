@@ -1,0 +1,5 @@
+module Main
+
+import Util
+
+fn main() -> 0

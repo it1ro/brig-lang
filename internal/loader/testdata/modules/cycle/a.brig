@@ -1,0 +1,3 @@
+import B
+
+fn a() -> 1

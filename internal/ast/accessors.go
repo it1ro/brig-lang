@@ -505,3 +505,22 @@ func (p *mapPattern) MapPairsAccessor() []MapPairArg {
 	}
 	return out
 }
+
+// ImportDecl — доступ к директиве `import M` (§11.1). Нужен загрузчику
+// модулей (internal/loader).
+type ImportDecl interface {
+	Decl
+	ImportedModule() string
+}
+
+func (d *importDecl) ImportedModule() string { return d.module }
+
+// AliasDecl — доступ к директиве `alias M as N` (§11.1).
+type AliasDecl interface {
+	Decl
+	AliasOriginal() string
+	AliasName() string
+}
+
+func (d *aliasDecl) AliasOriginal() string { return d.original }
+func (d *aliasDecl) AliasName() string     { return d.alias }

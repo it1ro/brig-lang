@@ -20,6 +20,7 @@ import (
 
 	"github.com/it1ro/brig-lang/internal/compiler"
 	"github.com/it1ro/brig-lang/internal/lexer"
+	"github.com/it1ro/brig-lang/internal/loader"
 	"github.com/it1ro/brig-lang/internal/parser"
 	"github.com/it1ro/brig-lang/internal/sema"
 	"github.com/it1ro/brig-lang/internal/vm"
@@ -123,27 +124,42 @@ func reportCompileError(file string, err error) {
 	fmt.Fprintf(os.Stderr, "error: %s:%d:%d: %s\n", file, line, col, msg)
 }
 
-// runCheck: brig check <file.brig> — лексинг + парсинг + sema.
+// loadProgram загружает граф модулей от входного файла (§11.1, T-135)
+// и прогоняет sema по каждому модулю. Ошибка загрузки или sema —
+// сообщение E.1 и выход; ошибка чтения входного файла — exitInternal.
+func loadProgram(cmd, file string) *loader.Graph {
+	g, err := loader.Load(file)
+	if err != nil {
+		var le *loader.Error
+		if errors.As(err, &le) {
+			fmt.Fprintf(os.Stderr, "error: %v\n", le)
+			os.Exit(exitParse)
+		}
+		fmt.Fprintf(os.Stderr, "brig %s: %v\n", cmd, err)
+		os.Exit(exitInternal)
+	}
+	failed := false
+	for _, m := range g.Modules {
+		semaRes := sema.Check(m.Prog)
+		reportDiagnostics(m.Path, semaRes)
+		if semaRes.HasErrors() {
+			failed = true
+		}
+	}
+	if failed {
+		os.Exit(exitParse)
+	}
+	return g
+}
+
+// runCheck: brig check <file.brig> — лексинг + парсинг + sema по всем
+// модулям графа.
 func runCheck(args []string) {
 	if len(args) != 1 {
 		fmt.Fprintln(os.Stderr, "brig check: ожидается один файл")
 		os.Exit(exitParse)
 	}
-	src, err := os.ReadFile(args[0])
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "brig check: %v\n", err)
-		os.Exit(exitInternal)
-	}
-	prog, err := parser.ParseProgram(parser.ModeModule, string(src))
-	if err != nil {
-		reportCompileError(args[0], err)
-		os.Exit(exitParse)
-	}
-	semaRes := sema.Check(prog)
-	reportDiagnostics(args[0], semaRes)
-	if semaRes.HasErrors() {
-		os.Exit(exitParse)
-	}
+	loadProgram("check", args[0])
 	fmt.Printf("%s: ok\n", args[0])
 }
 
@@ -164,24 +180,13 @@ func runFile(args []string) {
 		fmt.Fprintln(os.Stderr, "brig run: ожидается файл (опционально --dump-bytecode) и аргументы программы")
 		os.Exit(exitParse)
 	}
-	src, err := os.ReadFile(args[0])
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "brig run: %v\n", err)
-		os.Exit(exitInternal)
-	}
-
-	prog, err := parser.ParseProgram(parser.ModeModule, string(src))
-	if err != nil {
-		reportCompileError(args[0], err)
+	g := loadProgram("run", args[0])
+	// Компиляция нескольких модулей — T-137.
+	if len(g.Modules) > 1 {
+		reportCompileError(args[0], errors.New("срез: несколько модулей"))
 		os.Exit(exitParse)
 	}
-
-	// Контекстный анализ (§F.3) — до компиляции.
-	semaRes := sema.Check(prog)
-	reportDiagnostics(args[0], semaRes)
-	if semaRes.HasErrors() {
-		os.Exit(exitParse)
-	}
+	prog := g.Entry.Prog
 
 	img, err := compiler.New().Compile(prog)
 	if err != nil {
