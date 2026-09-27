@@ -4,6 +4,7 @@
 //   - check — парсинг + контекстный анализ без исполнения;
 //   - run   — полный пайплайн: парсер → sema → компилятор → регистровая ВМ;
 //   - repl  — persistent REPL (§11.4, N12);
+//   - test  — тест-раннер и доктесты `##` (test.go);
 //   - version / help.
 //
 // Переменные окружения:
@@ -53,6 +54,8 @@ func main() {
 		runFile(args[1:])
 	case "repl":
 		runRepl(args[1:])
+	case "test":
+		runTest(args[1:])
 	case "version", "--version", "-v":
 		fmt.Printf("brig %s\n", version)
 	case "help", "--help", "-h":
@@ -71,12 +74,14 @@ func usage() {
   brig check <file.brig>    распарсить и проверить (парсер + sema)
   brig run   <file.brig>    выполнить модуль (парсер + sema + компилятор + ВМ)
   brig repl                 интерактивный режим (отладочный)
+  brig test  [path]         тесты *_test.brig (fn test_*) и доктесты ## под path
   brig version              версия
 
 Переменные окружения:
-  BRIG_VERIFY=1             прогнать vm.Verify перед RunMain
+  BRIG_VERIFY=1             прогнать vm.Verify перед исполнением (run, test)
 
-Exit codes: 0 ok, 1 ошибка парсинга/sema, 2 runtime raise, 3 внутренняя ошибка.
+Exit codes: 0 ok, 1 ошибка парсинга/sema, 2 runtime raise, 3 внутренняя ошибка;
+brig test: 0 — всё прошло, 1 — упал тест или файл не скомпилировался.
 `)
 }
 

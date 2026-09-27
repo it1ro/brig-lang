@@ -222,15 +222,7 @@ func checkBlock(b block, tasks map[string]bool) Result {
 	src := wrapForMode(mode, b.raw)
 
 	if mode == "repl" {
-		if err := runRepl(src); err != nil {
-			r := fail(b, mode, err.Error())
-			var re *replError
-			if errors.As(err, &re) {
-				r.Line = b.line + re.line
-			}
-			return r
-		}
-		return Result{File: b.file, Line: b.line, Col: 1, Mode: mode, OK: true}
+		return replResult(b, runRepl(src, vm.New()))
 	}
 
 	indent := 0
@@ -329,6 +321,19 @@ func failAt(b block, mode string, indent int, err error) Result {
 	return r
 }
 
+// replResult: итог REPL-блока; провал — на строке ввода или ответа.
+func replResult(b block, err error) Result {
+	if err == nil {
+		return Result{File: b.file, Line: b.line, Col: 1, Mode: "repl", OK: true}
+	}
+	r := fail(b, "repl", err.Error())
+	var re *replError
+	if errors.As(err, &re) {
+		r.Line = b.line + re.line
+	}
+	return r
+}
+
 func fail(b block, mode, msg string) Result {
 	return Result{File: b.file, Line: b.line, Col: 1, Mode: mode, OK: false, ErrMsg: msg}
 }
@@ -368,9 +373,10 @@ func (e *replError) Error() string { return e.msg }
 // вычисляется в отдельной чистой сессии и сравнивается с результатом
 // через `==` (runtime.Equal), или `raise <терм>` — ожидаемый непойманный
 // raise. Ввод без ответа исполняется, но не сравнивается; неожиданный
-// raise — провал. Ошибка — *replError.
-func runRepl(src string) error {
-	session := repl.New(vm.New(), io.Discard)
+// raise — провал. Ввод исполняется на ВМ m (доктесты — с загруженным
+// модулем, T-147), ответ — на чистой. Ошибка — *replError.
+func runRepl(src string, m *vm.VM) error {
+	session := repl.New(m, io.Discard)
 	oracle := repl.New(vm.New(), io.Discard)
 
 	var (
