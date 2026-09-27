@@ -21,6 +21,7 @@ import (
 func TestAuditReplSnapshot(t *testing.T) {
 	var out bytes.Buffer
 	r := repl.New(vm.New(), &out)
+	t.Cleanup(r.Close)
 
 	if _, err := r.Eval("x = 5\n"); err != nil {
 		t.Fatalf("eval `x = 5`: %v (diag: %s)", err, out.String())

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"strings"
 
 	"github.com/it1ro/brig-lang/internal/highlight"
@@ -27,6 +28,18 @@ func prompt(next int) string { return fmt.Sprintf("brig[%d]> ", next) }
 // (`brig repl < file`) — plain-фронтенд без приглашений.
 func replLoop() {
 	s := repl.New(vm.New(), os.Stderr)
+	defer s.Close()
+	// Во время ввода терминал в raw mode, и Ctrl-C — байт редактора.
+	// Пока ввод исполняется, терминал обычный: Ctrl-C приходит как SIGINT
+	// и снимает вычисление, не убивая процесс и не актор сессии (§11.4).
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, os.Interrupt)
+	defer signal.Stop(sig)
+	go func() {
+		for range sig {
+			s.Interrupt()
+		}
+	}()
 	tty := term.IsTerminal(os.Stdin)
 	var err error
 	if tty && term.IsTerminal(os.Stdout) {

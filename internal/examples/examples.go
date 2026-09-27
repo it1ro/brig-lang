@@ -377,7 +377,9 @@ func (e *replError) Error() string { return e.msg }
 // модулем, T-147), ответ — на чистой. Ошибка — *replError.
 func runRepl(src string, m *vm.VM) error {
 	session := repl.New(m, io.Discard)
+	defer session.Close()
 	oracle := repl.New(vm.New(), io.Discard)
+	defer oracle.Close()
 
 	var (
 		input     string // последний ввод, ещё без ответа

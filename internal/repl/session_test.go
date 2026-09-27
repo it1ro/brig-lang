@@ -17,6 +17,7 @@ import (
 func TestEvalMultipleStatements(t *testing.T) {
 	var out bytes.Buffer
 	s := repl.New(vm.New(), &out)
+	t.Cleanup(s.Close)
 
 	res, err := s.Eval("x = 1\nf = () -> x\nx = 2\n[x, f()]\n")
 	if err != nil {
@@ -93,6 +94,7 @@ func TestEvalMultipleStatements(t *testing.T) {
 func TestEvalRedefinedLocalFnSnapshot(t *testing.T) {
 	var out bytes.Buffer
 	s := repl.New(vm.New(), &out)
+	t.Cleanup(s.Close)
 	for _, src := range []string{
 		"fn k(n) ->\n    fn inner(m) -> m + 1\n    inner(n)\n\n",
 		"old = () -> k(1)\n",
@@ -129,6 +131,7 @@ func TestEvalRedefinedLocalFnSnapshot(t *testing.T) {
 // хелперы — тоже.
 func TestHighlightEnv(t *testing.T) {
 	s := repl.New(vm.New(), io.Discard)
+	t.Cleanup(s.Close)
 	env := s.HighlightEnv()
 	if !env.Prelude["map"] || !env.Helpers["h"] || !env.Modules["Vec"]["len"] {
 		t.Fatalf("prelude/helpers/Vec.len missing: %+v", env)
@@ -146,6 +149,7 @@ func TestHighlightEnv(t *testing.T) {
 func TestReplUndefinedStillRuntime(t *testing.T) {
 	var out bytes.Buffer
 	s := repl.New(vm.New(), &out)
+	t.Cleanup(s.Close)
 	if _, err := s.Eval("fn f(x) -> x\n"); err != nil {
 		t.Fatalf("def: %v (diag %s)", err, out.String())
 	}

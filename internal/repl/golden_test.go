@@ -37,7 +37,9 @@ func TestReplGoldenSessions(t *testing.T) {
 			}
 			var out bytes.Buffer
 			fe := repl.Plain{In: strings.NewReader(input), Out: &out, Err: &out}
-			if err := fe.Run(repl.New(vm.New(), &out)); err != nil {
+			s := repl.New(vm.New(), &out)
+			t.Cleanup(s.Close)
+			if err := fe.Run(s); err != nil {
 				t.Fatalf("Run: %v", err)
 			}
 			if *update {
