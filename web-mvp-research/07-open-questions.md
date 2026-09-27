@@ -101,6 +101,12 @@
 
 | Вопрос | Решение |
 |---|---|
+| Q-crash | ✅ падения — событие `[:vm, :actor, :crash]` в `Telemetry` с причиной, stack trace и контекстом; по умолчанию лог, Sentry-экспорт — пакет, последние падения — в `brig observe` (20) |
+| Q-http-cache | ✅ `Plug.conditional` (ETag/Last-Modified, 304), `Plug.cache_control`; `Conn.send_file` через порт (`sendfile`, `Range`); ассеты с хешем — `immutable` (20) |
+| Q-editors | ✅ tree-sitter для `.brig` и `.bt` до LSP, тесты из примеров спеки и `testdata` (20) |
+| Q-docs | ✅ документация: английский основной, русский перевод; спеку и внутренние документы перевести к 1.0; путь обучения — тур в песочнице, «Brig by example», гайд Calmar, миграция с Phoenix/Rails, примеры проверяются в CI (20) |
+| Q-rfc | ✅ лёгкий RFC в `rfcs/` (шаблон, стадии draft → accepted → implemented, решает мейнтейнер); принятый RFC → задачи `edit-spec` (20) |
+| Q-tm | ✅ простая политика товарных знаков до 1.0 в духе Python/Rust; регистрация — по мере роста (20) |
 | D1 (лицензии) | ✅ MIT везде (язык, Calmar, Whelk, Chandler, официальные пакеты); политика товарных знаков — отдельным документом |
 | D2 (первые пакеты) | ✅ первая волна к выходу Calmar — `Postgres` и `Mailer`; NATS, Redis, S3, OpenTelemetry — следующие |
 | D3 (доска) | ✅ исследование — PR #168; задачи на доске — по D4 |

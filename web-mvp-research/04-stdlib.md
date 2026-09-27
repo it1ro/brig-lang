@@ -38,6 +38,7 @@
 | `Config` | слои: дефолты → файл → env; валидация на старте | Brig | M |
 | `Http` | транспорт — порты на Go `net/http` (HTTP/1.1 + HTTP/2 + TLS, сервер и клиент, B2); на Brig — `Conn`, `Plug`-протокол, базовые плаги (сессии, CSRF, статика, CORS) — общий слой Calmar и Whelk | Go (транспорт) + Brig | M |
 | `Http.Ws`, `Http.Sse` | WebSocket, Server-Sent Events | Brig | S (SSE почти бесплатен — M) |
+| `Http` (кэш, файлы) | `Plug.conditional` (ETag/304), `Plug.cache_control`; `Conn.send_file` через порт — `sendfile` + `Range` (20) | Brig + Go | M |
 | `Sql` + `Sqlite` | общий интерфейс + встроенный pure-Go драйвер | Brig + Go | M (см. Q-db) |
 | `Test`, `Http.Test` | `Test` уже есть; `Http.Test` — in-memory запросы к обработчику через тестовый порт запроса, фейковое время; `Calmar.Test` и `Whelk.Test` строятся поверх | Brig | M |
 | `Html` | `escape`, `Html.Safe`, рантайм шаблонов | Brig | M для SSR |

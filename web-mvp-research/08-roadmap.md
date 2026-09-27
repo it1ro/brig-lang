@@ -45,7 +45,8 @@
 
 **Выход:** серверные скрипты и долгоживущие демоны на Brig.
 
-Параллельно после релиза языка: WASM-песочница в браузере (B6).
+Параллельно после релиза языка: WASM-песочница в браузере (B6), грамматики
+tree-sitter, RFC-процесс и политика товарных знаков, тур языка (20).
 
 ## Фаза 3. Сеть
 
@@ -79,6 +80,7 @@ run-loop не блокируется.
    (на `brig run --watch`), `calmar db migrate`; `brig build` (payload с зависимостями).
 10. `brig task` и `tasks/`; команды релиза `start`/`console`/`eval` (16).
 11. `calmar gen auth`, `Calmar.authorize` (18).
+12. HTTP-кэш и `send_file`, отчёты о падениях через `Telemetry` (20).
 
 **Выход:** demo/`lookout` собирается `brig build` в один файл и работает.
 
@@ -91,6 +93,8 @@ run-loop не блокируется.
   OpenTelemetry (D2); Chandler — индекс и прокси; права зависимостей (10/#12).
 - Веб: WebSocket, серверный UI в духе LiveView (C8), метрики Prometheus.
 - Публичный дашборд производительности, участие в TechEmpower (19).
+- Документация на английском, гайды «Brig by example», «С Phoenix/Rails на Calmar»,
+  перевод спеки к 1.0 (20).
 - Рантайм: N:M (R10), Go-embedding API (R11), порты `Serial`/`Gpio`,
   WASM-песочница (B6); решение по модели heap — по замерам (11).
 
