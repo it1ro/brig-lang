@@ -153,7 +153,7 @@ func TestWrapForMode(t *testing.T) {
 	}
 }
 
-func TestParseRepl(t *testing.T) {
+func TestRunRepl(t *testing.T) {
 	src := strings.Join([]string{
 		"> x = 1",
 		"> x + 1",
@@ -161,13 +161,116 @@ func TestParseRepl(t *testing.T) {
 		"> y = x * 2",
 		"",
 	}, "\n")
-	if err := parseRepl(src); err != nil {
-		t.Fatalf("parseRepl: %v", err)
+	if err := runRepl(src); err != nil {
+		t.Fatalf("runRepl: %v", err)
 	}
 
 	bad := "> x %"
-	if err := parseRepl(bad); err == nil {
-		t.Fatal("parseRepl: want error for '> x %'")
+	if err := runRepl(bad); err == nil {
+		t.Fatal("runRepl: want error for '> x %'")
+	}
+}
+
+// replSnapshot — блок §11.4: снимок замыкания.
+var replSnapshot = []string{
+	"> x = 5",
+	"> f = () -> x",
+	"> x = 10        # shadowing: новая область",
+	"> f()",
+	"5              # лексический снимок: f видит старый x",
+	"> x + 1",
+	"11",
+}
+
+// TestReplBlockExecutes: строки `> expr` исполняются в одной REPL-сессии,
+// ответ сравнивается через `==`; связывания без ответа не сравниваются (T-117).
+func TestReplBlockExecutes(t *testing.T) {
+	cases := map[string][]string{
+		"§11.4":              replSnapshot,
+		"ответ — выражение":  {"> xs = [1, 2, 3]", "> map(xs, x -> x * 2)", "[2, 4, 6]", "> len(xs)", "1 + 2"},
+		"Int == Float":       {"> 2 * 3", "6.0"},
+		"строка":             {`> to_str(12)`, `"12"`},
+		"без ответа":         {"> y = 1", "> y + 1"},
+		"ответ связыванию":   {"> z = 7", "7"},
+		"пустые строки":      {"> 1", "", "1", ""},
+		"эвристика без меты": {"> 1 + 2"},
+	}
+	for name, lines := range cases {
+		lang := "brig repl"
+		if name == "эвристика без меты" {
+			lang = "brig"
+		}
+		b := block{file: "t.md", line: 1, lang: lang, raw: strings.Join(lines, "\n")}
+		if r := checkBlock(b, nil); !r.OK || r.Mode != "repl" {
+			t.Errorf("%s: want OK repl, got %s (mode %s)", name, r, r.Mode)
+		}
+	}
+}
+
+// TestReplBlockMismatch: испорченная копия §11.4 — FAIL с ожидаемым и
+// фактическим значением на строке ответа (T-117).
+func TestReplBlockMismatch(t *testing.T) {
+	lines := append([]string(nil), replSnapshot...)
+	lines[4] = "10             # испорчено: снимок не соблюдён"
+	b := block{file: "t.md", line: 100, lang: "brig repl", raw: strings.Join(lines, "\n")}
+	r := checkBlock(b, nil)
+	if r.OK {
+		t.Fatalf("want FAIL, got %s", r)
+	}
+	for _, want := range []string{"f()", "want 10", "got 5"} {
+		if !strings.Contains(r.ErrMsg, want) {
+			t.Errorf("msg %q does not contain %q", r.ErrMsg, want)
+		}
+	}
+	// Fence на 100-й строке, ответ — 5-я строка тела → 105-я строка markdown.
+	if r.Line != 105 {
+		t.Errorf("line: got %d, want 105 (%s)", r.Line, r)
+	}
+
+	bad := map[string][]string{
+		"две строки ответа":        {"> 1", "1", "1"},
+		"ответ без ввода":          {"1", "> 1"},
+		"ответ не выражение":       {"> 1", "x = 1"},
+		"ошибка ввода":             {"> x %"},
+		"sema-ошибка ввода":        {"> 1 |> spawn"},
+		"ответ несравним":          {"> 1", `"1"`},
+		"неизвестное имя в ответе": {"> x = 1", "> x", "x"},
+	}
+	for name, lines := range bad {
+		b := block{file: "t.md", line: 1, lang: "brig repl", raw: strings.Join(lines, "\n")}
+		if r := checkBlock(b, nil); r.OK {
+			t.Errorf("%s: want FAIL, got %s", name, r)
+		}
+	}
+}
+
+// TestReplBlockRaise: строка `raise <term>` сопоставляется с непойманным
+// raise; неожиданный raise — FAIL (T-117).
+func TestReplBlockRaise(t *testing.T) {
+	cases := []struct {
+		name    string
+		lines   []string
+		wantOK  bool
+		wantMsg string
+	}{
+		{"raise совпал", []string{"> raise((:not_found, 42))", "raise (:not_found, 42)"}, true, ""},
+		{"type_error", []string{`> 1 + "a"`, `raise (:type_error, (:add, (1, "a")))`}, true, ""},
+		{"сессия жива после raise", []string{"> x = 1", "> raise(:boom)", "raise :boom", "> x", "1"}, true, ""},
+		{"другой терм", []string{"> raise(:boom)", "raise :bang"}, false, "want raise :bang, got raise :boom"},
+		{"raise не случился", []string{"> 1", "raise :boom"}, false, "want raise :boom, got 1"},
+		{"неожиданный raise", []string{"> raise(:boom)", "1"}, false, "want 1, got raise :boom"},
+		{"неожиданный raise без ответа", []string{"> raise(:boom)"}, false, "raise: :boom"},
+	}
+	for _, c := range cases {
+		b := block{file: "t.md", line: 1, lang: "brig repl", raw: strings.Join(c.lines, "\n")}
+		r := checkBlock(b, nil)
+		if r.OK != c.wantOK {
+			t.Errorf("%s: OK=%v (want %v): %s", c.name, r.OK, c.wantOK, r)
+			continue
+		}
+		if !strings.Contains(r.ErrMsg, c.wantMsg) {
+			t.Errorf("%s: msg %q does not contain %q", c.name, r.ErrMsg, c.wantMsg)
+		}
 	}
 }
 
