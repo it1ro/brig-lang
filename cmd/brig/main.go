@@ -141,9 +141,15 @@ func loadProgram(cmd, file string) *loader.Graph {
 		fmt.Fprintf(os.Stderr, "brig %s: %v\n", cmd, err)
 		os.Exit(exitInternal)
 	}
+	mods := make([]sema.Module, len(g.Modules))
+	for i, m := range g.Modules {
+		mods[i] = sema.Module{Name: m.Name, Prog: m.Prog}
+	}
+	world := sema.NewWorld(mods)
 	failed := false
 	for _, m := range g.Modules {
-		semaRes := sema.Check(m.Prog)
+		// CheckNames включает проверки Check и разрешение имён (§F.3, T-139).
+		semaRes := sema.CheckNames(m.Prog, world)
 		reportDiagnostics(m.Path, semaRes)
 		if semaRes.HasErrors() {
 			failed = true
