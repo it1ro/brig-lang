@@ -203,6 +203,10 @@ func (c *Chunk) disInstr(sb *strings.Builder, ip int) {
 		fmt.Fprintf(sb, "r%d <- r%d..r%d", in.A(), in.B(), in.B()+in.C()-1)
 	case MAP:
 		fmt.Fprintf(sb, "r%d <- r%d..r%d", in.A(), in.B(), in.B()+2*in.C()-1)
+	case LISTSPREAD, VECSPREAD:
+		fmt.Fprintf(sb, "r%d <- r%d..r%d", in.A(), in.B(), in.B()+2*in.C()-1)
+	case MAPSPREAD:
+		fmt.Fprintf(sb, "r%d <- r%d..r%d", in.A(), in.B(), in.B()+3*in.C()-1)
 	case MAKECLOSURE, RECORD:
 		fmt.Fprintf(sb, "r%d <- r%d +%d", in.A(), in.B(), in.C())
 	case TRAPBEGIN:

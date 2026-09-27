@@ -1084,6 +1084,40 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 			regs[in.A()] = runtime.Map(entries)
 			f.ip++
 
+		case LISTSPREAD, VECSPREAD:
+			b, n := in.B(), in.C()
+			end := b + 2*n
+			if end > len(regs) {
+				return fail(fmt.Errorf("internal: %s window", op))
+			}
+			segs := append([]runtime.Value(nil), regs[b:end]...)
+			r, err := vmSpreadSeq(segs, op == VECSPREAD)
+			if err != nil {
+				if f.catch(err) {
+					continue
+				}
+				return fail(err)
+			}
+			regs[in.A()] = r
+			f.ip++
+
+		case MAPSPREAD:
+			b, n := in.B(), in.C()
+			end := b + 3*n
+			if end > len(regs) {
+				return fail(fmt.Errorf("internal: MAPSPREAD window"))
+			}
+			segs := append([]runtime.Value(nil), regs[b:end]...)
+			r, err := vmSpreadMap(segs)
+			if err != nil {
+				if f.catch(err) {
+					continue
+				}
+				return fail(err)
+			}
+			regs[in.A()] = r
+			f.ip++
+
 		case RANGE:
 			r, err := vmMakeRange(regs[in.B()], regs[in.C()])
 			if err != nil {
@@ -1478,6 +1512,79 @@ func vmIndex(obj, idx runtime.Value) (runtime.Value, error) {
 		return runtime.Variant("None"), nil
 	}
 	return runtime.Unit, typeErr("index", obj)
+}
+
+// vmSpreadSeq собирает список или вектор из сегментов (§5.2).
+// Сегмент — пара (Bool, значение): false — один элемент, true — спред.
+// Список принимает только List; вектор — List или Vector.
+func vmSpreadSeq(segs []runtime.Value, vector bool) (runtime.Value, error) {
+	if len(segs)%2 != 0 {
+		return runtime.Unit, fmt.Errorf("internal: spread seq: %d regs", len(segs))
+	}
+	out := make([]runtime.Value, 0)
+	for i := 0; i < len(segs); i += 2 {
+		tag, val := segs[i], segs[i+1]
+		if tag.Kind != runtime.KindBool {
+			return runtime.Unit, fmt.Errorf("internal: spread tag %s", tag.Inspect())
+		}
+		if !tag.Bool {
+			out = append(out, val)
+			continue
+		}
+		switch val.Kind {
+		case runtime.KindList:
+			out = append(out, val.List...)
+		case runtime.KindVector:
+			if !vector {
+				return runtime.Unit, typeErr("spread", val)
+			}
+			out = append(out, val.Vector...)
+		default:
+			return runtime.Unit, typeErr("spread", val)
+		}
+	}
+	if vector {
+		return runtime.Vector(out...), nil
+	}
+	return runtime.List(out...), nil
+}
+
+// vmSpreadMap собирает мапу из сегментов (§5.2, §4.5).
+// Сегмент — тройка: Bool, затем либо мапа (true, третье значение игнорируется),
+// либо пара ключ/значение (false). Правые ключи перекрывают левые.
+func vmSpreadMap(segs []runtime.Value) (runtime.Value, error) {
+	if len(segs)%3 != 0 {
+		return runtime.Unit, fmt.Errorf("internal: spread map: %d regs", len(segs))
+	}
+	entries := []runtime.MapEntry{}
+	put := func(k, v runtime.Value) {
+		for i := range entries {
+			if runtime.KeyEqual(entries[i].Key, k) {
+				entries[i].Key = k
+				entries[i].Val = v
+				return
+			}
+		}
+		entries = append(entries, runtime.MapEntry{Key: k, Val: v})
+	}
+	for i := 0; i < len(segs); i += 3 {
+		tag := segs[i]
+		if tag.Kind != runtime.KindBool {
+			return runtime.Unit, fmt.Errorf("internal: spread tag %s", tag.Inspect())
+		}
+		if tag.Bool {
+			src := segs[i+1]
+			if src.Kind != runtime.KindMap {
+				return runtime.Unit, typeErr("spread", src)
+			}
+			for _, e := range src.Map {
+				put(e.Key, e.Val)
+			}
+			continue
+		}
+		put(segs[i+1], segs[i+2])
+	}
+	return runtime.Map(entries), nil
 }
 
 // ---- helpers for RECORD / GETFIELD (T-73, §4.7) ----

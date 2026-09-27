@@ -1694,6 +1694,9 @@ func (fc *funcCompiler) loadUpval(d dest, idx int) error {
 }
 
 func (fc *funcCompiler) compileUnary(u ast.UnaryExpr, d dest) error {
+	if u.OpStr() == ".." {
+		return fmt.Errorf("спред .. здесь недопустим")
+	}
 	mark := fc.nextReg
 	dst := fc.destReg(d)
 
@@ -1709,7 +1712,7 @@ func (fc *funcCompiler) compileUnary(u ast.UnaryExpr, d dest) error {
 	case "not":
 		fc.emit(vm.ABC(vm.NOT, dst, opReg, 0))
 	default:
-		return fmt.Errorf("срез: унарный оператор %q", u.OpStr())
+		return fmt.Errorf("internal: унарный оператор %q", u.OpStr())
 	}
 	fc.finish(d, dst)
 	fc.releaseToMark(mark)
@@ -1979,22 +1982,22 @@ func (fc *funcCompiler) compileGenericCall(call ast.CallExpr, d dest) error {
 	}
 
 	args := call.Args()
-	spread := false
-	if n := len(args); n > 0 {
-		if u, ok := args[n-1].(ast.UnaryExpr); ok && u.OpStr() == ".." {
-			spread = true
-		}
-	}
-	for _, a := range args[:max(len(args)-1, 0)] {
-		if u, ok := a.(ast.UnaryExpr); ok && u.OpStr() == ".." {
-			return fmt.Errorf("срез: спред-аргумент не последний")
-		}
-	}
+	nSpread, singleTrailing := spreadShape(args)
 	// У variadic-fn захваты идут перед аргументами (см. liftedFn), у прочих — после.
 	leadCaps := len(caps) > 0 && fc.compiler.lifted[callee].variadic
-	if spread && len(caps) > 0 && !leadCaps {
+	if nSpread > 0 && len(caps) > 0 && !leadCaps {
 		return fmt.Errorf("срез: спред-вызов локальной fn с захватом")
 	}
+	// Несколько спредов или спред не в конце: собрать аргументы списком
+	// и развернуть его одним CALLSPREAD (§5.2, §5.3).
+	if nSpread > 0 && !singleTrailing {
+		if err := fc.compileCallViaList(base, args, caps, owner, leadCaps, d, posOf(call)); err != nil {
+			return err
+		}
+		fc.releaseToMark(mark)
+		return nil
+	}
+	spread := singleTrailing
 
 	argc := len(args) + len(caps)
 	next := 0
@@ -2028,23 +2031,7 @@ func (fc *funcCompiler) compileGenericCall(call ast.CallExpr, d dest) error {
 		loadCaps()
 	}
 
-	fc.pos = posOf(call)
-	if d.tail && fc.trapDepth > 0 {
-		fc.fail("TAILCALL under active trap (trapDepth=%d)", fc.trapDepth)
-	}
-	tailOp, callOp := vm.TAILCALL, vm.CALL
-	if spread {
-		tailOp, callOp = vm.TAILCALLSPREAD, vm.CALLSPREAD
-	}
-	if d.tail {
-		fc.emit(vm.ABC(tailOp, base, argc, 0))
-	} else {
-		dst := d.reg
-		if dst == -1 {
-			dst = fc.allocReg()
-		}
-		fc.emit(vm.ABC(callOp, base, argc, dst))
-	}
+	fc.emitInvoke(base, argc, spread, d, posOf(call))
 	fc.releaseToMark(mark)
 	return nil
 }
@@ -2055,30 +2042,29 @@ func (fc *funcCompiler) compileGlobalCall(name string, args []ast.Expr, d dest, 
 	gidx := fc.konst(runtime.Str(name))
 	fc.emit(vm.ABx(vm.GETGLOBAL, base, gidx))
 
+	nSpread, singleTrailing := spreadShape(args)
+	if nSpread > 0 && !singleTrailing {
+		if err := fc.compileCallViaList(base, args, nil, nil, false, d, posOf(pos)); err != nil {
+			return err
+		}
+		fc.releaseToMark(mark)
+		return nil
+	}
 	argc := len(args)
 	for i, a := range args {
 		r := fc.allocReg()
 		if r != base+1+i {
 			fc.fail("call: arg %d in r%d, want r%d", i, r, base+1+i)
 		}
+		if operand, ok := spreadOperand(a); ok {
+			a = operand
+		}
 		if err := fc.compileExpr(a, val(r)); err != nil {
 			return err
 		}
 	}
 
-	fc.pos = posOf(pos)
-	if d.tail && fc.trapDepth > 0 {
-		fc.fail("TAILCALL under active trap (trapDepth=%d)", fc.trapDepth)
-	}
-	if d.tail {
-		fc.emit(vm.ABC(vm.TAILCALL, base, argc, 0))
-	} else {
-		dst := d.reg
-		if dst == -1 {
-			dst = fc.allocReg()
-		}
-		fc.emit(vm.ABC(vm.CALL, base, argc, dst))
-	}
+	fc.emitInvoke(base, argc, singleTrailing, d, posOf(pos))
 	fc.releaseToMark(mark)
 	return nil
 }
@@ -2095,7 +2081,15 @@ func isPreludeModule(name string) bool {
 
 // compileSeq: элементы в последовательные регистры от base (первый
 // элемент задаёт base), затем ctor. Окно чтения ctor — base..base+n-1.
+// Спред `..expr` в списке или векторе — LISTSPREAD/VECSPREAD (§5.2).
 func (fc *funcCompiler) compileSeq(elems []ast.Expr, op vm.OpCode, d dest) error {
+	if op != vm.TUPLE && hasSpread(elems) {
+		spreadOp := vm.LISTSPREAD
+		if op == vm.VECTOR {
+			spreadOp = vm.VECSPREAD
+		}
+		return fc.compileSpreadSeq(elems, spreadOp, d)
+	}
 	mark := fc.nextReg
 	dst := fc.destReg(d)
 
@@ -2121,7 +2115,11 @@ func (fc *funcCompiler) compileSeq(elems []ast.Expr, op vm.OpCode, d dest) error
 
 // compileMap: пары k,v в последовательных регистрах от base (первая
 // пара задаёт base), затем MAP. Окно чтения — base..base+2n-1.
+// Спред `..expr` — MAPSPREAD (§5.2, §4.5).
 func (fc *funcCompiler) compileMap(elems []ast.Expr, d dest) error {
+	if hasSpread(elems) {
+		return fc.compileSpreadMap(elems, d)
+	}
 	mark := fc.nextReg
 	dst := fc.destReg(d)
 
@@ -2130,7 +2128,7 @@ func (fc *funcCompiler) compileMap(elems []ast.Expr, d dest) error {
 	for _, e := range elems {
 		pair, ok := e.(ast.BinaryExpr)
 		if !ok || pair.OpStr() != "=>" {
-			return fmt.Errorf("срез: элемент мапы должен быть парой =>")
+			return fmt.Errorf("internal: элемент мапы %T", e)
 		}
 		if n == 0 {
 			base = fc.nextReg
@@ -2149,6 +2147,150 @@ func (fc *funcCompiler) compileMap(elems []ast.Expr, d dest) error {
 	fc.finish(d, dst)
 	fc.releaseToMark(mark)
 	return nil
+}
+
+// spreadOperand — выражение под `..`, если e сам спред.
+func spreadOperand(e ast.Expr) (ast.Expr, bool) {
+	if u, ok := e.(ast.UnaryExpr); ok && u.OpStr() == ".." {
+		return u.Operand(), true
+	}
+	return nil, false
+}
+
+func hasSpread(elems []ast.Expr) bool {
+	for _, e := range elems {
+		if _, ok := spreadOperand(e); ok {
+			return true
+		}
+	}
+	return false
+}
+
+// spreadShape: число спредов и «ровно один, и он последний».
+func spreadShape(args []ast.Expr) (n int, singleTrailing bool) {
+	last := false
+	for i, a := range args {
+		if _, ok := spreadOperand(a); ok {
+			n++
+			last = i == len(args)-1
+		}
+	}
+	return n, n == 1 && last
+}
+
+// compileSpreadPairs кладёт сегменты списка/вектора: на элемент два
+// регистра (Bool-тег, значение) начиная с текущего nextReg.
+func (fc *funcCompiler) compileSpreadPairs(elems []ast.Expr) error {
+	for _, e := range elems {
+		tag := fc.allocReg()
+		operand, spread := spreadOperand(e)
+		if !spread {
+			operand = e
+		}
+		fc.emit(vm.ABx(vm.LOADK, tag, fc.konst(runtime.Bool(spread))))
+		r := fc.allocReg()
+		if err := fc.compileExpr(operand, val(r)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (fc *funcCompiler) compileSpreadSeq(elems []ast.Expr, op vm.OpCode, d dest) error {
+	mark := fc.nextReg
+	dst := fc.destReg(d)
+	base := fc.nextReg
+	if err := fc.compileSpreadPairs(elems); err != nil {
+		return err
+	}
+	fc.emit(vm.ABC(op, dst, base, len(elems)))
+	fc.finish(d, dst)
+	fc.releaseToMark(mark)
+	return nil
+}
+
+func (fc *funcCompiler) compileSpreadMap(elems []ast.Expr, d dest) error {
+	mark := fc.nextReg
+	dst := fc.destReg(d)
+	base := fc.nextReg
+	for _, e := range elems {
+		tag := fc.allocReg()
+		if operand, ok := spreadOperand(e); ok {
+			fc.emit(vm.ABx(vm.LOADK, tag, fc.konst(runtime.Bool(true))))
+			r := fc.allocReg()
+			if err := fc.compileExpr(operand, val(r)); err != nil {
+				return err
+			}
+			pad := fc.allocReg()
+			fc.emit(vm.ABx(vm.LOADK, pad, fc.konst(runtime.Unit)))
+			continue
+		}
+		pair, ok := e.(ast.BinaryExpr)
+		if !ok || pair.OpStr() != "=>" {
+			return fmt.Errorf("internal: элемент мапы %T", e)
+		}
+		fc.emit(vm.ABx(vm.LOADK, tag, fc.konst(runtime.Bool(false))))
+		kReg := fc.allocReg()
+		if err := fc.compileExpr(pair.Left(), val(kReg)); err != nil {
+			return err
+		}
+		vReg := fc.allocReg()
+		if err := fc.compileExpr(pair.Right(), val(vReg)); err != nil {
+			return err
+		}
+	}
+	fc.emit(vm.ABC(vm.MAPSPREAD, dst, base, len(elems)))
+	fc.finish(d, dst)
+	fc.releaseToMark(mark)
+	return nil
+}
+
+// compileCallViaList собирает аргументы со спредом в один список и
+// вызывает через CALLSPREAD. Захваты variadic-fn идут перед списком.
+func (fc *funcCompiler) compileCallViaList(base int, args []ast.Expr, caps []upvalueInfo, owner *funcCompiler, leadCaps bool, d dest, at vm.SrcPos) error {
+	next := 0
+	if leadCaps {
+		for _, uv := range caps {
+			r := fc.allocReg()
+			if r != base+1+next {
+				fc.fail("call: arg %d in r%d, want r%d", next, r, base+1+next)
+			}
+			fc.loadCapture(owner, uv, r)
+			next++
+		}
+	}
+	listReg := fc.allocReg()
+	if listReg != base+1+next {
+		fc.fail("call: spread list in r%d, want r%d", listReg, base+1+next)
+	}
+	seg := fc.nextReg
+	if err := fc.compileSpreadPairs(args); err != nil {
+		return err
+	}
+	fc.pos = at
+	fc.emit(vm.ABC(vm.LISTSPREAD, listReg, seg, len(args)))
+	fc.emitInvoke(base, next+1, true, d, at)
+	return nil
+}
+
+func (fc *funcCompiler) emitInvoke(base, argc int, spread bool, d dest, at vm.SrcPos) {
+	fc.pos = at
+	if d.tail && fc.trapDepth > 0 {
+		fc.fail("TAILCALL under active trap (trapDepth=%d)", fc.trapDepth)
+	}
+	tailOp, callOp := vm.TAILCALL, vm.CALL
+	if spread {
+		tailOp, callOp = vm.TAILCALLSPREAD, vm.CALLSPREAD
+	}
+	if d.tail {
+		fc.emit(vm.ABC(tailOp, base, argc, 0))
+		return
+	}
+	dst := d.reg
+	if dst == -1 {
+		dst = fc.allocReg()
+	}
+	fc.emit(vm.ABC(callOp, base, argc, dst))
 }
 
 // ---- records (T-73, §4.7) ----

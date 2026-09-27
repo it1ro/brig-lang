@@ -3,8 +3,9 @@ package vm
 // OpCode — опкод регистровой ВМ (Sprint 7, §1, §10).
 //
 // Инструкция — 4 байта (Instr); op занимает младший байт uint32.
-// Полный набор — 51 опкод: удалены Pop/Dup/GetLocal/SetLocal/SetUpvalue
-// стековой ВМ, добавлены MOVE и TAILCALL; записи (T-73) — RECORD и GETFIELD.
+// Полный набор — 54 опкода: удалены Pop/Dup/GetLocal/SetLocal/SetUpvalue
+// стековой ВМ, добавлены MOVE и TAILCALL; записи (T-73) — RECORD и GETFIELD;
+// спред коллекций (T-155) — LISTSPREAD, VECSPREAD, MAPSPREAD.
 type OpCode byte
 
 // Опкоды регистровой ВМ. LOADK — R[A] = K[Bx].
@@ -82,6 +83,19 @@ const (
 	TAILCALLSPREAD // замена кадра: R[A](R[A+1..A+B-1], ..R[A+B])
 
 	CONCAT // R[A] = R[B] ++ R[C], оба Str; только для интерполяции (T-131)
+
+	// Спред при конструировании (§5.2, T-155).
+	// LISTSPREAD/VECSPREAD: C сегментов по 2 регистра от R[B]:
+	// R[B+2i] — Bool (true = спред коллекции R[B+2i+1], false = один элемент).
+	// Список принимает только List; вектор — List или Vector.
+	// Иначе (:type_error, (:spread, v)).
+	LISTSPREAD
+	VECSPREAD
+	// MAPSPREAD: C сегментов по 3 регистра от R[B]:
+	// R[B+3i] — Bool; true = спред мапы R[B+3i+1] (R[B+3i+2] не используется),
+	// false = пара ключ R[B+3i+1], значение R[B+3i+2].
+	// Правые ключи перекрывают левые. Не Map — (:type_error, (:spread, v)).
+	MAPSPREAD
 )
 
 // opNames индексируется OpCode; размер массива фиксирован числом опкодов.
@@ -141,6 +155,9 @@ var opNames = [...]string{
 	CALLSPREAD:     "CALLSPREAD",
 	TAILCALLSPREAD: "TAILCALLSPREAD",
 	CONCAT:         "CONCAT",
+	LISTSPREAD:     "LISTSPREAD",
+	VECSPREAD:      "VECSPREAD",
+	MAPSPREAD:      "MAPSPREAD",
 }
 
 func (op OpCode) String() string {
