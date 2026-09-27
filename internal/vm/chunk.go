@@ -184,7 +184,7 @@ func (c *Chunk) disInstr(sb *strings.Builder, ip int) {
 		fmt.Fprintf(sb, "r%d k%d ; %s", in.A(), k, c.Constants[k].Inspect())
 	case MOVE, GETUPVAL, NEG, NOT, MAKEOK, MAKEERROR, WATCH, UNWATCH, MAILBOXSIZE:
 		fmt.Fprintf(sb, "r%d r%d", in.A(), in.B())
-	case ADD, SUB, MUL, DIV, INTDIV, REM, POW,
+	case ADD, SUB, MUL, DIV, INTDIV, REM, POW, CONCAT,
 		EQ, NEQ, LT, GT, LE, GE, RANGE, INDEX, GETFIELD:
 		fmt.Fprintf(sb, "r%d r%d r%d", in.A(), in.B(), in.C())
 	case JMP:

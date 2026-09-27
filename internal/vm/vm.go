@@ -164,9 +164,6 @@ func add(a, b runtime.Value) (runtime.Value, error) {
 		}
 		return runtime.Decimal(new(big.Rat).Add(ar, br)), nil
 	}
-	if a.Kind == runtime.KindStr && b.Kind == runtime.KindStr {
-		return runtime.Str(a.Str + b.Str), nil
-	}
 	if a.Kind == runtime.KindList && b.Kind == runtime.KindList {
 		joined := make([]runtime.Value, 0, len(a.List)+len(b.List))
 		joined = append(joined, a.List...)
