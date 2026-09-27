@@ -167,8 +167,9 @@ func spreadArgs(args []runtime.Value) ([]runtime.Value, error) {
 	return append(out, last.List...), nil
 }
 
-// frameFromFn создаёт кадр вызова.
-func frameFromFn(fn runtime.Value, args []runtime.Value) (*Frame, error) {
+// pushCall кладёт на стек актора кадр вызова fn(args). args может быть
+// окном регистров вызывающего: окно нового кадра с ним не пересекается.
+func (a *Actor) pushCall(fn runtime.Value, args []runtime.Value) (*Frame, error) {
 	c, err := resolveCallee(fn)
 	if err != nil {
 		return nil, err
@@ -176,26 +177,62 @@ func frameFromFn(fn runtime.Value, args []runtime.Value) (*Frame, error) {
 	if err := checkArity(c, args); err != nil {
 		return nil, err
 	}
-	regs := make([]runtime.Value, c.chunk.NumRegs)
+	regs := a.regs.alloc(c.chunk.NumRegs)
 	bindArgs(regs, c.chunk, args)
-	return &Frame{
-		chunk:    c.chunk,
-		name:     c.name,
-		regs:     regs,
-		captures: c.captures,
-	}, nil
+	f := a.pushFrame()
+	f.chunk, f.name, f.regs, f.captures = c.chunk, c.name, regs, c.captures
+	return f, nil
 }
 
-// nativeFrame — кадр возобновляемого натива name с состоянием k.
-func nativeFrame(name string, k nativeCont) *Frame {
-	return &Frame{name: name, regs: make([]runtime.Value, 1), cont: k}
+// pushNative кладёт на стек актора кадр возобновляемого натива name с
+// состоянием k.
+func (a *Actor) pushNative(name string, k nativeCont) *Frame {
+	regs := a.regs.alloc(1)
+	f := a.pushFrame()
+	f.name, f.regs, f.cont = name, regs, k
+	return f
 }
 
-// enterCall готовит вызов fn(args) из кадра актора: кадр для байткод-
-// функции или возобновляемого натива (G3, T-58) либо сразу результат
-// обычного натива, который редукций не тратит (K-4). args может быть окном
-// регистров вызывающего: нативу уходит свежая копия (K-5).
-func (s *Scheduler) enterCall(fn runtime.Value, args []runtime.Value) (*Frame, runtime.Value, error) {
+// pushFrame отдаёт чистый кадр на вершине a.frames, переиспользуя снятый
+// ранее: он остаётся в a.frames за len (см. popFrame).
+func (a *Actor) pushFrame() *Frame {
+	n := len(a.frames)
+	if n < cap(a.frames) {
+		a.frames = a.frames[:n+1]
+		if f := a.frames[n]; f != nil {
+			return f
+		}
+	} else {
+		a.frames = append(a.frames, nil)
+	}
+	f := &Frame{}
+	a.frames[n] = f
+	return f
+}
+
+// popFrame снимает верхний кадр: окно регистров обнуляется и возвращается
+// в стек, кадр очищается и ждёт следующего pushFrame.
+func (a *Actor) popFrame() {
+	n := len(a.frames) - 1
+	f := a.frames[n]
+	a.regs.free(f.regs)
+	*f = Frame{handlers: f.handlers[:0]}
+	a.frames = a.frames[:n]
+}
+
+// shed отдаёт GC запас стеков актора — запасные сегменты регистров и
+// снятые кадры: заблокированный актор не держит память под вызовы.
+func (a *Actor) shed() {
+	a.regs.shrink()
+	clear(a.frames[len(a.frames):cap(a.frames)])
+}
+
+// enterCall готовит вызов fn(args) из кадра актора: кладёт на стек кадр
+// байткод-функции или возобновляемого натива (G3, T-58) либо сразу
+// возвращает результат обычного натива, который редукций не тратит (K-4).
+// args может быть окном регистров вызывающего: нативу уходит свежая копия
+// (K-5).
+func (s *Scheduler) enterCall(a *Actor, fn runtime.Value, args []runtime.Value) (*Frame, runtime.Value, error) {
 	if fn.Kind == runtime.KindFunction && fn.Func != nil && fn.Func.IsNative {
 		if ar := fn.Func.Arity; ar >= 0 && ar != len(args) {
 			return nil, runtime.Unit, functionClause(args)
@@ -206,21 +243,105 @@ func (s *Scheduler) enterCall(fn runtime.Value, args []runtime.Value) (*Frame, r
 			if err != nil {
 				return nil, runtime.Unit, err
 			}
-			return nativeFrame(fn.Func.Name, k), runtime.Unit, nil
+			return a.pushNative(fn.Func.Name, k), runtime.Unit, nil
 		}
 		r, err := fn.Func.Native(s.vm, fresh)
 		return nil, r, err
 	}
-	nf, err := frameFromFn(fn, args)
+	nf, err := a.pushCall(fn, args)
 	return nf, runtime.Unit, err
+}
+
+// ---- стек регистров актора (T-103) ----
+
+// minRegSeg — нижняя граница размера сегмента после первого.
+const minRegSeg = 16
+
+// regStack — окна регистров кадров актора. Окно — срез одного сегмента с
+// cap == размеру окна; сегменты не переезжают, поэтому f.regs валиден, пока
+// кадр на стеке. Свободная часть сегментов всегда обнулена: alloc отдаёт
+// чистое окно, free обнуляет освобождённое — снятый кадр не удерживает
+// значения. Первый сегмент — ровно под кадр spawn (простаивающий актор не
+// платит за запас), следующие растут вдвое.
+type regStack struct {
+	segs  [][]runtime.Value
+	used  []int // занято в segs[i]
+	depth int   // сегментов в работе: вершина — segs[depth-1]
+}
+
+// alloc выделяет окно из n регистров на вершине стека.
+func (st *regStack) alloc(n int) []runtime.Value {
+	if st.depth == 0 || n > len(st.segs[st.depth-1])-st.used[st.depth-1] {
+		st.advance(n)
+	}
+	i := st.depth - 1
+	u := st.used[i]
+	st.used[i] = u + n
+	return st.segs[i][u : u+n : u+n]
+}
+
+// advance делает вершиной следующий сегмент, вмещающий n регистров:
+// сохранённый с прошлого раза или новый.
+func (st *regStack) advance(n int) {
+	if st.depth == 1 && st.used[0] == 0 {
+		// Первый сегмент пуст (TAILCALL из кадра spawn): подгоняем его под
+		// новый кадр, а не держим рядом второй.
+		st.segs[0] = make([]runtime.Value, n)
+		return
+	}
+	i := st.depth
+	st.depth++
+	if i < len(st.segs) && len(st.segs[i]) >= n {
+		return
+	}
+	size := n
+	if i > 0 {
+		size = max(n, 2*len(st.segs[i-1]), minRegSeg)
+	}
+	seg := make([]runtime.Value, size)
+	if i < len(st.segs) {
+		st.segs[i] = seg
+		return
+	}
+	st.segs = append(st.segs, seg)
+	st.used = append(st.used, 0)
+}
+
+// pop снимает окно w с вершины стека, не обнуляя его: w ещё читают
+// (аргументы TAILCALL), обнуляет вызывающий. Обычный путь — free.
+func (st *regStack) pop(w []runtime.Value) {
+	i := st.depth - 1
+	st.used[i] -= cap(w)
+	if st.used[i] > 0 || i == 0 {
+		return
+	}
+	// Сегмент опустел: вершина — предыдущий. Опустевший остаётся запасным
+	// (вызовы на границе сегментов не аллоцируют), более дальние отдаются GC.
+	st.depth--
+	clear(st.segs[i+1:])
+	st.segs, st.used = st.segs[:i+1], st.used[:i+1]
+}
+
+// shrink отдаёт GC запасные сегменты за вершиной.
+func (st *regStack) shrink() {
+	clear(st.segs[st.depth:])
+	st.segs, st.used = st.segs[:st.depth], st.used[:st.depth]
+}
+
+// free снимает окно w с вершины стека и обнуляет его.
+func (st *regStack) free(w []runtime.Value) {
+	clear(w[:cap(w)])
+	st.pop(w)
 }
 
 // ---- Actor / Scheduler ----
 
 // Actor — процесс в планировщике.
 type Actor struct {
-	pid    int
+	pid int
+	// frames — стек кадров; за len лежат снятые кадры для переиспользования.
 	frames []*Frame
+	regs   regStack
 
 	mailbox  []runtime.Value
 	downMsgs []runtime.Value
@@ -271,21 +392,18 @@ func NewScheduler(vm *VM) *Scheduler {
 
 // Spawn регистрирует новый актор с fn и args.
 func (s *Scheduler) Spawn(fn runtime.Value, args []runtime.Value) (int, error) {
-	f, err := frameFromFn(fn, args)
-	if err != nil {
-		return 0, err
-	}
-	pid := s.nextPid
-	s.nextPid++
-
 	a := &Actor{
-		pid:      pid,
-		frames:   []*Frame{f},
 		hwm:      defaultHWM,
 		watchers: make(map[int]int),
 		watching: make(map[int]int),
 		status:   actorReady,
 	}
+	if _, err := a.pushCall(fn, args); err != nil {
+		return 0, err
+	}
+	pid := s.nextPid
+	s.nextPid++
+	a.pid = pid
 	s.actors[pid] = a
 	s.ready = append(s.ready, a)
 	return pid, nil
@@ -544,9 +662,7 @@ func (s *Scheduler) runSlice(a *Actor) {
 		outcome := s.stepFrame(a, f)
 		switch outcome {
 		case stepDone:
-			// nil слот перед усечением, чтобы кадр не висел в backing-массиве.
-			a.frames[len(a.frames)-1] = nil
-			a.frames = a.frames[:len(a.frames)-1]
+			a.popFrame()
 			reds--
 			if len(a.frames) == 0 {
 				a.status = actorDone
@@ -572,6 +688,7 @@ func (s *Scheduler) runSlice(a *Actor) {
 
 		case stepBlock:
 			a.status = actorBlocked
+			a.shed()
 			return
 
 		case stepYield, stepContinue:
@@ -836,7 +953,7 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 				}
 			}
 
-			nf, r, err := s.enterCall(cv, args)
+			nf, r, err := s.enterCall(a, cv, args)
 			if err != nil {
 				if f.catch(err) {
 					continue
@@ -850,7 +967,6 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 			}
 			f.callDst = dst
 			f.ip++
-			a.frames = append(a.frames, nf)
 			return stepContinue
 
 		case TAILCALL, TAILCALLSPREAD:
@@ -881,8 +997,9 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 					if err != nil {
 						return fail(err)
 					}
+					clear(f.regs[:cap(f.regs)])
 					f.regs, f.chunk, f.name, f.captures, f.ip, f.cont =
-						make([]runtime.Value, 1), nil, cv.Func.Name, nil, 0, k
+						f.regs[:1], nil, cv.Func.Name, nil, 0, k
 					return stepContinue
 				}
 				r, err := cv.Func.Native(s.vm, fresh)
@@ -907,8 +1024,18 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 				bindArgs(regs, c.chunk, args) // args ⊂ старого regs: memmove-безопасно
 				clear(regs[c.chunk.NumParams:cap(regs)])
 			} else {
-				regs = make([]runtime.Value, nregs)
+				// Окно кадра — вершина стека: снимаем его и берём больше.
+				// Новое окно либо начинается там же (старое ⊂ новое), либо
+				// не пересекается со старым; args читаются до обнуления.
+				old := f.regs
+				a.regs.pop(old)
+				regs = a.regs.alloc(nregs)
 				bindArgs(regs, c.chunk, args)
+				if &regs[0] == &old[0] {
+					clear(regs[c.chunk.NumParams:])
+				} else {
+					clear(old[:cap(old)])
+				}
 			}
 			f.regs, f.chunk, f.name, f.captures, f.ip =
 				regs, c.chunk, c.name, c.captures, 0
@@ -1231,7 +1358,7 @@ func (s *Scheduler) stepNative(a *Actor, f *Frame) stepOutcome {
 			a.result = st.res
 			return stepDone
 		}
-		nf, r, err := s.enterCall(st.fn, st.args)
+		nf, r, err := s.enterCall(a, st.fn, st.args)
 		if err != nil {
 			return fail(err)
 		}
@@ -1240,7 +1367,6 @@ func (s *Scheduler) stepNative(a *Actor, f *Frame) stepOutcome {
 			continue
 		}
 		f.callDst = 0
-		a.frames = append(a.frames, nf)
 		return stepContinue
 	}
 }
@@ -1448,17 +1574,15 @@ func indexToInt(v runtime.Value) (int64, error) {
 // ---- callSync ----
 
 func (s *Scheduler) callSync(fn runtime.Value, args []runtime.Value) (runtime.Value, error) {
-	f, err := frameFromFn(fn, args)
-	if err != nil {
-		return runtime.Unit, err
-	}
 	tmp := &Actor{
 		pid:      -1,
-		frames:   []*Frame{f},
 		hwm:      defaultHWM,
 		watchers: make(map[int]int),
 		watching: make(map[int]int),
 		status:   actorReady,
+	}
+	if _, err := tmp.pushCall(fn, args); err != nil {
+		return runtime.Unit, err
 	}
 
 	prev := s.active
@@ -1473,8 +1597,7 @@ func (s *Scheduler) callSync(fn runtime.Value, args []runtime.Value) (runtime.Va
 		outcome := s.stepFrame(tmp, top)
 		switch outcome {
 		case stepDone:
-			tmp.frames[len(tmp.frames)-1] = nil
-			tmp.frames = tmp.frames[:len(tmp.frames)-1]
+			tmp.popFrame()
 			if len(tmp.frames) == 0 {
 				return tmp.result, nil
 			}
@@ -1551,8 +1674,7 @@ func (s *Scheduler) tryUnwindRaise(a *Actor) bool {
 		return false
 	}
 
-	a.frames[len(a.frames)-1] = nil
-	a.frames = a.frames[:len(a.frames)-1]
+	a.popFrame()
 
 	for len(a.frames) > 0 {
 		parent := a.frames[len(a.frames)-1]
@@ -1565,8 +1687,7 @@ func (s *Scheduler) tryUnwindRaise(a *Actor) bool {
 			a.result = runtime.Unit
 			return true
 		}
-		a.frames[len(a.frames)-1] = nil
-		a.frames = a.frames[:len(a.frames)-1]
+		a.popFrame()
 	}
 	return false
 }

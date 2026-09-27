@@ -221,9 +221,13 @@ func InstallPrelude(vm *VM) {
 		if xs.Kind != runtime.KindList {
 			return nil, typeErr("fold", xs)
 		}
+		buf := make([]runtime.Value, 2)
 		return &listCont{
 			f: f, xs: xs.List,
-			args: func(e runtime.Value) []runtime.Value { return []runtime.Value{acc, e} },
+			args: func(e runtime.Value) []runtime.Value {
+				buf[0], buf[1] = acc, e
+				return buf
+			},
 			visit: func(_, r runtime.Value) (bool, runtime.Value, error) {
 				acc = r
 				return false, runtime.Unit, nil
@@ -508,7 +512,10 @@ func runSync(c runtime.Caller, k nativeCont) (runtime.Value, error) {
 		if st.done {
 			return st.res, nil
 		}
-		if ret, err = c.Call(st.fn, st.args); err != nil {
+		// st.args — буфер cont, переписываемый следующим resume; нативный
+		// колбэк получает его через Caller как есть и может удержать.
+		args := append([]runtime.Value(nil), st.args...)
+		if ret, err = c.Call(st.fn, args); err != nil {
 			return runtime.Unit, err
 		}
 	}
@@ -517,10 +524,13 @@ func runSync(c runtime.Caller, k nativeCont) (runtime.Value, error) {
 // listCont обходит xs, вызывая f на каждом элементе (с аргументами
 // args(e), по умолчанию — e). visit получает элемент и результат колбэка
 // и может завершить обход досрочно со значением res; иначе итог — final().
+// Срез аргументов — буфер, переиспользуемый между колбэками (T-103):
+// enterCall копирует его в регистры кадра или в свежий срез натива.
 type listCont struct {
 	f     runtime.Value
 	xs    []runtime.Value
 	i     int
+	arg   [1]runtime.Value
 	args  func(e runtime.Value) []runtime.Value
 	visit func(e, r runtime.Value) (stop bool, res runtime.Value, err error)
 	final func() runtime.Value
@@ -541,9 +551,12 @@ func (c *listCont) resume(ret runtime.Value) (nativeStep, error) {
 	}
 	e := c.xs[c.i]
 	c.i++
-	args := []runtime.Value{e}
+	var args []runtime.Value
 	if c.args != nil {
 		args = c.args(e)
+	} else {
+		c.arg[0] = e
+		args = c.arg[:]
 	}
 	return nativeStep{fn: c.f, args: args}, nil
 }
