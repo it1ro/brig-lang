@@ -220,6 +220,36 @@ fn f(x) ->
 `, "rebinding")
 }
 
+// T-133, §5.1: имя, повторённое в одном паттерне связывания, — rebinding
+// в одной области; диагностика указывает на повтор (line:col).
+func TestLetBindPatternRepeatedName(t *testing.T) {
+	cases := []struct {
+		src       string
+		line, col int
+	}{
+		{"module Main\nfn main() ->\n    (a, a) = (1, 2)\n    a\n", 3, 9},
+		{"module Main\nfn main() ->\n    [h, ..h] = [1, 2]\n    h\n", 3, 5},
+		{"module Main\nfn main() ->\n    Ok(x) as x = Ok(1)\n    x\n", 3, 5},
+		{"module Main\nfn main() ->\n    y = 0\n    (y, z) = (1, 2)\n    z\n", 4, 6},
+	}
+	for _, tc := range cases {
+		r := check(t, tc.src)
+		found := false
+		for _, d := range r.Diagnostics {
+			if d.Severity == sema.SeverityError && strings.Contains(d.Message, "rebinding") {
+				found = true
+				if d.Line != tc.line || d.Col != tc.col {
+					t.Errorf("%q: diag at %d:%d, want %d:%d", tc.src, d.Line, d.Col, tc.line, tc.col)
+				}
+			}
+		}
+		if !found {
+			t.Errorf("%q: no rebinding error; got %v", tc.src, r.Diagnostics)
+		}
+	}
+	wantOK(t, "module Main\nfn main() ->\n    (a, b) = (1, 2)\n    [c, ..d] = [a, b]\n    d\n")
+}
+
 func TestShadowingNestedBlockOK(t *testing.T) {
 	// Внутренняя область может затенять внешнее имя.
 	wantOK(t, `module Main
