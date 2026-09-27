@@ -11,7 +11,6 @@
 module LookoutWeb.Api.MonitorController
 
 import Calmar.Conn
-import Calmar.Params
 import Calmar.PubSub
 import Calmar.Sse
 import Lookout.Monitors
@@ -29,15 +28,13 @@ pub fn create(conn, params) ->
         Error((:invalid, cs)) -> conn |> Conn.json(422, %{ "errors" => Changeset.errors(cs) })
         Error(_) as err       -> err
 
-pub fn check_now(conn, %{ "id" => raw_id }) ->
+pub fn check_now(conn, %{ "id" => id }) ->
     with
-        Ok(id)     <- Params.int(raw_id)
         Ok(status) <- Checkers.check_now(id)
         conn |> Conn.json(200, %{ "status" => to_str(status) })
 
-pub fn events(conn, %{ "id" => raw_id }) ->
+pub fn events(conn, %{ "id" => id }) ->
     with
-        Ok(id) <- Params.int(raw_id)
         Ok(m)  <- Monitors.get(id)
         Ok(_)  <- PubSub.subscribe(:pubsub, "monitor:\(m.id)")
         conn |> Sse.start() |> stream()

@@ -77,30 +77,13 @@ fn deny(conn) -> conn |> Conn.json(401, %{ "error" => "unauthorized" })
 
 ## Роутер — данные, а не DSL
 
-Без макросов маршруты — значение, собранное функциями:
-
-```brig
-pub fn routes() ->
-    [
-        Router.scope("/", :browser, [
-            Router.get("/",             MonitorController.index),
-            Router.get("/monitors/:id", MonitorController.show),
-        ]),
-        Router.scope("/api", :api, [
-            Router.get("/monitors/:id/events", Api.events),
-        ]),
-    ]
-```
-
-Пайплайны (`:browser`, `:api`) — мапа «имя → список плагов» из
-`pipelines()`. `Router.compile(routes())` на старте строит префиксное дерево
-по сегментам; ошибки (дубли, конфликт `:id` vs `new`) — на старте, до
-`listen`. Хелпер путей ключуется **функцией-действием**, а не строковым
-именем: `Router.path(MonitorController.show, m)` → `/monitors/42`
-(параметр — через `to_param`, L6); опечатка ловится компилятором.
-Сахар `Router.resources("/monitors", MonitorController, [:index, :show])`
-раскрывается в те же маршруты и требует модуль-значение (03/L5).
-Полный пример — `demo/lib/lookout_web/router.brig`.
+Маршруты — значение из функций `Router.*`, без макросов. Полный дизайн —
+[17-routing.md](17-routing.md): `resources` с явным списком действий и
+вложенностью, типизированные параметры пути `{id: Int}` (не приводится —
+маршрут не совпал), хелперы путей по функции-действию, `forward` любого
+`Conn -> Conn`, автоматические `HEAD`/`OPTIONS`/`405`, `308` на канон без
+слэша, проверки на старте, `brig task calmar.routes`, `Router.match`.
+Пример — `demo/lib/lookout_web/router.brig`.
 
 ## Контроллеры
 
@@ -138,8 +121,8 @@ WebSocket (как Phoenix LiveView) — модель акторов Brig под�
 - `Changeset` — ввод из форм поверх той же пары «форма + `validate/1`»:
   `params → Result<Record, (:invalid, changeset)>`; `Form` — хелперы шаблонов
   (`Form.value`, `Form.errors`).
-- `Params` — приведение строковых params: `Params.int`, `Params.bool`, …
-  → `Result`, ошибка превращается fallback'ом в 400.
+- Параметры пути приводит роутер по шаблону (`{id: Int}`, 17); для query и
+  тела — `Params.int`, `Params.bool`, … → `Result`, ошибка — 400 через fallback.
 - Миграции — модули с `pub fn up()`/`down()`, возвращающими SQL;
   `calmar db migrate` применяет в транзакции.
 

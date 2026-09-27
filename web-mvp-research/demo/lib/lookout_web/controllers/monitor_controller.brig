@@ -4,11 +4,10 @@
 #
 # NEEDS: pub fn (03/L3), map-паттерн в параметре fn (есть в спеке, ждёт T-70),
 #        Conn/render/flash/redirect (06), компилируемые шаблоны (03/L10),
-#        Router.path по функции (03/L5), Params.int (06)
+#        Router.path по функции (03/L5), типизированные параметры пути (17)
 module LookoutWeb.MonitorController
 
 import Calmar.Conn
-import Calmar.Params
 import Calmar.Router
 import Lookout.Monitors
 import Changeset
@@ -20,9 +19,9 @@ pub fn index(conn, _) ->
         Ok(monitors) <- Monitors.list()
         conn |> Conn.render(T.index, { monitors: monitors })
 
-pub fn show(conn, %{ "id" => raw_id }) ->
+# id уже Int: роутер привёл его по шаблону {id: Int} (17).
+pub fn show(conn, %{ "id" => id }) ->
     with
-        Ok(id)     <- Params.int(raw_id)
         Ok(m)      <- Monitors.get(id)
         Ok(checks) <- Monitors.recent_checks(m.id, 50)
         conn |> Conn.render(T.show, { monitor: m, checks: checks })

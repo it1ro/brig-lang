@@ -37,7 +37,7 @@ $ ./scripts/import_monitors.brig list.csv --api http://edge-01:8080
 | `lib/lookout/monitors/checker.brig` | **актор на монитор**: таймер, `call`, изоляция падений |
 | `lib/lookout/monitors/supervisor.brig` | динамический супервизор, реестр имён |
 | `lib/lookout/repo.brig` | SQL без ORM, маппинг в записи |
-| `lib/lookout_web/router.brig` | маршруты — данные; ссылки на функции, не строки |
+| `lib/lookout_web/router.brig` | маршруты — данные (17): `resources`, `{id: Int}`, вложенные маршруты |
 | `lib/lookout_web/plugs.brig` | плаг = `Conn -> Conn` |
 | `lib/lookout_web/controllers/…` | HTML/JSON, ошибки через fallback |
 | `lib/lookout_web/controllers/api/monitor_controller.brig` | **SSE как `recv`-цикл** |
