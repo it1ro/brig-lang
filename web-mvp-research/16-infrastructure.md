@@ -75,4 +75,4 @@ Calmar (конвейер, действие, рендер), `Server.call`, `Timer
 | Лаунчеры | `calmar routes` ≡ `brig task calmar.routes` — сахар; вне проекта лаунчер исполняет свою версию (`calmar new`) |
 | Релиз | в бинарник попадают задачи с `release: true` (например, `sql.migrate`) и вызываются по имени: `./lookout sql.migrate`; встроенные команды: `start` (по умолчанию), `console` — подключение к **работающему** процессу через локальный сокет с правами 0600 (REPL внутри живой VM), `eval "expr"` — выражение в новом экземпляре без старта приложения |
 
-Пример — `demo/tasks/db/seed.brig`.
+Пример — `corpus/lookout/tasks/db/seed.brig`.

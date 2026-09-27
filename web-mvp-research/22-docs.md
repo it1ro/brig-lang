@@ -31,7 +31,7 @@ module Lookout.Monitors.Monitor
 pub fn to_param(m) -> to_str(m.id)
 ```
 
-В демо — `demo/lib/lookout/monitors/monitor.brig`.
+В демо — `corpus/lookout/lib/lookout/monitors/monitor.brig`.
 
 ## Что где
 

@@ -82,7 +82,7 @@ run-loop не блокируется.
 11. `calmar gen auth`, `Calmar.authorize` (18).
 12. HTTP-кэш и `send_file`, отчёты о падениях через `Telemetry` (20).
 
-**Выход:** demo/`lookout` собирается `brig build` в один файл и работает.
+**Выход:** `corpus/lookout` собирается `brig build` в один файл и работает.
 
 ## Фаза 5. После MVP
 

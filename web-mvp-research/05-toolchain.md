@@ -79,7 +79,7 @@ lock с хешами, без install-скриптов, права как в Deno
 
 | Требование | Зачем | Статус |
 |---|---|---|
-| shebang `#!/usr/bin/env brig` | исполняемые скрипты | работает: `#` — комментарий (проверено `brig check` на demo-whelk) |
+| shebang `#!/usr/bin/env brig` | исполняемые скрипты | работает: `#` — комментарий (проверено `brig check` на corpus/whelk) |
 | скрипт без `module`/`fn main()` | однострочники | решено (Q-script): режим `script` — top-level выражения при прямом запуске |
 | старт < 20 мс | cron, CLI-утилиты | замерить; кэш байткода в `$XDG_CACHE_HOME/brig` по хешу исходника |
 | `Sys.args`, `Env`, `Sys.exit(code)` | CLI | `Sys.args` есть (T-75); `Env`, `Sys.exit` — нет |
