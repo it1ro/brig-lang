@@ -312,7 +312,7 @@ else
 
 ### 4.1 Кортежи (`Tuple`)
 
-```brig pending(T-133)
+```brig
 t = (1, "a", :ok)
 (a, b, c) = t
 ```
@@ -477,7 +477,7 @@ Json.encode(User{ id: 1 }, { type_tag: true })   # {"__type__": "User", "id": 1}
 
 Несовпадение — авто-raise `(:badmatch, v)`, где `v` — значение правой части (§10.4). Ошибка ловится `trap`, как любой авто-raise. Неопровержимые паттерны (`x`, `_`, `(a, b)` для пары, `{ json: j }` для анонимной записи с полем `json`) — частный случай того же правила. Это идиома «let it crash»: когда другой исход — ошибка программы, `Ok(v) = f()` короче `match` с веткой `raise`.
 
-```brig module pending(T-133)
+```brig module
 module Config
 
 fn port(opts) ->
