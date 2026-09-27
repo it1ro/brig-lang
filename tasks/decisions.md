@@ -31,12 +31,12 @@ DD, которые блокируют конкретную волну, лежа�
 
 ## Открытые вопросы §17 (T-190…)
 
-Вопросы не блокируют волны 7–13, issues не заведены. До второго аудита
+Вопросы не блокируют волны 7–13. Issues заведены, DoD и варианты — в них. До второго аудита
 у них были номера T-130…T-135: эти номера заняла Wave 9, поэтому вопросы
 перенесены в десяток T-190.
 
 У части вопросов §17 уже есть ответ в research (`web-mvp-research/07`),
-он указан в блоке как рекомендация. DD только утверждает его или
+он указан в issue как рекомендация. DD только утверждает его или
 отвергает.
 
 Остальные пункты §17:
@@ -49,114 +49,11 @@ DD, которые блокируют конкретную волну, лежа�
   `trace(pid)` — T-174;
 - п.10 (`SendError`) — без изменений.
 
-### T-190 · DD: где хранить stack trace при `raise` (§17 п.1)
-<!-- meta
-priority: P3
-type: design-decision
-effort: low
-model: human
-wave: —
-depends_on: —
-findings: —
-extra_labels: design-decision
--->
-- **Файлы:** `docs/01-language-design.md` §17 п.1, §10.2; `internal/vm/scheduler.go` (печать trace, T-79)
-- **Тест-якорь:** — (решение)
-- **Вопрос:** stack trace непойманного `raise` сейчас печатает CLI (T-79), но в значение ошибки он не попадает. Нужен ли trace в самом значении — например, для `:down` или логера?
-- **Варианты:** **A:** отдельный debug-канал, значение ошибки не меняется (как сейчас). **B:** trace — часть значения, `raise` оборачивает payload в запись; это ломает паттерны `Error(:x)`. **C:** trace доступен только через `trap` с опцией, по умолчанию его нет.
-- **Рекомендация (research 20, Q-crash):** A — trace уходит в событие `[:vm, :actor, :crash]` шины `Telemetry`, значение ошибки не меняется.
-- **DoD:** см. шапку файла.
-- **НЕ делать:** менять формат `:down`; писать код до решения; решать заодно `trace(pid)` (T-174).
-
-### T-191 · DD: `trap(fn, timeout: N)` (§17 п.2)
-<!-- meta
-priority: P3
-type: design-decision
-effort: low
-model: human
-wave: —
-depends_on: —
-findings: —
-extra_labels: design-decision
--->
-- **Файлы:** `docs/01-language-design.md` §10.2, §17 п.2
-- **Тест-якорь:** — (решение)
-- **Вопрос:** нужен ли `trap` с таймаутом? Если да — какой синтаксис (kwargs не вводятся — research L7) и какой вид ошибки (`(:timeout, ms)`?).
-- **Варианты:** **A:** не вводить: таймауты — только в `recv … after`. **B:** `trap(fn, { timeout: N })` — опции анонимной записью (research L7). **C:** ввести как отдельную функцию прелюдии `trap_timeout(fn, ms)`.
-- **Рекомендация аудита:** A — дедлайн задаётся снаружи через `exit(pid, reason)` (research R3, T-163) или `await(ref, timeout)` (T-165); отдельный `trap` с таймаутом дублирует их.
-- **DoD:** см. шапку файла.
-- **НЕ делать:** писать код; менять `recv … after`; вводить kwargs (research L7: не вводятся).
-
-### T-192 · DD: `type Color {}` без полей (§17 п.7)
-<!-- meta
-priority: P2
-type: design-decision
-effort: low
-model: human
-wave: —
-depends_on: —
-findings: —
-extra_labels: design-decision
--->
-- **Файлы:** `docs/01-language-design.md` §14.1, §17 п.7; `brig.ebnf` (`type_body`)
-- **Тест-якорь:** — (решение)
-- **Вопрос:** что значит `type Color {}`: номинальный маркер, алиас Unit или ошибку?
-- **Варианты:** **A:** ошибка парсинга — пустое тело запрещено. **B:** номинальный маркер: значение `Color` без полей, равенство по имени типа. **C:** алиас для `()`.
-- **DoD:** см. шапку файла; в решении указано, влияет ли оно на T-136.
-- **НЕ делать:** писать код; менять T-136 до решения; трогать алиасы `type X = Y`.
-
-### T-193 · DD: or-паттерны `:ok | :error` (§17 п.11, Nice)
-<!-- meta
-priority: P3
-type: design-decision
-effort: low
-model: human
-wave: —
-depends_on: —
-findings: —
-extra_labels: design-decision
--->
-- **Файлы:** `docs/01-language-design.md` §9, §16 (Nice), §17 п.11; `brig.ebnf` (`pattern`)
-- **Тест-якорь:** — (решение)
-- **Вопрос:** вводить ли or-паттерны, и если да — где они разрешены и могут ли альтернативы связывать имена?
-- **Варианты:** **A:** не вводить (Nice остаётся Nice). **B:** только без связываний (`:ok | :error ->`). **C:** со связываниями, но одинаковым набором имён во всех альтернативах.
-- **Рекомендация (research L13):** A до web-MVP; вернуться после.
-- **DoD:** см. шапку файла.
-- **НЕ делать:** писать код; менять лексер (`|` сейчас не токен); решать заодно guard'ы.
-
-### T-194 · DD: движок `Regex` для `rx"..."` (§3.3)
-<!-- meta
-priority: P3
-type: design-decision
-effort: low
-model: human
-wave: —
-depends_on: —
-findings: —
-extra_labels: design-decision
--->
-- **Файлы:** `docs/01-language-design.md` §3.3; `internal/compiler/compiler.go` (`срез: regex не реализован`)
-- **Тест-якорь:** — (решение)
-- **Вопрос:** какой движок и какой диалект у `rx"..."`? От этого зависит, что делает литерал: компиляция при загрузке или в рантайме, ошибка — compile-time или `raise`.
-- **Варианты:** **A:** Go `regexp` (RE2): линейное время, без backreferences. **B:** PCRE-совместимый сторонний движок. **C:** отложить `rx"..."` до Nice, литерал оставить fail-fast.
-- **DoD:** см. шапку файла; при A или B в решении перечислены функции прелюдии (`Regex.match?` и т.п.).
-- **НЕ делать:** писать код; трогать `internal/compiler` до решения (skill `brig-overview`: Regex отложен).
-
-### T-195 · DD: литерал `Set` (§17 п.6, Nice)
-<!-- meta
-priority: P3
-type: design-decision
-effort: low
-model: human
-wave: —
-depends_on: —
-findings: —
-extra_labels: design-decision
--->
-- **Файлы:** `docs/01-language-design.md` §4.6, §16 (Nice), §17 п.6
-- **Тест-якорь:** — (решение)
-- **Вопрос:** нужен ли отдельный литерал `Set` помимо конструктора `set(...)`? Принцип §0 п.2 «один способ» говорит против.
-- **Варианты:** **A:** не вводить, закрыть п.6 §17. **B:** ввести `%s{...}` или похожий. **C:** отложить.
-- **Рекомендация аудита:** A — `set(...)` уже есть, второй способ противоречит §0.2.
-- **DoD:** см. шапку файла.
-- **НЕ делать:** писать код; менять `set(...)`.
+| T-NN | Issue | Вопрос |
+|---|---|---|
+| T-190 | [#294](https://github.com/it1ro/brig-lang/issues/294) | где хранить stack trace при `raise` (§17 п.1) |
+| T-191 | [#295](https://github.com/it1ro/brig-lang/issues/295) | `trap(fn, timeout: N)` (§17 п.2) |
+| T-192 | [#296](https://github.com/it1ro/brig-lang/issues/296) | `type Color {}` без полей (§17 п.7) |
+| T-193 | [#297](https://github.com/it1ro/brig-lang/issues/297) | or-паттерны `:ok \| :error` (§17 п.11, Nice) |
+| T-194 | [#298](https://github.com/it1ro/brig-lang/issues/298) | движок `Regex` для `rx"..."` (§3.3) |
+| T-195 | [#299](https://github.com/it1ro/brig-lang/issues/299) | литерал `Set` (§17 п.6, Nice) |

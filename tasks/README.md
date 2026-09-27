@@ -43,17 +43,17 @@ PR #167 писали S / M / L — это то же самое.
 | 4 | [wave-4.md](wave-4.md) | blockers full-fix | — | закрыта |
 | 5 | [wave-5.md](wave-5.md) | docs cleanup | [#49](https://github.com/it1ro/brig-lang/issues/49) | закрыта, кроме T-65 |
 | 6 | [wave-6.md](wave-6.md) | Must-пробелы §16 | [#124](https://github.com/it1ro/brig-lang/issues/124) | закрыта |
-| 7 | [wave-7.md](wave-7.md) | контуры обратной связи и согласование | — | следующая; T-113, T-115…T-117 заведены (pre-alpha) |
-| 8 | [wave-8.md](wave-8.md) | решения: DD и спека | — | DD T-120…T-125 решены; T-126…T-128 заведены; T-100 — [#169](https://github.com/it1ro/brig-lang/issues/169) |
+| 7 | [wave-7.md](wave-7.md) | контуры обратной связи и согласование | — | следующая; все задачи заведены (pre-alpha) |
+| 8 | [wave-8.md](wave-8.md) | решения: DD и спека | — | DD T-120…T-125 решены; все задачи заведены (pre-alpha) |
 | 9 | [wave-9.md](wave-9.md) | язык: остаток Must и модули | — | все задачи заведены (pre-alpha) |
-| 10 | [wave-10.md](wave-10.md) | язык для библиотек и stdlib на Brig | — | T-147, T-149 заведены (pre-alpha) |
-| 11 | [wave-11.md](wave-11.md) | укрепление и производительность | — | T-102…T-104 — [#171](https://github.com/it1ro/brig-lang/issues/171)–[#173](https://github.com/it1ro/brig-lang/issues/173) |
-| 12 | [wave-12.md](wave-12.md) | рантайм-механизмы | — | план |
-| 13 | [wave-13.md](wave-13.md) | Should §16 и политика на Brig | — | план |
+| 10 | [wave-10.md](wave-10.md) | язык для библиотек и stdlib на Brig | — | все задачи заведены (pre-alpha) |
+| 11 | [wave-11.md](wave-11.md) | укрепление и производительность | — | все задачи заведены |
+| 12 | [wave-12.md](wave-12.md) | рантайм-механизмы | — | план; issues заведены |
+| 13 | [wave-13.md](wave-13.md) | Should §16 и политика на Brig | — | план; issues заведены, T-175 — won't-fix |
 | 14 | [wave-14.md](wave-14.md) | REPL как рабочая консоль | — | план; issues заведены |
-| — | [decisions.md](decisions.md) | решённые DD, открытые вопросы §17 (T-190…) | — | T-190… не заведены |
+| — | [decisions.md](decisions.md) | решённые DD, открытые вопросы §17 (T-190…) | — | T-190…T-195 заведены |
 
-«Состояние» — снимок на 2026-09-27; правду о статусе знает только доска.
+«Состояние» — снимок на 2026-09-28; правду о статусе знает только доска.
 
 ```mermaid
 flowchart LR
