@@ -57,9 +57,10 @@ func (p *parser) parsePatternAtom() (ast.Pattern, error) {
 		return ast.NewLiteralPat(t.Lit, t.Line, t.Col), nil
 	case lexer.UPPER_IDENT:
 		p.advance()
-		// Record-паттерн: Upper "{"
+		name := p.scanQualified(t.Lit)
+		// Record-паттерн: ModuleName "{"
 		if p.at(lexer.LBRACE) {
-			return p.parseRecordPatternRest(t.Lit, t.Line, t.Col)
+			return p.parseRecordPatternRest(name, t.Line, t.Col)
 		}
 		// Constructor с аргументами.
 		var args []ast.ConstructorPatArg
@@ -80,7 +81,7 @@ func (p *parser) parsePatternAtom() (ast.Pattern, error) {
 				return nil, err
 			}
 		}
-		return ast.NewConstructorPat(t.Lit, args, t.Line, t.Col), nil
+		return ast.NewConstructorPat(name, args, t.Line, t.Col), nil
 	case lexer.LPAREN:
 		return p.parseTupleOrGroupPattern()
 	case lexer.LBRACKET:
@@ -185,7 +186,7 @@ func (p *parser) parseMapPattern() (ast.Pattern, error) {
 	return ast.NewMapPattern(pairs, start.Line, start.Col), nil
 }
 
-// record_pattern ::= [ UPPER_IDENT ] "{" [ field_pattern { "," field_pattern } ] "}"
+// record_pattern ::= [ ModuleName ] "{" [ field_pattern { "," field_pattern } ] "}"
 func (p *parser) parseRecordPatternRest(typ string, line, col int) (ast.Pattern, error) {
 	if _, err := p.expect(lexer.LBRACE, "'{'"); err != nil {
 		return nil, err

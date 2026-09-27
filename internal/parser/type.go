@@ -193,7 +193,7 @@ func (p *parser) parseTypePrimary() (ast.Type, []ast.Type, bool, error) {
 		return tt, elems, true, nil
 
 	case lexer.UPPER_IDENT:
-		name := p.advance().Lit
+		name := p.scanQualified(p.advance().Lit)
 		switch name {
 		case "Int":
 			return ast.NewIntType(start.Line, start.Col), nil, false, nil

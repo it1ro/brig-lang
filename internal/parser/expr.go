@@ -459,10 +459,11 @@ func (p *parser) parsePrimary() (ast.Expr, error) {
 		p.advance()
 		return ast.NewVariableExpr(t.Lit, t.Line, t.Col), nil
 	case lexer.UPPER_IDENT:
-		// Возможно: record_literal { name: expr } или просто конструктор.
-		if p.peek(1).Type == lexer.LBRACE {
+		// Возможно: record_literal `[ModuleName] { name: expr }` или просто
+		// конструктор.
+		if p.qualifiedRecordAhead() {
 			p.advance()
-			return p.parseRecordLiteral(t.Lit, t.Line, t.Col)
+			return p.parseRecordLiteral(p.scanQualified(t.Lit), t.Line, t.Col)
 		}
 		p.advance()
 		return ast.NewVariableExpr(t.Lit, t.Line, t.Col), nil
@@ -654,7 +655,7 @@ func (p *parser) parseElems(closeToken lexer.TokenType) ([]ast.Expr, error) {
 	return out, nil
 }
 
-// record_literal ::= [ TypeName ] "{" [ record_elem { sep record_elem } [ sep ] ] "}"
+// record_literal ::= [ ModuleName ] "{" [ record_elem { sep record_elem } [ sep ] ] "}"
 func (p *parser) parseRecordLiteral(typ string, line, col int) (ast.Expr, error) {
 	p.advance() // {
 	if p.at(lexer.RBRACE) {
