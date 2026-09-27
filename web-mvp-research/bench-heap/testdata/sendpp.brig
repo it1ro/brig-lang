@@ -1,0 +1,26 @@
+module Main
+
+# Z4: k обменов (from, msg) -> :ack с эхо-актором; msg — список из n
+# кортежей (i, "item", :ok), построенный один раз.
+
+fn echo() ->
+    recv
+        (:stop) -> :ok
+        (from, _) ->
+            send(from, :ack)
+            echo()
+
+fn pingpong(0, _, _) -> :ok
+fn pingpong(k, pid, msg) ->
+    send(pid, (self(), msg))
+    recv
+        (:ack) -> pingpong(k - 1, pid, msg)
+
+fn main() ->
+    msg = map(i -> (i, "item", :ok), list(1 to bench_n()))
+    capture(msg)
+    pid = spawn(() -> echo())
+    t0 = clock_ns()
+    pingpong(bench_k(), pid, msg)
+    report(clock_ns() - t0)
+    send(pid, :stop)

@@ -1,0 +1,45 @@
+module Main
+
+# Z3 (прокси без сети): h держателей по s кортежей (i, "item", :ok) — живой
+# heap; затем 4 воркера по k раз строят и выбрасывают список из 1000
+# кортежей — поток аллокаций, как у обработчиков запросов.
+
+fn hold(data) ->
+    recv
+        (:stop) -> len(data)
+
+fn holder(s, parent) ->
+    data = map(i -> (i, "item", :ok), list(1 to s))
+    send(parent, :ready)
+    hold(data)
+
+fn start_holders(0, _, _) -> :ok
+fn start_holders(h, s, me) ->
+    spawn(() -> holder(s, me))
+    recv
+        (:ready) -> start_holders(h - 1, s, me)
+
+fn churn(0, parent) -> send(parent, :done)
+fn churn(k, parent) ->
+    xs = map(i -> (i, "x", :ok), list(1 to 1000))
+    if len(xs) == 1000 then churn(k - 1, parent) else raise(:bad_len)
+
+fn start_churn(0, _) -> :ok
+fn start_churn(w, me) ->
+    k = bench_k()
+    spawn(() -> churn(k, me))
+    start_churn(w - 1, me)
+
+fn wait_done(0) -> :ok
+fn wait_done(w) ->
+    recv
+        (:done) -> wait_done(w - 1)
+
+fn main() ->
+    me = self()
+    s = bench_s()
+    if s > 0 then start_holders(20, s, me) else :ok
+    mark(:loaded)
+    start_churn(4, me)
+    wait_done(4)
+    mark(:churned)

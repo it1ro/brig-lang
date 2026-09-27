@@ -1,0 +1,28 @@
+module Main
+
+# Z2b: цена одного таймера recv … after 1 при n простаивающих акторах.
+
+fn idle() ->
+    recv
+        (:stop) -> :ok
+
+fn chain(0, parent) -> send(parent, :done)
+fn chain(n, parent) ->
+    spawn(() -> chain(n - 1, parent))
+    idle()
+
+fn tick(0) -> :ok
+fn tick(k) ->
+    recv
+        (:never) -> :ok
+    after 1 -> tick(k - 1)
+
+fn main() ->
+    me = self()
+    n = bench_n()
+    spawn(() -> chain(n, me))
+    recv
+        (:done) -> :ok
+    t0 = clock_ns()
+    tick(bench_k())
+    report(clock_ns() - t0)
