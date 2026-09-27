@@ -381,13 +381,11 @@ func InstallPrelude(vm *VM) {
 			s := strings.TrimSpace(a.Str)
 			var n int64
 			if _, err := fmt.Sscanf(s, "%d", &n); err != nil {
-				return runtime.Unit, &ErrRaise{Val: runtime.Tuple(
-					runtime.Atom("badarg"), a)}
+				return runtime.Unit, parseErr("to_int", a)
 			}
 			return runtime.Int(n), nil
 		}
-		return runtime.Unit, &ErrRaise{Val: runtime.Tuple(
-			runtime.Atom("badarg"), a)}
+		return runtime.Unit, typeErr("to_int", a)
 	})
 
 	def("to_float", 1, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
@@ -405,13 +403,11 @@ func InstallPrelude(vm *VM) {
 			s := strings.TrimSpace(a.Str)
 			var f float64
 			if _, err := fmt.Sscanf(s, "%f", &f); err != nil {
-				return runtime.Unit, &ErrRaise{Val: runtime.Tuple(
-					runtime.Atom("badarg"), a)}
+				return runtime.Unit, parseErr("to_float", a)
 			}
 			return runtime.Float(f), nil
 		}
-		return runtime.Unit, &ErrRaise{Val: runtime.Tuple(
-			runtime.Atom("badarg"), a)}
+		return runtime.Unit, typeErr("to_float", a)
 	})
 
 	// ---- Sys ----
