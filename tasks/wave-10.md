@@ -44,11 +44,13 @@ T-147 (`cmd/brig`, прелюдия `Test`) и T-148 (Go-native `Str`/`Bytes`)
 | 5 | T-144 | `Mod.f` как значение-функция | T-137 | opus | medium | T-145, T-147, T-148 |
 | 6 | T-145 | Многострочные строки `"""` | T-129, T-132 | opus | medium | всё |
 | 7 | T-146 | Встроенная stdlib на Brig: `List`, `Option`, `Result` | T-130, T-143 | opus | large | T-147, T-148 |
-| 8 | T-147 | `brig test`: раннер, exit-код, доктесты `##` | T-117, T-125 | opus | medium | всё |
+| 8 | T-147 [#198](https://github.com/it1ro/brig-lang/issues/198) | `brig test`: раннер, exit-код, доктесты `##` | T-117, T-125 | opus | medium | всё |
 | 9 | T-148 | `Str` и `Bytes`: базовый набор (Go-native) | T-130 | sonnet | medium | всё |
-| 10 | T-149 | Docs: тест-фреймворк и доктесты в спеке | T-125, T-147 | sonnet | low | — |
+| 10 | T-149 [#199](https://github.com/it1ro/brig-lang/issues/199) | Docs: тест-фреймворк и доктесты в спеке | T-125, T-147 | sonnet | low | — |
 
 ## Задачи
+
+Задачи со ссылкой на issue в таблице выше заведены на доске: DoD — в issue. Ниже — полные блоки тех, что ещё не заведены.
 
 ### T-140 · Лямбды `fn ->` и `(a, b) ->` (реализация #169)
 <!-- meta
@@ -188,25 +190,6 @@ findings: F-3, G-10 (research L2 «тот же механизм грузит в�
   - `make all` → 0; `make check-examples` → `failed 0`.
 - **НЕ делать:** переносить в Brig существующие Go-нативы (`map` прелюдии и т.д.); кэш байткода на диске; `Str`/`Bytes` (T-148 — Go-native); `Supervisor`, `Server` (Wave 13).
 
-### T-147 · `brig test`: раннер, exit-код, доктесты `##`
-<!-- meta
-priority: P1
-type: feature
-effort: medium
-model: opus
-wave: 10
-depends_on: T-117, T-125
-findings: G-9, F-4 (по решению T-125; доктесты — research 22)
--->
-- **Файлы:** `cmd/brig/main.go` (подкоманда `test`); `internal/vm/prelude_test_fw.go` (`Test.run` возвращает итог); разбор `##` и REPL-блоков — переиспользовать `internal/examples` (T-117); `internal/parser` (сохранение `##` перед `pub fn`/`type`/`module`, если нужно для доктестов)
-- **Тест-якорь:** создать `TestBrigTestExitCodeOnFailure`, `TestBrigTestDiscoversFiles`, `TestDoctestPasses`, `TestDoctestMismatch`
-- **DoD:**
-  - `brig test [path]` находит тесты по соглашению из T-125, печатает сводку, exit 0 только если всё прошло; упавший тест — exit 1 (проба h14);
-  - доктесты `##` исполняются тем же раннером; сравнение через `==`;
-  - `make stdlib-test` (или `brig test stdlib/`) входит в `make all` (после T-146);
-  - `make all` → 0.
-- **НЕ делать:** `Test.isolated` и экземпляры рантайма (горизонт, research 16); параллельный запуск; `brig doc`.
-
 ### T-148 · `Str` и `Bytes`: базовый набор (Go-native)
 <!-- meta
 priority: P2
@@ -224,21 +207,3 @@ findings: — (research L8; корпус: `needs` на `Str.*`)
   - ошибки — ловимые `:type_error` / `:index_out_of_bounds` по §10.4; порядок аргументов — субъект первым (T-120);
   - тест T-118 знает новые имена; `make all` → 0.
 - **НЕ делать:** кодеки (`Base64`, `Url`, `Hex` — горизонт), `Regex`, Unicode-нормализацию.
-
-### T-149 · Docs: тест-фреймворк и доктесты в спеке
-<!-- meta
-priority: P2
-type: docs
-effort: low
-model: sonnet
-wave: 10
-depends_on: T-125, T-147
-findings: — (было T-116 в PR #167)
--->
-- **Файлы:** `docs/01-language-design.md` §11.5 (`Test.*`), подраздел «Doc-комментарии `##`» (из T-129) — раннер и формат доктестов, §16
-- **Тест-якорь:** `make check-examples`
-- **DoD:**
-  - API `Test.*` и `brig test` описаны ровно в объёме T-125 и T-147: функции, арность, соглашение об обнаружении, exit-код;
-  - `pending(T-147)` сняты; примеры — блоки `brig`, их проверяет `check-examples`;
-  - запись в Part III; `make check-examples` → `failed 0`.
-- **НЕ делать:** менять код `Test.*`; описывать `Test.isolated` и горячую перезагрузку.
