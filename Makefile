@@ -8,7 +8,7 @@ VERSION ?= $(shell git describe --tags --always 2>/dev/null || echo dev)
 	git-hooks changelog fuzz update-golden update-bytecode update-examples run-examples clean \
 	corpus update-corpus \
 	test-roundtrip test-ast test-parser test-lexer test-one \
-	test-vm test-compiler run run-hello \
+	test-vm test-compiler test-stdlib run run-hello \
 	fmt-check cover cover-html ci-quick check repl
 
 # `make` без цели: полный локальный прогон всего, что должно быть зелёным.
@@ -67,6 +67,12 @@ test-vm:
 	$(GO) test ./internal/vm/ -v
 test-compiler:
 	$(GO) test ./internal/compiler/ -v
+
+# Встроенная stdlib на Brig (T-146): доктесты `##` модулей через brig test.
+# Те же проверки идут в `go test ./stdlib/ ./cmd/brig/`, поэтому в all
+# отдельно не входит.
+test-stdlib: build
+	$(BIN)/brig test stdlib
 
 # Один тест: make test-one PKG=./internal/ast TEST=TestRoundTripModule
 test-one:
