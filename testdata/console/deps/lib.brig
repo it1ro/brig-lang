@@ -1,3 +1,5 @@
 module Lib
 
 fn secret() -> 9
+
+pub fn open() -> 8

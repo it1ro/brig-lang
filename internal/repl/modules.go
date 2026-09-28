@@ -39,6 +39,8 @@ type sessionModule struct {
 	// arity — арность top-level fn по голому имени (для диагностики
 	// приватности). Поднятые локальные fn сюда не входят.
 	arity map[string]int
+	// priv — top-level fn без `pub` (§11.2).
+	priv map[string]bool
 }
 
 // LoadModules загружает в сессию модуль из файла path и все модули,
@@ -58,8 +60,7 @@ func (s *Session) loadModules(path string, here bool) ([]string, error) {
 }
 
 // loadModulesAs — loadModules. user == false — модуль зависимости:
-// вводам видны только pub (§11.4). Пока в AST нет флага pub (T-143),
-// ни одна fn зависимости вводу не видна.
+// вводам видны только pub (§11.4).
 func (s *Session) loadModulesAs(path string, here, user bool) ([]string, error) {
 	g, err := s.loadGraph(path)
 	if err != nil {

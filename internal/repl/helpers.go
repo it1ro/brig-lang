@@ -362,6 +362,7 @@ func (s *Session) indexModule(m *loader.Module) {
 				sm.arity = map[string]int{}
 			}
 			sm.arity[fd.FnName()] = clauseArity(lists)
+			sm.priv = sema.PrivateFns(m.Prog)
 		}
 		doc := &helpDoc{
 			name: qualified,
@@ -372,8 +373,8 @@ func (s *Session) indexModule(m *loader.Module) {
 			continue
 		}
 		s.docs[qualified] = doc
-		// Зависимость: h(M) перечисляет только pub. До T-143 pub нет.
-		if s.deps[m.Name] {
+		// Зависимость: h(M) перечисляет только pub (§11.4).
+		if s.deps[m.Name] && !fd.IsPub() {
 			continue
 		}
 		funs = append(funs, fd.FnName()+"/"+doc.sigs[0].label)
@@ -701,7 +702,6 @@ func errPath(err error) string {
 // RegisterHelpers делает pub-функции загруженного модуля module голыми
 // именами сессии — так же, как функции Repl. Из кода модуля то же делает
 // Repl.register(name): `Calmar.console()` зовёт его до первого ввода.
-// pub в AST пока не отмечен: перечисляются все fn модуля.
 func (s *Session) RegisterHelpers(module string) error {
 	return s.vm.Scheduler().Sync(func() error {
 		return s.registerNow(module)
@@ -732,7 +732,7 @@ func (s *Session) registerNow(module string) error {
 			continue
 		}
 		bare := strings.TrimPrefix(g, module+".")
-		if bare == g || strings.Contains(bare, ".") {
+		if bare == g || strings.Contains(bare, ".") || m.priv[bare] {
 			continue
 		}
 		cur := s.vm.Global(bare)

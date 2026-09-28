@@ -281,6 +281,10 @@ func TestHelperRegister(t *testing.T) {
 	if got := mustEval(t, s, out, "routes()\n"); got.Inspect() != "routes" {
 		t.Fatalf("routes() = %s", got.Inspect())
 	}
+	// T-143: регистрируются только pub-функции.
+	if _, err := s.Eval("hidden()\n"); err == nil {
+		t.Fatal("non-pub hidden() registered as a helper")
+	}
 	// Тот же модуль в новой сессии регистрирует себя из своего кода.
 	s2, out2 := helperSession(t)
 	mustEval(t, s2, out2, "load(\""+tools+"\")\n")

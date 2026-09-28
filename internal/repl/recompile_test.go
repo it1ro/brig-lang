@@ -217,7 +217,7 @@ func TestRecompileImportedModule(t *testing.T) {
 	entry := filepath.Join(dir, "app.brig")
 	util := filepath.Join(dir, "util.brig")
 	writeModule(t, entry, "module App\n\nimport Util\n\nfn run() -> Util.v()\n")
-	writeModule(t, util, "module Util\n\nfn v() -> :a\n")
+	writeModule(t, util, "module Util\n\npub fn v() -> :a\n")
 
 	var out bytes.Buffer
 	s := repl.New(vm.New(), &out)
@@ -233,7 +233,7 @@ func TestRecompileImportedModule(t *testing.T) {
 		t.Fatalf("App.run() = %s, want :a", got)
 	}
 
-	writeModule(t, util, "module Util\n\nfn v() -> :b\n")
+	writeModule(t, util, "module Util\n\npub fn v() -> :b\n")
 	mods, err = s.Recompile()
 	if err != nil || !reflect.DeepEqual(mods, []string{"Util"}) {
 		t.Fatalf("Recompile() = %v, %v; want [Util]", mods, err)
