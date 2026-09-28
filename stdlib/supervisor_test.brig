@@ -213,6 +213,45 @@ fn test_supervisor_start_failed() ->
     r2 = trap(sup_of([not_pid], 3, 5000))
     Test.assert_eq(r2, Error((:start_failed, (:np, (:type_error, (:watch, :oops))))))
 
+# Имя актора, которого спавнит Supervisor.start. tree() узнаёт
+# супервизор по этой строке (Observer.supervisor?). Если спавн уйдёт
+# в другую функцию, строку надо сменить и там.
+fn test_supervisor_initial_fn() ->
+    sup = sup_of([], 3, 5000)
+    match Actor.info(sup)
+        Some(i) -> Test.assert_eq(i.initial_fn, "Supervisor.start$lambda$0$")
+        None -> Test.fail("supervisor is dead")
+    Test.assert_eq(Supervisor.stop(sup, :shutdown, { timeout: 1000 }), Ok(()))
+
+# Дети в порядке старта: (name, pid, restart). Пустой супервизор — [].
+fn test_supervisor_which_children() ->
+    me = self()
+    sup = sup_of([child(me, :a, :permanent), child(me, :b, :transient)], 3, 5000)
+    a = started(:a)
+    b = started(:b)
+    cs = Supervisor.which_children(sup)
+    Test.assert_eq(map(cs, c -> (c[0], c[1], c[2])), [(:a, a, :permanent), (:b, b, :transient)])
+    empty = sup_of([], 1, 5000)
+    Test.assert_eq(Supervisor.which_children(empty), [])
+    Test.assert_eq(Supervisor.stop(sup, :shutdown, { timeout: 1000 }), Ok(()))
+    Test.assert_eq(Supervisor.stop(empty, :shutdown, { timeout: 1000 }), Ok(()))
+    Test.assert_eq([stopped(), stopped()], [:b, :a])
+
+fn test_supervisor_which_children_type() ->
+    r = trap(Supervisor.which_children(:nope))
+    Test.assert_eq(r, Error((:type_error, (:which_children, :nope))))
+    r2 = trap(Supervisor.which_children(1))
+    Test.assert_eq(r2, Error((:type_error, (:which_children, 1))))
+
+# Мёртвый pid — send принимается, ответа нет: таймаут which_children.
+fn test_supervisor_which_children_timeout() ->
+    sup = sup_of([], 1, 5000)
+    ref = watch(sup)
+    Test.assert_eq(Supervisor.stop(sup, :shutdown, { timeout: 0 }), Ok(()))
+    Test.assert_eq(down(ref), :shutdown)
+    r = trap(Supervisor.which_children(sup))
+    Test.assert_eq(r, Error((:timeout, (:which_children, sup))))
+
 fn test_supervisor_bad_spec() ->
     me = self()
     r = trap(sup_of([{ ..child(me, :a, :permanent), restart: :temporary }], 3, 5000))
