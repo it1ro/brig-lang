@@ -119,7 +119,7 @@ var replMod = map[string]sig{
 	"bindings": exact(0), "reset": exact(0), "load": exact(1),
 	"flush": exact(0), "time": exact(1), "dis": exact(1),
 	"recompile": exact(0), "register": exact(1),
-	"tree": exact(0), "info": exact(1), "top": exact(1),
+	"tree": exact(0), "info": exact(1), "top": exact(1), "observe": exact(0),
 }
 
 // sig — допустимые арности. varMin >= 0 — вариадик: любой вызов с argc >= varMin.

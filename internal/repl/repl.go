@@ -16,6 +16,7 @@ package repl
 import (
 	"fmt"
 	"io"
+	"os"
 	"strings"
 
 	"github.com/it1ro/brig-lang/internal/ast"
@@ -51,6 +52,8 @@ type Session struct {
 	order    []string // порядок появления имён
 	env      map[string]runtime.Value
 	out      io.Writer
+	termIn   *os.File // терминал observe; nil — os.Stdin
+	termOut  *os.File // nil — os.Stdout
 	pal      highlight.Palette
 	diagFile string          // имя в диагностике sema; у REPL — `<repl>`
 	seq      int             // счётчик инструкций: префикс глобальных имён
