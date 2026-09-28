@@ -3,6 +3,7 @@ package term
 import (
 	"bufio"
 	"errors"
+	"fmt"
 	"io"
 	"regexp"
 	"strings"
@@ -349,6 +350,7 @@ func TestEditorHooks(t *testing.T) {
 	scr := newScreen(80)
 	e = newTestEditor("x = 1", io.MultiWriter(&out, scr))
 	e.prompt = "> "
+	e.Color = true
 	e.Highlight = func(src string, _ int) string { return strings.ReplaceAll(src, "1", "\x1b[33m1\x1b[0m") }
 	var hints []struct {
 		src string
@@ -376,6 +378,7 @@ func TestEditorHooks(t *testing.T) {
 	scr = newScreen(80)
 	e = newTestEditor("x = 1"+left, scr)
 	e.prompt = "> "
+	e.Color = true
 	e.Hint = func(string, int) string { return "!" }
 	drive(t, e)
 	if got := scr.String(); got != "> x = █1" {
@@ -384,10 +387,181 @@ func TestEditorHooks(t *testing.T) {
 	scr = newScreen(80)
 	e = newTestEditor("x"+enter, scr)
 	e.prompt = "> "
+	e.Color = true
 	e.Hint = func(string, int) string { return "yz" }
 	drive(t, e)
 	if got := scr.String(); got != "> x\n> █yz" {
 		t.Errorf("hint after submit: screen = %q", got)
+	}
+}
+
+func TestEditorComplete(t *testing.T) {
+	food := func(_ string, pos int) Completion {
+		return Completion{From: 0, To: pos, Candidates: []Candidate{
+			{Insert: "food", Display: "food/1"},
+			{Insert: "foot", Display: "foot/1"},
+		}}
+	}
+	e := newTestEditor("fo\t", io.Discard)
+	e.Complete = food
+	drive(t, e)
+	if got := show(e); got != "foo|" {
+		t.Fatalf("common prefix: buffer = %q", got)
+	}
+
+	var raw strings.Builder
+	scr := newScreen(80)
+	e = newTestEditor("fo\t\t\t", io.MultiWriter(&raw, scr))
+	e.Complete = food
+	drive(t, e)
+	if got := show(e); got != "foo|" {
+		t.Fatalf("third tab buffer = %q", got)
+	}
+	if !strings.Contains(scr.String(), "food/1") || !strings.Contains(scr.String(), "foot/1") {
+		t.Fatalf("third tab dropped the menu: %q", scr.String())
+	}
+
+	scr = newScreen(80)
+	e = newTestEditor("fo\t\tz", scr)
+	e.Complete = food
+	drive(t, e)
+	if strings.Contains(scr.String(), "food") {
+		t.Fatalf("rune left the menu up: %q", scr.String())
+	}
+	if got := show(e); got != "fooz|" {
+		t.Fatalf("after rune: buffer = %q", got)
+	}
+
+	// Span задаёт сессия: редактору не нужно видеть границу имени.
+	e = newTestEditor("xxfoyy\t", io.Discard)
+	e.Complete = func(string, int) Completion {
+		return Completion{From: 2, To: 4, Candidates: []Candidate{{Insert: "food", Display: "food"}}}
+	}
+	drive(t, e)
+	if got := show(e); got != "xxfood|yy" {
+		t.Fatalf("span replace: buffer = %q", got)
+	}
+
+	// Общий префикс пустой — меню на первом Tab.
+	scr = newScreen(40)
+	e = newTestEditor("\t", scr)
+	e.Complete = func(string, int) Completion {
+		return Completion{Candidates: []Candidate{
+			{Insert: "ab", Display: "AB"},
+			{Insert: "cd", Display: "CD"},
+		}}
+	}
+	drive(t, e)
+	if got := show(e); got != "|" {
+		t.Fatalf("empty prefix changed the buffer: %q", got)
+	}
+	if !strings.Contains(scr.String(), "█") || !strings.Contains(scr.String(), "AB") {
+		t.Fatalf("menu not under the cursor: %q", scr.String())
+	}
+
+	scr = newScreen(12)
+	items := make([]Candidate, 30)
+	for i := range items {
+		s := fmt.Sprintf("%02d", i)
+		items[i] = Candidate{Insert: s, Display: s}
+	}
+	e = newTestEditor("\t", scr)
+	e.Width = func() int { return 12 }
+	e.Complete = func(string, int) Completion {
+		return Completion{Candidates: items}
+	}
+	drive(t, e)
+	if !strings.Contains(scr.String(), "и ещё 6") {
+		t.Fatalf("menu cap: %q", scr.String())
+	}
+}
+
+func TestEditorGhost(t *testing.T) {
+	var raw strings.Builder
+	scr := newScreen(80)
+	e := newTestEditor("x", io.MultiWriter(&raw, scr))
+	e.Color = false
+	e.Hint = func(string, int) string { return "GHOST" }
+	drive(t, e)
+	if strings.Contains(scr.String(), "GHOST") || strings.Contains(raw.String(), "\x1b[90m") {
+		t.Fatalf("color off drew the tail: screen %q raw %q", scr.String(), raw.String())
+	}
+	if got := show(e); got != "x|" {
+		t.Fatalf("buffer = %q", got)
+	}
+
+	e = newTestEditor("x"+right, io.Discard)
+	e.Color = false
+	e.Hint = func(string, int) string { return "GHOST" }
+	e.Complete = func(string, int) Completion { return Completion{} }
+	drive(t, e)
+	if got := show(e); got != "xGHOST|" {
+		t.Fatalf("right without color: buffer = %q", got)
+	}
+
+	e = newTestEditor("x\t", io.Discard)
+	e.Color = false
+	e.Hint = func(string, int) string { return "GHOST" }
+	e.Complete = func(string, int) Completion { return Completion{} }
+	drive(t, e)
+	if got := show(e); got != "x|" {
+		t.Fatalf("tab inserted the tail: buffer = %q", got)
+	}
+
+	e = newTestEditor("fn g() ->"+right, io.Discard)
+	e.Color = true
+	e.Hint = func(src string, _ int) string {
+		if src == "fn g() ->" {
+			return "\n    1"
+		}
+		return ""
+	}
+	drive(t, e)
+	if got := show(e); got != "fn g() ->\n    1|" {
+		t.Fatalf("multiline tail: buffer = %q", got)
+	}
+
+	scr = newScreen(80)
+	raw.Reset()
+	e = newTestEditor("x", io.MultiWriter(&raw, scr))
+	e.Color = true
+	e.Signature = func(string, int) (string, int, int) { return "len(v)", 4, 5 }
+	drive(t, e)
+	if !strings.Contains(raw.String(), "\x1b[4mv\x1b[24m") {
+		t.Fatalf("underline missing: %q", raw.String())
+	}
+	if strings.Contains(scr.String(), "[v]") {
+		t.Fatalf("color mode used brackets: %q", scr.String())
+	}
+	if line, _, _ := strings.Cut(scr.String(), "\n"); !strings.Contains(line, "█") {
+		t.Fatalf("cursor left the input line: %q", scr.String())
+	}
+
+	scr = newScreen(80)
+	e = newTestEditor("x", scr)
+	e.Color = false
+	e.Signature = func(string, int) (string, int, int) { return "len(v)", 4, 5 }
+	e.Complete = func(string, int) Completion {
+		return Completion{Candidates: []Candidate{{Insert: "ab", Display: "AB"}, {Insert: "cd", Display: "CD"}}}
+	}
+	// Подпись выше меню: отдельный кадр только с подписью, меню — по Tab.
+	drive(t, e)
+	if !strings.Contains(scr.String(), "len([v])") {
+		t.Fatalf("brackets: %q", scr.String())
+	}
+
+	scr = newScreen(80)
+	e = newTestEditor("\t", scr)
+	e.Color = false
+	e.Signature = func(string, int) (string, int, int) { return "len(v)", 4, 5 }
+	e.Complete = func(string, int) Completion {
+		return Completion{Candidates: []Candidate{{Insert: "ab", Display: "AB"}, {Insert: "cd", Display: "CD"}}}
+	}
+	drive(t, e)
+	screen := scr.String()
+	sig, menu := strings.Index(screen, "len([v])"), strings.Index(screen, "AB")
+	if sig < 0 || menu < 0 || sig > menu {
+		t.Fatalf("signature not above the menu: %q", screen)
 	}
 }
 

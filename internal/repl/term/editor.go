@@ -31,9 +31,20 @@ type Editor struct {
 	// занимают, направляющая отступа может заменить пробел на символ
 	// той же ширины. nil — простой текст.
 	Highlight func(src string, cursor int) string
-	// Hint — «серый хвост» после курсора в конце его строки (первая
-	// строка результата); pos — курсор в рунах. nil — без хвоста.
+	// Hint — суффикс истории после курсора. Редактор зовёт его только в
+	// конце строки курсора. На экране — первая строка, серым и только
+	// при Color; → и End вставляют весь суффикс и без цвета тоже.
+	// nil — без хвоста.
 	Hint func(src string, pos int) string
+	// Complete — кандидаты Tab. Span [From, To) редактор заменяет сам,
+	// не разбирая, где в тексте имя.
+	Complete func(src string, pos int) Completion
+	// Signature — строка под вводом. text без SGR; argStart и argEnd —
+	// руны метки текущего аргумента, -1 — метки нет.
+	Signature func(src string, pos int) (text string, argStart, argEnd int)
+	// Color — рисовать серый хвост и подчёркивать аргумент. На клавиши
+	// не влияет: без цвета хвост просто не виден, а аргумент в скобках.
+	Color bool
 	// History — вводы для ↑/↓ и Ctrl-R; nil — без истории. Добавляет
 	// в неё вызывающий.
 	History *History
@@ -50,6 +61,8 @@ type Editor struct {
 	draft        string
 	search       *search
 	noHint       bool
+	menu         []string
+	ghost        string
 }
 
 // search — состояние Ctrl-R.
@@ -92,6 +105,8 @@ func (e *Editor) reset() {
 	e.hist = e.historyLen()
 	e.draft = ""
 	e.search = nil
+	e.menu = nil
+	e.ghost = ""
 	e.render()
 }
 
@@ -100,6 +115,9 @@ func (e *Editor) reset() {
 func (e *Editor) handle(k termio.Key) (src string, done bool, err error) {
 	if e.search != nil && e.searchKey(k) {
 		return "", false, nil
+	}
+	if k.Code != termio.KeyTab {
+		e.menu = nil
 	}
 	b := &e.buf
 	switch k.Code {
@@ -129,11 +147,17 @@ func (e *Editor) handle(k termio.Key) (src string, done bool, err error) {
 	case termio.KeyLeft:
 		b.left()
 	case termio.KeyRight:
-		b.right()
+		if !e.acceptGhost() {
+			b.right()
+		}
 	case termio.KeyHome:
 		b.home()
 	case termio.KeyEnd:
-		b.end()
+		if !e.acceptGhost() {
+			b.end()
+		}
+	case termio.KeyTab:
+		e.tab()
 	case termio.KeyWordLeft:
 		b.wordLeft()
 	case termio.KeyWordRight:
@@ -160,6 +184,8 @@ func (e *Editor) handle(k termio.Key) (src string, done bool, err error) {
 		e.write("\x1b[H\x1b[2J")
 		e.crow = 0
 	case termio.KeySearch:
+		e.ghost = ""
+		e.menu = nil
 		if e.History != nil {
 			saved := buffer{r: append([]rune(nil), b.r...), pos: b.pos}
 			e.search = &search{match: -1, saved: saved}
@@ -314,8 +340,12 @@ func (e *Editor) render() {
 	}
 	cl, cc := e.buf.lineCol()
 	hint := ""
+	e.ghost = ""
 	if e.Hint != nil && !e.noHint && e.search == nil && e.buf.pos == e.buf.lineEnd() {
-		hint, _, _ = strings.Cut(e.Hint(src, e.buf.pos), "\n")
+		e.ghost = e.Hint(src, e.buf.pos)
+		if e.Color {
+			hint, _, _ = strings.Cut(e.ghost, "\n")
+		}
 	}
 
 	rows, crow, ccol := 0, 0, 0
@@ -343,8 +373,23 @@ func (e *Editor) render() {
 			b.WriteString("\r\n")
 		}
 	}
+	footRows := 0
+	if foot := e.footer(src, w); len(foot) > 0 {
+		b.WriteString("\r\n")
+		for i, line := range foot {
+			b.WriteString(line)
+			n := termio.Cells(line)
+			if n > 0 && n%w == 0 {
+				b.WriteString(" \b\x1b[K")
+			}
+			footRows += n/w + 1
+			if i < len(foot)-1 {
+				b.WriteString("\r\n")
+			}
+		}
+	}
 	b.WriteString("\r")
-	if up := rows - 1 - crow; up > 0 {
+	if up := rows - 1 - crow + footRows; up > 0 {
 		fmt.Fprintf(&b, "\x1b[%dA", up)
 	}
 	if ccol > 0 {
