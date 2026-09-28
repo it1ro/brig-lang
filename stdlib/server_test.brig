@@ -1,0 +1,75 @@
+# Тесты Server (T-170): call шлёт (:call, from, req) и ждёт через await
+# (§12.9), reply отвечает в слот мимо ящика.
+
+fn take() -> recv x -> x
+
+fn empty() ->
+    recv
+        x -> (:unexpected, x)
+    after 0 -> :empty
+
+# Сервер-счётчик: цикл — обычный recv пользователя.
+fn counter(n) ->
+    recv
+        (:call, from, :get) ->
+            Server.reply(from, n)
+            counter(n)
+        (:call, from, (:add, k)) ->
+            Server.reply(from, n + k)
+            counter(n + k)
+
+fn test_server_call_reply() ->
+    pid = spawn(() -> counter(0))
+    Test.assert_eq(Server.call(pid, (:add, 2), 1000), Ok(2))
+    Test.assert_eq(Server.call(pid, (:add, 3), 1000), Ok(5))
+    Test.assert_eq(Server.call(pid, :get, 1000), Ok(5))
+    Test.assert_eq(empty(), :empty)
+
+# Сервер видит ровно (:call, (pid, ref), req): from — пара вызывающего.
+fn test_server_call_message_shape() ->
+    me = self()
+    pid = spawn(() -> recv (:call, (from, ref), req) -> send(me, (:seen, from == me, req)))
+    Test.assert_eq(Server.call(pid, :ping, 50), Error(:timeout))
+    Test.assert_eq(take(), (:seen, true, :ping))
+
+# Нет ответа за timeout — Error(:timeout); поздний ответ отбрасывается и
+# в ящик не попадает.
+fn late(me) ->
+    recv
+        (:call, from, :slow) ->
+            recv
+                :go -> ()
+            Server.reply(from, :late)
+            send(me, :replied)
+
+fn test_server_call_timeout() ->
+    me = self()
+    pid = spawn(() -> late(me))
+    Test.assert_eq(Server.call(pid, :slow, 20), Error(:timeout))
+    send(pid, :go)
+    Test.assert_eq(take(), :replied)
+    Test.assert_eq(empty(), :empty)
+    # Мёртвый сервер — тоже Error(:timeout): сообщение теряется (§12.3).
+    Test.assert_eq(Server.call(pid, :slow, 0), Error(:timeout))
+
+# Чужие сообщения вызывающего не трогаются: пришедшие до и во время
+# ожидания берёт следующий recv, :down — впереди (как в T-165).
+fn chatty(me) ->
+    recv
+        (:call, from, :hello) ->
+            send(me, :b)
+            send(me, :c)
+            Server.reply(from, :world)
+
+fn test_server_call_keeps_mailbox() ->
+    me = self()
+    send(me, :a)
+    (pid, ref) = spawn_watched(() -> chatty(me))
+    Test.assert_eq(Server.call(pid, :hello, 1000), Ok(:world))
+    Test.assert_eq(take(), (:down, ref, :normal))
+    Test.assert_eq([take(), take(), take()], [:a, :b, :c])
+    Test.assert_eq(empty(), :empty)
+
+fn test_server_reply_bad_from() ->
+    r = trap(Server.reply(:nobody, 1))
+    Test.assert_eq(r, Error((:type_error, (:reply, :nobody))))

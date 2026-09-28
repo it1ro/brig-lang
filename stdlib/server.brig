@@ -1,0 +1,43 @@
+## Синхронный запрос к актору-серверу (research 04, §12.9). Протокол —
+## сообщение `(:call, from, req)` в ящик сервера; сервер отвечает
+## `Server.reply(from, v)`, ответ идёт в ref-слот вызывающего мимо его
+## ящика. Цикл сервера — обычный `recv` в коде пользователя.
+module Server
+
+## Шлёт серверу `pid` сообщение `(:call, from, req)` и ждёт ответа не
+## дольше `timeout` мс через `await` (§12.9): `Ok(v)` — сервер ответил
+## `Server.reply(from, v)`, `Error(:timeout)` — ответа нет (в том числе
+## сервер мёртв), `Error(:busy)` — ящик сервера полон (HWM, §12.2).
+## Ящик вызывающего не трогается: чужие сообщения, пришедшие во время
+## ожидания, берёт его следующий `recv`.
+##
+## ```brig repl
+## > pid = spawn(() -> recv (:call, from, n) -> Server.reply(from, n * 2))
+## > Server.call(pid, 21, 1000)
+## Ok(42)
+## > Server.call(spawn(() -> ()), :ping, 0)
+## Error(:timeout)
+## ```
+pub fn call(pid, req, timeout) ->
+    ref = make_ref()
+    match send(pid, (:call, (self(), ref), req))
+        Ok(()) -> await(ref, timeout)
+        Error(e) ->
+            # Слот ответа закрывается: поздний reply отбрасывается (§12.9).
+            _ = await(ref, 0)
+            Error(e)
+
+## Отвечает на запрос `(:call, from, req)`: `from` — `(pid, ref)`
+## вызывающего, `Server.reply(from, v)` ≡ `reply(pid, ref, v)` (§12.9).
+## Результат — `()`; поздний или повторный ответ молча отбрасывается.
+## `from` не пара `(Pid, Ref)` — `(:type_error, (:reply, from))`.
+##
+## ```brig repl
+## > ref = make_ref()
+## > Server.reply((self(), ref), :pong)
+## ()
+## > await(ref, 0)
+## Ok(:pong)
+## ```
+pub fn reply((pid, ref), v) -> Prelude.reply(pid, ref, v)
+pub fn reply(from, _) -> raise((:type_error, (:reply, from)))
