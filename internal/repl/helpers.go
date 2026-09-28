@@ -19,6 +19,7 @@ import (
 	"github.com/it1ro/brig-lang/internal/runtime"
 	"github.com/it1ro/brig-lang/internal/sema"
 	"github.com/it1ro/brig-lang/internal/vm"
+	"github.com/it1ro/brig-lang/stdlib"
 )
 
 // Хелперы консоли (§11.4) — нативы модуля Repl. В сессии они стоят и
@@ -27,6 +28,7 @@ import (
 
 func (s *Session) installHelpers() {
 	s.initDocs()
+	s.indexStdlib()
 	defs := map[string]runtime.Value{}
 	// Голое имя — своя FuncValue с голым Name: h(v) печатает `v/0`, а
 	// Repl.h(Repl.v) — `Repl.v/0`, как ввёл пользователь.
@@ -345,9 +347,42 @@ func (s *Session) indexModule(m *loader.Module) {
 	if b, err := os.ReadFile(m.Path); err == nil {
 		src = string(b)
 	}
+	if sm := s.mods[m.Name]; sm != nil {
+		if sm.arity == nil {
+			sm.arity = map[string]int{}
+		}
+		for _, d := range m.Prog.Decls {
+			if fd, ok := d.(ast.FuncDecl); ok {
+				sm.arity[fd.FnName()] = fnArity(fd)
+			}
+		}
+		sm.priv = sema.PrivateFns(m.Prog)
+	}
+	s.indexDocs(m.Name, m.Prog, src, s.deps[m.Name])
+}
+
+// indexStdlib — документация встроенных модулей на Brig (T-146) из
+// встроенного исходника; как у зависимости, h(M) перечисляет только pub.
+func (s *Session) indexStdlib() {
+	for _, m := range stdlib.MustModules() {
+		s.indexDocs(m.Name, m.Prog, m.Src, true)
+	}
+}
+
+func fnArity(fd ast.FuncDecl) int {
+	var lists [][]ast.Pattern
+	for _, cl := range fd.FuncClauses() {
+		lists = append(lists, cl.Params)
+	}
+	return clauseArity(lists)
+}
+
+// indexDocs строит h-документацию модуля name из его исходника src.
+// dep — зависимость: h(M) перечисляет только pub (§11.4).
+func (s *Session) indexDocs(name string, prog *ast.Program, src string, dep bool) {
 	modText, fnText := attachDocs(src)
 	var funs []string
-	for _, d := range m.Prog.Decls {
+	for _, d := range prog.Decls {
 		fd, ok := d.(ast.FuncDecl)
 		if !ok {
 			continue
@@ -356,14 +391,7 @@ func (s *Session) indexModule(m *loader.Module) {
 		for _, cl := range fd.FuncClauses() {
 			lists = append(lists, cl.Params)
 		}
-		qualified := m.Name + "." + fd.FnName()
-		if sm := s.mods[m.Name]; sm != nil {
-			if sm.arity == nil {
-				sm.arity = map[string]int{}
-			}
-			sm.arity[fd.FnName()] = clauseArity(lists)
-			sm.priv = sema.PrivateFns(m.Prog)
-		}
+		qualified := name + "." + fd.FnName()
 		doc := &helpDoc{
 			name: qualified,
 			text: fnText[fd.FnName()],
@@ -374,13 +402,13 @@ func (s *Session) indexModule(m *loader.Module) {
 		}
 		s.docs[qualified] = doc
 		// Зависимость: h(M) перечисляет только pub (§11.4).
-		if s.deps[m.Name] && !fd.IsPub() {
+		if dep && !fd.IsPub() {
 			continue
 		}
 		funs = append(funs, fd.FnName()+"/"+doc.sigs[0].label)
 	}
 	sort.Strings(funs)
-	s.docs[m.Name] = &helpDoc{name: m.Name, module: true, text: modText, funs: funs}
+	s.docs[name] = &helpDoc{name: name, module: true, text: modText, funs: funs}
 }
 
 func attachDocs(src string) (mod string, fns map[string]string) {
