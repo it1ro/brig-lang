@@ -229,14 +229,16 @@ func checkBlock(b block, tasks map[string]bool) Result {
 	if mode != "module" {
 		indent = 4
 	}
-	err := compile(src)
 	if pending != "" {
-		if err == nil {
+		// Pending ждёт нереализованную фичу — чаще всего новую функцию
+		// прелюдии. Её ловит только разрешение имён (§F.3), поэтому pending
+		// проверяется строже обычного блока, как в `brig check`.
+		if compileNames(src) == nil {
 			return fail(b, mode, fmt.Sprintf("блок компилируется — снять pending(%s)", pending))
 		}
 		return Result{File: b.file, Line: b.line, Col: 1, Mode: mode, OK: true, Pending: pending}
 	}
-	if err != nil {
+	if err := compile(src); err != nil {
 		return failAt(b, mode, indent, err)
 	}
 	if err := roundTrip(src); err != nil {
@@ -256,6 +258,21 @@ func compile(src string) error {
 		if d.Severity == sema.SeverityError {
 			return &semaError{d}
 		}
+	}
+	_, err = compiler.New().Compile(prog)
+	return err
+}
+
+// compileNames: compile плюс разрешение имён sema.CheckNames — неизвестная
+// функция и неверная арность тоже ошибка. Обычные блоки его не проходят:
+// примеры ссылаются на неопределённые хелперы (`open`, `start`).
+func compileNames(src string) error {
+	prog, err := parser.ParseProgram(parser.ModeModule, src)
+	if err != nil {
+		return err
+	}
+	if sema.CheckNames(prog, nil).HasErrors() {
+		return errors.New("sema: unresolved names")
 	}
 	_, err = compiler.New().Compile(prog)
 	return err

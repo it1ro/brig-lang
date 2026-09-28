@@ -347,7 +347,8 @@ func TestCheckBlockCompiles(t *testing.T) {
 }
 
 // TestCheckBlockPendingNeedsTask: `brig pending(T-NNN)` обязан не
-// компилироваться и ссылаться на существующую задачу (T-116).
+// компилироваться и ссылаться на существующую задачу (T-116). Неизвестная
+// функция — тоже «не компилируется», как в `brig check` (§F.3, T-160).
 func TestCheckBlockPendingNeedsTask(t *testing.T) {
 	tasks := map[string]bool{"T-500": true}
 	notCompiling := "t = (1, 2, 3)\nFoo{a: t}"
@@ -359,6 +360,7 @@ func TestCheckBlockPendingNeedsTask(t *testing.T) {
 	}{
 		{"pending, не компилируется", "brig pending(T-500)", notCompiling, true, ""},
 		{"pending с режимом", "brig stmt pending(T-500)", notCompiling, true, ""},
+		{"pending, неизвестная функция", "brig pending(T-500)", "whereis(:repo)", true, ""},
 		{"pending компилируется", "brig pending(T-500)", "x = 1", false, "снять pending"},
 		{"pending неизвестной задачи", "brig pending(T-999)", notCompiling, false, "T-999"},
 		{"pending без номера", "brig pending", notCompiling, false, "pending"},
