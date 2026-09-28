@@ -11,7 +11,7 @@ fn describe(s) ->
         Util.Circle(r) -> "circle \(r)"
         Util.Square(a) -> "square \(a)"
 
-fn f() -> "Main.f"
+pub fn f() -> "Main.f"
 
 fn main() ->
     print(f(), Util.f())

@@ -94,7 +94,7 @@ func TestBrigModuleGraph(t *testing.T) {
 		dir := t.TempDir()
 		write(t, dir, map[string]string{
 			"main.brig": "module Main\nimport Util\n\nfn main() ->\n    r = Util.f(1)\n    print(r)\n",
-			"util.brig": "fn g(x) ->\n    raise(:boom)\n\nfn f(x) ->\n    y = g(x)\n    y\n",
+			"util.brig": "fn g(x) ->\n    raise(:boom)\n\npub fn f(x) ->\n    y = g(x)\n    y\n",
 		})
 		out, code := brig(t, dir, "main.brig")
 		want := "  at Util.g (util.brig:2:5)\n  at Util.f (util.brig:5:9)\n  at main (main.brig:5:13)\n"
@@ -107,10 +107,10 @@ func TestBrigModuleGraph(t *testing.T) {
 		dir := t.TempDir()
 		write(t, dir, map[string]string{
 			"main.brig": "module Main\nimport Util\n\nfn main() -> Util.f()\n",
-			"util.brig": "fn f() -> [1] |> Nope.g\n",
+			"util.brig": "pub fn f() -> [1] |> Nope.g\n",
 		})
 		out, code := brig(t, dir, "main.brig")
-		want := "error: util.brig:1:18: undefined function Nope.g/1\n"
+		want := "error: util.brig:1:22: undefined function Nope.g/1\n"
 		if code != exitParse || out != want {
 			t.Fatalf("exit %d, out %q; want %d, %q", code, out, exitParse, want)
 		}

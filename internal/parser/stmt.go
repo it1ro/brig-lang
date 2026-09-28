@@ -202,22 +202,31 @@ func (p *parser) parseFnBody() (*ast.BlockStmt, error) {
 	return ast.NewBlockStmt([]ast.Stmt{st}, e.Pos(), e.End()), nil
 }
 
-// fn_decl ::= fn_clause+ (top-level)
+// fn_decl ::= ( [ "pub" ] fn_clause )+ (top-level)
+//
+// pub стоит перед каждым клозом (§11.2); клозы с pub и без — ошибка sema.
 func (p *parser) parseFnDecl() (ast.Decl, error) {
 	var clauses []ast.FnClauseArg
 	var name string
 	start := p.cur()
 
+	if p.at(lexer.KW_PUB) && p.peek(1).Type != lexer.KW_FN {
+		p.advance() // consume 'pub' so the caller makes progress
+		return nil, p.errf("expected 'fn' after 'pub', got %s", p.cur().Type)
+	}
 	// Имя fn обязано быть LOWER_IDENT (в т.ч. не ключевым словом, как
 	// `pub`/`quote`, T-132 #190) — иначе без этой проверки цикл ниже
 	// не входит в тело ни разу, p.pos не двигается, и caller
 	// (parseTopDecl) зацикливается на этом же токене `fn`.
-	if !p.at(lexer.KW_FN) || p.peek(1).Type != lexer.LOWER_IDENT {
+	if p.fnClauseAt(0) < 0 {
+		p.skipPub()
 		p.advance() // consume 'fn' so the caller makes progress
 		return nil, p.errf("expected function name after 'fn', got %s", p.cur().Type)
 	}
 
-	for p.at(lexer.KW_FN) && p.peek(1).Type == lexer.LOWER_IDENT {
+	for p.fnClauseAt(0) >= 0 {
+		clauseTok := p.cur()
+		pub := p.skipPub()
 		p.advance()
 		n := p.advance().Lit
 		if name == "" {
@@ -248,14 +257,38 @@ func (p *parser) parseFnDecl() (ast.Decl, error) {
 		if err != nil {
 			return nil, err
 		}
-		clauses = append(clauses, ast.FnClauseArg{Guard: guard, Params: params, Body: body})
+		clauses = append(clauses, ast.FnClauseArg{
+			Pub: pub, Guard: guard, Params: params, Body: body,
+			Line: clauseTok.Line, Col: clauseTok.Col,
+		})
 		save := p.pos
 		p.skipNewlines()
-		if p.at(lexer.KW_FN) && p.peek(1).Type == lexer.LOWER_IDENT && p.peek(1).Lit == name {
+		if i := p.fnClauseAt(0); i >= 0 && p.peek(i+1).Lit == name {
 			continue
 		}
 		p.pos = save
 		break
 	}
 	return ast.NewFuncDecl(name, clauses, start.Line, start.Col), nil
+}
+
+// fnClauseAt: с позиции off начинается клоз `[pub] fn name` — индекс
+// токена `fn` относительно текущего, иначе -1.
+func (p *parser) fnClauseAt(off int) int {
+	if p.peek(off).Type == lexer.KW_PUB {
+		off++
+	}
+	if p.peek(off).Type == lexer.KW_FN && p.peek(off+1).Type == lexer.LOWER_IDENT {
+		return off
+	}
+	return -1
+}
+
+// skipPub съедает `pub` перед клозом; true — он был.
+func (p *parser) skipPub() bool {
+	if p.at(lexer.KW_PUB) {
+		p.advance()
+		return true
+	}
+	return false
 }

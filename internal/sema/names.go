@@ -25,18 +25,42 @@ type Module struct {
 // World — сигнатуры функций и конструкторов пользовательских модулей.
 type World struct {
 	mods map[string]map[string]sig
+	// priv — функции без `pub` (§11.2). Конструкторы всегда публичны.
+	priv map[string]map[string]bool
 }
 
 // NewWorld собирает сигнатуры модулей. Встроенные модули сюда не входят.
 func NewWorld(mods []Module) *World {
-	w := &World{mods: make(map[string]map[string]sig, len(mods))}
+	w := &World{
+		mods: make(map[string]map[string]sig, len(mods)),
+		priv: make(map[string]map[string]bool, len(mods)),
+	}
 	for _, m := range mods {
 		if m.Name == "" || m.Prog == nil {
 			continue
 		}
 		w.mods[m.Name] = signatures(m.Prog)
+		w.priv[m.Name] = PrivateFns(m.Prog)
 	}
 	return w
+}
+
+// PrivateFns — имена функций модуля без `pub` (§11.2).
+func PrivateFns(prog *ast.Program) map[string]bool {
+	out := map[string]bool{}
+	if prog == nil {
+		return out
+	}
+	for _, d := range prog.Decls {
+		if fd, ok := d.(ast.FuncDecl); ok && !fd.IsPub() {
+			out[fd.FnName()] = true
+		}
+	}
+	return out
+}
+
+func (w *World) private(mod, fn string) bool {
+	return w != nil && w.priv[mod][fn]
 }
 
 func (w *World) lookup(mod, fn string) (sig, bool) {
@@ -78,6 +102,7 @@ func checkNames(prog *ast.Program, world *World, session bool) *Result {
 		resolve: true,
 		session: session,
 		world:   world,
+		module:  prog.Module,
 		own:     signatures(prog),
 		imports: importMap(prog),
 	}
@@ -331,21 +356,28 @@ func (c *checker) checkNamed(name string, args []ast.Expr, at ast.Node) {
 }
 
 func (c *checker) checkQual(mod, member string, args []ast.Expr, at ast.Node) {
-	s, found, missingImport := c.qualSig(mod, member)
+	s, full, found, missingImport := c.qualSig(mod, member)
 	if missingImport {
 		line, col := posOf(at)
 		c.err(line, col, "module %s is not imported", mod)
+		return
+	}
+	if found && full != c.module && c.world.private(full, member) {
+		line, col := posOf(at)
+		argc, _ := argcOf(args)
+		c.err(line, col, "%s/%d is private to %s", member, argc, full)
 		return
 	}
 	c.finish(mod+"."+member, s, found, false, args, at)
 }
 
 // qualSig разрешает Mod.f: import/alias, затем встроенный модуль (§11.1).
-// missingImport — модуль есть в программе, но в этом файле не импортирован.
-func (c *checker) qualSig(mod, member string) (s sig, found, missingImport bool) {
+// full — полное имя модуля. missingImport — модуль есть в программе, но в
+// этом файле не импортирован.
+func (c *checker) qualSig(mod, member string) (s sig, full string, found, missingImport bool) {
 	if c.session && mod == "Repl" {
 		s, found = replMod[member]
-		return s, found, false
+		return s, mod, found, false
 	}
 	full, imported := c.imports[mod]
 	switch {
@@ -354,16 +386,16 @@ func (c *checker) qualSig(mod, member string) (s sig, found, missingImport bool)
 	case isBuiltinMod(mod):
 		full = mod
 	case c.world.has(mod):
-		return sig{}, false, true
+		return sig{}, mod, false, true
 	default:
-		return sig{}, false, false
+		return sig{}, mod, false, false
 	}
 	if isBuiltinMod(full) {
 		s, found = lookupBuiltin(full, member)
-		return s, found, false
+		return s, full, found, false
 	}
 	s, found = c.world.lookup(full, member)
-	return s, found, false
+	return s, full, found, false
 }
 
 // bareSig: переменная области → динамический вызов; иначе локальная fn,

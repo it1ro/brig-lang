@@ -340,14 +340,20 @@ type FuncDecl interface {
 	Decl
 	FnName() string
 	FuncClauses() []FnClauseArg
+	// IsPub — функция экспортирована (`pub fn`, §11.2): pub у первого
+	// клоза. Клозы с pub и без — ошибка sema.
+	IsPub() bool
 }
+
+func (d *funcDecl) IsPub() bool { return len(d.clauses) > 0 && d.clauses[0].pub }
 
 func (d *funcDecl) FnName() string { return d.name }
 func (d *funcDecl) FuncClauses() []FnClauseArg {
 	out := make([]FnClauseArg, 0, len(d.clauses))
 	for _, c := range d.clauses {
 		out = append(out, FnClauseArg{
-			Guard: c.guard, Params: c.params, Body: c.body,
+			Pub: c.pub, Guard: c.guard, Params: c.params, Body: c.body,
+			Line: c.pos0, Col: c.pos1,
 		})
 	}
 	return out

@@ -45,7 +45,7 @@ func TestCheckUndefinedModuleFunction(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	write("util.brig", "module Util\nfn twice(x) -> x * 2\n")
+	write("util.brig", "module Util\npub fn twice(x) -> x * 2\n")
 	write("main.brig", "module Main\nimport Util\nfn main() -> Util.twice(3)\n")
 	if out, code := brigIn(t, bin, dir, "check", "main.brig"); code != exitOK {
 		t.Fatalf("Util.twice(3): exit %d\n%s", code, out)

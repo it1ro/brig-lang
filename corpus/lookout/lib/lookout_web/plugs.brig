@@ -1,7 +1,6 @@
 # Плаг — функция Conn -> Conn. Если плаг задал ответ (conn.resp = Some),
 # раннер дальше не идёт — отдельного halt нет.
-# needs: T-143, horizon
-#   pub fn (03/L3) — T-143;
+# needs: horizon
 #   horizon: Conn (06), Crypto.secure_compare (04), Config.get (04).
 module LookoutWeb.Plugs
 

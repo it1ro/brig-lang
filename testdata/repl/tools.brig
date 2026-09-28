@@ -1,7 +1,9 @@
 module Tools
 
-fn routes() ->
+pub fn routes() ->
     "routes"
 
-fn console() ->
+pub fn console() ->
     Repl.register("Tools")
+
+fn hidden() -> 1

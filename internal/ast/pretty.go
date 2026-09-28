@@ -509,6 +509,9 @@ func prettyDecl(buf *bytes.Buffer, d Decl, indent int) {
 		for i := range n.clauses {
 			cl := &n.clauses[i]
 			buf.WriteString(" (clause")
+			if cl.pub {
+				buf.WriteString(" pub")
+			}
 			if cl.guard != nil {
 				buf.WriteString(" (when ")
 				prettyNode(buf, cl.guard, indent)

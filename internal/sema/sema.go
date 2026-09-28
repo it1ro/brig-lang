@@ -78,6 +78,7 @@ type checker struct {
 	// Repl.* разрешены, голые имена хелперов — нет.
 	session bool
 	world   *World
+	module  string // имя проверяемого модуля: его приватные fn видны (§11.2)
 	own     map[string]sig
 	imports map[string]string // локальное имя модуля → полное
 }
@@ -253,6 +254,7 @@ func (c *checker) checkDecl(d ast.Decl) {
 	if !ok {
 		return
 	}
+	c.checkPubClauses(fd)
 	// Top-level fn: имя функции не входит в обычный scope-трекинг
 	// (оно глобальное и не конфликтует с shadowing по правилам §F.3).
 	// Но тело функции — новая лексическая область.
@@ -268,6 +270,21 @@ func (c *checker) checkDecl(d ast.Decl) {
 			c.checkBlockBody(cl.Body)
 		}
 		c.popScope()
+	}
+}
+
+// checkPubClauses: pub стоит перед каждым клозом функции или ни перед
+// одним (§11.2).
+func (c *checker) checkPubClauses(fd ast.FuncDecl) {
+	cls := fd.FuncClauses()
+	if len(cls) == 0 {
+		return
+	}
+	for _, cl := range cls[1:] {
+		if cl.Pub != cls[0].Pub {
+			c.err(cl.Line, cl.Col, "clauses of %s mix pub and non-pub (§11.2)", fd.FnName())
+			return
+		}
 	}
 }
 

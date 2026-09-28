@@ -547,7 +547,7 @@ func TestNames(t *testing.T) {
 	ok("fn main() -> mailbox_size(self())\n")
 	errAt("fn main() -> self(1)\n", "undefined function self/1", 1, 14)
 
-	util := checkNamesProg(t, "module Util\nfn twice(x) -> x * 2\n")
+	util := checkNamesProg(t, "module Util\npub fn twice(x) -> scale(x)\nfn scale(x) -> x * 2\n")
 	world := sema.NewWorld([]sema.Module{{Name: "Util", Prog: util}})
 	mainSrc := "module Main\nimport Util\nfn main() -> Util.twice(3)\n"
 	if r := checkNames(t, mainSrc, world); r.HasErrors() {
@@ -562,6 +562,33 @@ func TestNames(t *testing.T) {
 	r = checkNames(t, noimp, world)
 	if !hasMsg(r, "module Util is not imported") {
 		t.Fatalf("import: %v", r.Diagnostics)
+	}
+
+	// T-143: не-pub функция другого модуля — ошибка, в том числе через |>.
+	for _, src := range []string{
+		"module Main\nimport Util\nfn main() -> Util.scale(3)\n",
+		"module Main\nimport Util\nfn main() -> 3 |> Util.scale()\n",
+	} {
+		if r := checkNames(t, src, world); !hasMsg(r, "scale/1 is private to Util") {
+			t.Fatalf("private %q: %v", src, r.Diagnostics)
+		}
+	}
+}
+
+// T-143: клозы одной функции с pub и без — ошибка (§11.2).
+func TestPubMixedClauses(t *testing.T) {
+	prog := checkNamesProg(t, "module M\npub fn f(0) -> 0\nfn f(n) -> n\n")
+	r := sema.Check(prog)
+	if !hasMsg(r, "clauses of f mix pub and non-pub (§11.2)") {
+		t.Fatalf("mixed: %v", r.Diagnostics)
+	}
+	for _, src := range []string{
+		"module M\npub fn f(0) -> 0\npub fn f(n) -> n\n",
+		"module M\nfn f(0) -> 0\nfn f(n) -> n\n",
+	} {
+		if r := sema.Check(checkNamesProg(t, src)); r.HasErrors() {
+			t.Fatalf("%q: %v", src, r.Diagnostics)
+		}
 	}
 }
 

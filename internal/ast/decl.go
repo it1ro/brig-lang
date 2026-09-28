@@ -91,6 +91,7 @@ type recordInfo struct {
 // funcClause — один клоз верхнеуровневой fn.
 type funcClause struct {
 	posEnd
+	pub    bool // `pub fn` (§11.2)
 	guard  Expr
 	params []Pattern
 	body   *BlockStmt

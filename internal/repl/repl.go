@@ -235,9 +235,8 @@ func (s *Session) HighlightEnv() highlight.Env {
 		for _, g := range m.globals {
 			// Поднятые локальные fn (`M.f@1$g`) вводу не видны.
 			if f, ok := strings.CutPrefix(g, name+"."); ok && !strings.ContainsAny(f, ".@$") {
-				// Зависимость: не-pub вводу не видна. pub в AST — T-143,
-				// до него у зависимости нет видимых fn.
-				if s.deps[name] {
+				// Зависимость: не-pub вводу не видна (§11.4).
+				if s.deps[name] && m.priv[f] {
 					continue
 				}
 				fns[f] = true

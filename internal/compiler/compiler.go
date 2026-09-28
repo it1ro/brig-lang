@@ -1047,7 +1047,7 @@ func (fc *funcCompiler) raiseFunctionClause(first ast.FnClauseArg, base, arity i
 func localClauses(cs []ast.LocalFnClauseArg) []ast.FnClauseArg {
 	out := make([]ast.FnClauseArg, len(cs))
 	for i, c := range cs {
-		out[i] = ast.FnClauseArg(c)
+		out[i] = ast.FnClauseArg{Guard: c.Guard, Params: c.Params, Body: c.Body}
 	}
 	return out
 }

@@ -484,16 +484,20 @@ func NewAliasTypeDecl(name string, generic []string, target Type, pos, end int) 
 
 // FnClauseArg is an AST argument node.
 type FnClauseArg struct {
+	// Pub — клоз объявлен как `pub fn` (§11.2).
+	Pub    bool
 	Guard  Expr
 	Params []Pattern
 	Body   *BlockStmt
+	// Line, Col — позиция клоза (`pub` или `fn`); 0 — неизвестна.
+	Line, Col int
 }
 
 // NewFuncDecl creates an expression node.
 func NewFuncDecl(name string, clauses []FnClauseArg, pos, end int) Decl {
 	cs := make([]funcClause, 0, len(clauses))
 	for _, c := range clauses {
-		cs = append(cs, funcClause{guard: c.Guard, params: c.Params, body: c.Body})
+		cs = append(cs, funcClause{posEnd: posEnd{c.Line, c.Col}, pub: c.Pub, guard: c.Guard, params: c.Params, body: c.Body})
 	}
 	return &funcDecl{posEnd{pos, end}, name, cs}
 }
