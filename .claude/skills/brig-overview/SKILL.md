@@ -86,7 +86,7 @@ internal/
   repl/                 # persistent REPL
   examples/             # A2-инструмент (check-examples)
   corpus/               # раннер корпуса (make corpus)
-stdlib/                 # встроенные модули на Brig (List, Option, Result; go:embed, T-146)
+stdlib/                 # встроенные модули на Brig (List, Option, Result — T-146; Server, Supervisor — T-170); тесты — *_test.brig рядом
 docs/                   # спецификация, дизайн VM, архитектура
 examples/               # .brig-программы (make run-examples)
 corpus/                 # код библиотек + manifest.tsv (make corpus, T-115)
