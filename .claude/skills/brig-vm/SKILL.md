@@ -124,6 +124,17 @@ description: >
   `UNREGISTER`/`WHEREIS`; `Scheduler.names` — список `(name, pid)` с
   `runtime.KeyEqual`. Имена снимает `notifyWatchers` (`dropNames`) — в той же
   редукции, что и `:down`, поэтому после `:down` `whereis` → `None`.
+- **`await`/`reply` (§12.9, T-165, `await.go`).** Слот ответа —
+  `runtime.RefSlot` за указателем `Value.Slot` в самом ref: его создаёт
+  только `make_ref` (`makeRef`, `Owner` = pid), у ref из `watch` слота нет.
+  Таблицы слотов у актора нет — ref без `await` память не держит. Опкоды
+  `AWAIT A B C` (ждёт — возвращает `stepBlock` без `ip++` и исполняется
+  снова, как `RECVTAKE`) и `REPLY A B` (аргументы `B..B+2`). Таймер `await`
+  — тот же `recvDeadline`/куча; `Actor.awaiting` — слот, которого ждут;
+  `wakeIfBlocked` такого актора не будит (почта и `:down` копятся), будят
+  только `Reply`, `wakeExpired` и `hurry` (exit). `clearTimer` сбрасывает
+  и `awaiting` — прерванное ожидание (exit, interrupt REPL) слот не
+  закрывает. Слот закрывают только Ok и `Error(:timeout)` в `await`.
 - **Мёртвые акторы удаляются из `s.actors`** при `actorDone`/`actorFailed`
   через `reapActor` (кроме `mainPid`; I-F9, T-40 #29). Поэтому `watch` на
   завершившийся pid даёт немедленный `:down` с `:noproc`, `send` →

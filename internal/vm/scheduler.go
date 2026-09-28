@@ -368,6 +368,9 @@ type Actor struct {
 	timerSeq uint64
 	// timerPos — позиция в Scheduler.timers плюс 1; 0 — таймер не в куче.
 	timerPos int
+	// awaiting — слот, ответа в который актор ждёт в await (§12.9); таймер
+	// await — тот же recvDeadline. nil — актор не в await.
+	awaiting *runtime.RefSlot
 
 	// exit — полученный сигнал exit (§12.7); nil — сигнала нет.
 	exit *exitSig
@@ -476,6 +479,11 @@ func (s *Scheduler) wakeIfBlocked(a *Actor) {
 	// Простаивающий актор сессии не крутится из-за почты: сообщения копятся
 	// в ящике до следующего ввода. Иначе каждый send будил бы пустой стек.
 	if s.sessionIdle(a) {
+		return
+	}
+	// Ждущего в await будят только ответ, таймер и exit: почта копится
+	// в ящике до следующего recv (§12.9).
+	if a.awaiting != nil {
 		return
 	}
 	a.status = actorReady
@@ -616,10 +624,12 @@ func (s *Scheduler) armTimer(a *Actor, deadline time.Time) {
 	heap.Push(&s.timers, a)
 }
 
-// clearTimer снимает таймер актора (сообщение пришло раньше, таймаут
-// сработал, актор завершился).
+// clearTimer снимает таймер актора (сообщение или ответ пришли раньше,
+// таймаут сработал, актор завершился или ожидание прервано) и вместе с ним
+// ожидание await.
 func (s *Scheduler) clearTimer(a *Actor) {
 	a.recvDeadline = time.Time{}
+	a.awaiting = nil
 	if a.timerPos > 0 {
 		heap.Remove(&s.timers, a.timerPos-1)
 	}
@@ -1364,9 +1374,39 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 			f.ip++
 
 		case MAKEREF:
-			ref := s.nextRef
-			s.nextRef++
-			regs[in.A()] = runtime.Value{Kind: runtime.KindRef, Ref: ref}
+			regs[in.A()] = s.makeRef(a)
+			f.ip++
+
+		case AWAIT:
+			res, block, err := s.await(a, regs[in.B()], regs[in.C()])
+			if err != nil {
+				if f.catch(err) {
+					continue
+				}
+				return fail(err)
+			}
+			if block {
+				return stepBlock
+			}
+			regs[in.A()] = res
+			f.ip++
+
+		case REPLY:
+			b := in.B()
+			pidVal, refVal := regs[b], regs[b+1]
+			if pidVal.Kind != runtime.KindPid || refVal.Kind != runtime.KindRef {
+				bad := pidVal
+				if pidVal.Kind == runtime.KindPid {
+					bad = refVal
+				}
+				err := typeErr("reply", bad)
+				if f.catch(err) {
+					continue
+				}
+				return fail(err)
+			}
+			s.Reply(pidVal.Pid, refVal, regs[b+2])
+			regs[in.A()] = runtime.Unit
 			f.ip++
 
 		case WATCH:

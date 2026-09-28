@@ -106,6 +106,10 @@ const (
 	REGISTER   // R[A] = register(name=R[B], pid=R[C]); Result<(), Atom>
 	UNREGISTER // unregister(R[B]); R[A] = ()
 	WHEREIS    // R[A] = whereis(R[B]); Option<Pid>
+
+	// Ответ по ref мимо ящика (§12.9, T-165).
+	AWAIT // R[A] = await(ref=R[B], timeout=R[C]); Result<V, Atom>; ждёт — исполняется снова
+	REPLY // reply(pid=R[B], ref=R[B+1], value=R[B+2]); R[A] = ()
 )
 
 // opNames индексируется OpCode; размер массива фиксирован числом опкодов.
@@ -174,6 +178,8 @@ var opNames = [...]string{
 	REGISTER:       "REGISTER",
 	UNREGISTER:     "UNREGISTER",
 	WHEREIS:        "WHEREIS",
+	AWAIT:          "AWAIT",
+	REPLY:          "REPLY",
 }
 
 func (op OpCode) String() string {

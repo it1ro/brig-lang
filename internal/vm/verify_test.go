@@ -325,3 +325,39 @@ func TestCompiledPatternSlots(t *testing.T) {
 		})
 	}
 }
+
+// T-165: REPLY читает три подряд идущих регистра от B, AWAIT — B и C.
+// Регистр вне окна и неопределённый аргумент Verify отвергает.
+func TestVerifyAwaitReplyRegs(t *testing.T) {
+	ok := mkChunk(4,
+		ABC(MAKEREF, 1, 0, 0),
+		ABC(SELF, 0, 0, 0),
+		ABx(LOADK, 2, 0),
+		ABC(REPLY, 3, 0, 0), // reply(r0, r1, r2)
+		ABC(AWAIT, 3, 1, 2), // await(r1, r2)
+		ABC(RETURN, 3, 0, 0),
+	)
+	ok.Constants = append(ok.Constants, runtime.Int(0))
+	if err := Verify(ok); err != nil {
+		t.Fatalf("Verify: %v", err)
+	}
+
+	outOfRange := mkChunk(3,
+		ABC(SELF, 0, 0, 0),
+		ABC(MAKEREF, 1, 0, 0),
+		ABC(REPLY, 0, 1, 0), // reply(r1, r2, r3): r3 вне окна
+		ABC(RETURN, 0, 0, 0),
+	)
+	if err := Verify(outOfRange); err == nil {
+		t.Fatal("Verify: want error for REPLY reading r3 >= NumRegs")
+	}
+
+	undefined := mkChunk(3,
+		ABC(MAKEREF, 0, 0, 0),
+		ABC(AWAIT, 2, 0, 1), // r1 не определён
+		ABC(RETURN, 2, 0, 0),
+	)
+	if err := Verify(undefined); err == nil {
+		t.Fatal("Verify: want error for AWAIT reading undefined r1")
+	}
+}
