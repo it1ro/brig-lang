@@ -2,6 +2,7 @@ package loader
 
 import (
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -130,5 +131,47 @@ func TestPathName(t *testing.T) {
 		if got := pathName(tc.rel); got != tc.name {
 			t.Errorf("pathName(%q) = %q, want %q", tc.rel, got, tc.name)
 		}
+	}
+}
+
+func TestProjectRootWalksUp(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "project.brig"), []byte("module Project\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sub := filepath.Join(root, "sub")
+	if err := os.Mkdir(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	got, err := ProjectRoot(sub)
+	if err != nil || got != root {
+		t.Fatalf("ProjectRoot = %q, %v; want %q", got, err, root)
+	}
+	if _, err := ProjectRoot(t.TempDir()); err == nil {
+		t.Fatal("missing project.brig: want error")
+	}
+}
+
+func TestLoadFromNestedEntry(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "http"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "util.brig"), []byte("module Util\n\nfn n() -> 1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	entry := filepath.Join(root, "http", "client.brig")
+	if err := os.WriteFile(entry, []byte("module Http.Client\n\nimport Util\n\nfn ping() -> Util.n()\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	g, err := LoadFrom(root, entry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := moduleIndex(g)["Util"]; !ok {
+		t.Fatalf("modules %v, want Util", moduleIndex(g))
+	}
+	if _, err := Load(entry); err == nil {
+		t.Fatal("Load from the nested directory should not find Util")
 	}
 }
