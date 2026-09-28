@@ -82,8 +82,19 @@ func consoleLoop(s *repl.Session) error {
 		return highlight.Highlight(src, cursor, s.HighlightEnv(), pal)
 	}
 
-	fe := repl.Plain{Out: os.Stdout, Err: os.Stderr}
+	fe := repl.Plain{
+		Out: os.Stdout,
+		Err: os.Stderr,
+		Pal: pal,
+		Width: func() int {
+			if t.Width == nil {
+				return 0
+			}
+			return t.Width()
+		},
+	}
 	s.SetOutput(os.Stderr)
+	s.SetPalette(pal)
 	for {
 		src, err := t.ReadInput(prompt(s.Next()), contPrompt)
 		if err == io.EOF {

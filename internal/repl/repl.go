@@ -51,6 +51,7 @@ type Session struct {
 	order    []string // порядок появления имён
 	env      map[string]runtime.Value
 	out      io.Writer
+	pal      highlight.Palette
 	diagFile string          // имя в диагностике sema; у REPL — `<repl>`
 	seq      int             // счётчик инструкций: префикс глобальных имён
 	history  []runtime.Value // значения пронумерованных вводов, history[n-1] — ввод n
@@ -87,6 +88,10 @@ func (s *Session) Interrupt() { s.vm.Interrupt() }
 // SetOutput меняет, куда пишутся диагностика и info.
 func (s *Session) SetOutput(out io.Writer) { s.out = out }
 
+// SetPalette задаёт палитру диагностики. Нулевая палитра — без цвета
+// (NO_COLOR, не-TTY).
+func (s *Session) SetPalette(p highlight.Palette) { s.pal = p }
+
 // SetDiagFile задаёт имя файла в диагностике sema. Пустое имя оставляет
 // текущее. CLI script-режима подставляет путь файла (§E.1); REPL — `<repl>`.
 func (s *Session) SetDiagFile(name string) {
@@ -106,7 +111,7 @@ func (s *Session) Eval(src string) ([]Result, error) {
 	}
 	var results []Result
 	for _, prog := range lines {
-		res, err := s.evalLine(prog)
+		res, err := s.evalLine(src, prog)
 		if err != nil {
 			return results, err
 		}
@@ -121,27 +126,22 @@ func (s *Session) Eval(src string) ([]Result, error) {
 	return results, nil
 }
 
-// evalLine исполняет одну инструкцию (repl_line).
-func (s *Session) evalLine(prog *ast.Program) (Result, error) {
+// evalLine исполняет одну инструкцию (repl_line). src — вся порция:
+// позиции диагностики считаются по ней.
+func (s *Session) evalLine(src string, prog *ast.Program) (Result, error) {
 	if len(prog.Stmts) == 0 {
 		// import/alias: модули в сессии — T-209.
 		return Result{Value: runtime.Unit}, nil
 	}
 	stmt := prog.Stmts[0]
 
-	// Контекстный анализ (§F.3).
+	// Контекстный анализ (§F.3). info (затенение прелюдии) не ошибка.
 	semaRes := sema.Check(prog)
-	for _, d := range semaRes.Diagnostics {
-		sev := "error"
-		if d.Severity == sema.SeverityInfo {
-			sev = "info"
-		}
-		if _, err := fmt.Fprintf(s.out, "%s: %s:%d:%d: %s\n", sev, s.diagFile, d.Line, d.Col, d.Message); err != nil {
-			return Result{}, err
-		}
+	if err := WriteDiagnostics(s.out, s.diagFile, src, semaRes.Diagnostics, s.pal, s.HighlightEnv(), s.diagFile == "<repl>"); err != nil {
+		return Result{}, err
 	}
 	if semaRes.HasErrors() {
-		return Result{}, fmt.Errorf("sema: %d error(s)", countErrors(semaRes))
+		return Result{}, &printedError{err: fmt.Errorf("sema: %d error(s)", countErrors(semaRes))}
 	}
 
 	s.seq++
