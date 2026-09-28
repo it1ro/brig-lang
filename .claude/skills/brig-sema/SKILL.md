@@ -47,6 +47,13 @@ Message}`; `SeverityError` блокирует компиляцию, `SeverityInf
    спредом по арности не проверяются. `Check` этого не делает: REPL
    вызывает его и оставляет неизвестное имя ошибкой рантайма (§11.4).
    `brig check`/`run` вызывают `CheckNames` по графу модулей.
+8. Приватность (§11.2, T-143). `CheckNames`: вызов `M.f` (и `x |> M.f`)
+   не-`pub` функции другого модуля — `f/1 is private to M` (`World.priv`,
+   `PrivateFns`; свой модуль — `prog.Module`). `Check`: клозы одной fn с
+   `pub` и без — `clauses of f mix pub and non-pub`. Ссылка `M.f` как
+   значение пока не компилируется (T-144) — проверку для неё добавить там.
+   REPL: зависимостям (`deps/`) вводы видят только `pub`, модулям
+   пользователя — всё (`sessionModule.priv`).
 
 Sema обходит выражения внутри `InterpExpr` (`checkExpr`, S-F1 / T-53).
 Guard'ы `recv` есть в AST (`RecvBranchArg.Guard`, S-F3 / T-02); `Walk`
