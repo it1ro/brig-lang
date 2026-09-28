@@ -235,10 +235,8 @@ func stdlibPub() map[string]map[string]sig {
 
 func lookupBuiltin(mod, member string) (sig, bool) {
 	if mod == "Prelude" {
-		// Акторные примитивы — опкоды, не глобалы Prelude.* (aliasPrelude).
-		if actorPrimitives[member] {
-			return sig{}, false
-		}
+		// Акторные примитивы — опкоды, не глобалы Prelude.* (aliasPrelude),
+		// но вызов `Prelude.send(…)` компилируется в тот же опкод (§11.5).
 		s, ok := bareBuiltins[member]
 		return s, ok
 	}

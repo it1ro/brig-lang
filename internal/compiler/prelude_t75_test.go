@@ -51,3 +51,19 @@ fn main() ->
     assert(Prelude.map([1, 2], fn (x) -> x + 1) == [2, 3])
 `)
 }
+
+// T-170, §11.5: fn модуля с именем акторного примитива его затеняет,
+// сам примитив доступен как Prelude.<name> и компилируется в тот же опкод.
+func TestPreludeActorPrimitiveUnderShadowing(t *testing.T) {
+	runModule(t, `module Main
+fn send(x) -> (:mine, x)
+fn main() ->
+    assert(send(1) == (:mine, 1))
+    assert(Prelude.send(Prelude.self(), :hi) == Ok(()))
+    ref = Prelude.make_ref()
+    Prelude.reply(self(), ref, 42)
+    assert(Prelude.await(ref, 0) == Ok(42))
+    recv
+        m -> assert(m == :hi)
+`)
+}

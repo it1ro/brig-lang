@@ -1925,6 +1925,13 @@ func (fc *funcCompiler) compileCall(call ast.CallExpr, d dest) error {
 				}
 				ref = modRef{full: name}
 			}
+			// `Prelude.send(…)` — акторный примитив по имени прелюдии, когда
+			// голое имя затенено fn модуля (§11.5): тот же опкод.
+			if ref.builtin == "Prelude" {
+				if ok, err := fc.compileActorCall(member, call.Args(), d); ok {
+					return err
+				}
+			}
 			if !known || ref.builtin != "" || !isUpperName(member) {
 				return fc.compileGlobalCall(ref.global(member), call.Args(), d, call)
 			}
@@ -1943,38 +1950,12 @@ func (fc *funcCompiler) compileCall(call ast.CallExpr, d dest) error {
 			return fc.compileSeq(call.Args(), vm.VECTOR, d)
 		case "%{}":
 			return fc.compileMap(call.Args(), d)
-		case "spawn":
-			return fc.compileSpawn(call.Args(), 0, d)
-		case "spawn_linked":
-			return fc.compileSpawn(call.Args(), 1, d)
-		case "spawn_watched":
-			return fc.compileSpawn(call.Args(), 2, d)
-		case "exit":
-			return fc.compileExit(call.Args(), d)
-		case "send":
-			return fc.compileSend(call.Args(), d)
-		case "self":
-			return fc.compileSelf(d)
-		case "make_ref":
-			return fc.compileMakeRef(d)
-		case "watch":
-			return fc.compileWatch(call.Args(), d)
-		case "link":
-			return fc.compileLink(call.Args(), d)
-		case "unwatch":
-			return fc.compileUnwatch(call.Args(), d)
-		case "mailbox_size":
-			return fc.compileMailboxSize(call.Args(), d)
-		case "register":
-			return fc.compileActorOp(vm.REGISTER, name, 2, call.Args(), d)
-		case "unregister":
-			return fc.compileActorOp(vm.UNREGISTER, name, 1, call.Args(), d)
-		case "whereis":
-			return fc.compileActorOp(vm.WHEREIS, name, 1, call.Args(), d)
-		case "await":
-			return fc.compileActorOp(vm.AWAIT, name, 2, call.Args(), d)
-		case "reply":
-			return fc.compileActorOp(vm.REPLY, name, 3, call.Args(), d)
+		}
+		// fn модуля с именем акторного примитива его затеняет (§11.5).
+		if !fc.compiler.cur.fns[name] {
+			if ok, err := fc.compileActorCall(name, call.Args(), d); ok {
+				return err
+			}
 		}
 		if strings.HasSuffix(name, "{}") {
 			return fc.compileRecord(strings.TrimSuffix(name, "{}"), call, d)
@@ -1982,6 +1963,46 @@ func (fc *funcCompiler) compileCall(call ast.CallExpr, d dest) error {
 	}
 
 	return fc.compileGenericCall(call, d)
+}
+
+// compileActorCall компилирует вызов акторного примитива name в его
+// опкод. false — name не акторный примитив.
+func (fc *funcCompiler) compileActorCall(name string, args []ast.Expr, d dest) (bool, error) {
+	switch name {
+	case "spawn":
+		return true, fc.compileSpawn(args, 0, d)
+	case "spawn_linked":
+		return true, fc.compileSpawn(args, 1, d)
+	case "spawn_watched":
+		return true, fc.compileSpawn(args, 2, d)
+	case "exit":
+		return true, fc.compileExit(args, d)
+	case "send":
+		return true, fc.compileSend(args, d)
+	case "self":
+		return true, fc.compileSelf(d)
+	case "make_ref":
+		return true, fc.compileMakeRef(d)
+	case "watch":
+		return true, fc.compileWatch(args, d)
+	case "link":
+		return true, fc.compileLink(args, d)
+	case "unwatch":
+		return true, fc.compileUnwatch(args, d)
+	case "mailbox_size":
+		return true, fc.compileMailboxSize(args, d)
+	case "register":
+		return true, fc.compileActorOp(vm.REGISTER, name, 2, args, d)
+	case "unregister":
+		return true, fc.compileActorOp(vm.UNREGISTER, name, 1, args, d)
+	case "whereis":
+		return true, fc.compileActorOp(vm.WHEREIS, name, 1, args, d)
+	case "await":
+		return true, fc.compileActorOp(vm.AWAIT, name, 2, args, d)
+	case "reply":
+		return true, fc.compileActorOp(vm.REPLY, name, 3, args, d)
+	}
+	return false, nil
 }
 
 // compilePipe: `x |> f(a…)` — вызов `f(x, a…)` (§7.5); `x |> Mod.f(a…)` —
