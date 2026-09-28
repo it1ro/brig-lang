@@ -121,7 +121,7 @@ func Run(ctx context.Context, d Deps) error {
 			return
 		}
 		last = frame
-		ts.write("\x1b[H" + frame)
+		ts.write("\x1b[H" + termFrame(frame))
 	}
 
 	for {
