@@ -25,6 +25,9 @@ Message}`; `SeverityError` блокирует компиляцию, `SeverityInf
 2. Pipe-запрет акторных примитивов (`send`, `spawn`, `spawn_linked`,
    `link`, `watch`, `unwatch`, `self`, `make_ref`, `mailbox_size`) как RHS
    `|>` — проверка по базовому имени до первой точки (`checkPipe`).
+   Спека §7.5 (T-160) шире: `spawn_watched`, `exit`, `register`,
+   `unregister`, `whereis`, `reply`, `await` — добавлять в
+   `actorPrimitives` вместе с самим примитивом (T-163…T-165).
 3. Variadic-параметр (`..name`) обязан быть последним в списке параметров
    — проверяется и для top-level `fn`, и для локальных `fn`, и для лямбд
    (`checkParams`).
