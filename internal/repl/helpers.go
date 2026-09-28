@@ -1,6 +1,7 @@
 package repl
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"sort"
@@ -540,7 +541,7 @@ func (s *Session) loadPath(path string) error {
 		return loadErr(path, err)
 	}
 	if mod {
-		if _, err := s.LoadModules(path); err != nil {
+		if _, err := s.loadModules(path, true); err != nil {
 			return loadErr(path, err)
 		}
 		return nil
@@ -573,6 +574,9 @@ func (s *Session) runScript(path, src string) error {
 	defer func() { s.diagFile = prev }()
 	for _, line := range lines {
 		res, err := s.evalLineHere(src, line)
+		if errors.Is(err, vm.ErrInterrupted) {
+			return err
+		}
 		if err != nil {
 			return loadErr(path, err)
 		}
@@ -605,7 +609,8 @@ func (s *Session) register(v runtime.Value) (runtime.Value, error) {
 	if v.Kind != runtime.KindStr {
 		return runtime.Unit, raiseType("register", v)
 	}
-	if err := s.RegisterHelpers(v.Str); err != nil {
+	// Натив исполняет цикл сессии: регистрация — сразу, без Sync.
+	if err := s.registerNow(v.Str); err != nil {
 		return runtime.Unit, loadErr(v.Str, err)
 	}
 	return runtime.Unit, nil

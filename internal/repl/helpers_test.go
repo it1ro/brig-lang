@@ -366,12 +366,13 @@ func TestHelperNestedRecv(t *testing.T) {
 	}
 
 	// Сообщение приходит после таймера другого актора.
-	mustEval(t, s, out, `fn late() ->
+	mustEval(t, s, out, `fn sleeper(dst) ->
+    recv
+        _ -> ()
+    after 30 -> send(dst, :late)
+fn late() ->
     me = self()
-    spawn(() ->
-        recv
-            _ -> ()
-        after 30 -> send(me, :late))
+    spawn(() -> sleeper(me))
     recv
         m -> m
 `)
@@ -442,7 +443,7 @@ func TestHelperNestedTrace(t *testing.T) {
 		t.Fatalf("time(boom) trace = %+v", rerr.Trace)
 	}
 	// Пойманный raise trace не собирает и до ввода не доходит.
-	if got := mustEval(t, s, out, "trap time(boom)\n"); !strings.Contains(got.Inspect(), ":boom") {
+	if got := mustEval(t, s, out, "r = trap(time(boom))\n"); !strings.Contains(got.Inspect(), ":boom") {
 		t.Fatalf("trap time(boom) = %s", got.Inspect())
 	}
 }
