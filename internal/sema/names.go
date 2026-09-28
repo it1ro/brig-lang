@@ -2,6 +2,7 @@ package sema
 
 import (
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/it1ro/brig-lang/internal/ast"
@@ -85,13 +86,12 @@ func checkNames(prog *ast.Program, world *World, session bool) *Result {
 }
 
 // replMod — функции модуля Repl, видимые в сессии квалифицированно.
-// recompile() — T-210, здесь его нет. register — API регистрации (T-206),
-// не голая команда консоли.
+// register — API регистрации (T-206), не голая команда консоли.
 var replMod = map[string]sig{
 	"h": exact(1), "i": exact(1), "v": exact(0, 1),
 	"bindings": exact(0), "reset": exact(0), "load": exact(1),
 	"flush": exact(0), "time": exact(1), "dis": exact(1),
-	"register": exact(1),
+	"recompile": exact(0), "register": exact(1),
 }
 
 // sig — допустимые арности. varMin >= 0 — вариадик: любой вызов с argc >= varMin.
@@ -479,6 +479,36 @@ func BuiltinModules() map[string][]string {
 	}
 	sort.Strings(pre)
 	out["Prelude"] = pre
+	return out
+}
+
+// BuiltinArities — арности встроенных функций для документации h (§11.4),
+// из тех же сигнатур, что проверяет sema. Ключ "" — голые имена прелюдии,
+// "Repl" — хелперы консоли, остальные — встроенные модули. Метка — "2"
+// или "0.." у вариадика, по возрастанию.
+func BuiltinArities() map[string]map[string][]string {
+	labels := func(fns map[string]sig) map[string][]string {
+		out := make(map[string][]string, len(fns))
+		for name, sg := range fns {
+			ns := append([]int(nil), sg.exact...)
+			sort.Ints(ns)
+			var ls []string
+			for _, n := range ns {
+				ls = append(ls, strconv.Itoa(n))
+			}
+			if sg.varMin >= 0 {
+				ls = append(ls, strconv.Itoa(sg.varMin)+"..")
+			}
+			out[name] = ls
+		}
+		return out
+	}
+	out := make(map[string]map[string][]string, len(modBuiltins)+2)
+	out[""] = labels(bareBuiltins)
+	out["Repl"] = labels(replMod)
+	for mod, fns := range modBuiltins {
+		out[mod] = labels(fns)
+	}
 	return out
 }
 

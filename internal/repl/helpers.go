@@ -3,6 +3,7 @@ package repl
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"sort"
 	"strings"
@@ -10,27 +11,29 @@ import (
 	"unicode/utf8"
 
 	"github.com/it1ro/brig-lang/internal/ast"
+	"github.com/it1ro/brig-lang/internal/compiler"
 	"github.com/it1ro/brig-lang/internal/highlight"
 	"github.com/it1ro/brig-lang/internal/lexer"
 	"github.com/it1ro/brig-lang/internal/loader"
 	"github.com/it1ro/brig-lang/internal/parser"
 	"github.com/it1ro/brig-lang/internal/runtime"
+	"github.com/it1ro/brig-lang/internal/sema"
 	"github.com/it1ro/brig-lang/internal/vm"
 )
 
 // Хелперы консоли (§11.4) — нативы модуля Repl. В сессии они стоят и
 // голыми именами, и как Repl.h. Вне сессии глобалов нет: brig check
-// файла с h(x) — undefined function h/1. recompile() — T-210.
+// файла с h(x) — undefined function h/1.
 
 func (s *Session) installHelpers() {
 	s.initDocs()
 	defs := map[string]runtime.Value{}
+	// Голое имя — своя FuncValue с голым Name: h(v) печатает `v/0`, а
+	// Repl.h(Repl.v) — `Repl.v/0`, как ввёл пользователь.
 	add := func(name string, arity int, bare bool, fn runtime.NativeFunc) {
-		fv := &runtime.FuncValue{Name: "Repl." + name, Arity: arity, IsNative: true, Native: fn}
-		v := runtime.Func(fv)
-		defs["Repl."+name] = v
+		defs["Repl."+name] = runtime.Func(&runtime.FuncValue{Name: "Repl." + name, Arity: arity, IsNative: true, Native: fn})
 		if bare {
-			defs[name] = v
+			defs[name] = runtime.Func(&runtime.FuncValue{Name: name, Arity: arity, IsNative: true, Native: fn})
 		}
 	}
 	add("h", 1, true, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
@@ -63,6 +66,9 @@ func (s *Session) installHelpers() {
 	})
 	add("dis", 1, true, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		return s.dis(args[0])
+	})
+	add("recompile", 0, true, func(_ runtime.Caller, _ []runtime.Value) (runtime.Value, error) {
+		return s.recompileHelper()
 	})
 	// register — не голая команда: модуль зовёт Repl.register("M").
 	add("register", 1, false, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
@@ -175,9 +181,12 @@ func paintDoc(text string, pal highlight.Palette) string {
 	}
 }
 
+// help — h(f) и h(M). Имя модуля компилятор передаёт атомом с заглавной
+// буквы (`h(Map)` → `:Map`), который в исходнике не записать: строка
+// `h("Map")` — не модуль.
 func (s *Session) help(v runtime.Value) (runtime.Value, error) {
-	if v.Kind == runtime.KindStr {
-		d, ok := s.docs[v.Str]
+	if v.Kind == runtime.KindAtom {
+		d, ok := s.docs[v.Atom]
 		if !ok || !d.module {
 			return runtime.Unit, raiseType("h", v)
 		}
@@ -196,6 +205,7 @@ func (s *Session) help(v runtime.Value) (runtime.Value, error) {
 		}
 		return runtime.Unit, nil
 	}
+	name = displayName(name)
 	label := fmt.Sprintf("%d", arity)
 	if arity < 0 {
 		label = "*"
@@ -247,8 +257,22 @@ func (s *Session) noteLocal(lfd ast.LocalFnDecl, src string, seq int) {
 		text: docBefore(src, lfd.Pos()),
 		sigs: sigsFrom(lfd.FnName(), lists),
 	}
-	s.docs[lfd.FnName()] = d
+	// Только под внутренним именем функции: голое `len` — документация
+	// прелюдии, её h(Prelude.len) и печатает.
 	s.docs[fmt.Sprintf("__repl__%d$%s", seq, lfd.FnName())] = d
+}
+
+// displayName — имя функции, как его ввёл пользователь: без префикса
+// инструкции REPL (`__repl__3$sq` → `sq`).
+func displayName(name string) string {
+	rest, ok := strings.CutPrefix(name, "__repl__")
+	if !ok {
+		return name
+	}
+	if i := strings.IndexByte(rest, '$'); i >= 0 {
+		return rest[i+1:]
+	}
+	return name
 }
 
 func sigsFrom(name string, lists [][]ast.Pattern) []clauseSig {
@@ -497,7 +521,7 @@ func disassemble(v runtime.Value) (string, bool) {
 		if !ok {
 			return "", false
 		}
-		return (&vm.Function{Name: v.Func.Name, Arity: v.Func.Arity, Chunk: ch}).Disassemble(), true
+		return (&vm.Function{Name: displayName(v.Func.Name), Arity: v.Func.Arity, Chunk: ch}).Disassemble(), true
 	case runtime.KindClosure:
 		if v.ClosureVal == nil {
 			return "", false
@@ -506,7 +530,7 @@ func disassemble(v runtime.Value) (string, bool) {
 		if !ok {
 			return "", false
 		}
-		return (&vm.Function{Name: v.ClosureVal.Name, Arity: v.ClosureVal.Arity, Chunk: ch}).Disassemble(), true
+		return (&vm.Function{Name: displayName(v.ClosureVal.Name), Arity: v.ClosureVal.Arity, Chunk: ch}).Disassemble(), true
 	default:
 		return "", false
 	}
@@ -593,6 +617,38 @@ func loadErr(path string, err error) error {
 		runtime.Tuple(runtime.Str(path), runtime.Str(err.Error())))}
 }
 
+// ---- recompile ----
+
+// recompileHelper — recompile() (§11.4, семантика — T-208 #246): печатает
+// перекомпилированные модули. Ошибка — :load_error по образцу load, старый
+// код остаётся (её уже напечатал report в формате E.1).
+func (s *Session) recompileHelper() (runtime.Value, error) {
+	mods, err := s.recompile(true)
+	if err != nil {
+		return runtime.Unit, loadErr(errPath(err), err)
+	}
+	if len(mods) == 0 {
+		return runtime.Unit, s.writeOut("нет изменений\n")
+	}
+	return runtime.Unit, s.writeOut("перекомпилировано: %s\n", strings.Join(mods, ", "))
+}
+
+// errPath — файл, в котором ошибка загрузки или компиляции; "" — неизвестен.
+func errPath(err error) string {
+	var le *loader.Error
+	var ce *compiler.Error
+	var pe *fs.PathError
+	switch {
+	case errors.As(err, &le):
+		return le.File
+	case errors.As(err, &ce):
+		return ce.File
+	case errors.As(err, &pe):
+		return pe.Path
+	}
+	return ""
+}
+
 // ---- регистрация хелперов фреймворка ----
 
 // RegisterHelpers делает pub-функции загруженного модуля module голыми
@@ -655,124 +711,77 @@ func raiseType(op string, v runtime.Value) error {
 		runtime.Tuple(runtime.Atom(op), v))}
 }
 
+// initDocs строит документацию встроенных функций. Имена и арности — из
+// сигнатур sema (sema.BuiltinArities), здесь только имена параметров:
+// builtinParams["Json.encode/2"] = "v, opts". Функция без параметров в
+// таблице или лишняя строка таблицы — паника при старте сессии.
 func (s *Session) initDocs() {
 	s.docs = map[string]*helpDoc{}
-	fn := func(name string, sigs ...clauseSig) {
-		s.docs[name] = &helpDoc{name: name, sigs: sigs}
-	}
-	one := func(name, label, text string) {
-		fn(name, clauseSig{label: label, text: text})
-	}
-	one("map", "2", "map(xs, f)")
-	one("filter", "2", "filter(xs, p)")
-	one("find", "2", "find(xs, p)")
-	one("all", "2", "all(xs, p)")
-	one("any", "2", "any(xs, p)")
-	one("fold", "3", "fold(xs, acc, f)")
-	one("len", "1", "len(v)")
-	one("list", "0..", "list(..xs)")
-	one("set", "0..", "set(..xs)")
-	one("to_str", "1", "to_str(v)")
-	one("to_int", "1", "to_int(v)")
-	one("to_float", "1", "to_float(v)")
-	one("send", "2", "send(pid, msg)")
-	one("spawn", "1", "spawn(f)")
-	one("spawn_linked", "1", "spawn_linked(f)")
-	one("link", "1", "link(pid)")
-	one("watch", "1", "watch(pid)")
-	one("unwatch", "1", "unwatch(ref)")
-	one("self", "0", "self()")
-	one("make_ref", "0", "make_ref()")
-	fn("mailbox_size",
-		clauseSig{label: "0", text: "mailbox_size()"},
-		clauseSig{label: "1", text: "mailbox_size(pid)"})
-	one("print", "0..", "print(..vs)")
-	one("eprint", "0..", "eprint(..vs)")
-	one("log", "0..", "log(..vs)")
-	one("assert", "1", "assert(x)")
-	one("raise", "1", "raise(e)")
-	one("Some", "1", "Some(v)")
-	one("Ok", "1", "Ok(v)")
-	one("Error", "1", "Error(e)")
-
-	mod := func(name string, members ...clauseSig) {
-		funs := make([]string, len(members))
-		for i, m := range members {
-			sig := name + "." + m.text
-			s.docs[name+"."+fnBare(m.text)] = &helpDoc{
-				name: name + "." + fnBare(m.text),
-				sigs: []clauseSig{{label: m.label, text: sig}},
+	used := map[string]bool{}
+	sigs := func(qualified, key string, labels []string) []clauseSig {
+		out := make([]clauseSig, len(labels))
+		for i, l := range labels {
+			k := key + "/" + l
+			ps, ok := builtinParams[k]
+			if !ok {
+				panic("repl: no doc params for " + k)
 			}
-			funs[i] = fnBare(m.text) + "/" + m.label
+			used[k] = true
+			out[i] = clauseSig{label: l, text: qualified + "(" + ps + ")"}
 		}
-		sort.Strings(funs)
-		s.docs[name] = &helpDoc{name: name, module: true, funs: funs}
+		return out
 	}
-	mod("Vec",
-		clauseSig{"2", "push(v, x)"},
-		clauseSig{"3", "set(v, i, x)"},
-		clauseSig{"2", "get(v, i)"},
-		clauseSig{"1", "len(v)"})
-	mod("Map",
-		clauseSig{"3", "put(m, k, v)"},
-		clauseSig{"2", "get(m, k)"},
-		clauseSig{"2", "remove(m, k)"},
-		clauseSig{"1", "keys(m)"})
-	mod("Str", clauseSig{"1", "to_bytes(s)"})
-	mod("Bytes", clauseSig{"1", "to_str(b)"})
-	s.docs["Json.encode"] = &helpDoc{name: "Json.encode", sigs: []clauseSig{
-		{label: "1", text: "Json.encode(v)"},
-		{label: "2", text: "Json.encode(v, opts)"},
-	}}
-	one("Json.decode", "1", "Json.decode(s)")
-	s.docs["Json"] = &helpDoc{name: "Json", module: true, funs: []string{"decode/1", "encode/1"}}
-	mod("Test",
-		clauseSig{"1", "describe(name)"},
-		clauseSig{"2", "it(name, thunk)"},
-		clauseSig{"0", "run()"},
-		clauseSig{"2", "assert_eq(a, b)"},
-		clauseSig{"2", "assert_ne(a, b)"},
-		clauseSig{"1", "assert(x)"},
-		clauseSig{"1", "fail(msg)"})
-	mod("Sys", clauseSig{"0", "args()"})
-	mod("Repl",
-		clauseSig{"1", "h(f)"},
-		clauseSig{"1", "i(v)"},
-		clauseSig{"0", "v()"},
-		clauseSig{"1", "load(path)"},
-		clauseSig{"0", "flush()"},
-		clauseSig{"1", "time(f)"},
-		clauseSig{"1", "dis(f)"},
-		clauseSig{"0", "bindings()"},
-		clauseSig{"0", "reset()"})
-	// v — две арности; mod записал бы одну. Поправить.
-	s.docs["Repl.v"] = &helpDoc{name: "Repl.v", sigs: []clauseSig{
-		{label: "0", text: "Repl.v()"},
-		{label: "1", text: "Repl.v(n)"},
-	}}
-	s.docs["v"] = &helpDoc{name: "v", sigs: []clauseSig{
-		{label: "0", text: "v()"},
-		{label: "1", text: "v(n)"},
-	}}
-	// Голые имена хелперов — те же тексты, что Repl.*, но без префикса.
-	for _, n := range []string{"h", "i", "load", "flush", "time", "dis", "bindings", "reset"} {
-		src := s.docs["Repl."+n]
-		bare := *src
-		bare.name = n
-		bare.sigs = append([]clauseSig(nil), src.sigs...)
-		for i := range bare.sigs {
-			bare.sigs[i].text = strings.TrimPrefix(bare.sigs[i].text, "Repl.")
+	all := sema.BuiltinArities()
+	for mod, fns := range all {
+		var funs []string
+		for name, labels := range fns {
+			key := name
+			if mod != "" {
+				key = mod + "." + name
+			}
+			s.docs[key] = &helpDoc{name: key, sigs: sigs(key, key, labels)}
+			for _, l := range labels {
+				funs = append(funs, name+"/"+l)
+			}
 		}
-		s.docs[n] = &bare
+		if mod != "" {
+			sort.Strings(funs)
+			s.docs[mod] = &helpDoc{name: mod, module: true, funs: funs}
+		}
 	}
-	funs := []string{"bindings/0", "dis/1", "flush/0", "h/1", "i/1", "load/1", "reset/0", "time/1", "v/0", "v/1"}
-	s.docs["Repl"].funs = funs
+	// Голые хелперы — те же параметры, что у Repl.*.
+	for _, name := range sema.ReplHelperNames() {
+		s.docs[name] = &helpDoc{name: name, sigs: sigs(name, "Repl."+name, all["Repl"][name])}
+	}
+	for k := range builtinParams {
+		if !used[k] {
+			panic("repl: doc params for unknown builtin " + k)
+		}
+	}
 }
 
-func fnBare(sig string) string {
-	i := strings.IndexByte(sig, '(')
-	if i < 0 {
-		return sig
-	}
-	return sig[:i]
+// builtinParams — имена параметров встроенных функций по "имя/арность".
+var builtinParams = map[string]string{
+	"map/2": "xs, f", "filter/2": "xs, p", "find/2": "xs, p",
+	"all/2": "xs, p", "any/2": "xs, p", "fold/3": "xs, acc, f",
+	"len/1": "v", "list/0..": "..xs", "set/0..": "..xs",
+	"to_str/1": "v", "to_int/1": "v", "to_float/1": "v",
+	"send/2": "pid, msg", "spawn/1": "f", "spawn_linked/1": "f",
+	"link/1": "pid", "watch/1": "pid", "unwatch/1": "ref",
+	"self/0": "", "make_ref/0": "", "mailbox_size/0": "", "mailbox_size/1": "pid",
+	"print/0..": "..vs", "eprint/0..": "..vs", "log/0..": "..vs",
+	"assert/1": "x", "raise/1": "e",
+	"Some/1": "v", "Ok/1": "v", "Error/1": "e",
+
+	"Vec.push/2": "v, x", "Vec.set/3": "v, i, x", "Vec.get/2": "v, i", "Vec.len/1": "v",
+	"Map.put/3": "m, k, v", "Map.get/2": "m, k", "Map.remove/2": "m, k", "Map.keys/1": "m",
+	"Str.to_bytes/1": "s", "Bytes.to_str/1": "b",
+	"Json.encode/1": "v", "Json.encode/2": "v, opts", "Json.decode/1": "s",
+	"Test.describe/1": "name", "Test.it/2": "name, thunk", "Test.run/0": "",
+	"Test.assert_eq/2": "a, b", "Test.assert_ne/2": "a, b", "Test.assert/1": "x", "Test.fail/1": "msg",
+	"Sys.args/0": "",
+
+	"Repl.h/1": "f", "Repl.i/1": "v", "Repl.v/0": "", "Repl.v/1": "n",
+	"Repl.load/1": "path", "Repl.flush/0": "", "Repl.time/1": "f", "Repl.dis/1": "f",
+	"Repl.bindings/0": "", "Repl.reset/0": "", "Repl.recompile/0": "", "Repl.register/1": "module",
 }

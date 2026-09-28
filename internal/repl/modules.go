@@ -12,6 +12,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"sort"
 	"strings"
@@ -157,6 +158,7 @@ func (s *Session) install(mods, install []*loader.Module, here bool) error {
 	}
 	w := sema.NewWorld(world)
 	failed := 0
+	failedPath := ""
 	for _, m := range mods {
 		res := sema.CheckNamesSession(m.Prog, w)
 		for _, d := range res.Diagnostics {
@@ -168,10 +170,15 @@ func (s *Session) install(mods, install []*loader.Module, here bool) error {
 				return err
 			}
 		}
-		failed += countErrors(res)
+		if n := countErrors(res); n > 0 {
+			failed += n
+			if failedPath == "" {
+				failedPath = m.Path
+			}
+		}
 	}
 	if failed > 0 {
-		return fmt.Errorf("sema: %d error(s)", failed)
+		return &fs.PathError{Op: "sema", Path: failedPath, Err: fmt.Errorf("%d error(s)", failed)}
 	}
 
 	// Модули сессии — не входные: пустой входной модуль в начале, у
