@@ -439,7 +439,11 @@ func InstallPrelude(vm *VM) {
 		return runtime.List(out...), nil
 	})
 
-	// ---- Actor (§12.10) ----
+	// ---- Actor (§12.10, §12.13) ----
+
+	def("Actor.list", 0, func(_ runtime.Caller, _ []runtime.Value) (runtime.Value, error) {
+		return vm.scheduler.actorList(), nil
+	})
 
 	def("Actor.info", 1, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		if args[0].Kind != runtime.KindPid {

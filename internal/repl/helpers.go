@@ -859,7 +859,7 @@ var builtinParams = map[string]string{
 	"Test.describe/1": "name", "Test.it/2": "name, thunk", "Test.run/0": "",
 	"Test.assert_eq/2": "a, b", "Test.assert_ne/2": "a, b", "Test.assert/1": "x", "Test.fail/1": "msg",
 	"Sys.args/0":   "",
-	"Actor.info/1": "pid",
+	"Actor.info/1": "pid", "Actor.list/0": "",
 	"Global.put/2": "name, value", "Global.get/1": "name",
 	"Timer.send_after/3": "ms, pid, msg", "Timer.cancel/1": "ref",
 	"Time.monotonic_ms/0": "", "Time.now/0": "",

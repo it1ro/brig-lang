@@ -380,6 +380,9 @@ type Actor struct {
 
 	// budget — счётчики и лимиты хода (§12.10).
 	budget
+
+	// initialFn — имя начальной функции в виде trace (Actor.info, §12.13).
+	initialFn string
 }
 
 // Scheduler — единый run-loop (§15.2).
@@ -417,6 +420,7 @@ type Scheduler struct {
 	session        bool
 	sessionPid     int
 	jobs           chan *sessionJob
+	snaps          chan chan []ActorSnapshot
 	wake           chan struct{}
 	stop           chan struct{}
 	loopDone       chan struct{}
@@ -449,9 +453,11 @@ func (s *Scheduler) Spawn(fn runtime.Value, args []runtime.Value) (int, error) {
 		watching: make(map[int]int),
 		status:   actorReady,
 	}
-	if _, err := a.pushCall(fn, args); err != nil {
+	f, err := a.pushCall(fn, args)
+	if err != nil {
 		return 0, err
 	}
+	a.initialFn = f.name
 	pid := s.nextPid
 	s.nextPid++
 	a.pid = pid

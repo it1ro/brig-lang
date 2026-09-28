@@ -45,10 +45,11 @@ func (s *Scheduler) StartSession() error {
 		return errors.New("internal: repl session already started")
 	}
 	a := &Actor{
-		hwm:      defaultHWM,
-		watchers: make(map[int]int),
-		watching: make(map[int]int),
-		status:   actorBlocked,
+		hwm:       defaultHWM,
+		watchers:  make(map[int]int),
+		watching:  make(map[int]int),
+		status:    actorBlocked,
+		initialFn: sessionInitialFn,
 	}
 	pid := s.nextPid
 	s.nextPid++
@@ -57,6 +58,7 @@ func (s *Scheduler) StartSession() error {
 	s.sessionPid = pid
 	s.session = true
 	s.jobs = make(chan *sessionJob)
+	s.snaps = make(chan chan []ActorSnapshot)
 	s.wake = make(chan struct{}, 1)
 	s.stop = make(chan struct{})
 	s.loopDone = make(chan struct{})
@@ -188,6 +190,7 @@ func (s *Scheduler) sessionLoop() {
 		if s.consumeInterrupt() {
 			continue
 		}
+		s.serveSnapshots()
 		s.pollJob()
 		if len(s.ready) == 0 {
 			if !s.waitSession(true) {
@@ -230,6 +233,9 @@ func (s *Scheduler) waitSession(takeJobs bool) bool {
 	select {
 	case job := <-jobs:
 		s.takeJob(job)
+		return true
+	case reply := <-s.snaps:
+		reply <- s.snapshot()
 		return true
 	case <-timerC:
 		s.wakeExpired()
@@ -489,6 +495,7 @@ func (s *Scheduler) awaitNested(a *Actor) error {
 		if s.interrupt.Load() {
 			return ErrInterrupted
 		}
+		s.serveSnapshots()
 		if len(s.ready) == 0 {
 			if !s.waitSession(false) {
 				return errSessionClosed

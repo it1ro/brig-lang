@@ -175,7 +175,7 @@ var modBuiltins = map[string]map[string]sig{
 		"assert_eq": exact(2), "assert_ne": exact(2), "assert": exact(1), "fail": exact(1),
 	},
 	"Sys":    {"args": exact(0)},
-	"Actor":  {"info": exact(1)},
+	"Actor":  {"info": exact(1), "list": exact(0)},
 	"Global": {"put": exact(2), "get": exact(1)},
 	"Timer":  {"send_after": exact(3), "cancel": exact(1)},
 	"Time":   {"monotonic_ms": exact(0), "now": exact(0)},
