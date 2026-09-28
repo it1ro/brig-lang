@@ -1,6 +1,6 @@
 package vm
 
-// TimerVisits — счётчик акторов, осмотренных при обслуживании таймеров.
+// TimerVisits — счётчик записей кучи, осмотренных при обслуживании таймеров.
 func (s *Scheduler) TimerVisits() uint64 { return s.timerVisits }
 
 // ArmedTimers — число таймеров в куче.
