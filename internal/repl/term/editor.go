@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"io"
 	"strings"
+
+	"github.com/it1ro/brig-lang/internal/termio"
 )
 
 // Editor читает порции ввода с приглашением. Поток байтов — клавиши
@@ -70,7 +72,7 @@ func (e *Editor) ReadInput(prompt, cont string) (string, error) {
 	e.prompt, e.cont = prompt, cont
 	e.reset()
 	for {
-		k, err := readKey(e.in)
+		k, err := termio.ReadKey(e.in)
 		if err != nil {
 			e.finish("")
 			return "", err
@@ -95,69 +97,69 @@ func (e *Editor) reset() {
 
 // handle применяет клавишу. done — ввод закончен: src и err — итог
 // ReadInput.
-func (e *Editor) handle(k key) (src string, done bool, err error) {
+func (e *Editor) handle(k termio.Key) (src string, done bool, err error) {
 	if e.search != nil && e.searchKey(k) {
 		return "", false, nil
 	}
 	b := &e.buf
-	switch k.code {
-	case kRune:
-		b.insert(string(k.r))
-	case kPaste:
-		b.insert(k.text)
-	case kEnter:
+	switch k.Code {
+	case termio.KeyRune:
+		b.insert(string(k.Rune))
+	case termio.KeyPaste:
+		b.insert(k.Text)
+	case termio.KeyEnter:
 		return e.enter()
-	case kBackspace:
+	case termio.KeyBackspace:
 		if _, col := b.lineCol(); e.IndentWidth > 0 && b.onlySpacesBefore() {
 			b.del(b.pos-(col-1)%e.IndentWidth-1, b.pos)
 		} else {
 			b.backspace()
 		}
-	case kDelete:
+	case termio.KeyDelete:
 		b.delete()
-	case kEOF:
+	case termio.KeyEOF:
 		if len(b.r) == 0 {
 			e.finish("")
 			return "", true, io.EOF
 		}
 		b.delete()
-	case kInterrupt:
+	case termio.KeyInterrupt:
 		e.finish("^C")
 		e.reset()
-	case kLeft:
+	case termio.KeyLeft:
 		b.left()
-	case kRight:
+	case termio.KeyRight:
 		b.right()
-	case kHome:
+	case termio.KeyHome:
 		b.home()
-	case kEnd:
+	case termio.KeyEnd:
 		b.end()
-	case kWordLeft:
+	case termio.KeyWordLeft:
 		b.wordLeft()
-	case kWordRight:
+	case termio.KeyWordRight:
 		b.wordRight()
-	case kUp:
+	case termio.KeyUp:
 		if b.firstLine() {
 			e.historyMove(-1)
 		} else {
 			b.up()
 		}
-	case kDown:
+	case termio.KeyDown:
 		if b.lastLine() {
 			e.historyMove(+1)
 		} else {
 			b.down()
 		}
-	case kKillEnd:
+	case termio.KeyKillEnd:
 		b.killEnd()
-	case kKillStart:
+	case termio.KeyKillStart:
 		b.killStart()
-	case kKillWord:
+	case termio.KeyKillWord:
 		b.killWord()
-	case kClear:
+	case termio.KeyClear:
 		e.write("\x1b[H\x1b[2J")
 		e.crow = 0
-	case kSearch:
+	case termio.KeySearch:
 		if e.History != nil {
 			saved := buffer{r: append([]rune(nil), b.r...), pos: b.pos}
 			e.search = &search{match: -1, saved: saved}
@@ -223,31 +225,31 @@ func (e *Editor) historyMove(d int) {
 
 // searchKey обрабатывает клавишу в режиме Ctrl-R. false — поиск принят,
 // клавиша обрабатывается как обычно.
-func (e *Editor) searchKey(k key) bool {
+func (e *Editor) searchKey(k termio.Key) bool {
 	s := e.search
-	switch k.code {
-	case kRune:
-		s.query = append(s.query, k.r)
+	switch k.Code {
+	case termio.KeyRune:
+		s.query = append(s.query, k.Rune)
 		from := s.match
 		if from < 0 {
 			from = e.historyLen() - 1
 		}
 		e.find(from)
-	case kBackspace:
+	case termio.KeyBackspace:
 		if len(s.query) > 0 {
 			s.query = s.query[:len(s.query)-1]
 		}
 		e.find(e.historyLen() - 1)
-	case kSearch:
+	case termio.KeySearch:
 		if s.match > 0 {
 			e.find(s.match - 1)
 		} else if s.match == 0 {
 			s.failed = true
 		}
-	case kCancel:
+	case termio.KeyCancel:
 		e.buf = s.saved
 		e.search = nil
-	case kEnter:
+	case termio.KeyEnter:
 		e.search = nil
 		e.buf.pos = len(e.buf.r)
 		return false
@@ -323,14 +325,14 @@ func (e *Editor) render() {
 			p = e.firstPrompt()
 		}
 		b.WriteString(p)
-		b.WriteString(visible(shown[i]))
-		n := cells(p) + cells(line)
+		b.WriteString(termio.Visible(shown[i]))
+		n := termio.Cells(p) + termio.Cells(line)
 		if i == cl {
-			x := cells(p) + cells(string([]rune(line)[:cc]))
+			x := termio.Cells(p) + termio.Cells(string([]rune(line)[:cc]))
 			crow, ccol = rows+x/w, x%w
 			if hint != "" {
-				b.WriteString("\x1b[90m" + visible(hint) + "\x1b[0m")
-				n += cells(hint)
+				b.WriteString("\x1b[90m" + termio.Visible(hint) + "\x1b[0m")
+				n += termio.Cells(hint)
 			}
 		}
 		if n > 0 && n%w == 0 {

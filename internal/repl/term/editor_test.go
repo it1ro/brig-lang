@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/it1ro/brig-lang/internal/repl"
+	"github.com/it1ro/brig-lang/internal/termio"
 )
 
 // newTestEditor — редактор на строке in с хуками консоли Brig.
@@ -28,7 +29,7 @@ func drive(t *testing.T, e *Editor) []string {
 	e.reset()
 	var got []string
 	for {
-		k, err := readKey(e.in)
+		k, err := termio.ReadKey(e.in)
 		if errors.Is(err, io.EOF) {
 			return got
 		}
@@ -393,7 +394,7 @@ func TestEditorHooks(t *testing.T) {
 func TestReadKeyEOF(t *testing.T) {
 	for _, in := range []string{"\x1b", "\x1b[", "\x1b[200~abc", "\x1bO"} {
 		r := bufio.NewReader(strings.NewReader(in))
-		if _, err := readKey(r); !errors.Is(err, io.EOF) {
+		if _, err := termio.ReadKey(r); !errors.Is(err, io.EOF) {
 			t.Errorf("readKey(%q): err = %v, want EOF", in, err)
 		}
 	}
