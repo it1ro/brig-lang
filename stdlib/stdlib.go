@@ -1,5 +1,5 @@
 // Package stdlib — встроенные модули на Brig (T-146): `List`, `Option`,
-// `Result`; `Server` (T-170). Исходники `*.brig` лежат
+// `Result`; `Server` и `Supervisor` (T-170). Исходники `*.brig` лежат
 // рядом и встраиваются в бинарник через go:embed, поэтому `brig`
 // работает без них на диске. Тесты модулей — `*_test.brig` рядом, в
 // бинарник они не встраиваются.
@@ -19,7 +19,7 @@ import (
 	"github.com/it1ro/brig-lang/internal/parser"
 )
 
-//go:embed list.brig option.brig result.brig server.brig
+//go:embed list.brig option.brig result.brig server.brig supervisor.brig
 var files embed.FS
 
 // Module — встроенный модуль на Brig.
@@ -39,6 +39,7 @@ var names = []struct{ name, file string }{
 	{"Option", "option.brig"},
 	{"Result", "result.brig"},
 	{"Server", "server.brig"},
+	{"Supervisor", "supervisor.brig"},
 }
 
 // IsModule сообщает, что name — встроенный модуль на Brig.

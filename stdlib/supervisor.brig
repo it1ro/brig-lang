@@ -1,0 +1,196 @@
+## Супервизор (§13.1): обычный актор, который запускает детей, наблюдает
+## за ними через `watch` и перезапускает по их `restart`. Механизмы —
+## VM (`exit`, `watch`, `await`, §12.7, §12.9), политика — здесь.
+##
+## Спецификация — анонимная запись: `strategy` (только `:one_for_one`),
+## `max_restarts` и `within` (окно перезапусков в мс), `children` —
+## child spec по порядку старта: `{ name, start, restart }`. `start` —
+## функция без аргументов, которая возвращает `Pid` ребёнка; супервизор
+## вызывает её в своём акторе. `restart` — `:permanent` (перезапуск после
+## любого выхода) или `:transient` (только после аварийного: выход с
+## причиной `:normal`, `:shutdown` или `(:shutdown, _)` — нормальный).
+## Больше `max_restarts` перезапусков за `within` мс — супервизор гасит
+## остальных детей и падает: `raise((:max_restarts, (name, reason)))`.
+module Supervisor
+
+## Запускает супервизор и его детей по порядку; возвращает `Pid`
+## супервизора, когда все `start` детей вернулись. `start` ребёнка упал
+## или вернул не `Pid` — уже запущенные гасятся в обратном порядке, а
+## вызывающий получает `raise((:start_failed, (name, reason)))`.
+## `strategy` не `:one_for_one` или `restart` не `:permanent`/`:transient`
+## — `(:type_error, (:start, value))`.
+##
+## ```brig repl
+## > sup = Supervisor.start({ strategy: :one_for_one, max_restarts: 3, within: 5000, children: [{ name: :idle, start: () -> spawn_linked(() -> recv _msg -> ()), restart: :permanent }] })
+## > Supervisor.stop(sup, :shutdown, { timeout: 1000 })
+## Ok(())
+## > Supervisor.start({ strategy: :rest_for_one, max_restarts: 3, within: 5000, children: [] })
+## raise (:type_error, (:start, :rest_for_one))
+## ```
+pub fn start(spec) ->
+    check(spec)
+    me = self()
+    ref = make_ref()
+    sup = spawn(() -> init(spec, me, ref))
+    match await(ref, start_timeout_ms())
+        Ok(Ok(())) -> sup
+        Ok(Error(e)) -> raise((:start_failed, e))
+        Error(_) ->
+            exit(sup, :kill)
+            raise((:start_failed, :timeout))
+
+## Останавливает супервизор `sup`: дети гасятся в обратном порядке
+## старта через `exit(child, reason)` (§12.7), каждый ждётся до общего
+## дедлайна `timeout` мс; кто не завершился к дедлайну — `exit(child,
+## :kill)`. Затем супервизор завершается с `reason`. Результат —
+## `Ok(())`, `Error(:timeout)` — супервизор не подтвердил остановку
+## (в том числе он мёртв).
+##
+## ```brig repl
+## > sup = Supervisor.start({ strategy: :one_for_one, max_restarts: 3, within: 5000, children: [] })
+## > Supervisor.stop(sup, :shutdown, { timeout: 1000 })
+## Ok(())
+## ```
+pub fn stop(sup, reason, opts) ->
+    Server.call(sup, (:stop, reason, opts.timeout), opts.timeout + kill_grace_ms())
+
+# Сколько start ждёт запуска детей и сколько при эскалации или неудачном
+# старте даётся детям на остановку до :kill.
+fn start_timeout_ms() -> 5000
+fn shutdown_ms() -> 5000
+# Запас stop сверх timeout: после дедлайна супервизор ещё добивает детей
+# :kill и отвечает.
+fn kill_grace_ms() -> 1000
+
+fn check(spec) ->
+    match spec.strategy
+        :one_for_one -> ()
+        s -> raise((:type_error, (:start, s)))
+    match spec.children
+        [..] -> List.each(spec.children, check_child)
+        cs -> raise((:type_error, (:start, cs)))
+
+fn check_child(c) ->
+    _ = c.name
+    _ = c.start
+    match c.restart
+        :permanent -> ()
+        :transient -> ()
+        r -> raise((:type_error, (:start, r)))
+
+# ---- актор супервизора ----
+
+fn init(spec, parent, ref) ->
+    match start_children(spec.children, [])
+        Ok(children) ->
+            reply(parent, ref, Ok(()))
+            loop({ max_restarts: spec.max_restarts, within: spec.within, children: children, restarts: [] })
+        Error((name, reason, started)) ->
+            stop_children(started, :shutdown, shutdown_ms())
+            reply(parent, ref, Error((name, reason)))
+
+# children — по порядку старта: `{ name, start, restart, pid, ref }`,
+# ref — наблюдение супервизора за ребёнком.
+fn start_children([], started) -> Ok(started)
+fn start_children([c, ..rest], started) ->
+    match start_child(c)
+        Ok(child) -> start_children(rest, [..started, child])
+        Error(reason) -> Error((c.name, reason, started))
+
+# `start` ребёнка сам может связать его с супервизором (`spawn_linked`):
+# такой `:down` приходит с чужим ref и отбрасывается, ребёнок
+# узнаётся по ref своего `watch`.
+fn start_child(c) ->
+    r = trap
+        pid = c.start()
+        (pid, watch(pid))
+    match r
+        Ok((pid, ref)) -> Ok({ ..c, pid: pid, ref: ref })
+        Error(e) -> Error(e)
+
+fn loop(state) ->
+    recv
+        (:down, ref, reason) -> loop(child_down(state, ref, reason))
+        (:call, from, (:stop, reason, timeout)) ->
+            stop_children(state.children, reason, timeout)
+            Server.reply(from, ())
+            exit(self(), reason)
+    else _msg
+        loop(state)
+
+fn child_down(state, ref, reason) ->
+    match find(state.children, c -> c.ref == ref)
+        Some(c) -> exited(state, c, reason)
+        None -> state
+
+fn exited(state, c, reason) ->
+    match restart?(c.restart, reason)
+        true -> restart(state, c, reason)
+        false -> { ..state, children: filter(state.children, x -> x.ref != c.ref) }
+
+fn restart?(:permanent, _) -> true
+fn restart?(:transient, reason) -> not normal_exit?(reason)
+
+fn normal_exit?(:normal) -> true
+fn normal_exit?(:shutdown) -> true
+fn normal_exit?((:shutdown, _)) -> true
+fn normal_exit?(_) -> false
+
+# Окно — по Time.monotonic_ms: перезапуски старше `within` мс не
+# считаются.
+fn restart(state, c, reason) ->
+    now = Time.monotonic_ms()
+    restarts = [..filter(state.restarts, t -> now - t < state.within), now]
+    match len(restarts) > state.max_restarts
+        true -> escalate(state, c, reason)
+        false -> restart_child({ ..state, restarts: restarts }, c)
+
+# Неудачный перезапуск — ещё один выход ребёнка: он снова считается в
+# окне, пока супервизор не эскалирует.
+fn restart_child(state, c) ->
+    match start_child(c)
+        Ok(child) -> { ..state, children: map(state.children, x -> if x.ref == c.ref then child else x) }
+        Error(e) -> exited(state, c, e)
+
+fn escalate(state, c, reason) ->
+    stop_children(filter(state.children, x -> x.ref != c.ref), :shutdown, shutdown_ms())
+    raise((:max_restarts, (c.name, reason)))
+
+# ---- остановка детей ----
+
+# В обратном порядке старта, до общего дедлайна. downs — ref детей, чей
+# `:down` уже пришёл, пока ждали другого: их не ждут повторно.
+fn stop_children(children, reason, timeout) ->
+    deadline = Time.monotonic_ms() + timeout
+    _ = fold(List.reverse(children), [], (downs, c) -> stop_child(c, reason, deadline, downs))
+    ()
+
+fn stop_child(c, reason, deadline, downs) ->
+    match any(downs, r -> r == c.ref)
+        true -> downs
+        false ->
+            exit(c.pid, reason)
+            await_down(c, deadline, downs)
+
+fn await_down(c, deadline, downs) ->
+    recv
+        (:down, ref, _) when ref == c.ref -> downs
+        (:down, ref, _) -> await_down(c, deadline, [..downs, ref])
+    else _msg
+        await_down(c, deadline, downs)
+    after remaining(deadline) ->
+        exit(c.pid, :kill)
+        await_killed(c, downs)
+
+# `:kill` завершает без ensure (§12.7): `:down` придёт без таймаута.
+fn await_killed(c, downs) ->
+    recv
+        (:down, ref, _) when ref == c.ref -> downs
+        (:down, ref, _) -> await_killed(c, [..downs, ref])
+    else _msg
+        await_killed(c, downs)
+
+fn remaining(deadline) -> non_negative(deadline - Time.monotonic_ms())
+
+fn non_negative(ms) when ms > 0 -> ms
+fn non_negative(_) -> 0
