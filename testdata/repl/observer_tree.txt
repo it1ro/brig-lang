@@ -1,0 +1,29 @@
+fn idle() ->
+    recv
+        _msg -> idle()
+
+fn reg(pid, name) ->
+    register(name, pid)
+    pid
+
+sup = Supervisor.start({ strategy: :one_for_one, max_restarts: 3, within: 5000, children: [{ name: :w, start: () -> reg(spawn_linked(() -> idle()), :w), restart: :permanent }, { name: :nested, start: () -> Supervisor.start({ strategy: :one_for_one, max_restarts: 1, within: 5000, children: [{ name: :inner, start: () -> reg(spawn_linked(() -> idle()), :inner), restart: :transient }] }), restart: :permanent }] })
+root = spawn(() -> idle())
+register(:root, root)
+tree()
+Repl.tree()
+-- output --
+sup = #<pid 1>
+root = #<pid 5>
+Ok(())
+#<pid 0> name=None status=:running mailbox=0
+#<pid 1> name=None status=:recv mailbox=0
+  #<pid 2> name=Some(:w) status=:recv mailbox=0
+  #<pid 3> name=None status=:recv mailbox=0
+    #<pid 4> name=Some(:inner) status=:recv mailbox=0
+#<pid 5> name=Some(:root) status=:recv mailbox=0
+#<pid 0> name=None status=:running mailbox=0
+#<pid 1> name=None status=:recv mailbox=0
+  #<pid 2> name=Some(:w) status=:recv mailbox=0
+  #<pid 3> name=None status=:recv mailbox=0
+    #<pid 4> name=Some(:inner) status=:recv mailbox=0
+#<pid 5> name=Some(:root) status=:recv mailbox=0

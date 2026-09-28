@@ -19,7 +19,7 @@ import (
 	"github.com/it1ro/brig-lang/internal/parser"
 )
 
-//go:embed list.brig option.brig result.brig server.brig supervisor.brig
+//go:embed list.brig option.brig result.brig server.brig supervisor.brig observer.brig
 var files embed.FS
 
 // Module — встроенный модуль на Brig.
@@ -40,6 +40,7 @@ var names = []struct{ name, file string }{
 	{"Result", "result.brig"},
 	{"Server", "server.brig"},
 	{"Supervisor", "supervisor.brig"},
+	{"Observer", "observer.brig"},
 }
 
 // IsModule сообщает, что name — встроенный модуль на Brig.

@@ -163,6 +163,11 @@ description: >
   `exit`. Лимиты — `SPAWN` с битом `C&SpawnLimits`, запись в `R[B+1]`
   (`parseLimits`, ошибка до создания актора). `Actor.info` — натив,
   модуль `Actor` в списках встроенных (compiler, sema, loader).
+- **Хелперы observer (T-223)** живут в `internal/repl`, не в VM: `tree`/`info`/`top`.
+  `tree` узнаёт супервизор по `initial_fn` == `Supervisor.start$lambda$0$`
+  (`Observer.supervisor?`) и зовёт `Supervisor.which_children` через
+  `CallNested` — вложенный `await` крутит остальных. Новых опкодов нет.
+  `ActorInfoValue` — тот же `Actor.info` для натива на горутине цикла.
 - **Интроспекция (§12.13, T-221, `introspect.go`).** `Actor.list`,
   `Actor.info` и Go-API `Snapshot` строятся одной `describe`: жив —
   `liveActor` (mainPid после выхода в таблице, но не жив); `status` из

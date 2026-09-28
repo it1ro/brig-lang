@@ -31,7 +31,7 @@ func TestStdlibEmbeddedLoads(t *testing.T) {
 			t.Fatalf("module %+v", m)
 		}
 	}
-	if got := strings.Join(names, " "); got != "List Option Result Server Supervisor" {
+	if got := strings.Join(names, " "); got != "List Option Result Server Supervisor Observer" {
 		t.Fatalf("modules %q", got)
 	}
 	w := sema.NewWorld(world)

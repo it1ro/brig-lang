@@ -106,6 +106,26 @@ func TestStdlibBuiltinWinsOverFile(t *testing.T) {
 	}
 }
 
+// T-223: which_children — порядок старта, тип и таймаут (stdlib/supervisor_test.brig).
+func TestSupervisorWhichChildren(t *testing.T) {
+	bin := buildBrig(t)
+	path := filepath.Join(findModuleRoot(t), "stdlib", "supervisor_test.brig")
+	code, out := runBrigTest(t, bin, path)
+	for _, name := range []string{
+		"test_supervisor_which_children",
+		"test_supervisor_which_children_type",
+		"test_supervisor_which_children_timeout",
+		"test_supervisor_initial_fn",
+	} {
+		if !strings.Contains(out, "ok   "+path+": "+name) && !strings.Contains(out, name) {
+			t.Fatalf("missing %s\n%s", name, out)
+		}
+	}
+	if code != exitOK || !strings.Contains(out, "0 failed") {
+		t.Fatalf("exit %d\n%s", code, out)
+	}
+}
+
 // Доктесты исходников stdlib проходят через `brig test` (раннер T-147).
 func TestStdlibDoctestsCLI(t *testing.T) {
 	bin := buildBrig(t)

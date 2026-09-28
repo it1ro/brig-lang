@@ -427,6 +427,64 @@ time(timeout)
 	}
 }
 
+// TestHelperAwaitNested — T-223: await внутри хелпера (CallNested) ждёт
+// ответ, пока планировщик крутит сервер. Без этого tree() не может
+// звать Supervisor.which_children.
+func TestHelperAwaitNested(t *testing.T) {
+	s, out := helperSession(t)
+	mustEval(t, s, out, "fn srv() ->\n    recv\n        (:call, from, req) -> Server.reply(from, req)\n")
+	mustEval(t, s, out, "pid = spawn(srv)\n")
+	got := mustEval(t, s, out, "time(() -> Server.call(pid, :ping, 1000))\n")
+	if got.Kind != runtime.KindTuple || len(got.Tuple) != 2 || got.Tuple[1].Inspect() != "Ok(:ping)" {
+		t.Fatalf("time(Server.call) = %s", got.Inspect())
+	}
+}
+
+// TestHelperObserverLeavesActors — T-223: tree() не кладёт сообщения
+// чужим акторам и не останавливает их. sticky принимает только :inc:
+// чужое сообщение убило бы его через :recv_clause.
+func TestHelperObserverLeavesActors(t *testing.T) {
+	s, out := helperSession(t)
+	mustEval(t, s, out, "fn sticky() ->\n    recv\n        :inc -> sticky()\n")
+	mustEval(t, s, out, "fn echo() ->\n    recv\n        (:ping, from) ->\n            send(from, :pong)\n            echo()\n")
+	mustEval(t, s, out, "pid = spawn(sticky)\n")
+	mustEval(t, s, out, "sup = Supervisor.start({ strategy: :one_for_one, max_restarts: 1, within: 5000, children: [{ name: :e, start: () -> spawn_linked(echo), restart: :permanent }] })\n")
+	if got := mustEval(t, s, out, "mailbox_size(pid)\n"); got.Inspect() != "0" {
+		t.Fatalf("mailbox before = %s", got.Inspect())
+	}
+	mustEval(t, s, out, "tree()\n")
+	if got := mustEval(t, s, out, "mailbox_size(pid)\n"); got.Inspect() != "0" {
+		t.Fatalf("sticky mailbox after tree = %s\n%s", got.Inspect(), out.String())
+	}
+	if got := mustEval(t, s, out, "mailbox_size()\n"); got.Inspect() != "0" {
+		t.Fatalf("session mailbox after tree = %s", got.Inspect())
+	}
+	if got := mustEval(t, s, out, "match Actor.info(pid)\n    Some(_) -> true\n    None -> false\n"); got.Inspect() != "true" {
+		t.Fatalf("sticky dead after tree\n%s", out.String())
+	}
+	mustEval(t, s, out, "send(pid, :inc)\n")
+	mustEval(t, s, out, "recv\n    :never -> ()\nafter 0 -> ()\n")
+	if got := mustEval(t, s, out, "match Actor.info(pid)\n    Some(_) -> true\n    None -> false\n"); got.Inspect() != "true" {
+		t.Fatalf("sticky dead after :inc\n%s", out.String())
+	}
+	mustEval(t, s, out, "cs = Supervisor.which_children(sup)\n")
+	mustEval(t, s, out, "send(cs[0][1], (:ping, self()))\n")
+	if got := mustEval(t, s, out, "recv\n    m -> m\nafter 1000 -> :timeout\n"); got.Inspect() != ":pong" {
+		t.Fatalf("echo after tree = %s\n%s", got.Inspect(), out.String())
+	}
+	if got := mustEval(t, s, out, "Supervisor.stop(sup, :shutdown, { timeout: 1000 })\n"); got.Inspect() != "Ok(())" {
+		t.Fatalf("stop after tree = %s", got.Inspect())
+	}
+	mustEval(t, s, out, "Repl.tree()\n")
+	for _, src := range []string{"top(0)\n", "top(-1)\n", "top(1.5)\n", "top(:n)\n", "info(1)\n"} {
+		_, err := s.Eval(src)
+		var rerr *vm.ErrRaise
+		if !errors.As(err, &rerr) {
+			t.Fatalf("%s: %v", src, err)
+		}
+	}
+}
+
 // TestHelperNestedTrace — T-214 (#309) п.3: непойманный raise в time(f)
 // несёт stack trace, как в обычном вводе.
 func TestHelperNestedTrace(t *testing.T) {

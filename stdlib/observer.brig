@@ -1,0 +1,89 @@
+## Снимок дерева акторов для хелпера консоли `tree` (§11.4). Печать — в
+## REPL; здесь только данные. Супервизор узнаётся по `initial_fn` актора,
+## которого спавнит `Supervisor.start`: слать `:which_children` остальным
+## нельзя, это чужой протокол и сообщение останется у них в ящике.
+module Observer
+
+## Список корней. Узел — `{ pid, name, status, mailbox, children }`.
+## `name` — из реестра (`Actor.info`). Корень — живой актор, который не
+## числится ребёнком ни одного супервизора. Дети — `Supervisor.which_children`,
+## в порядке старта, рекурсивно. Супервизор не ответил — та же ошибка,
+## что у `which_children`.
+##
+## ```brig repl
+## > sup = Supervisor.start({ strategy: :one_for_one, max_restarts: 1, within: 5000, children: [] })
+## > roots = Observer.nodes()
+## > any(roots, n -> n.pid == sup and n.children == [])
+## true
+## ```
+pub fn nodes() ->
+    pairs = live(Actor.list())
+    tab = table(pairs)
+    render_roots(pairs, taken(tab), tab)
+
+# Строка обязана совпадать с test_supervisor_initial_fn. Другое имя
+# спавна Supervisor.start — супервизоры перестанут быть узлами дерева.
+fn supervisor_initial_fn() -> "Supervisor.start$lambda$0$"
+
+fn supervisor?(info) -> info.initial_fn == supervisor_initial_fn()
+
+fn live([]) -> []
+fn live([pid, ..rest]) ->
+    match Actor.info(pid)
+        Some(info) -> [(pid, info), ..live(rest)]
+        None -> live(rest)
+
+# (pid супервизора, список pid детей) в порядке Actor.list.
+# which_children зовётся отсюда, не из колбэка map: await не должен
+# вставать внутри возобновляемого натива.
+fn table([]) -> []
+fn table([(pid, info), ..rest]) ->
+    match supervisor?(info)
+        true -> [(pid, child_pids(pid)), ..table(rest)]
+        false -> table(rest)
+
+fn child_pids(sup) -> pids_of(Supervisor.which_children(sup))
+
+fn pids_of([]) -> []
+fn pids_of([(_, pid, _), ..rest]) -> [pid, ..pids_of(rest)]
+
+fn taken([]) -> []
+fn taken([(_, pids), ..rest]) -> [..pids, ..taken(rest)]
+
+fn render_roots([], _, _) -> []
+fn render_roots([(pid, _), ..rest], claimed, tab) ->
+    match root?(claimed, pid)
+        true -> [render(pid, tab), ..render_roots(rest, claimed, tab)]
+        false -> render_roots(rest, claimed, tab)
+
+fn root?(claimed, pid) -> not any(claimed, p -> p == pid)
+
+fn render(pid, tab) ->
+    match Actor.info(pid)
+        Some(info) ->
+            {
+                pid: pid,
+                name: info.name,
+                status: info.status,
+                mailbox: info.mailbox,
+                children: render_list(child_list(pid, info, tab), tab),
+            }
+        None -> { pid: pid, name: None, status: :dead, mailbox: 0, children: [] }
+
+fn child_list(pid, info, tab) ->
+    match supervisor?(info)
+        true -> children_of(pid, tab)
+        false -> []
+
+fn row_pid((pid, _)) -> pid
+
+fn children_of(pid, table) ->
+    match find(table, row -> row_pid(row) == pid)
+        Some((_, pids)) -> pids
+        None -> []
+
+fn render_list([], _) -> []
+fn render_list([pid, ..rest], tab) ->
+    match Actor.info(pid)
+        None -> render_list(rest, tab)
+        Some(_) -> [render(pid, tab), ..render_list(rest, tab)]

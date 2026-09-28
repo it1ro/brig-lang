@@ -1,0 +1,31 @@
+fn idle() ->
+    recv
+        _msg -> idle()
+
+fn burn(dst, 0) ->
+    send(dst, :done)
+    recv
+        _msg -> ()
+fn burn(dst, n) ->
+    burn(dst, n - 1)
+
+me = self()
+spawn(() -> burn(me, 20000))
+spawn(() -> idle())
+top(0)
+Repl.top(:n)
+recv
+    :done -> ()
+top(2)
+-- output --
+me = #<pid 0>
+#<pid 1>
+#<pid 2>
+error: raise: (:type_error, (:top, 0))
+  at __repl__ (<repl>:1:1)
+error: raise: (:type_error, (:top, :n))
+  at __repl__ (<repl>:1:5)
+#<pid 1>
+{ reductions: _, alloc_bytes: _, mailbox: 0, turn_reductions: _, turn_alloc_bytes: _, name: None, status: :recv, watchers: [], watching: [], initial_fn: "__repl__4$lambda$0$" }
+#<pid 0>
+{ reductions: _, alloc_bytes: _, mailbox: 0, turn_reductions: _, turn_alloc_bytes: _, name: None, status: :running, watchers: [], watching: [], initial_fn: "<repl>" }

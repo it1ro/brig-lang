@@ -72,6 +72,15 @@ func (s *Session) installHelpers() {
 	add("recompile", 0, true, func(_ runtime.Caller, _ []runtime.Value) (runtime.Value, error) {
 		return s.recompileHelper()
 	})
+	add("tree", 0, true, func(_ runtime.Caller, _ []runtime.Value) (runtime.Value, error) {
+		return s.tree()
+	})
+	add("info", 1, true, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+		return s.infoActor(args[0])
+	})
+	add("top", 1, true, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+		return s.top(args[0])
+	})
 	// register — не голая команда: модуль зовёт Repl.register("M").
 	add("register", 1, false, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		return s.register(args[0])
@@ -869,4 +878,5 @@ var builtinParams = map[string]string{
 	"Repl.h/1": "f", "Repl.i/1": "v", "Repl.v/0": "", "Repl.v/1": "n",
 	"Repl.load/1": "path", "Repl.flush/0": "", "Repl.time/1": "f", "Repl.dis/1": "f",
 	"Repl.bindings/0": "", "Repl.reset/0": "", "Repl.recompile/0": "", "Repl.register/1": "module",
+	"Repl.tree/0": "", "Repl.info/1": "pid", "Repl.top/1": "n",
 }

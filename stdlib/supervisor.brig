@@ -54,10 +54,39 @@ pub fn start(spec) ->
 pub fn stop(sup, reason, opts) ->
     Server.call(sup, (:stop, reason, opts.timeout), opts.timeout + kill_grace_ms())
 
+## Дети супервизора `sup` в порядке старта: `(id, pid, restart)`, `id` —
+## `name` child spec (§13.1). Запрос — `Server.call` с `:which_children`.
+## Супервизор не ответил — `(:timeout, (:which_children, sup))`. `sup` не
+## `Pid` — `(:type_error, (:which_children, sup))`.
+##
+## ```brig repl
+## > sup = Supervisor.start({ strategy: :one_for_one, max_restarts: 3, within: 5000, children: [] })
+## > Supervisor.which_children(sup)
+## []
+## > sup2 = Supervisor.start({ strategy: :one_for_one, max_restarts: 3, within: 5000, children: [{ name: :idle, start: () -> spawn_linked(() -> recv _msg -> ()), restart: :permanent }] })
+## > map(Supervisor.which_children(sup2), c -> (c[0], c[2]))
+## [(:idle, :permanent)]
+## > Supervisor.which_children(:nope)
+## raise (:type_error, (:which_children, :nope))
+## ```
+pub fn which_children(sup) ->
+    checked = trap(Actor.info(sup))
+    match checked
+        Error((:type_error, _)) -> raise((:type_error, (:which_children, sup)))
+        Error(e) -> raise(e)
+        Ok(_) ->
+            match Server.call(sup, :which_children, which_children_timeout_ms())
+                Ok(children) -> children
+                Error(:timeout) -> raise((:timeout, (:which_children, sup)))
+                Error(e) -> raise(e)
+
 # Сколько start ждёт запуска детей и сколько при эскалации или неудачном
 # старте даётся детям на остановку до :kill.
 fn start_timeout_ms() -> 5000
 fn shutdown_ms() -> 5000
+# which_children ждёт ответ супервизора. Дольше, чем мгновенный запрос:
+# супервизор может быть занят остановкой ребёнка.
+fn which_children_timeout_ms() -> 5000
 # Запас stop сверх timeout: после дедлайна супервизор ещё добивает детей
 # :kill и отвечает.
 fn kill_grace_ms() -> 1000
@@ -115,6 +144,9 @@ fn loop(state) ->
             stop_children(state.children, reason, timeout)
             Server.reply(from, ())
             exit(self(), reason)
+        (:call, from, :which_children) ->
+            Server.reply(from, map(state.children, c -> (c.name, c.pid, c.restart)))
+            loop(state)
     else _msg
         loop(state)
 
