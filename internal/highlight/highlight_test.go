@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/it1ro/brig-lang/internal/highlight"
+	"github.com/it1ro/brig-lang/internal/sema"
 )
 
 func classAt(src string, off, cursor int, env highlight.Env) (highlight.Class, bool) {
@@ -307,5 +308,29 @@ func TestHighlightCorpus(t *testing.T) {
 	}
 	if n == 0 {
 		t.Fatal("no .brig files")
+	}
+}
+
+// TestBuiltinNamesMatchSema — прелюдия и функции встроенных модулей
+// подсветки совпадают с sema; акторных примитивов в Prelude.* нет.
+func TestBuiltinNamesMatchSema(t *testing.T) {
+	env := highlight.REPLEnv()
+	for _, n := range sema.PreludeNames() {
+		if c, _ := classAt(n, 0, -1, env); c != highlight.Prelude {
+			t.Errorf("%s: %q, want prelude", n, c)
+		}
+	}
+	for mod, fns := range sema.BuiltinModules() {
+		for _, f := range fns {
+			src := mod + "." + f
+			if c, _ := classAt(src, len(mod)+1, -1, env); c != highlight.Prelude {
+				t.Errorf("%s: %q, want prelude", src, c)
+			}
+		}
+	}
+	for _, src := range []string{"Prelude.send", "Prelude.self"} {
+		if c, _ := classAt(src, len("Prelude."), -1, env); c != highlight.Unknown {
+			t.Errorf("%s: %q, want unknown", src, c)
+		}
 	}
 }

@@ -1,6 +1,7 @@
 package sema
 
 import (
+	"sort"
 	"strings"
 
 	"github.com/it1ro/brig-lang/internal/ast"
@@ -454,4 +455,38 @@ func pathStart(e ast.Expr) ast.Expr {
 		}
 		e = me.Obj()
 	}
+}
+
+// PreludeNames — голые имена прелюдии (§11.5): функции, конструкторы
+// и акторные примитивы. Для подсветки и подсказок консоли.
+func PreludeNames() []string { return sortedKeys(preludeNames()) }
+
+// ReplHelperNames — голые имена хелперов консоли (§11.4).
+func ReplHelperNames() []string { return sortedKeys(replHelperNames()) }
+
+// BuiltinModules — функции встроенных модулей по имени модуля, включая
+// Prelude.* без акторных примитивов: они опкоды, не глобалы.
+func BuiltinModules() map[string][]string {
+	out := make(map[string][]string, len(modBuiltins)+1)
+	for mod, fns := range modBuiltins {
+		out[mod] = sortedKeys(fns)
+	}
+	var pre []string
+	for n := range bareBuiltins {
+		if !actorPrimitives[n] {
+			pre = append(pre, n)
+		}
+	}
+	sort.Strings(pre)
+	out["Prelude"] = pre
+	return out
+}
+
+func sortedKeys[V any](m map[string]V) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }

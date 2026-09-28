@@ -3,6 +3,8 @@
 // парсером и sema на каждое нажатие.
 package highlight
 
+import "github.com/it1ro/brig-lang/internal/sema"
+
 // Class — класс подсветки. Имена совпадают с ключами BRIG_COLORS.
 type Class string
 
@@ -48,26 +50,22 @@ type Env struct {
 }
 
 // REPLEnv — имена консоли: прелюдия (§11.5), хелперы Repl (§11.4),
-// встроенные модули и типы. Привязки сессии добавляет вызывающий.
+// встроенные модули и типы. Имена прелюдии, хелперов и модулей берутся
+// из sema, чтобы подсветка не расходилась с проверкой. Привязки сессии
+// добавляет вызывающий.
 func REPLEnv() Env {
+	helpers := sema.ReplHelperNames()
 	e := Env{
 		Bindings: map[string]bool{},
-		Prelude:  setOf(preludeNames),
-		Helpers:  setOf(helperNames),
+		Prelude:  setOf(sema.PreludeNames()),
+		Helpers:  setOf(helpers),
 		Modules:  map[string]map[string]bool{},
 		Types:    setOf(typeNames),
 	}
-	for mod, fns := range builtinMods {
+	for mod, fns := range sema.BuiltinModules() {
 		e.Modules[mod] = setOf(fns)
 	}
-	bare := map[string]bool{}
-	for _, n := range preludeNames {
-		if n != "" && n[0] >= 'a' && n[0] <= 'z' {
-			bare[n] = true
-		}
-	}
-	e.Modules["Prelude"] = bare
-	e.Modules["Repl"] = setOf(helperNames)
+	e.Modules["Repl"] = setOf(helpers)
 	return e
 }
 
@@ -79,33 +77,8 @@ func setOf(names []string) map[string]bool {
 	return m
 }
 
-var preludeNames = []string{
-	"map", "filter", "find", "fold", "all", "any", "len",
-	"list", "set",
-	"to_str", "to_int", "to_float",
-	"send", "spawn", "spawn_linked", "link", "watch", "unwatch",
-	"self", "make_ref", "mailbox_size",
-	"print", "eprint", "log",
-	"assert", "raise",
-	"Some", "Ok", "Error", "None",
-}
-
-var helperNames = []string{
-	"h", "i", "v", "bindings", "reset", "load", "flush", "time", "dis", "recompile",
-}
-
 var typeNames = []string{
 	"Int", "Float", "Decimal", "Bool", "Atom",
 	"Str", "Bytes", "List", "Map", "Set", "Range",
 	"Pid", "Ref", "Option", "Result",
-}
-
-var builtinMods = map[string][]string{
-	"Vec":   {"push", "set", "get", "len"},
-	"Map":   {"put", "get", "remove", "keys"},
-	"Str":   {"to_bytes"},
-	"Bytes": {"to_str"},
-	"Json":  {"encode", "decode"},
-	"Test":  {"describe", "it", "run", "assert_eq", "assert_ne", "assert", "fail"},
-	"Sys":   {"args"},
 }
