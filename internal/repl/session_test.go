@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/it1ro/brig-lang/internal/highlight"
 	"github.com/it1ro/brig-lang/internal/repl"
 	"github.com/it1ro/brig-lang/internal/runtime"
 	"github.com/it1ro/brig-lang/internal/vm"
@@ -165,4 +166,45 @@ func TestReplUndefinedStillRuntime(t *testing.T) {
 	if strings.Contains(out.String(), "undefined function") {
 		t.Fatalf("REPL reported a check error:\n%s", out.String())
 	}
+}
+
+// TestHighlightEnvLoadedModules — функции загруженного модуля видны
+// подсветке как M.f; чужое имя в M — нет; после recompile удалённая
+// функция пропадает.
+func TestHighlightEnvLoadedModules(t *testing.T) {
+	s, _, path := newModuleSession(t, "module M\n\nfn f() -> helper()\n\nfn helper() ->\n    fn g() -> 1\n    g()\n")
+	env := s.HighlightEnv()
+	fns := env.Modules["M"]
+	if !fns["f"] || !fns["helper"] {
+		t.Fatalf("M functions = %v, want f and helper", fns)
+	}
+	for n := range fns {
+		if strings.ContainsAny(n, ".$@") {
+			t.Errorf("internal global %q in M", n)
+		}
+	}
+	src := "M.f()"
+	if c := classOf(src, 2, env); c != highlight.Binding {
+		t.Errorf("M.f: %q, want binding", c)
+	}
+	if c := classOf("M.nope()", 2, env); c != highlight.Unknown {
+		t.Errorf("M.nope: %q, want unknown", c)
+	}
+
+	writeModule(t, path, "module M\n\nfn f() -> 1\n")
+	if _, err := s.Recompile(); err != nil {
+		t.Fatal(err)
+	}
+	if s.HighlightEnv().Modules["M"]["helper"] {
+		t.Error("removed helper still visible")
+	}
+}
+
+func classOf(src string, off int, env highlight.Env) highlight.Class {
+	for _, sp := range highlight.Classify(src, -1, env).Spans {
+		if sp.Start <= off && off < sp.End {
+			return sp.Class
+		}
+	}
+	return ""
 }

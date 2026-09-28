@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/it1ro/brig-lang/internal/highlight"
+	"github.com/it1ro/brig-lang/internal/sema"
 )
 
 func classAt(src string, off, cursor int, env highlight.Env) (highlight.Class, bool) {
@@ -174,7 +175,8 @@ func TestHighlightUnknownName(t *testing.T) {
 	}
 }
 
-// TestBracketMatch — пара скобки под курсором выделена, непарная — error.
+// TestBracketMatch — пара скобки под курсором выделена, лишняя
+// закрывающая — error.
 func TestBracketMatch(t *testing.T) {
 	env := highlight.Env{}
 	res := highlight.Classify("(a)", 0, env)
@@ -191,8 +193,8 @@ func TestBracketMatch(t *testing.T) {
 		t.Errorf("pair: open %+v close %+v", open, end)
 	}
 
-	res = highlight.Classify("(", 0, env)
-	if c, _ := classAt("(", 0, 0, env); c != highlight.Error {
+	res = highlight.Classify("a)", 1, env)
+	if c, _ := classAt("a)", 1, 1, env); c != highlight.Error {
 		t.Errorf("unmatched class %q", c)
 	}
 	for _, sp := range res.Spans {
@@ -307,5 +309,132 @@ func TestHighlightCorpus(t *testing.T) {
 	}
 	if n == 0 {
 		t.Fatal("no .brig files")
+	}
+}
+
+// TestBuiltinNamesMatchSema — прелюдия и функции встроенных модулей
+// подсветки совпадают с sema; акторных примитивов в Prelude.* нет.
+func TestBuiltinNamesMatchSema(t *testing.T) {
+	env := highlight.REPLEnv()
+	for _, n := range sema.PreludeNames() {
+		if c, _ := classAt(n, 0, -1, env); c != highlight.Prelude {
+			t.Errorf("%s: %q, want prelude", n, c)
+		}
+	}
+	for mod, fns := range sema.BuiltinModules() {
+		for _, f := range fns {
+			src := mod + "." + f
+			if c, _ := classAt(src, len(mod)+1, -1, env); c != highlight.Prelude {
+				t.Errorf("%s: %q, want prelude", src, c)
+			}
+		}
+	}
+	for _, src := range []string{"Prelude.send", "Prelude.self"} {
+		if c, _ := classAt(src, len("Prelude."), -1, env); c != highlight.Unknown {
+			t.Errorf("%s: %q, want unknown", src, c)
+		}
+	}
+}
+
+func noEnv(string) (string, bool) { return "", false }
+
+// TestDefaultPalette — сдержанная палитра: операторы, пунктуация и
+// привязки цвета терминала, красный только у error.
+func TestDefaultPalette(t *testing.T) {
+	want := map[highlight.Class]string{
+		highlight.Keyword: "35",
+		highlight.Atom:    "36",
+		highlight.String:  "32",
+		highlight.Interp:  "33",
+		highlight.Bytes:   "32",
+		highlight.Regex:   "33",
+		highlight.Number:  "33",
+		highlight.Comment: "90",
+		highlight.Doc:     "3;90",
+		highlight.Module:  "34",
+		highlight.Type:    "34",
+		highlight.Op:      "",
+		highlight.Punct:   "",
+		highlight.Binding: "",
+		highlight.Prelude: "36",
+		highlight.Helper:  "1;36",
+		highlight.Unknown: "4",
+		highlight.Error:   "1;31",
+	}
+	pal := highlight.PaletteFromEnv(noEnv)
+	for _, c := range highlight.Classes() {
+		code, ok := want[c]
+		if !ok {
+			t.Errorf("class %s has no expected code", c)
+			continue
+		}
+		got := pal.Paint("x", highlight.Result{Spans: []highlight.Span{{Start: 0, End: 1, Class: c}}})
+		exp := "x"
+		if code != "" {
+			exp = "\x1b[" + code + "mx\x1b[0m"
+		}
+		if got != exp {
+			t.Errorf("%s: %q, want %q", c, got, exp)
+		}
+		if c != highlight.Error {
+			for _, p := range strings.Split(code, ";") {
+				if p == "31" || p == "91" {
+					t.Errorf("%s is red", c)
+				}
+			}
+		}
+	}
+}
+
+// TestBracketMatchStyle — пара скобок жирная и подчёркнутая в цвете
+// своего класса, без инверсии.
+func TestBracketMatchStyle(t *testing.T) {
+	pal := highlight.PaletteFromEnv(noEnv)
+	out := highlight.Highlight("(a)", 0, highlight.Env{Bindings: map[string]bool{"a": true}}, pal)
+	if strings.Contains(out, ";7m") || strings.Contains(out, "[7m") {
+		t.Errorf("match uses reverse video: %q", out)
+	}
+	if strings.Count(out, "\x1b[1;4m") != 2 {
+		t.Errorf("match paint = %q, want two bold underlined brackets", out)
+	}
+	pal = highlight.PaletteFromEnv(func(k string) (string, bool) {
+		if k == "BRIG_COLORS" {
+			return "punct=34", true
+		}
+		return "", false
+	})
+	out = highlight.Highlight("(a)", 0, highlight.Env{Bindings: map[string]bool{"a": true}}, pal)
+	if strings.Count(out, "\x1b[34;1;4m") != 2 {
+		t.Errorf("colored match paint = %q", out)
+	}
+}
+
+// TestOpenBracketNotError — незакрытая открывающая скобка — обычный
+// неполный ввод; error — лишняя закрывающая и чужой вид.
+func TestOpenBracketNotError(t *testing.T) {
+	env := highlight.REPLEnv()
+	for _, src := range []string{"(", "print(", "%[1, ", "%{", "f(%[1, (2"} {
+		for _, sp := range highlight.Classify(src, len(src), env).Spans {
+			if sp.Class == highlight.Error {
+				t.Errorf("%q: error span %+v", src, sp)
+			}
+		}
+	}
+	cases := []struct {
+		src string
+		off int
+	}{
+		{"(]", 1},
+		{")", 0},
+		{"f(a))", 4},
+		{"%[1}", 3},
+	}
+	for _, c := range cases {
+		if got, _ := classAt(c.src, c.off, -1, env); got != highlight.Error {
+			t.Errorf("%q at %d: %q, want error", c.src, c.off, got)
+		}
+	}
+	if got, _ := classAt("(]", 0, -1, env); got == highlight.Error {
+		t.Errorf("open bracket before wrong close is error")
 	}
 }

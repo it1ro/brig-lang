@@ -1,6 +1,10 @@
 package highlight
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/it1ro/brig-lang/internal/sema"
+)
 
 type vis struct {
 	name string
@@ -322,7 +326,7 @@ func (r *resolver) modules() {
 			continue
 		}
 		r.force(i, Module)
-		if r.toks[m].kind == tUpper {
+		if r.toks[m].kind == tUpper && (!knownFn || !builtinMod(mod)) {
 			r.force(m, Module)
 			continue
 		}
@@ -338,14 +342,17 @@ func (r *resolver) modules() {
 	}
 }
 
+// builtinMod — модуль из sema.BuiltinModules или Repl: его функции
+// красятся как прелюдия, функции модулей пользователя — как привязки.
 func builtinMod(name string) bool {
-	switch name {
-	case "Vec", "Map", "Str", "Bytes", "Json", "Test", "Sys", "Prelude", "Repl":
+	if name == "Repl" {
 		return true
-	default:
-		return false
 	}
+	_, ok := builtinMods[name]
+	return ok
 }
+
+var builtinMods = sema.BuiltinModules()
 
 func (r *resolver) lookupMod(mod, fn string, pos int) (knownMod, knownFn bool) {
 	if members, ok := r.env.Modules[mod]; ok {

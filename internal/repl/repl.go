@@ -212,8 +212,7 @@ func (s *Session) evalLineOpt(src string, prog *ast.Program, here bool) (Result,
 func (s *Session) NeedMore(src string) bool { return NeedMore(src) }
 
 // HighlightEnv — имена для подсветки ввода: привязки сессии поверх
-// прелюдии, хелперов и встроенных модулей. Загруженные модули
-// пользователя добавятся сюда вместе с загрузкой (T-209).
+// прелюдии, хелперов, встроенных и загруженных модулей.
 func (s *Session) HighlightEnv() highlight.Env {
 	env := highlight.REPLEnv()
 	for _, b := range s.Bindings() {
@@ -221,6 +220,17 @@ func (s *Session) HighlightEnv() highlight.Env {
 	}
 	for n := range s.extra {
 		env.Helpers[n] = true
+		env.Modules["Repl"][n] = true
+	}
+	for name, m := range s.mods {
+		fns := map[string]bool{}
+		for _, g := range m.globals {
+			// Поднятые локальные fn (`M.f@1$g`) вводу не видны.
+			if f, ok := strings.CutPrefix(g, name+"."); ok && !strings.ContainsAny(f, ".@$") {
+				fns[f] = true
+			}
+		}
+		env.Modules[name] = fns
 	}
 	return env
 }

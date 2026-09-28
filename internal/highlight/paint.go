@@ -36,26 +36,34 @@ func PaletteFromEnv(getenv func(string) (string, bool)) Palette {
 	return Palette{on: on, code: code}
 }
 
+// defaultCodes — сдержанная палитра: цвет у ключевых слов, литералов,
+// имён модулей и прелюдии; операторы, пунктуация и привязки — цвета
+// терминала. Красный — только error; неизвестное имя подчёркнуто.
+// Пустой код — без escape.
 var defaultCodes = map[Class]string{
-	Keyword: "33",
-	Atom:    "35",
+	Keyword: "35",
+	Atom:    "36",
 	String:  "32",
-	Interp:  "36",
+	Interp:  "33",
 	Bytes:   "32",
-	Regex:   "35",
-	Number:  "36",
+	Regex:   "33",
+	Number:  "33",
 	Comment: "90",
-	Doc:     "1;90",
-	Module:  "33",
-	Type:    "33",
-	Op:      "31",
-	Punct:   "37",
-	Binding: "1",
+	Doc:     "3;90",
+	Module:  "34",
+	Type:    "34",
+	Op:      "",
+	Punct:   "",
+	Binding: "",
 	Prelude: "36",
 	Helper:  "1;36",
-	Unknown: "31",
+	Unknown: "4",
 	Error:   "1;31",
 }
+
+// matchCode — пара скобок под курсором: жирная и подчёркнутая поверх
+// цвета своего класса. Инверсия прячет саму скобку за фоном курсора.
+const matchCode = "1;4"
 
 func applyColors(code map[Class]string, spec string) {
 	for _, part := range strings.Split(spec, ":") {
@@ -144,9 +152,9 @@ func (p Palette) write(b *strings.Builder, s string, c Class, match bool) {
 		code = p.code[c]
 		if match {
 			if code == "" {
-				code = "7"
+				code = matchCode
 			} else {
-				code += ";7"
+				code += ";" + matchCode
 			}
 		}
 	}
