@@ -2,8 +2,7 @@
 # Слои: defaults() → <env>() (dev/test/prod), мерж — `{ ..a, ..b }` вглубь.
 # Config.load валидирует результат на старте: приложение не поднимется
 # с кривым конфигом, ошибка укажет на поле.
-# needs: T-143, horizon
-#   pub fn (03/L3) — T-143;
+# needs: horizon
 #   horizon: Config (04), Env (04), модули как значения (03/L5).
 module Lookout.Config
 

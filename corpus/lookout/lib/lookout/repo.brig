@@ -1,7 +1,7 @@
 # Repo — тонкая обёртка над Sql-пулом под именем :repo.
 # Никакого ORM: SQL-строки + маппинг строк в записи по Type.fields.
-# needs: T-143, T-146, horizon
-#   pub fn (03/L3) — T-143; Result.map (04) — T-146;
+# needs: T-146, horizon
+#   Result.map (04) — T-146;
 #   horizon: Sql + встроенный Sqlite (04, Q-db), тип как значение + Type.fields (03/L5, L11).
 module Lookout.Repo
 
