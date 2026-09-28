@@ -43,6 +43,10 @@ type Compiler struct {
 	mods  map[string]*module
 	entry *module
 	cur   *module
+	// gen — поколение кода в сессии REPL: суффикс префикса вложенных fn
+	// (`M.f@2$g`). recompile() не подменяет поднятые локальные fn у старых
+	// кадров (T-208, #246); у первой компиляции пуст.
+	gen string
 }
 
 // Module — модуль программы для CompileProgram (§11.1): имя, путь файла
@@ -111,6 +115,17 @@ type liftedFn struct {
 func New() *Compiler {
 	m := newModule("", "", "")
 	return &Compiler{entry: m, cur: m}
+}
+
+// SetGeneration задаёт поколение кода n (recompile() в REPL, T-208):
+// глобальные имена поднятых локальных fn получают суффикс `@n`, и старый
+// кадр функции модуля вызывает свою версию локальной fn, а не новую.
+// n == 0 — без суффикса.
+func (c *Compiler) SetGeneration(n int) {
+	c.gen = ""
+	if n > 0 {
+		c.gen = fmt.Sprintf("@%d", n)
+	}
 }
 
 // Image возвращает собранный ProgramImage (для REPL).
@@ -741,7 +756,7 @@ func verifyImage(img *ProgramImage) error {
 
 func (c *Compiler) compileNamedFn(name string, clauses []ast.FnClauseArg) (*vm.Function, error) {
 	fc := c.newFuncCompiler(nil)
-	fc.prefix = name + "$"
+	fc.prefix = name + c.gen + "$"
 	if err := fc.compileClauses(clauses, nil); err != nil {
 		return nil, err
 	}

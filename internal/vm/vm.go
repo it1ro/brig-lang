@@ -144,6 +144,12 @@ func (vm *VM) SessionEval(fn runtime.Value, args []runtime.Value, defs map[strin
 	return vm.scheduler.Submit(fn, args, defs)
 }
 
+// SessionRedefine снимает глобалы undef и регистрирует defs на горутине
+// планировщика, атомарно для всех акторов; ввод не исполняется.
+func (vm *VM) SessionRedefine(defs map[string]runtime.Value, undef []string) error {
+	return vm.scheduler.Redefine(defs, undef)
+}
+
 // CountSessionReductions включает счёт редукций актора сессии в c.
 // Вызывать до StartSession.
 func (vm *VM) CountSessionReductions(c *atomic.Uint64) {
