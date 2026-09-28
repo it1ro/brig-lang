@@ -23,7 +23,7 @@ func TestCLIFileArgs(t *testing.T) {
 	if err := os.WriteFile(app, []byte("module Main\nimport Util\nfn main() ->\n    print(Util.n())\n    print(Sys.args())\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "util.brig"), []byte("module Util\nfn n() -> 1\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "util.brig"), []byte("module Util\npub fn n() -> 1\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -436,7 +436,7 @@ func TestInteractiveLoadProject(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "lib", "main.brig"), []byte("module Main\n\nimport Util\n\nfn answer() -> Util.n()\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(root, "lib", "util.brig"), []byte("module Util\n\nfn n() -> 6\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "lib", "util.brig"), []byte("module Util\n\npub fn n() -> 6\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(root, "lib", "http", "client.brig"), []byte("module Http.Client\n\nfn ping() -> 1\n"), 0o644); err != nil {
@@ -497,14 +497,14 @@ func TestInteractiveLoadErrorStaysInRepl(t *testing.T) {
 	}
 }
 
-// T-209: не-pub своих модулей видны; у зависимости — нет.
+// T-209, T-143: не-pub своих модулей видны; у зависимости — только pub.
 func TestInteractivePrivateVisibility(t *testing.T) {
 	bin := buildBrig(t)
-	stdout, stderr, code := runCLI(t, bin, "App.secret()\nUtil.n()\nLib.secret()\n", "-i", "--no-init", consoleDir(t))
+	stdout, stderr, code := runCLI(t, bin, "App.secret()\nUtil.n()\nLib.secret()\nLib.open()\n", "-i", "--no-init", consoleDir(t))
 	if code != exitOK {
 		t.Fatalf("exit %d stdout %q stderr %s", code, stdout, stderr)
 	}
-	if stdout != "4\n3\n" {
+	if stdout != "4\n3\n8\n" {
 		t.Fatalf("stdout %q stderr %s", stdout, stderr)
 	}
 	if !strings.Contains(stderr, "error:") || !strings.Contains(stderr, "secret/0 is private to Lib") {

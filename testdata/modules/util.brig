@@ -4,10 +4,10 @@ import Main
 
 type Shape { Circle(Int), Square(Int) }
 
-fn f() -> "Util.f"
+pub fn f() -> "Util.f"
 
-fn unit() -> Square(1)
+pub fn unit() -> Square(1)
 
-fn scale(xs, k) -> map(xs, (x) -> x * k)
+pub fn scale(xs, k) -> map(xs, (x) -> x * k)
 
-fn countdown(n) -> if n == 0 then Main.f() else countdown(n - 1)
+pub fn countdown(n) -> if n == 0 then Main.f() else countdown(n - 1)
