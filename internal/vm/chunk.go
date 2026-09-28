@@ -229,6 +229,10 @@ func (c *Chunk) disInstr(sb *strings.Builder, ip int) {
 		fmt.Fprintf(sb, "r%d <- exit(r%d, r%d)", in.A(), in.B(), in.C())
 	case REGISTER:
 		fmt.Fprintf(sb, "r%d <- register(r%d, r%d)", in.A(), in.B(), in.C())
+	case AWAIT:
+		fmt.Fprintf(sb, "r%d <- await(r%d, r%d)", in.A(), in.B(), in.C())
+	case REPLY:
+		fmt.Fprintf(sb, "r%d <- reply(r%d, r%d, r%d)", in.A(), in.B(), in.B()+1, in.B()+2)
 	case RECVTAKE:
 		if in.SBx() != 0 {
 			fmt.Fprintf(sb, "r%d after -> %04d", in.A(), ip+1+in.SBx())

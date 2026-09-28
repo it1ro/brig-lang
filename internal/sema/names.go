@@ -157,6 +157,7 @@ var bareBuiltins = map[string]sig{
 	"send": exact(2), "spawn": exact(1), "spawn_linked": exact(1),
 	"spawn_watched": exact(1), "exit": exact(2),
 	"register": exact(2), "unregister": exact(1), "whereis": exact(1),
+	"await": exact(2), "reply": exact(3),
 	"link": exact(1), "watch": exact(1), "unwatch": exact(1),
 	"self": exact(0), "make_ref": exact(0), "mailbox_size": exact(0, 1),
 }

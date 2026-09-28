@@ -57,7 +57,7 @@ func TestPipeBanActorPrimitives(t *testing.T) {
 	names := []string{
 		"send", "spawn", "spawn_linked", "spawn_watched", "link", "watch",
 		"unwatch", "exit", "self", "make_ref", "mailbox_size",
-		"register", "unregister", "whereis",
+		"register", "unregister", "whereis", "await", "reply",
 	}
 	for _, name := range names {
 		src := "module Main\nfn main() ->\n    x |> " + name + "\n"

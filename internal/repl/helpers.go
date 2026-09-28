@@ -844,6 +844,7 @@ var builtinParams = map[string]string{
 	"send/2": "pid, msg", "spawn/1": "f", "spawn_linked/1": "f",
 	"spawn_watched/1": "f", "exit/2": "pid, reason",
 	"register/2": "name, pid", "unregister/1": "name", "whereis/1": "name",
+	"await/2": "ref, timeout", "reply/3": "pid, ref, value",
 	"link/1": "pid", "watch/1": "pid", "unwatch/1": "ref",
 	"self/0": "", "make_ref/0": "", "mailbox_size/0": "", "mailbox_size/1": "pid",
 	"print/0..": "..vs", "eprint/0..": "..vs", "log/0..": "..vs",

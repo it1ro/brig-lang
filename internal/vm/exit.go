@@ -58,7 +58,7 @@ func (s *Scheduler) signalExit(a *Actor, reason runtime.Value) bool {
 }
 
 // hurry переводит жертву exit в начало очереди готовых, не дожидаясь её
-// кванта; ждущую в recv — будит, снимая таймер after.
+// кванта; ждущую в recv или await — будит, снимая таймер.
 func (s *Scheduler) hurry(a *Actor) {
 	switch a.status {
 	case actorBlocked:

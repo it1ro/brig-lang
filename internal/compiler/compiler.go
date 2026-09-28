@@ -1971,6 +1971,10 @@ func (fc *funcCompiler) compileCall(call ast.CallExpr, d dest) error {
 			return fc.compileActorOp(vm.UNREGISTER, name, 1, call.Args(), d)
 		case "whereis":
 			return fc.compileActorOp(vm.WHEREIS, name, 1, call.Args(), d)
+		case "await":
+			return fc.compileActorOp(vm.AWAIT, name, 2, call.Args(), d)
+		case "reply":
+			return fc.compileActorOp(vm.REPLY, name, 3, call.Args(), d)
 		}
 		if strings.HasSuffix(name, "{}") {
 			return fc.compileRecord(strings.TrimSuffix(name, "{}"), call, d)
@@ -2688,9 +2692,9 @@ func (fc *funcCompiler) compileMailboxSize(args []ast.Expr, d dest) error {
 }
 
 // compileActorOp — акторный примитив с фиксированной арностью, например
-// `register(name, pid)`, `unregister(name)`, `whereis(name)` (§12.8):
-// аргументы в подряд идущих регистрах от B; при двух аргументах второй —
-// ещё и C.
+// `register(name, pid)`, `unregister(name)`, `whereis(name)` (§12.8),
+// `await(ref, timeout)`, `reply(pid, ref, v)` (§12.9): аргументы в подряд
+// идущих регистрах от B; при двух аргументах второй — ещё и C.
 func (fc *funcCompiler) compileActorOp(op vm.OpCode, name string, arity int, args []ast.Expr, d dest) error {
 	if len(args) != arity {
 		return fmt.Errorf("%s требует %d аргумента(ов)", name, arity)

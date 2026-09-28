@@ -143,6 +143,25 @@ func (r *RecordValue) Get(name string) (Value, bool) {
 	return Unit, false
 }
 
+// RefSlot — слот ответа ref из make_ref (§12.9). Общий для всех копий
+// ref; состояние ведёт VM, на равенство и порядок ref не влияет. У ref из
+// watch/spawn_watched слота нет (nil).
+type RefSlot struct {
+	Owner int       // pid актора, создавшего ref
+	State SlotState // SlotEmpty → SlotFilled → SlotClosed
+	Val   Value     // ответ, пока SlotFilled
+}
+
+// SlotState — состояние слота ответа.
+type SlotState uint8
+
+// Состояния слота: пуст → заполнен (первым reply) → закрыт (после await).
+const (
+	SlotEmpty SlotState = iota
+	SlotFilled
+	SlotClosed
+)
+
 // MapEntry — пара ключ/значение в иммутабельной мапе.
 type MapEntry struct{ Key, Val Value }
 
@@ -180,6 +199,7 @@ type Value struct {
 	Record     *RecordValue
 	Pid        int
 	Ref        int
+	Slot       *RefSlot
 	RangeStart int64
 	RangeEnd   int64
 	Bytes      []byte

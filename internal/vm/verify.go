@@ -147,8 +147,10 @@ func RegUse(in Instr) (reads, writes []int, err error) {
 		return reads, []int{a}, nil
 	case SPAWN:
 		return []int{b}, []int{a}, nil
-	case SEND, EXIT, REGISTER:
+	case SEND, EXIT, REGISTER, AWAIT:
 		return []int{b, cc}, []int{a}, nil
+	case REPLY:
+		return []int{b, b + 1, b + 2}, []int{a}, nil
 	case MATCHLOCAL:
 		// R[A] читается; регистры паттерна пишутся неявно (не в A/B/C).
 		return []int{a}, nil, nil
