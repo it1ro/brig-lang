@@ -334,3 +334,76 @@ func TestBuiltinNamesMatchSema(t *testing.T) {
 		}
 	}
 }
+
+func noEnv(string) (string, bool) { return "", false }
+
+// TestDefaultPalette — сдержанная палитра: операторы, пунктуация и
+// привязки цвета терминала, красный только у error.
+func TestDefaultPalette(t *testing.T) {
+	want := map[highlight.Class]string{
+		highlight.Keyword: "35",
+		highlight.Atom:    "36",
+		highlight.String:  "32",
+		highlight.Interp:  "33",
+		highlight.Bytes:   "32",
+		highlight.Regex:   "33",
+		highlight.Number:  "33",
+		highlight.Comment: "90",
+		highlight.Doc:     "3;90",
+		highlight.Module:  "34",
+		highlight.Type:    "34",
+		highlight.Op:      "",
+		highlight.Punct:   "",
+		highlight.Binding: "",
+		highlight.Prelude: "36",
+		highlight.Helper:  "1;36",
+		highlight.Unknown: "4",
+		highlight.Error:   "1;31",
+	}
+	pal := highlight.PaletteFromEnv(noEnv)
+	for _, c := range highlight.Classes() {
+		code, ok := want[c]
+		if !ok {
+			t.Errorf("class %s has no expected code", c)
+			continue
+		}
+		got := pal.Paint("x", highlight.Result{Spans: []highlight.Span{{Start: 0, End: 1, Class: c}}})
+		exp := "x"
+		if code != "" {
+			exp = "\x1b[" + code + "mx\x1b[0m"
+		}
+		if got != exp {
+			t.Errorf("%s: %q, want %q", c, got, exp)
+		}
+		if c != highlight.Error {
+			for _, p := range strings.Split(code, ";") {
+				if p == "31" || p == "91" {
+					t.Errorf("%s is red", c)
+				}
+			}
+		}
+	}
+}
+
+// TestBracketMatchStyle — пара скобок жирная и подчёркнутая в цвете
+// своего класса, без инверсии.
+func TestBracketMatchStyle(t *testing.T) {
+	pal := highlight.PaletteFromEnv(noEnv)
+	out := highlight.Highlight("(a)", 0, highlight.Env{Bindings: map[string]bool{"a": true}}, pal)
+	if strings.Contains(out, ";7m") || strings.Contains(out, "[7m") {
+		t.Errorf("match uses reverse video: %q", out)
+	}
+	if strings.Count(out, "\x1b[1;4m") != 2 {
+		t.Errorf("match paint = %q, want two bold underlined brackets", out)
+	}
+	pal = highlight.PaletteFromEnv(func(k string) (string, bool) {
+		if k == "BRIG_COLORS" {
+			return "punct=34", true
+		}
+		return "", false
+	})
+	out = highlight.Highlight("(a)", 0, highlight.Env{Bindings: map[string]bool{"a": true}}, pal)
+	if strings.Count(out, "\x1b[34;1;4m") != 2 {
+		t.Errorf("colored match paint = %q", out)
+	}
+}
