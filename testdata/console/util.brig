@@ -1,0 +1,3 @@
+module Util
+
+fn n() -> 3

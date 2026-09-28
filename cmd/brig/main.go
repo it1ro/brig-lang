@@ -6,6 +6,8 @@
 // fn main(); файл без `module` — script (§11.3). Без аргументов: на TTY —
 // REPL, иначе stdin исполняется как script и значения не печатаются.
 // `brig -` — программа из stdin, `brig -e expr` — исполнить и выйти.
+// `brig -i` — REPL: файлы и каталог проекта загружаются в сессию, main
+// не вызывается; `-e` вместе с `-i` исполняется до приглашения.
 //
 // Подкоманды: check, test, version, help. Подкоманд run и repl нет.
 //
@@ -47,18 +49,16 @@ const (
 )
 
 func main() {
-	args := os.Args[1:]
-	if len(args) == 0 {
+	inv := parseArgs(os.Args[1:])
+	switch inv.kind {
+	case kindAuto:
 		if term.IsTerminal(os.Stdin) {
-			replLoop()
+			replLoop(inv)
 			return
 		}
 		runScript("<stdin>", readStdin(), nil)
-		return
-	}
-
-	inv := parseArgs(args)
-	switch inv.kind {
+	case kindInteractive:
+		replLoop(inv)
 	case kindFile:
 		runEntry(inv.file, inv.progArgs, inv.dump)
 	case kindStdin:
@@ -79,21 +79,26 @@ func main() {
 }
 
 const (
-	kindFile    = "file"
-	kindStdin   = "stdin"
-	kindEval    = "eval"
-	kindCheck   = "check"
-	kindTest    = "test"
-	kindVersion = "version"
-	kindHelp    = "help"
+	kindAuto        = "auto"
+	kindInteractive = "interactive"
+	kindFile        = "file"
+	kindStdin       = "stdin"
+	kindEval        = "eval"
+	kindCheck       = "check"
+	kindTest        = "test"
+	kindVersion     = "version"
+	kindHelp        = "help"
 )
 
 // invocation — разобранная командная строка.
 type invocation struct {
 	kind     string
 	dump     bool
+	noInit   bool
+	dash     bool // -i -: plain-REPL без приглашений
 	expr     string
 	file     string
+	files    []string
 	progArgs []string
 }
 
@@ -103,13 +108,39 @@ type invocation struct {
 // или `/`, — файл-вход; всё после него — аргументы программы (Sys.args),
 // даже если они похожи на флаги. Аргумент без `.brig` и `/` — подкоманда.
 // `-` — программа из stdin. `-e expr` — исполнить и выйти.
+// `-i` — REPL: идущие подряд файлы и каталоги грузятся в сессию, всё после
+// этого списка — Sys.args() по правилу T-207. `-e` вместе с `-i` не
+// выходит, а исполняется в сессии до приглашения.
 func parseArgs(args []string) invocation {
+	if len(args) == 0 {
+		return invocation{kind: kindAuto}
+	}
+	inv := invocation{kind: kindAuto}
 	dump := false
 	for i := 0; i < len(args); i++ {
 		a := args[i]
+		// После первого файла -i аргумент, который сам не файл и не
+		// каталог, начинает Sys.args() — вместе со всем хвостом, включая
+		// флаги (правило T-207). Следующие файлы ещё грузятся.
+		if inv.kind == kindInteractive && len(inv.files) > 0 && !isInteractiveTarget(a) {
+			inv.progArgs = args[i:]
+			return inv
+		}
 		switch a {
 		case "-d", "--dump-bytecode":
+			if inv.kind == kindInteractive {
+				fail(exitParse, "brig: --dump-bytecode не сочетается с -i")
+			}
 			dump = true
+			continue
+		case "--no-init":
+			inv.noInit = true
+			continue
+		case "-i":
+			if dump {
+				fail(exitParse, "brig: --dump-bytecode не сочетается с -i")
+			}
+			inv.kind = kindInteractive
 			continue
 		case "-e":
 			if dump {
@@ -118,7 +149,12 @@ func parseArgs(args []string) invocation {
 			if i+1 >= len(args) {
 				fail(exitParse, "brig: -e: ожидается выражение")
 			}
-			return invocation{kind: kindEval, expr: args[i+1], progArgs: args[i+2:]}
+			i++
+			if inv.kind == kindInteractive {
+				inv.expr = args[i]
+				continue
+			}
+			return invocation{kind: kindEval, expr: args[i], progArgs: args[i+1:], noInit: inv.noInit}
 		case "-h", "--help":
 			return invocation{kind: kindHelp}
 		case "-v", "--version":
@@ -127,13 +163,26 @@ func parseArgs(args []string) invocation {
 			if dump {
 				fail(exitParse, "brig: --dump-bytecode не сочетается с -")
 			}
-			return invocation{kind: kindStdin, progArgs: args[i+1:]}
+			if inv.kind == kindInteractive {
+				inv.dash = true
+				inv.progArgs = args[i+1:]
+				return inv
+			}
+			return invocation{kind: kindStdin, progArgs: args[i+1:], noInit: inv.noInit}
 		}
 		if strings.HasPrefix(a, "-") {
 			fail(exitParse, "brig: неизвестный флаг %q", a)
 		}
+		if inv.kind == kindInteractive {
+			if isInteractiveTarget(a) {
+				inv.files = append(inv.files, a)
+				continue
+			}
+			inv.progArgs = args[i:]
+			return inv
+		}
 		if isEntryFile(a) {
-			return invocation{kind: kindFile, dump: dump, file: a, progArgs: args[i+1:]}
+			return invocation{kind: kindFile, dump: dump, file: a, progArgs: args[i+1:], noInit: inv.noInit}
 		}
 		if dump {
 			fail(exitParse, "brig: --dump-bytecode ставится перед файлом")
@@ -143,8 +192,17 @@ func parseArgs(args []string) invocation {
 	if dump {
 		fail(exitParse, "brig: --dump-bytecode: ожидается файл")
 	}
-	fail(exitParse, "brig: ожидается файл или подкоманда")
-	return invocation{}
+	return inv
+}
+
+// isInteractiveTarget — аргумент -i грузится в сессию: файл-вход,
+// «.» / «..» или существующий каталог.
+func isInteractiveTarget(a string) bool {
+	if a == "." || a == ".." || isEntryFile(a) {
+		return true
+	}
+	fi, err := os.Stat(a)
+	return err == nil && fi.IsDir()
 }
 
 // isEntryFile — аргумент является файлом-входом, а не подкомандой.
@@ -174,6 +232,10 @@ func usage() {
   brig -e <expr> [args...]        исполнить выражение и выйти
   brig - [args...]                программа из stdin
   brig                            на TTY — REPL; иначе stdin как script
+  brig -i [файлы|каталог] [args...]
+                                  REPL: модули в сессию, main не вызывается
+  brig -i -e <expr> ...           expr в сессии после загрузки, до приглашения
+  brig -i -                       REPL без приглашений (stdin)
   brig check <file.brig>          распарсить и проверить (парсер + sema)
   brig test [path]                тесты *_test.brig (fn test_*) и доктесты ##
   brig version                    версия
@@ -181,11 +243,21 @@ func usage() {
 
 Файл — первый аргумент, в котором есть «.brig» или «/». Всё после него —
 Sys.args(), включая то, что выглядит как флаги. Флаги brig принимаются
-только до файла: -d / --dump-bytecode, -e, -h / --help, -v / --version.
+только до файла: -d / --dump-bytecode, -e, -i, --no-init, -h / --help,
+-v / --version.
 
 Файл с module — модуль, вызывается fn main(). Файл без module — script
 (§11.3): top-level инструкции по порядку, fn main() сама не вызывается.
 Подкоманд run и repl нет.
+
+-i грузит перечисленные файлы в сессию: модуль виден по имени, script
+исполняется как вводы, fn main() сама не вызывается. Каталог (или «.») —
+проект: корень ищется по project.brig вверх от пути. -e вместе с -i
+исполняется после загрузки и до первого приглашения. Ошибка загрузки
+печатается, REPL всё равно открывается.
+
+Каждый REPL сначала исполняет ~/.config/brig/init.brig
+($XDG_CONFIG_HOME/brig/init.brig). --no-init это отключает.
 
 Переменные окружения:
   BRIG_VERIFY=1                   прогнать vm.Verify перед исполнением
