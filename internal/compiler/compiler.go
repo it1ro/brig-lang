@@ -47,6 +47,10 @@ type Compiler struct {
 	// (`M.f@2$g`). recompile() не подменяет поднятые локальные fn у старых
 	// кадров (T-208, #246); у первой компиляции пуст.
 	gen string
+	// replHelpers — инструкция REPL: аргумент `h`/`Repl.h`, который есть
+	// имя модуля или `M.f`, компилируется как значение для хелпера.
+	// `M.f` как значение вне этого места — срез T-144.
+	replHelpers bool
 }
 
 // Module — модуль программы для CompileProgram (§11.1): имя, путь файла
@@ -1135,6 +1139,8 @@ func (c *Compiler) CompileReplLine(seq int, names []string, s ast.Stmt) (fn *vm.
 			panic(r)
 		}
 	}()
+	c.replHelpers = true
+	defer func() { c.replHelpers = false }()
 
 	c.image = &ProgramImage{Functions: make(map[string]*vm.Function)}
 	c.lifted = make(map[string]*liftedFn)
@@ -2037,7 +2043,7 @@ func (fc *funcCompiler) compileGenericCall(call ast.CallExpr, d dest) error {
 		if u, ok := a.(ast.UnaryExpr); ok && u.OpStr() == ".." {
 			a = u.Operand()
 		}
-		if err := fc.compileExpr(a, val(r)); err != nil {
+		if err := fc.compileArg(a, r, fc.passModuleName(call)); err != nil {
 			return err
 		}
 		next++
@@ -2074,7 +2080,7 @@ func (fc *funcCompiler) compileGlobalCall(name string, args []ast.Expr, d dest, 
 		if operand, ok := spreadOperand(a); ok {
 			a = operand
 		}
-		if err := fc.compileExpr(a, val(r)); err != nil {
+		if err := fc.compileArg(a, r, fc.compiler.replHelpers && name == "Repl.h"); err != nil {
 			return err
 		}
 	}
@@ -2082,6 +2088,45 @@ func (fc *funcCompiler) compileGlobalCall(name string, args []ast.Expr, d dest, 
 	fc.emitInvoke(base, argc, singleTrailing, d, posOf(pos))
 	fc.releaseToMark(mark)
 	return nil
+}
+
+// passModuleName — вызов голого `h`, не затенённого связыванием этой
+// инструкции. Аргумент-модуль тогда не ищется как значение.
+func (fc *funcCompiler) passModuleName(call ast.CallExpr) bool {
+	if !fc.compiler.replHelpers {
+		return false
+	}
+	v, ok := call.Callee().(ast.VariableExpr)
+	if !ok || v.Name() != "h" {
+		return false
+	}
+	if _, ok := fc.resolveLocal("h"); ok {
+		return false
+	}
+	if _, _, ok := fc.resolveLocalFn("h"); ok {
+		return false
+	}
+	return true
+}
+
+// compileArg компилирует аргумент вызова в уже выделенный регистр r.
+// Для `h`/`Repl.h` в REPL: голое имя модуля — строка с этим именем
+// (`h(Map)`), `M.f` — глобал функции. Вне этого случая — обычное выражение.
+func (fc *funcCompiler) compileArg(a ast.Expr, r int, helperH bool) error {
+	if helperH {
+		if v, ok := a.(ast.VariableExpr); ok && isUpperName(v.Name()) {
+			return fc.loadConst(runtime.Str(v.Name()), val(r))
+		}
+		if me, ok := a.(ast.MemberExpr); ok {
+			if segs, ok := modulePath(me); ok {
+				mod, member := splitPath(segs)
+				if member != "" && !isUpperName(member) {
+					return fc.loadGlobal(val(r), mod+"."+member)
+				}
+			}
+		}
+	}
+	return fc.compileExpr(a, val(r))
 }
 
 func isPreludeModule(name string) bool {

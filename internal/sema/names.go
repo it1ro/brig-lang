@@ -60,15 +60,37 @@ func (w *World) has(mod string) bool {
 // CheckNames — контекстный анализ плюс разрешение имён по world.
 // world == nil: видны только функции этого файла и встроенные модули.
 func CheckNames(prog *ast.Program, world *World) *Result {
+	return checkNames(prog, world, false)
+}
+
+// CheckNamesSession — CheckNames для модуля, загруженного в сессию REPL.
+// Квалифицированные `Repl.*` разрешены (модуль может вызвать регистрацию
+// хелперов). Голых имён хелперов по-прежнему нет (§11.4).
+func CheckNamesSession(prog *ast.Program, world *World) *Result {
+	return checkNames(prog, world, true)
+}
+
+func checkNames(prog *ast.Program, world *World, session bool) *Result {
 	c := &checker{
 		prelude: preludeNames(),
 		resolve: true,
+		session: session,
 		world:   world,
 		own:     signatures(prog),
 		imports: importMap(prog),
 	}
 	c.checkProgram(prog)
 	return &Result{Diagnostics: c.diags}
+}
+
+// replMod — функции модуля Repl, видимые в сессии квалифицированно.
+// recompile() — T-210, здесь его нет. register — API регистрации (T-206),
+// не голая команда консоли.
+var replMod = map[string]sig{
+	"h": exact(1), "i": exact(1), "v": exact(0, 1),
+	"bindings": exact(0), "reset": exact(0), "load": exact(1),
+	"flush": exact(0), "time": exact(1), "dis": exact(1),
+	"register": exact(1),
 }
 
 // sig — допустимые арности. varMin >= 0 — вариадик: любой вызов с argc >= varMin.
@@ -320,6 +342,10 @@ func (c *checker) checkQual(mod, member string, args []ast.Expr, at ast.Node) {
 // qualSig разрешает Mod.f: import/alias, затем встроенный модуль (§11.1).
 // missingImport — модуль есть в программе, но в этом файле не импортирован.
 func (c *checker) qualSig(mod, member string) (s sig, found, missingImport bool) {
+	if c.session && mod == "Repl" {
+		s, found = replMod[member]
+		return s, found, false
+	}
 	full, imported := c.imports[mod]
 	switch {
 	case imported:

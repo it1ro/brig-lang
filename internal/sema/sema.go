@@ -67,10 +67,16 @@ func Check(prog *ast.Program) *Result {
 type checker struct {
 	diags   []Diagnostic
 	prelude map[string]bool
+	// helpers — голые имена хелперов Repl. Только CheckRepl: в файле
+	// их нет (§11.4).
+	helpers map[string]bool
 	scopes  []map[string]binding // стек областей видимости
 
 	// resolve — проход имён (CheckNames). Check оставляет false.
 	resolve bool
+	// session — модуль загружен в сессию REPL: квалифицированные
+	// Repl.* разрешены, голые имена хелперов — нет.
+	session bool
 	world   *World
 	own     map[string]sig
 	imports map[string]string // локальное имя модуля → полное
@@ -103,9 +109,39 @@ func (c *checker) bind(name, kind string, line, col int) {
 		return
 	}
 	scope[name] = binding{kind: kind}
-	if c.prelude[name] {
+	switch {
+	case c.helpers[name]:
+		c.info(line, col, "`%s` shadows repl helper; use `Repl.%s` if the helper was intended", name, name)
+	case c.prelude[name]:
 		c.info(line, col, "`%s` shadows prelude binding; use `Prelude.%s` if prelude was intended", name, name)
 	}
+}
+
+// CheckRepl — Check для ввода REPL (§11.4). extra — голые имена,
+// зарегистрированные фреймворком сверх таблицы хелперов. Затенение
+// хелпера — info, как у прелюдии; имя остаётся доступно как `Repl.h`.
+func CheckRepl(prog *ast.Program, extra []string) *Result {
+	h := replHelperNames()
+	for _, n := range extra {
+		h[n] = true
+	}
+	c := &checker{
+		prelude: preludeNames(),
+		helpers: h,
+	}
+	c.checkProgram(prog)
+	return &Result{Diagnostics: c.diags}
+}
+
+func replHelperNames() map[string]bool {
+	names := []string{
+		"h", "i", "v", "bindings", "reset", "load", "flush", "time", "dis", "recompile",
+	}
+	out := make(map[string]bool, len(names))
+	for _, n := range names {
+		out[n] = true
+	}
+	return out
 }
 
 // isNamedWildcard reports whether name is a named wildcard (`_msg`,

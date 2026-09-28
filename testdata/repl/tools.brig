@@ -1,0 +1,7 @@
+module Tools
+
+fn routes() ->
+    "routes"
+
+fn console() ->
+    Repl.register("Tools")
