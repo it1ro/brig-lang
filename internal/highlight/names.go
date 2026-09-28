@@ -326,7 +326,7 @@ func (r *resolver) modules() {
 			continue
 		}
 		r.force(i, Module)
-		if r.toks[m].kind == tUpper && !(knownFn && builtinMod(mod)) {
+		if r.toks[m].kind == tUpper && (!knownFn || !builtinMod(mod)) {
 			r.force(m, Module)
 			continue
 		}
