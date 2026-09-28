@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -35,6 +36,9 @@ type sessionModule struct {
 	// globals — глобальные имена функций модуля, записанные в ВМ
 	// (включая поднятые локальные fn всех поколений).
 	globals []string
+	// arity — арность top-level fn по голому имени (для диагностики
+	// приватности). Поднятые локальные fn сюда не входят.
+	arity map[string]int
 }
 
 // LoadModules загружает в сессию модуль из файла path и все модули,
@@ -48,7 +52,15 @@ func (s *Session) LoadModules(path string) ([]string, error) {
 }
 
 // loadModules — LoadModules; here — зовёт натив на горутине цикла (load).
+// Модуль пользователя: вводам видны все fn, включая не-pub.
 func (s *Session) loadModules(path string, here bool) ([]string, error) {
+	return s.loadModulesAs(path, here, true)
+}
+
+// loadModulesAs — loadModules. user == false — модуль зависимости:
+// вводам видны только pub (§11.4). Пока в AST нет флага pub (T-143),
+// ни одна fn зависимости вводу не видна.
+func (s *Session) loadModulesAs(path string, here, user bool) ([]string, error) {
 	g, err := s.loadGraph(path)
 	if err != nil {
 		return nil, err
@@ -71,7 +83,25 @@ func (s *Session) loadModules(path string, here bool) ([]string, error) {
 			fresh = append(fresh, m)
 		}
 	}
+	if len(fresh) == 0 {
+		return nil, nil
+	}
+	if !user {
+		if s.deps == nil {
+			s.deps = map[string]bool{}
+		}
+		for _, m := range fresh {
+			s.deps[m.Name] = true
+		}
+	}
 	if err := s.install(mods, fresh, here); err != nil {
+		if !user {
+			for _, m := range fresh {
+				if s.mods[m.Name] == nil {
+					delete(s.deps, m.Name)
+				}
+			}
+		}
 		return nil, err
 	}
 	s.roots = roots
@@ -259,12 +289,32 @@ func (s *Session) install(mods, install []*loader.Module, here bool) error {
 }
 
 // loadGraph загружает граф модулей от path; ошибка разбора печатается.
+// Файл внутри корня модулей сессии разрешает импорты от этого корня
+// (вложенные файлы проекта), остальные — от своего каталога.
 func (s *Session) loadGraph(path string) (*loader.Graph, error) {
-	g, err := loader.Load(path)
+	var g *loader.Graph
+	var err error
+	if root := s.rootFor(path); root != "" {
+		g, err = loader.LoadFrom(root, path)
+	} else {
+		g, err = loader.Load(path)
+	}
 	if err != nil {
 		return nil, s.report(err)
 	}
 	return g, nil
+}
+
+// rootFor — корень модулей, если path лежит внутри него.
+func (s *Session) rootFor(path string) string {
+	if s.modRoot == "" {
+		return ""
+	}
+	rel, err := filepath.Rel(s.modRoot, path)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return ""
+	}
+	return s.modRoot
 }
 
 func (s *Session) loadGraphs(paths []string) ([]*loader.Graph, error) {

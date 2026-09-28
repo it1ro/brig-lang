@@ -58,9 +58,15 @@ type Session struct {
 
 	// Модули пользователя (modules.go): roots — файлы LoadModules,
 	// mods — загруженные модули по имени, gen — поколение кода (recompile).
-	roots []string
-	mods  map[string]*sessionModule
-	gen   int
+	// modRoot — каталог, от которого ищутся import в сессии.
+	// projectRoot — каталог с project.brig; пусто, если это не проект.
+	// deps — модули зависимостей: вводам видны только pub (§11.4).
+	roots       []string
+	mods        map[string]*sessionModule
+	gen         int
+	modRoot     string
+	projectRoot string
+	deps        map[string]bool
 
 	// docs — сигнатуры и текст `##` по имени (`len`, `Map.get`, `Map`).
 	// extra — голые имена, добавленные RegisterHelpers.
@@ -146,8 +152,7 @@ func (s *Session) evalLineHere(src string, prog *ast.Program) (Result, error) {
 
 func (s *Session) evalLineOpt(src string, prog *ast.Program, here bool) (Result, error) {
 	if len(prog.Stmts) == 0 {
-		// import/alias: модули в сессии — T-209.
-		return Result{Value: runtime.Unit}, nil
+		return s.evalDirectives(prog, here)
 	}
 	stmt := prog.Stmts[0]
 
@@ -158,6 +163,9 @@ func (s *Session) evalLineOpt(src string, prog *ast.Program, here bool) (Result,
 	}
 	if semaRes.HasErrors() {
 		return Result{}, &printedError{err: fmt.Errorf("sema: %d error(s)", countErrors(semaRes))}
+	}
+	if err := s.denyPrivate(src, stmt); err != nil {
+		return Result{}, err
 	}
 
 	s.seq++
@@ -227,6 +235,11 @@ func (s *Session) HighlightEnv() highlight.Env {
 		for _, g := range m.globals {
 			// Поднятые локальные fn (`M.f@1$g`) вводу не видны.
 			if f, ok := strings.CutPrefix(g, name+"."); ok && !strings.ContainsAny(f, ".@$") {
+				// Зависимость: не-pub вводу не видна. pub в AST — T-143,
+				// до него у зависимости нет видимых fn.
+				if s.deps[name] {
+					continue
+				}
 				fns[f] = true
 			}
 		}
@@ -247,6 +260,17 @@ func (s *Session) Bindings() []Binding {
 // Next — номер, который получит следующий ввод со значением (приглашение
 // `brig[n]>`, §11.4).
 func (s *Session) Next() int { return len(s.history) + 1 }
+
+// ProjectRoot — каталог с project.brig, если сессия загрузила проект.
+func (s *Session) ProjectRoot() string { return s.projectRoot }
+
+// SetModuleRoot задаёт каталог, от которого `import` в сессии ищет файлы.
+// Пустое имя не меняет текущий корень.
+func (s *Session) SetModuleRoot(root string) {
+	if root != "" {
+		s.modRoot = root
+	}
+}
 
 // Reset снимает все привязки сессии.
 func (s *Session) Reset() {
