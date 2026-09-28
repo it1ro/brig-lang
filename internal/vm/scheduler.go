@@ -395,9 +395,12 @@ type Scheduler struct {
 	nextPid     int
 	nextRef     int
 	nextSeq     uint64
-	// timers — min-куча взведённых таймеров recv … after по
-	// (recvDeadline, timerSeq): обслуживание таймера не обходит s.actors.
-	timers  timerHeap
+	// timers — min-куча таймеров по (deadline, seq): recv … after, await
+	// и Timer.send_after. Обслуживание не обходит s.actors (T-102, T-166).
+	timers timerHeap
+	// sends — взведённые Timer.send_after по ref. Срабатывание и cancel
+	// снимают запись. Таймер принадлежит VM и переживает актора.
+	sends   map[int]*timerEntry
 	ready   []*Actor
 	reds    int
 	mainPid int
@@ -432,6 +435,7 @@ func NewScheduler(vm *VM) *Scheduler {
 	return &Scheduler{
 		vm:         vm,
 		actors:     make(map[int]*Actor),
+		sends:      make(map[int]*timerEntry),
 		reds:       defaultReductions,
 		sessionPid: -1,
 	}
@@ -621,16 +625,92 @@ func (s *Scheduler) runMain(mainFn runtime.Value, args []runtime.Value) (runtime
 	}
 }
 
-// armTimer взводит таймер recv … after актора: новый seq, позиция в куче.
+// armTimer взводит таймер recv … after или await актора: новый seq,
+// позиция в общей куче.
 func (s *Scheduler) armTimer(a *Actor, deadline time.Time) {
 	a.recvDeadline = deadline
 	a.timerSeq = s.nextSeq
 	s.nextSeq++
 	if a.timerPos > 0 {
+		e := s.timers[a.timerPos-1]
+		e.deadline = deadline
+		e.seq = a.timerSeq
 		heap.Fix(&s.timers, a.timerPos-1)
 		return
 	}
-	heap.Push(&s.timers, a)
+	heap.Push(&s.timers, &timerEntry{
+		deadline: deadline,
+		seq:      a.timerSeq,
+		actor:    a,
+	})
+}
+
+// armSend взводит Timer.send_after: запись VM в той же куче, что recv/await.
+// ref без слота ответа — await на нём это :type_error (§12.11).
+func (s *Scheduler) armSend(pid int, msg runtime.Value, deadline time.Time) runtime.Value {
+	ref := s.nextRef
+	s.nextRef++
+	e := &timerEntry{
+		deadline: deadline,
+		seq:      s.nextSeq,
+		pid:      pid,
+		msg:      msg,
+		ref:      ref,
+	}
+	s.nextSeq++
+	s.sends[ref] = e
+	heap.Push(&s.timers, e)
+	return runtime.Value{Kind: runtime.KindRef, Ref: ref}
+}
+
+// sendAfter — Timer.send_after(ms, pid, msg). ms не Int, < 0 или вне
+// Duration, либо pid не Pid — (:type_error, (:send_after, arg)).
+func (s *Scheduler) sendAfter(msVal, pidVal, msg runtime.Value) (runtime.Value, error) {
+	ms, ok := nonNegMillis(msVal)
+	if !ok {
+		return runtime.Unit, typeErr("send_after", msVal)
+	}
+	if pidVal.Kind != runtime.KindPid {
+		return runtime.Unit, typeErr("send_after", pidVal)
+	}
+	d, ok := recvTimerDuration(ms)
+	if !ok {
+		return runtime.Unit, typeErr("send_after", msVal)
+	}
+	return s.armSend(pidVal.Pid, msg, time.Now().Add(d)), nil
+}
+
+// cancelTimer — Timer.cancel(ref). true, только если таймер ещё в куче.
+func (s *Scheduler) cancelTimer(refVal runtime.Value) (runtime.Value, error) {
+	if refVal.Kind != runtime.KindRef {
+		return runtime.Unit, typeErr("cancel", refVal)
+	}
+	e, ok := s.sends[refVal.Ref]
+	if !ok || e.pos == 0 {
+		return runtime.Bool(false), nil
+	}
+	delete(s.sends, refVal.Ref)
+	heap.Remove(&s.timers, e.pos-1)
+	return runtime.Bool(true), nil
+}
+
+// nonNegMillis — Int ≥ 0, помещающийся в int64.
+func nonNegMillis(v runtime.Value) (int64, bool) {
+	if v.Kind != runtime.KindInt {
+		return 0, false
+	}
+	var ms int64
+	if v.IsSmall {
+		ms = v.SmallInt
+	} else if b := v.AsBig(); b.IsInt64() {
+		ms = b.Int64()
+	} else {
+		return 0, false
+	}
+	if ms < 0 {
+		return 0, false
+	}
+	return ms, true
 }
 
 // clearTimer снимает таймер актора (сообщение или ответ пришли раньше,
@@ -644,70 +724,105 @@ func (s *Scheduler) clearTimer(a *Actor) {
 	}
 }
 
-// nextDeadline — ближайший взведённый таймер. Зовётся при пустой ready:
-// все акторы в куче в этот момент заблокированы (готовые — в ready,
-// завершившиеся сняты в reapActor).
+// nextDeadline — ближайший взведённый таймер. Зовётся при пустой ready.
 func (s *Scheduler) nextDeadline() time.Time {
 	if len(s.timers) == 0 {
 		return time.Time{}
 	}
 	s.timerVisits++
-	return s.timers[0].recvDeadline
+	return s.timers[0].deadline
 }
 
-// wakeExpired будит актёров с истёкшим таймером в порядке (deadline, seq)
-// (§15.4). Снятый с кучи актор сохраняет recvDeadline: по нему RECVTAKE
-// уходит в ветку after.
+// wakeExpired обслуживает истёкшие таймеры в порядке (deadline, seq)
+// (§15.2 G4): recv/await будит актора, send_after доставляет сообщение.
+// Снятый с кучи актор сохраняет recvDeadline: по нему RECVTAKE уходит
+// в ветку after.
 func (s *Scheduler) wakeExpired() {
 	now := time.Now()
 	for len(s.timers) > 0 {
 		s.timerVisits++
-		a := s.timers[0]
-		if a.recvDeadline.After(now) {
+		e := s.timers[0]
+		if e.deadline.After(now) {
 			return
 		}
 		heap.Pop(&s.timers)
-		if a.status == actorBlocked {
-			a.status = actorReady
-			s.ready = append(s.ready, a)
+		if e.actor != nil {
+			a := e.actor
+			if a.status == actorBlocked {
+				a.status = actorReady
+				s.ready = append(s.ready, a)
+			}
+			continue
 		}
+		delete(s.sends, e.ref)
+		// Как send: мёртвый pid и полный ящик — сообщение теряется.
+		// Отправителя нет, Error(:busy) некому вернуть.
+		s.Send(e.pid, e.msg)
 	}
 }
 
-// timerHeap — min-куча акторов по (recvDeadline, timerSeq); Actor.timerPos
-// хранит позицию для heap.Fix/heap.Remove.
-type timerHeap []*Actor
+// timerEntry — запись общей кучи. actor != nil — таймер recv/await;
+// иначе доставка Timer.send_after (pid, msg, ref).
+type timerEntry struct {
+	deadline time.Time
+	seq      uint64
+	pos      int
+	actor    *Actor
+	pid      int
+	msg      runtime.Value
+	ref      int
+}
+
+func (e *timerEntry) setPos(p int) {
+	e.pos = p
+	if e.actor != nil {
+		e.actor.timerPos = p
+	}
+}
+
+// timerHeap — min-куча по (deadline, seq). Позиция для heap.Fix/Remove
+// лежит в timerEntry.pos и, для таймера актора, в Actor.timerPos.
+type timerHeap []*timerEntry
 
 func (h timerHeap) Len() int { return len(h) }
 
 func (h timerHeap) Less(i, j int) bool {
 	a, b := h[i], h[j]
-	if !a.recvDeadline.Equal(b.recvDeadline) {
-		return a.recvDeadline.Before(b.recvDeadline)
+	if !a.deadline.Equal(b.deadline) {
+		return a.deadline.Before(b.deadline)
 	}
-	return a.timerSeq < b.timerSeq
+	return a.seq < b.seq
 }
 
 func (h timerHeap) Swap(i, j int) {
 	h[i], h[j] = h[j], h[i]
-	h[i].timerPos = i + 1
-	h[j].timerPos = j + 1
+	h[i].setPos(i + 1)
+	h[j].setPos(j + 1)
 }
 
 func (h *timerHeap) Push(x any) {
-	a := x.(*Actor)
-	a.timerPos = len(*h) + 1
-	*h = append(*h, a)
+	e := x.(*timerEntry)
+	e.setPos(len(*h) + 1)
+	*h = append(*h, e)
 }
 
 func (h *timerHeap) Pop() any {
 	old := *h
 	n := len(old)
-	a := old[n-1]
+	e := old[n-1]
 	old[n-1] = nil
-	a.timerPos = 0
+	e.setPos(0)
 	*h = old[:n-1]
-	return a
+	return e
+}
+
+// monoEpoch — точка отсчёта Time.monotonic_ms. Дедлайны кучи тоже
+// считаются от time.Now, а сравнение time.Time использует монотонные
+// часы: разности monotonic_ms и сроки таймеров — одна шкала.
+var monoEpoch = time.Now()
+
+func monotonicMillis() int64 {
+	return time.Since(monoEpoch).Milliseconds()
 }
 
 // ---- runSlice ----

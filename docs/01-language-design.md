@@ -1610,7 +1610,7 @@ fn main() ->
 
 Три маленьких модуля рантайма. Они не акторы и не прелюдия: это механизмы VM, доступные как `Module.f(...)` без `import` (как `Actor.info`, §12.10).
 
-```brig pending(T-166)
+```brig
 fn tick_loop(n) ->
     recv
         :tick ->

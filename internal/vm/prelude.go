@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/big"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/it1ro/brig-lang/internal/runtime"
@@ -414,6 +415,20 @@ func InstallPrelude(vm *VM) {
 
 	installGlobal(def)
 
+	// ---- Timer / Time (§12.11) ----
+
+	def("Timer.send_after", 3, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+		return vm.scheduler.sendAfter(args[0], args[1], args[2])
+	})
+	def("Timer.cancel", 1, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+		return vm.scheduler.cancelTimer(args[0])
+	})
+	def("Time.monotonic_ms", 0, func(_ runtime.Caller, _ []runtime.Value) (runtime.Value, error) {
+		return runtime.Int(monotonicMillis()), nil
+	})
+	def("Time.now", 0, func(_ runtime.Caller, _ []runtime.Value) (runtime.Value, error) {
+		return runtime.Int(time.Now().UnixMilli()), nil
+	})
 	// ---- Sys ----
 
 	def("Sys.args", 0, func(_ runtime.Caller, _ []runtime.Value) (runtime.Value, error) {

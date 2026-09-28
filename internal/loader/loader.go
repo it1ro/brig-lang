@@ -65,7 +65,7 @@ func (e *Error) Unwrap() error { return e.Err }
 var builtinModules = map[string]bool{
 	"Vec": true, "Map": true, "Str": true, "Bytes": true,
 	"Json": true, "Test": true, "Sys": true, "Actor": true, "Prelude": true,
-	"Global": true,
+	"Global": true, "Timer": true, "Time": true,
 }
 
 // IsBuiltin сообщает, что name — встроенный модуль: на Go или на Brig
