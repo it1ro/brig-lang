@@ -22,9 +22,9 @@ import (
 	"strings"
 
 	"github.com/it1ro/brig-lang/internal/compiler"
+	"github.com/it1ro/brig-lang/internal/highlight"
 	"github.com/it1ro/brig-lang/internal/lexer"
 	"github.com/it1ro/brig-lang/internal/loader"
-	"github.com/it1ro/brig-lang/internal/parser"
 	"github.com/it1ro/brig-lang/internal/repl"
 	"github.com/it1ro/brig-lang/internal/repl/term"
 	"github.com/it1ro/brig-lang/internal/sema"
@@ -210,38 +210,14 @@ func readStdin() string {
 //
 // info не влияет на exit code.
 func reportDiagnostics(file string, r *sema.Result) {
-	for _, d := range r.Diagnostics {
-		sev := "error"
-		if d.Severity == sema.SeverityInfo {
-			sev = "info"
-		}
-		fmt.Fprintf(os.Stderr, "%s: %s:%d:%d: %s\n",
-			sev, file, d.Line, d.Col, d.Message)
-	}
+	_ = repl.WriteDiagnostics(os.Stderr, file, "", r.Diagnostics, highlight.Palette{}, highlight.Env{}, false)
 }
 
 // reportCompileError печатает ошибку лексера, парсера или компилятора в
 // формате E.1. Ошибка без позиции получает 1:1.
 func reportCompileError(file string, err error) {
-	line, col, msg := 1, 1, err.Error()
-	var le *lexer.Error
-	var pe *parser.Error
-	var ce *compiler.Error
-	switch {
-	case errors.As(err, &le):
-		line, col, msg = le.Line, le.Col, le.Msg
-	case errors.As(err, &pe):
-		line, col, msg = pe.Line, pe.Col, pe.Msg
-	case errors.As(err, &ce):
-		if ce.Line > 0 {
-			line, col = ce.Line, ce.Col
-		}
-		if ce.File != "" {
-			file = ce.File
-		}
-		msg = ce.Msg
-	}
-	fmt.Fprintf(os.Stderr, "error: %s:%d:%d: %s\n", file, line, col, msg)
+	f, line, col, msg, _ := repl.DescribeCompileError(file, err)
+	fmt.Fprintln(os.Stderr, repl.FormatE1("error", f, line, col, msg))
 }
 
 // loadProgram загружает граф модулей от входного файла (§11.1, T-135)

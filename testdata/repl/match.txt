@@ -12,8 +12,9 @@ r
 match 7
     0 -> :zero
 -- output --
-(:ok, 42)
+v = (:ok, 42)
 43
-:nope
+r = :nope
 :nope
 error: raise: (:case_clause, 7)
+  at __repl__ (<repl>:1:1)

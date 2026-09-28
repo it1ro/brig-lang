@@ -2,11 +2,12 @@ package repl
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
 
-	"github.com/it1ro/brig-lang/internal/runtime"
+	"github.com/it1ro/brig-lang/internal/highlight"
 )
 
 // Plain — построчный фронтенд сессии без терминала: читает порции ввода
@@ -20,6 +21,11 @@ type Plain struct {
 	// со значением, more — строка продолжает начатый ввод. nil — без
 	// приглашений (pipe, `brig -i -`).
 	Prompt func(next int, more bool) string
+	// Width — колонки терминала для pretty-printer. nil или <= 0 —
+	// одна строка, как Inspect.
+	Width func() int
+	// Pal — палитра вывода и диагностики. Нулевая — без escape-кодов.
+	Pal highlight.Palette
 }
 
 // Run исполняет ввод до EOF. Ошибка ввода не завершает сессию; Run
@@ -60,17 +66,43 @@ func (p Plain) Run(s *Session) error {
 	return nil
 }
 
-// Eval исполняет порцию src и печатает в Out её значение (кроме `()`),
-// а в Err — ошибку. Возвращает только ошибку записи.
+// Eval исполняет порцию src и печатает в Out её значение (кроме `()`):
+// связывание — `name = <значение>`, выражение — `<значение>`.
+// Ошибка разбора, sema или компиляции — формат E.1, строка ввода и `^`.
+// Возвращает только ошибку записи.
 func (p Plain) Eval(s *Session, src string) error {
+	if p.Err != nil {
+		s.SetOutput(p.Err)
+	}
+	s.SetPalette(p.Pal)
 	res, err := s.Eval(src)
 	if err != nil {
-		_, werr := fmt.Fprintf(p.Err, "error: %v\n", err)
-		return werr
+		var pe *printedError
+		if !errors.As(err, &pe) {
+			if werr := writeEvalError(p.Err, s.diagFile, src, err, p.opt(s)); werr != nil {
+				return werr
+			}
+		}
+		return nil
 	}
-	if n := len(res); n > 0 && res[n-1].Value.Kind != runtime.KindUnit {
-		_, werr := fmt.Fprintln(p.Out, res[n-1].Value.Inspect())
-		return werr
+	if n := len(res); n > 0 {
+		if text, ok := FormatAnswer(res[n-1].Name, res[n-1].Value, p.opt(s)); ok {
+			if _, werr := fmt.Fprintln(p.Out, text); werr != nil {
+				return werr
+			}
+		}
 	}
 	return nil
+}
+
+func (p Plain) opt(s *Session) Print {
+	w := 0
+	if p.Width != nil {
+		w = p.Width()
+	}
+	env := highlight.Env{}
+	if s != nil {
+		env = s.HighlightEnv()
+	}
+	return Print{Width: w, Pal: p.Pal, Env: env}
 }
