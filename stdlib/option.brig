@@ -1,0 +1,54 @@
+## Функции над `Option` (§10.1): `Some(x)` или `None`. Субъект — первый
+## аргумент (T-120): `whereis(:db) |> Option.unwrap_or(fallback)`. Не
+## `Option` на месте субъекта — `(:type_error, (:<имя>, o))`.
+module Option
+
+## `Some(f(x))` для `Some(x)`, `None` — как есть.
+##
+## ```brig repl
+## > Option.map(Some(2), x -> x * 10)
+## Some(20)
+## > None |> Option.map(x -> x * 10)
+## None
+## ```
+pub fn map(Some(x), f) -> Some(f(x))
+pub fn map(None, _) -> None
+pub fn map(o, _) -> raise((:type_error, (:map, o)))
+
+## `f(x)` для `Some(x)` — `f` сама возвращает `Option`; `None` — как есть.
+##
+## ```brig repl
+## > Option.and_then(Some(4), x -> if x > 0 then Some(x - 1) else None)
+## Some(3)
+## > Option.and_then(Some(0), x -> if x > 0 then Some(x - 1) else None)
+## None
+## > Option.and_then(None, x -> Some(x))
+## None
+## ```
+pub fn and_then(Some(x), f) -> f(x)
+pub fn and_then(None, _) -> None
+pub fn and_then(o, _) -> raise((:type_error, (:and_then, o)))
+
+## Значение из `Some(x)`. `None` — `raise((:unwrap, None))`.
+##
+## ```brig repl
+## > Option.unwrap(Some(1))
+## 1
+## > Option.unwrap(None)
+## raise (:unwrap, None)
+## ```
+pub fn unwrap(Some(x)) -> x
+pub fn unwrap(None) -> raise((:unwrap, None))
+pub fn unwrap(o) -> raise((:type_error, (:unwrap, o)))
+
+## Значение из `Some(x)`, для `None` — `default`.
+##
+## ```brig repl
+## > Option.unwrap_or(Some(1), 0)
+## 1
+## > None |> Option.unwrap_or(0)
+## 0
+## ```
+pub fn unwrap_or(Some(x), _) -> x
+pub fn unwrap_or(None, default) -> default
+pub fn unwrap_or(o, _) -> raise((:type_error, (:unwrap_or, o)))

@@ -263,8 +263,8 @@ fn get(url) -> "GET \(url)"
 	)
 
 	t.Run("unknown module", func(t *testing.T) {
-		compileModulesErr(t, "3:21: fn main: unknown module List",
-			src{"Main", "module Main\n\nfn main() -> [1] |> List.each(print)\n"},
+		compileModulesErr(t, "3:21: fn main: unknown module Seq",
+			src{"Main", "module Main\n\nfn main() -> [1] |> Seq.each(print)\n"},
 		)
 	})
 }
