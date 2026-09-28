@@ -209,18 +209,23 @@ func (c *Chunk) disInstr(sb *strings.Builder, ip int) {
 		fmt.Fprintf(sb, "r%d <- r%d..r%d", in.A(), in.B(), in.B()+3*in.C()-1)
 	case MAKECLOSURE, RECORD:
 		fmt.Fprintf(sb, "r%d <- r%d +%d", in.A(), in.B(), in.C())
-	case TRAPBEGIN:
+	case TRAPBEGIN, TRAPENSURE:
 		fmt.Fprintf(sb, "r%d handler -> %04d", in.A(), ip+1+in.SBx())
-	case TRAPEND, YIELD:
+	case TRAPEND, YIELD, ENSEND:
 		// без операндов
 	case SPAWN:
-		if in.C() == 1 {
+		switch in.C() {
+		case 1:
 			fmt.Fprintf(sb, "r%d <- spawn(r%d) linked", in.A(), in.B())
-		} else {
+		case 2:
+			fmt.Fprintf(sb, "r%d <- spawn(r%d) watched", in.A(), in.B())
+		default:
 			fmt.Fprintf(sb, "r%d <- spawn(r%d)", in.A(), in.B())
 		}
 	case SEND:
 		fmt.Fprintf(sb, "r%d <- send(r%d, r%d)", in.A(), in.B(), in.C())
+	case EXIT:
+		fmt.Fprintf(sb, "r%d <- exit(r%d, r%d)", in.A(), in.B(), in.C())
 	case RECVTAKE:
 		if in.SBx() != 0 {
 			fmt.Fprintf(sb, "r%d after -> %04d", in.A(), ip+1+in.SBx())

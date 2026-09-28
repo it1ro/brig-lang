@@ -177,8 +177,8 @@ func posOf(n ast.Node) (line, col int) {
 
 // actorPrimitives — акторные примитивы прелюдии, запрещённые в pipe RHS (§7.5).
 var actorPrimitives = map[string]bool{
-	"send": true, "spawn": true, "spawn_linked": true,
-	"link": true, "watch": true, "unwatch": true,
+	"send": true, "spawn": true, "spawn_linked": true, "spawn_watched": true,
+	"link": true, "exit": true, "watch": true, "unwatch": true,
 	"self": true, "make_ref": true, "mailbox_size": true,
 }
 
@@ -194,8 +194,8 @@ func preludeNames() map[string]bool {
 		// Конверсии
 		"to_str", "to_int", "to_float",
 		// Акторы
-		"send", "spawn", "spawn_linked", "link", "watch", "unwatch",
-		"self", "make_ref", "mailbox_size",
+		"send", "spawn", "spawn_linked", "spawn_watched", "link", "watch", "unwatch",
+		"exit", "self", "make_ref", "mailbox_size",
 		// I/O
 		"print", "eprint", "log",
 		// Эффекты

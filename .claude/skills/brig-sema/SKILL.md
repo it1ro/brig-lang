@@ -23,11 +23,11 @@ Message}`; `SeverityError` блокирует компиляцию, `SeverityInf
    Вложенный `trap` в теле другого `trap` допустим через `let`/`expr_stmt`
    внутри блока; идиома в ветке `recv` — блочная форма со стейтментом.
 2. Pipe-запрет акторных примитивов (`send`, `spawn`, `spawn_linked`,
-   `link`, `watch`, `unwatch`, `self`, `make_ref`, `mailbox_size`) как RHS
-   `|>` — проверка по базовому имени до первой точки (`checkPipe`).
-   Спека §7.5 (T-160) шире: `spawn_watched`, `exit`, `register`,
+   `spawn_watched`, `link`, `watch`, `unwatch`, `exit`, `self`,
+   `make_ref`, `mailbox_size`) как RHS `|>` — проверка по базовому имени
+   до первой точки (`checkPipe`). Спека §7.5 (T-160) шире: `register`,
    `unregister`, `whereis`, `reply`, `await` — добавлять в
-   `actorPrimitives` вместе с самим примитивом (T-163…T-165).
+   `actorPrimitives` вместе с самим примитивом (T-164, T-165).
 3. Variadic-параметр (`..name`) обязан быть последним в списке параметров
    — проверяется и для top-level `fn`, и для локальных `fn`, и для лямбд
    (`checkParams`).

@@ -59,7 +59,7 @@ const (
 	MAKEOK    // R[A] = Ok(R[B])
 	MAKEERROR // R[A] = Error(R[B])
 
-	SPAWN       // R[A] = spawn(R[B]); C == 1 — linked
+	SPAWN       // R[A] = spawn(R[B]); C == 1 — linked; C == 2 — watched, R[A] = (pid, ref)
 	SEND        // R[A] = send(pid=R[B], msg=R[C])
 	SELF        // R[A] = Pid(a.pid)
 	MAKEREF     // R[A] = Ref(next)
@@ -96,6 +96,11 @@ const (
 	// false = пара ключ R[B+3i+1], значение R[B+3i+2].
 	// Правые ключи перекрывают левые. Не Map — (:type_error, (:spread, v)).
 	MAPSPREAD
+
+	// exit и ensure (§12.7, T-163).
+	EXIT       // R[A] = exit(pid=R[B], reason=R[C]); Ok(())
+	TRAPENSURE // как TRAPBEGIN; handler ensure-блока: unwind от exit входит в него
+	ENSEND     // конец ensure-блока: unwind от exit, вошедший в этот блок, продолжается
 )
 
 // opNames индексируется OpCode; размер массива фиксирован числом опкодов.
@@ -158,6 +163,9 @@ var opNames = [...]string{
 	LISTSPREAD:     "LISTSPREAD",
 	VECSPREAD:      "VECSPREAD",
 	MAPSPREAD:      "MAPSPREAD",
+	EXIT:           "EXIT",
+	TRAPENSURE:     "TRAPENSURE",
+	ENSEND:         "ENSEND",
 }
 
 func (op OpCode) String() string {

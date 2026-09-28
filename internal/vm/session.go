@@ -388,6 +388,7 @@ func (s *Scheduler) dropFrames(a *Actor) {
 	}
 	a.err = nil
 	a.result = runtime.Unit
+	a.exit = nil
 }
 
 func (s *Scheduler) unready(a *Actor) {
@@ -437,6 +438,12 @@ func (s *Scheduler) CallNested(fn runtime.Value, args []runtime.Value) (runtime.
 			s.dropAbove(a, base)
 			return runtime.Unit, ErrInterrupted
 		}
+		if a.exitPending() {
+			// exit актору сессии во вложенном вызове: вложенные кадры
+			// снимаются без ensure, unwind внешних продолжит runSlice.
+			s.dropAbove(a, base)
+			return runtime.Unit, &ErrExit{Reason: a.exit.reason}
+		}
 		top := a.frames[len(a.frames)-1]
 		switch s.stepFrame(a, top) {
 		case stepDone:
@@ -455,6 +462,8 @@ func (s *Scheduler) CallNested(fn runtime.Value, args []runtime.Value) (runtime.
 			}
 			s.dropAbove(a, base)
 			return runtime.Unit, err
+		case stepExit:
+			// обработка — в начале цикла
 		case stepBlock:
 			if err := s.awaitNested(a); err != nil {
 				s.dropAbove(a, base)
