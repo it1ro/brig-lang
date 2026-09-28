@@ -124,6 +124,12 @@ description: >
   `UNREGISTER`/`WHEREIS`; `Scheduler.names` — список `(name, pid)` с
   `runtime.KeyEqual`. Имена снимает `notifyWatchers` (`dropNames`) — в той же
   редукции, что и `:down`, поэтому после `:down` `whereis` → `None`.
+- **`Global.put`/`get` (§12.11, T-167, `global.go`).** Нативы; таблица
+  `Scheduler.globalTable` — список `(name, value)` с `runtime.KeyEqual`,
+  на планировщике, не на акторе. `put` заменяет привязку, удаления нет;
+  значение неизменяемо, ранее прочитанное `get` от нового `put` не меняется.
+  Имя, не равное себе (`NaN` и контейнер с ним), — ловимый
+  `(:type_error, (:put|:get, name))`.
 - **`await`/`reply` (§12.9, T-165, `await.go`).** Слот ответа —
   `runtime.RefSlot` за указателем `Value.Slot` в самом ref: его создаёт
   только `make_ref` (`makeRef`, `Owner` = pid), у ref из `watch` слота нет.

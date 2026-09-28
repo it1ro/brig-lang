@@ -858,7 +858,9 @@ var builtinParams = map[string]string{
 	"Json.encode/1": "v", "Json.encode/2": "v, opts", "Json.decode/1": "s",
 	"Test.describe/1": "name", "Test.it/2": "name, thunk", "Test.run/0": "",
 	"Test.assert_eq/2": "a, b", "Test.assert_ne/2": "a, b", "Test.assert/1": "x", "Test.fail/1": "msg",
-	"Sys.args/0": "", "Actor.info/1": "pid",
+	"Sys.args/0":   "",
+	"Actor.info/1": "pid",
+	"Global.put/2": "name, value", "Global.get/1": "name",
 
 	"Repl.h/1": "f", "Repl.i/1": "v", "Repl.v/0": "", "Repl.v/1": "n",
 	"Repl.load/1": "path", "Repl.flush/0": "", "Repl.time/1": "f", "Repl.dis/1": "f",

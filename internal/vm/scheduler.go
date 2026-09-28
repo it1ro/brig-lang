@@ -388,10 +388,13 @@ type Scheduler struct {
 	actors map[int]*Actor
 	// names — реестр имён (§12.8) в порядке регистрации; ключи сравниваются
 	// как ключи Map (runtime.KeyEqual).
-	names   []nameEntry
-	nextPid int
-	nextRef int
-	nextSeq uint64
+	names []nameEntry
+	// globalTable — Global.put/get (§12.11): имя → значение на планировщике,
+	// не на акторе. Ключи — runtime.KeyEqual; удаление записи не предусмотрено.
+	globalTable []globalEntry
+	nextPid     int
+	nextRef     int
+	nextSeq     uint64
 	// timers — min-куча взведённых таймеров recv … after по
 	// (recvDeadline, timerSeq): обслуживание таймера не обходит s.actors.
 	timers  timerHeap
