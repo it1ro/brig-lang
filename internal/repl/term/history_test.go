@@ -8,6 +8,27 @@ import (
 	"testing"
 )
 
+// TestAutosuggestFromHistory — самая новая запись с тем же префиксом;
+// пустой ввод и точное совпадение хвоста не дают.
+func TestAutosuggestFromHistory(t *testing.T) {
+	h := &History{entries: []string{"len(1)", "fn g() ->\n    1", "len(2)"}}
+	if got := h.Suggest("len"); got != "(2)" {
+		t.Fatalf("Suggest(len) = %q, want (2)", got)
+	}
+	if got := h.Suggest("fn g() ->"); got != "\n    1" {
+		t.Fatalf("multiline = %q", got)
+	}
+	if got := h.Suggest("len(2)"); got != "" {
+		t.Fatalf("exact match = %q", got)
+	}
+	if got := h.Suggest(""); got != "" {
+		t.Fatalf("empty prefix = %q", got)
+	}
+	if got := ((*History)(nil)).Suggest("len"); got != "" {
+		t.Fatalf("nil history = %q", got)
+	}
+}
+
 // TestHistoryPersist — T-202: история переживает перезапуск:
 // многострочные вводы целиком, без дублей подряд, не больше
 // HistoryLimit записей.

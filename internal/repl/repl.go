@@ -284,13 +284,9 @@ func (s *Session) Reset() {
 	s.env = make(map[string]runtime.Value)
 }
 
-// Complete — варианты дополнения ввода (src, pos): src — текст, pos — позиция курсора.
-// Заготовка: T-211.
-func (s *Session) Complete(_ string, _ int) []string { return nil }
-
 // Doc — сигнатуры и текст `##` функции `M.f`/`f` или модуля (§11.4).
-// false — такого имени в сессии нет. Тот же текст печатает `h`;
-// подсказки сигнатур (T-211) берут его отсюда.
+// false — такого имени в сессии нет. Тот же текст печатает `h`.
+// Строка подсказки при вызове (T-211) берёт только helpDoc.sigs, не этот текст.
 func (s *Session) Doc(name string) (string, bool) {
 	d, ok := s.docs[name]
 	if !ok {

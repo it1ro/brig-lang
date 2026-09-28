@@ -73,6 +73,21 @@ func (h *History) Len() int { return len(h.entries) }
 // At — запись i, 0 — самая старая.
 func (h *History) At(i int) string { return h.entries[i] }
 
+// Suggest — суффикс самой новой записи, для которой prefix — начало.
+// Пустой prefix и точное совпадение суффикса не дают.
+func (h *History) Suggest(prefix string) string {
+	if h == nil || prefix == "" {
+		return ""
+	}
+	for i := len(h.entries) - 1; i >= 0; i-- {
+		e := h.entries[i]
+		if strings.HasPrefix(e, prefix) && len(e) > len(prefix) {
+			return e[len(prefix):]
+		}
+	}
+	return ""
+}
+
 // Add добавляет ввод: без пустых строк в конце, пустой ввод и повтор
 // последней записи не пишутся. Запись дописывается в файл сразу.
 func (h *History) Add(entry string) error {

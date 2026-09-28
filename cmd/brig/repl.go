@@ -137,8 +137,30 @@ func consoleLoop(s *repl.Session) error {
 	t.IndentWidth = repl.IndentWidth
 	t.History = openHistory(s.ProjectRoot())
 	pal := highlight.PaletteFromEnv(nil)
+	t.Color = pal.Enabled()
 	t.Highlight = func(src string, cursor int) string {
 		return highlight.Highlight(src, cursor, s.HighlightEnv(), pal)
+	}
+	t.Hint = func(src string, pos int) string {
+		if t.History == nil {
+			return ""
+		}
+		rs := []rune(src)
+		if pos < 0 || pos > len(rs) {
+			return ""
+		}
+		return t.History.Suggest(string(rs[:pos]))
+	}
+	t.Complete = func(src string, pos int) term.Completion {
+		c := s.Complete(src, pos)
+		out := term.Completion{From: c.From, To: c.To, Candidates: make([]term.Candidate, len(c.Candidates))}
+		for i, cand := range c.Candidates {
+			out.Candidates[i] = term.Candidate{Insert: cand.Insert, Display: cand.Display}
+		}
+		return out
+	}
+	t.Signature = func(src string, pos int) (string, int, int) {
+		return s.Signature(src, pos)
 	}
 
 	fe := repl.Plain{
