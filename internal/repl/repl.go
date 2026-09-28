@@ -61,6 +61,11 @@ type Session struct {
 	roots []string
 	mods  map[string]*sessionModule
 	gen   int
+
+	// docs — сигнатуры и текст `##` по имени (`len`, `Map.get`, `Map`).
+	// extra — голые имена, добавленные RegisterHelpers.
+	docs  map[string]*helpDoc
+	extra map[string]bool
 }
 
 // New создаёт сессию поверх ВМ и запускает её актор (§11.4): планировщик
@@ -76,6 +81,7 @@ func New(m *vm.VM, out io.Writer) *Session {
 	if err := m.StartSession(); err != nil {
 		panic(err)
 	}
+	s.installHelpers()
 	return s
 }
 
@@ -129,14 +135,24 @@ func (s *Session) Eval(src string) ([]Result, error) {
 // evalLine исполняет одну инструкцию (repl_line). src — вся порция:
 // позиции диагностики считаются по ней.
 func (s *Session) evalLine(src string, prog *ast.Program) (Result, error) {
+	return s.evalLineOpt(src, prog, false)
+}
+
+// evalLineHere — то же, но на акторе сессии без сдачи нового ввода.
+// load зовёт так script-файл: сам load уже исполняется этим актором.
+func (s *Session) evalLineHere(src string, prog *ast.Program) (Result, error) {
+	return s.evalLineOpt(src, prog, true)
+}
+
+func (s *Session) evalLineOpt(src string, prog *ast.Program, here bool) (Result, error) {
 	if len(prog.Stmts) == 0 {
 		// import/alias: модули в сессии — T-209.
 		return Result{Value: runtime.Unit}, nil
 	}
 	stmt := prog.Stmts[0]
 
-	// Контекстный анализ (§F.3). info (затенение прелюдии) не ошибка.
-	semaRes := sema.Check(prog)
+	// Контекстный анализ (§F.3). info (затенение прелюдии и хелперов) не ошибка.
+	semaRes := sema.CheckRepl(prog, s.extraNames())
 	if err := WriteDiagnostics(s.out, s.diagFile, src, semaRes.Diagnostics, s.pal, s.HighlightEnv(), s.diagFile == "<repl>"); err != nil {
 		return Result{}, err
 	}
@@ -165,7 +181,15 @@ func (s *Session) evalLine(src string, prog *ast.Program) (Result, error) {
 		args[i] = s.env[n]
 	}
 
-	val, err := s.vm.SessionEval(vm.FuncValue(fn), args, defs)
+	var val runtime.Value
+	if here {
+		for name, v := range defs {
+			s.vm.DefineGlobal(name, v)
+		}
+		val, err = s.vm.Scheduler().CallNested(vm.FuncValue(fn), args)
+	} else {
+		val, err = s.vm.SessionEval(vm.FuncValue(fn), args, defs)
+	}
 	if err != nil {
 		return Result{}, err
 	}
@@ -176,7 +200,8 @@ func (s *Session) evalLine(src string, prog *ast.Program) (Result, error) {
 		}
 		s.env[newName] = val
 	}
-	if _, ok := stmt.(ast.LocalFnDecl); ok {
+	if lfd, ok := stmt.(ast.LocalFnDecl); ok {
+		s.noteLocal(lfd, src, s.seq)
 		val = runtime.Unit
 	}
 	return Result{Name: newName, Value: val}, nil
@@ -193,6 +218,9 @@ func (s *Session) HighlightEnv() highlight.Env {
 	env := highlight.REPLEnv()
 	for _, b := range s.Bindings() {
 		env.Bindings[b.Name] = true
+	}
+	for n := range s.extra {
+		env.Helpers[n] = true
 	}
 	return env
 }
@@ -220,9 +248,16 @@ func (s *Session) Reset() {
 // Заготовка: T-211.
 func (s *Session) Complete(_ string, _ int) []string { return nil }
 
-// Doc — документация функции `M.f`/`f` или модуля по имени, для `h/1`.
-// Заготовка: T-206.
-func (s *Session) Doc(_ string) (string, bool) { return "", false }
+// Doc — сигнатуры и текст `##` функции `M.f`/`f` или модуля (§11.4).
+// false — такого имени в сессии нет. Тот же текст печатает `h`;
+// подсказки сигнатур (T-211) берут его отсюда.
+func (s *Session) Doc(name string) (string, bool) {
+	d, ok := s.docs[name]
+	if !ok {
+		return "", false
+	}
+	return d.format(s.pal), true
+}
 
 func countErrors(res *sema.Result) int {
 	n := 0

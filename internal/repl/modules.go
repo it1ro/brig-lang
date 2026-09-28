@@ -41,7 +41,7 @@ type sessionModule struct {
 // `M.f`, включая не-`pub` (§11.4). Возвращает имена загруженных модулей
 // в порядке загрузки. Ошибка разбора, sema или компиляции печатается в
 // формате E.1 в вывод сессии; сессия остаётся без изменений.
-// script-файл (§11.3) — не модуль: его исполняет load (T-206).
+// script-файл (§11.3) — не модуль: его исполняет load.
 func (s *Session) LoadModules(path string) ([]string, error) {
 	g, err := s.loadGraph(path)
 	if err != nil {
@@ -147,7 +147,7 @@ func (s *Session) install(mods, install []*loader.Module) error {
 	w := sema.NewWorld(world)
 	failed := 0
 	for _, m := range mods {
-		res := sema.CheckNames(m.Prog, w)
+		res := sema.CheckNamesSession(m.Prog, w)
 		for _, d := range res.Diagnostics {
 			sev := "error"
 			if d.Severity == sema.SeverityInfo {
@@ -234,6 +234,7 @@ func (s *Session) install(mods, install []*loader.Module) error {
 			globals: g,
 		}
 	}
+	s.indexLoaded(install)
 	return nil
 }
 

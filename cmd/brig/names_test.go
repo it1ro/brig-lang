@@ -100,6 +100,16 @@ func brigFile(t *testing.T, bin, cmd, src string) (string, int) {
 	return brigIn(t, bin, dir, args...)
 }
 
+// T-206: голых хелперов консоли нет вне сессии REPL.
+func TestCheckReplHelperHidden(t *testing.T) {
+	bin := buildBrig(t)
+	const src = "module Main\nfn main() -> h(1)\n"
+	out, code := brigFile(t, bin, "check", src)
+	if code != exitParse || !strings.Contains(out, "undefined function h/1") {
+		t.Fatalf("check h: exit %d, out %q", code, out)
+	}
+}
+
 func brigIn(t *testing.T, bin, dir string, args ...string) (string, int) {
 	t.Helper()
 	c := exec.Command(bin, args...)

@@ -2,6 +2,7 @@ package vm
 
 import (
 	"errors"
+	goruntime "runtime"
 	"sync/atomic"
 	"time"
 
@@ -26,7 +27,9 @@ type sessionJob struct {
 	defs map[string]runtime.Value
 	// undef — глобалы, которые снимаются до defs (Redefine).
 	undef []string
-	done  chan sessionResult
+	// sync — работа на горутине цикла без ввода (регистрация хелперов).
+	sync func() error
+	done chan sessionResult
 }
 
 type sessionResult struct {
@@ -109,6 +112,10 @@ func (s *Scheduler) Redefine(defs map[string]runtime.Value, undef []string) erro
 	if !s.session {
 		return errors.New("internal: repl session is not started")
 	}
+	if s.onLoop() {
+		s.applyGlobals(undef, defs)
+		return nil
+	}
 	_, err := s.submit(&sessionJob{
 		fn:    runtime.Unit,
 		defs:  defs,
@@ -116,6 +123,43 @@ func (s *Scheduler) Redefine(defs map[string]runtime.Value, undef []string) erro
 		done:  make(chan sessionResult, 1),
 	})
 	return err
+}
+
+// Sync выполняет fn на горутине цикла, между вводами. С самой горутины
+// цикла (натив хелпера) fn зовётся сразу: сдача в jobs оттуда deadlock.
+func (s *Scheduler) Sync(fn func() error) error {
+	if !s.session {
+		return errors.New("internal: repl session is not started")
+	}
+	if s.onLoop() {
+		return fn()
+	}
+	_, err := s.submit(&sessionJob{
+		fn:   runtime.Unit,
+		sync: fn,
+		done: make(chan sessionResult, 1),
+	})
+	return err
+}
+
+func (s *Scheduler) onLoop() bool {
+	id := s.loopGID.Load()
+	return id != 0 && id == goroutineID()
+}
+
+func goroutineID() uint64 {
+	var buf [64]byte
+	n := goruntime.Stack(buf[:], false)
+	const p = "goroutine "
+	s := buf[:n]
+	if len(s) < len(p) {
+		return 0
+	}
+	var id uint64
+	for i := len(p); i < len(s) && s[i] >= '0' && s[i] <= '9'; i++ {
+		id = id*10 + uint64(s[i]-'0')
+	}
+	return id
 }
 
 func (s *Scheduler) submit(job *sessionJob) (runtime.Value, error) {
@@ -156,7 +200,9 @@ func (s *Scheduler) stopping() bool {
 // что и в runMain; пустая очередь не deadlock, а ожидание таймера, ввода
 // или прерывания.
 func (s *Scheduler) sessionLoop() {
+	s.loopGID.Store(goroutineID())
 	defer close(s.loopDone)
+	defer s.loopGID.Store(0)
 	for {
 		if s.stopping() {
 			s.shutdownSession()
@@ -235,13 +281,21 @@ func (s *Scheduler) takeJob(job *sessionJob) {
 	s.beginJob(job)
 }
 
-func (s *Scheduler) beginJob(job *sessionJob) {
-	a := s.actors[s.sessionPid]
-	for _, name := range job.undef {
+func (s *Scheduler) applyGlobals(undef []string, defs map[string]runtime.Value) {
+	for _, name := range undef {
 		delete(s.vm.globals, name)
 	}
-	for name, v := range job.defs {
+	for name, v := range defs {
 		s.vm.globals[name] = v
+	}
+}
+
+func (s *Scheduler) beginJob(job *sessionJob) {
+	a := s.actors[s.sessionPid]
+	s.applyGlobals(job.undef, job.defs)
+	if job.sync != nil {
+		job.done <- sessionResult{val: runtime.Unit, err: job.sync()}
+		return
 	}
 	if job.fn.Kind == runtime.KindUnit {
 		job.done <- sessionResult{val: runtime.Unit}
@@ -382,4 +436,99 @@ func (s *Scheduler) burn(a *Actor, reds *int) {
 	if s.interrupt.Load() {
 		s.afterInterrupt.Add(1)
 	}
+}
+
+// CallNested исполняет fn на акторе сессии, не трогая кадры, которые уже
+// на стеке. Звать с горутины цикла из натива хелпера: сдача ввода в jobs
+// оттуда deadlock, а отдельный актор callSync подменил бы self().
+func (s *Scheduler) CallNested(fn runtime.Value, args []runtime.Value) (runtime.Value, error) {
+	a := s.actors[s.sessionPid]
+	if a == nil {
+		return runtime.Unit, errors.New("internal: no session actor")
+	}
+	base := len(a.frames)
+	if _, err := a.pushCall(fn, args); err != nil {
+		return runtime.Unit, err
+	}
+	for len(a.frames) > base {
+		if s.interrupt.Load() {
+			s.dropAbove(a, base)
+			return runtime.Unit, ErrInterrupted
+		}
+		top := a.frames[len(a.frames)-1]
+		switch s.stepFrame(a, top) {
+		case stepDone:
+			a.popFrame()
+			if len(a.frames) > base {
+				caller := a.frames[len(a.frames)-1]
+				caller.regs[caller.callDst] = a.result
+			}
+		case stepFailed:
+			err := a.err
+			if s.unwindAbove(a, base) {
+				continue
+			}
+			s.dropAbove(a, base)
+			return runtime.Unit, err
+		case stepBlock:
+			s.dropAbove(a, base)
+			return runtime.Unit, errors.New("internal: blocked in nested call")
+		}
+	}
+	return a.result, nil
+}
+
+func (s *Scheduler) dropAbove(a *Actor, base int) {
+	for len(a.frames) > base {
+		a.popFrame()
+	}
+	a.err = nil
+}
+
+// unwindAbove — tryUnwindRaise, который не снимает кадры ниже base.
+func (s *Scheduler) unwindAbove(a *Actor, base int) bool {
+	var rerr *ErrRaise
+	if !errors.As(a.err, &rerr) {
+		return false
+	}
+	if len(a.frames) <= base {
+		return false
+	}
+	a.popFrame()
+	for len(a.frames) > base {
+		parent := a.frames[len(a.frames)-1]
+		if len(parent.handlers) > 0 {
+			h := parent.handlers[len(parent.handlers)-1]
+			parent.handlers = parent.handlers[:len(parent.handlers)-1]
+			parent.regs[h.errReg] = rerr.Val
+			parent.ip = h.ip
+			a.err = nil
+			a.result = runtime.Unit
+			return true
+		}
+		a.popFrame()
+	}
+	return false
+}
+
+// TakeSessionMail снимает пользовательские сообщения ящика сессии.
+// Звать с горутины цикла.
+func (s *Scheduler) TakeSessionMail() []runtime.Value {
+	a := s.actors[s.sessionPid]
+	if a == nil || len(a.mailbox) == 0 {
+		return nil
+	}
+	out := append([]runtime.Value(nil), a.mailbox...)
+	a.mailbox = a.mailbox[:0]
+	return out
+}
+
+// ActorInfo — жив ли актор pid и сколько в его ящике пользовательских
+// сообщений. Снятый актор — не жив, ящик 0. Звать с горутины цикла.
+func (s *Scheduler) ActorInfo(pid int) (alive bool, mailbox int) {
+	a := s.actors[pid]
+	if a == nil || a.status == actorDone || a.status == actorFailed {
+		return false, 0
+	}
+	return true, len(a.mailbox)
 }

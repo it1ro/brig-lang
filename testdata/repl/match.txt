@@ -12,6 +12,9 @@ r
 match 7
     0 -> :zero
 -- output --
+info: <repl>:1:1: `v` shadows repl helper; use `Repl.v` if the helper was intended
+v = (:ok, 42)
+^
 v = (:ok, 42)
 43
 r = :nope
