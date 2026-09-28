@@ -39,7 +39,7 @@ func verifyRegsAndJumps(c *Chunk) error {
 	n := len(c.Code)
 	for ip, in := range c.Code {
 		switch in.Op() {
-		case JMP, JMPIFNOT, JMPIF, TRAPBEGIN:
+		case JMP, JMPIFNOT, JMPIF, TRAPBEGIN, TRAPENSURE:
 			target := ip + 1 + in.SBx()
 			if target < 0 || target >= n {
 				return fmt.Errorf(
@@ -94,9 +94,9 @@ func RegUse(in Instr) (reads, writes []int, err error) {
 		return []int{a}, nil, nil
 	case JMPIFNOT, JMPIF:
 		return []int{a}, nil, nil
-	case JMP, TRAPEND, YIELD:
+	case JMP, TRAPEND, YIELD, ENSEND:
 		return nil, nil, nil
-	case TRAPBEGIN:
+	case TRAPBEGIN, TRAPENSURE:
 		// errReg пишется неявно при raise; формально регистр определён
 		// только на пути обработчика, поэтому в reads/writes не входит.
 		return nil, nil, nil
@@ -146,7 +146,7 @@ func RegUse(in Instr) (reads, writes []int, err error) {
 		return reads, []int{a}, nil
 	case SPAWN:
 		return []int{b}, []int{a}, nil
-	case SEND:
+	case SEND, EXIT:
 		return []int{b, cc}, []int{a}, nil
 	case MATCHLOCAL:
 		// R[A] читается; регистры паттерна пишутся неявно (не в A/B/C).
@@ -199,7 +199,7 @@ func verifyTailCall(c *Chunk) error {
 	depth := 0
 	for ip, in := range c.Code {
 		switch in.Op() {
-		case TRAPBEGIN:
+		case TRAPBEGIN, TRAPENSURE:
 			depth++
 		case TRAPEND:
 			depth--
@@ -345,7 +345,7 @@ func edges(c *Chunk, ip int, before []bool) []cfgEdge {
 			return []cfgEdge{{ip + 1, out}, {ip + 1 + in.SBx(), before}}
 		}
 		return []cfgEdge{{ip + 1, out}} // block, no after
-	case TRAPBEGIN:
+	case TRAPBEGIN, TRAPENSURE:
 		// Обработчик: errReg пишется неявно при raise.
 		handler := cloneBoolSlice(out)
 		markDefined(handler, in.A())

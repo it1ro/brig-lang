@@ -36,6 +36,9 @@ const (
 	stepBlock
 	stepDone
 	stepFailed
+	// stepExit — сигнал exit нужно обработать сейчас: exit себе или конец
+	// ensure-блока, в который вошёл unwind (§12.7).
+	stepExit
 )
 
 // ---- Frame (§2) ----
@@ -79,6 +82,9 @@ func (f *Frame) catch(err error) bool {
 type trapHandler struct {
 	ip     int // абсолютный индекс инструкции-обработчика
 	errReg int // регистр, куда кладётся значение raise
+	// ensure — handler ensure-блока (TRAPENSURE): unwind от exit входит
+	// в него, прочие handlers пропускает (§12.7).
+	ensure bool
 }
 
 // callee — разобранный Function/Closure с байткод-телом (§2).
@@ -362,6 +368,9 @@ type Actor struct {
 	timerSeq uint64
 	// timerPos — позиция в Scheduler.timers плюс 1; 0 — таймер не в куче.
 	timerPos int
+
+	// exit — полученный сигнал exit (§12.7); nil — сигнала нет.
+	exit *exitSig
 }
 
 // Scheduler — единый run-loop (§15.2).
@@ -463,7 +472,7 @@ func (s *Scheduler) wakeIfBlocked(a *Actor) {
 	}
 	// Простаивающий актор сессии не крутится из-за почты: сообщения копятся
 	// в ящике до следующего ввода. Иначе каждый send будил бы пустой стек.
-	if a.pid == s.sessionPid && s.current == nil && len(a.frames) == 0 {
+	if s.sessionIdle(a) {
 		return
 	}
 	a.status = actorReady
@@ -686,6 +695,9 @@ func (s *Scheduler) runSlice(a *Actor) {
 	}
 	reds := s.reds
 	for reds > 0 {
+		if a.exitPending() && s.exitStep(a) {
+			return
+		}
 		if len(a.frames) == 0 {
 			if s.parkSession(a) {
 				return
@@ -715,7 +727,16 @@ func (s *Scheduler) runSlice(a *Actor) {
 			caller := a.frames[len(a.frames)-1]
 			caller.regs[caller.callDst] = a.result
 
+		case stepExit:
+			// обработка — в начале цикла
+
 		case stepFailed:
+			if a.exit != nil {
+				// Ошибка, не пойманная ensure при unwind от exit, причину
+				// не меняет: unwind продолжается с текущего места.
+				a.exit.unwinding = false
+				continue
+			}
 			if !s.raiseCatchable(a) {
 				attachTrace(a)
 			}
@@ -1227,12 +1248,20 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 				fnVal.Func.Name, fnVal.Func.Arity, fnVal.Func.Body, caps)
 			f.ip++
 
-		case TRAPBEGIN:
+		case TRAPBEGIN, TRAPENSURE:
 			f.handlers = append(f.handlers, trapHandler{
 				ip:     f.ip + 1 + in.SBx(),
 				errReg: in.A(),
+				ensure: op == TRAPENSURE,
 			})
 			f.ip++
+
+		case ENSEND:
+			f.ip++
+			if a.atEnsureEnd(f) {
+				a.exit.unwinding = false
+				return stepExit
+			}
 
 		case TRAPEND:
 			if len(f.handlers) == 0 {
@@ -1252,7 +1281,7 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 		// ---- Акторные опкоды (§6) ----
 
 		case SPAWN:
-			base, linked := in.A(), in.C() == 1
+			base, mode := in.A(), in.C()
 			fn := regs[in.B()]
 			pid, err := s.Spawn(fn, nil)
 			if err != nil {
@@ -1261,11 +1290,35 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 				}
 				return fail(err)
 			}
-			if linked {
+			pidVal := runtime.Value{Kind: runtime.KindPid, Pid: pid}
+			switch mode {
+			case 1: // linked
 				s.Watch(a.pid, pid)
+				regs[base] = pidVal
+			case 2: // watched: наблюдение взведено до первой редукции ребёнка
+				ref := s.Watch(a.pid, pid)
+				regs[base] = runtime.Tuple(pidVal, runtime.Value{Kind: runtime.KindRef, Ref: ref})
+			default:
+				regs[base] = pidVal
 			}
-			regs[base] = runtime.Value{Kind: runtime.KindPid, Pid: pid}
 			f.ip++
+
+		case EXIT:
+			pidVal := regs[in.B()]
+			if pidVal.Kind != runtime.KindPid {
+				err := typeErr("exit", pidVal)
+				if f.catch(err) {
+					continue
+				}
+				return fail(err)
+			}
+			regs[in.A()] = runtime.Variant("Ok", runtime.Unit)
+			f.ip++
+			if pidVal.Pid == a.pid {
+				s.signalExit(a, regs[in.C()])
+				return stepExit
+			}
+			s.Exit(pidVal.Pid, regs[in.C()])
 
 		case SEND:
 			pidVal := regs[in.B()]
@@ -1774,6 +1827,10 @@ func (s *Scheduler) callSync(fn runtime.Value, args []runtime.Value) (runtime.Va
 		case stepBlock:
 			return runtime.Unit,
 				fmt.Errorf("internal: recv in synchronous call context")
+
+		case stepExit:
+			// Синхронный вызов вне планировщика: ensure не исполняются.
+			return runtime.Unit, &ErrExit{Reason: tmp.exit.reason}
 
 		case stepYield, stepContinue:
 			// продолжаем

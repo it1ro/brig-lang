@@ -1508,7 +1508,7 @@ Correlation-идиома: `make_ref()` в сообщении, ответ мат�
 
 ### 12.7 `exit` и `spawn_watched`
 
-```brig pending(T-163)
+```brig
 fn idle() ->
     recv
         _msg -> idle()

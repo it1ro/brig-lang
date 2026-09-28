@@ -107,6 +107,19 @@ description: >
   `runtime.Stack` не определять.
   `link` по §12.2 — наблюдение, не эскалация: падение связанного актора
   кладёт `:down` в ящик и не обрывает текущий ввод.
+- **`exit(pid, reason)` (§12.7, T-163, `exit.go`).** Опкод `EXIT`: чужому
+  pid — `Scheduler.Exit` ставит `Actor.exit` (первая причина выигрывает,
+  `:kill` поверх начатого unwind его перезапускает без `ensure`) и через
+  `hurry` будит жертву/ставит в начало `ready`; себе — `stepExit`, сразу.
+  Сигнал обрабатывается в начале итерации `runSlice` (точка редукции):
+  `unwindExit` снимает кадры, пропуская handlers `trap`, до handler'а с
+  `ensure` (`TRAPENSURE` — тело trap с `ensure` и защита каждого `ensure`),
+  прыгает в него и запоминает (кадр, глубина handlers); `ENSEND` в конце
+  ensure-блока в этой точке отдаёт `stepExit` — unwind продолжается.
+  Ensure нет — `exitDone`: `:down` с причиной как есть, `a.err = *ErrExit`.
+  Непойманная ошибка во время unwind причину не меняет. `callSync` и
+  `CallNested` ensure не исполняют (ErrExit сразу). `spawn_watched` —
+  `SPAWN` с C=2, `Watch` в том же шаге, результат `(pid, ref)`.
 - **Мёртвые акторы удаляются из `s.actors`** при `actorDone`/`actorFailed`
   через `reapActor` (кроме `mainPid`; I-F9, T-40 #29). Поэтому `watch` на
   завершившийся pid даёт немедленный `:down` с `:noproc`, `send` →

@@ -1944,9 +1944,13 @@ func (fc *funcCompiler) compileCall(call ast.CallExpr, d dest) error {
 		case "%{}":
 			return fc.compileMap(call.Args(), d)
 		case "spawn":
-			return fc.compileSpawn(call.Args(), false, d)
+			return fc.compileSpawn(call.Args(), 0, d)
 		case "spawn_linked":
-			return fc.compileSpawn(call.Args(), true, d)
+			return fc.compileSpawn(call.Args(), 1, d)
+		case "spawn_watched":
+			return fc.compileSpawn(call.Args(), 2, d)
+		case "exit":
+			return fc.compileExit(call.Args(), d)
 		case "send":
 			return fc.compileSend(call.Args(), d)
 		case "self":
@@ -2526,7 +2530,9 @@ func (fc *funcCompiler) compileMember(me ast.MemberExpr, d dest) error {
 
 // ---- actor ops ----
 
-func (fc *funcCompiler) compileSpawn(args []ast.Expr, linked bool, d dest) error {
+// compileSpawn: mode — операнд C у SPAWN: 0 — spawn, 1 — spawn_linked,
+// 2 — spawn_watched (результат (pid, ref)).
+func (fc *funcCompiler) compileSpawn(args []ast.Expr, mode int, d dest) error {
 	if len(args) != 1 {
 		return fmt.Errorf("spawn требует 1 аргумент (fn)")
 	}
@@ -2538,11 +2544,7 @@ func (fc *funcCompiler) compileSpawn(args []ast.Expr, linked bool, d dest) error
 		return err
 	}
 
-	c := 0
-	if linked {
-		c = 1
-	}
-	fc.emit(vm.ABC(vm.SPAWN, dst, fnReg, c))
+	fc.emit(vm.ABC(vm.SPAWN, dst, fnReg, mode))
 	fc.finish(d, dst)
 	fc.releaseToMark(mark)
 	return nil
@@ -2564,6 +2566,28 @@ func (fc *funcCompiler) compileSend(args []ast.Expr, d dest) error {
 		return err
 	}
 	fc.emit(vm.ABC(vm.SEND, dst, pidReg, msgReg))
+	fc.finish(d, dst)
+	fc.releaseToMark(mark)
+	return nil
+}
+
+// compileExit: exit(pid, reason) (§12.7).
+func (fc *funcCompiler) compileExit(args []ast.Expr, d dest) error {
+	if len(args) != 2 {
+		return fmt.Errorf("exit требует 2 аргумента (pid, reason)")
+	}
+	mark := fc.nextReg
+	dst := fc.destReg(d)
+
+	pidReg := fc.allocReg()
+	if err := fc.compileExpr(args[0], val(pidReg)); err != nil {
+		return err
+	}
+	reasonReg := fc.allocReg()
+	if err := fc.compileExpr(args[1], val(reasonReg)); err != nil {
+		return err
+	}
+	fc.emit(vm.ABC(vm.EXIT, dst, pidReg, reasonReg))
 	fc.finish(d, dst)
 	fc.releaseToMark(mark)
 	return nil
@@ -2787,7 +2811,8 @@ func (fc *funcCompiler) compileTrapWithEnsure(stmts []ast.Stmt, ensures []ast.Ex
 	}
 
 	fc.trapDepth++
-	bodyBegin := fc.emitJump(vm.TRAPBEGIN, eReg)
+	// TRAPENSURE: unwind от exit (§12.7) входит в ensure, пропуская trap.
+	bodyBegin := fc.emitJump(vm.TRAPENSURE, eReg)
 
 	fc.pushScope()
 	if err := fc.compileTrapBodyWithEnsures(stmts, ensures, regFlags, letRegs, trueIdx, val(dst)); err != nil {
@@ -2812,7 +2837,8 @@ func (fc *funcCompiler) compileTrapWithEnsure(stmts []ast.Stmt, ensures []ast.Ex
 
 		ensMark := fc.nextReg
 		fc.trapDepth++
-		ehBegin := fc.emitJump(vm.TRAPBEGIN, eReg)
+		// exit посреди ensure: оставшиеся ensure блока исполняются.
+		ehBegin := fc.emitJump(vm.TRAPENSURE, eReg)
 
 		sReg := fc.allocReg()
 		if err := fc.compileExpr(ens, val(sReg)); err != nil {
@@ -2831,6 +2857,8 @@ func (fc *funcCompiler) compileTrapWithEnsure(stmts []ast.Stmt, ensures []ast.Ex
 		fc.patchHere(jNext)
 		fc.patchHere(jSkip)
 	}
+	// Конец ensure-блока: unwind от exit продолжается отсюда.
+	fc.emit(vm.ABC(vm.ENSEND, 0, 0, 0))
 
 	fc.popScope()
 
