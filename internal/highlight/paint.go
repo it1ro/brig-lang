@@ -92,6 +92,9 @@ func validSGR(v string) bool {
 
 const guideMark = "│"
 
+// Enabled — палитра рисует SGR. false при NO_COLOR и TERM=dumb.
+func (p Palette) Enabled() bool { return p.on }
+
 // Paint рисует res поверх src. Число строк не меняется.
 func (p Palette) Paint(src string, res Result) string {
 	guide := make(map[int]bool, len(res.Guides))

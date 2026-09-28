@@ -6,6 +6,12 @@ import (
 	xterm "golang.org/x/term"
 )
 
+// Bracketed paste (xterm, режим 2004). Конец вставки разбирает termio.
+const (
+	pasteOn  = "\x1b[?2004h"
+	pasteOff = "\x1b[?2004l"
+)
+
 // IsTerminal — f подключён к терминалу.
 func IsTerminal(f *os.File) bool { return xterm.IsTerminal(int(f.Fd())) }
 

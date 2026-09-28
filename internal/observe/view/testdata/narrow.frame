@@ -1,0 +1,20 @@
+ brig observe          5 акторов · sort: tree · 1s[K
+──────────────────────────────────────────────────[K
+  PID  NAME                        STATUS     MBOX[K
+▸    3 main_sup                    recv          0[K
+  ├    7 http                      running       4[K
+    ├    8 worker                  recv         40[K
+    └   10 —                       waiting       1[K
+  └    9 db_pool                   recv          0[K
+                                                  [K
+                                                  [K
+                                                  [K
+                                                  [K
+                                                  [K
+                                                  [K
+                                                  [K
+ crashes                                          [K
+  12:04:31  #14 worker  (:badarg, …)              [K
+  12:04:29  #11 db_conn  :down                    [K
+──────────────────────────────────────────────────[K
+ ↑↓ выбор   Enter детали   s сортировка   q выход [K

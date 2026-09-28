@@ -19,6 +19,9 @@ var ErrInterrupted = errors.New("interrupted")
 // errSessionClosed — сессию закрыли, пока ввод ещё исполнялся.
 var errSessionClosed = errors.New("internal: repl session closed")
 
+// ErrSessionClosed — то же, для вызывающего вне пакета.
+var ErrSessionClosed = errSessionClosed
+
 // sessionJob — одна порция работы актора сессии: функция ввода и её аргументы.
 type sessionJob struct {
 	fn   runtime.Value
@@ -167,6 +170,9 @@ func (s *Scheduler) poke() {
 	default:
 	}
 }
+
+// Wake будит цикл сессии, если он спит в select. Можно звать не с горутины цикла.
+func (s *Scheduler) Wake() { s.poke() }
 
 func (s *Scheduler) stopping() bool {
 	select {
@@ -482,6 +488,109 @@ func (s *Scheduler) CallNested(fn runtime.Value, args []runtime.Value) (runtime.
 		}
 	}
 	return a.result, nil
+}
+
+// YieldUntil крутит остальных акторов и обслуживает Snapshot, пока актор
+// сессии занят долгим нативом. done закрывает другая горутина, когда натив
+// может вернуться. onStop зовётся один раз при Interrupt или закрытии
+// сессии — чтобы та горутина завершилась и закрыла done; до этого цикл не
+// бросает ждущий Snapshot. serve — неблокирующая работа на горутине цикла
+// (например, ответ на запрос снимка). Звать только с горутины цикла.
+func (s *Scheduler) YieldUntil(done <-chan struct{}, onStop func(), serve func()) error {
+	if done == nil {
+		return errors.New("internal: YieldUntil without done")
+	}
+	if serve == nil {
+		serve = func() {}
+	}
+	var stopErr error
+	stopped := false
+	requestStop := func(err error) {
+		if stopped {
+			return
+		}
+		stopped = true
+		stopErr = err
+		if onStop != nil {
+			onStop()
+		}
+	}
+	for {
+		select {
+		case <-done:
+			if stopErr != nil {
+				return stopErr
+			}
+			if s.interrupt.Load() {
+				return ErrInterrupted
+			}
+			return nil
+		default:
+		}
+		if s.stopping() {
+			requestStop(errSessionClosed)
+			if onStop == nil {
+				return errSessionClosed
+			}
+			<-done
+			return stopErr
+		} else if !stopped && s.interrupt.Load() {
+			requestStop(ErrInterrupted)
+			if onStop == nil {
+				return ErrInterrupted
+			}
+		}
+		serve()
+		s.serveSnapshots()
+		if len(s.ready) == 0 {
+			if !s.waitYield(done) {
+				requestStop(errSessionClosed)
+				if onStop == nil {
+					return errSessionClosed
+				}
+			}
+			continue
+		}
+		b := s.ready[0]
+		s.ready = s.ready[1:]
+		if b == nil || b.pid == s.sessionPid || b.status == actorDone || b.status == actorFailed {
+			continue
+		}
+		b.status = actorReady
+		s.runSlice(b)
+	}
+}
+
+// waitYield — как waitSession, но ещё просыпается, когда done закрыт.
+// false — сессию закрыли.
+func (s *Scheduler) waitYield(done <-chan struct{}) bool {
+	next := s.nextDeadline()
+	var timer *time.Timer
+	var timerC <-chan time.Time
+	if !next.IsZero() {
+		d := time.Until(next)
+		if d <= 0 {
+			s.wakeExpired()
+			return true
+		}
+		timer = time.NewTimer(d)
+		defer timer.Stop()
+		timerC = timer.C
+	}
+	select {
+	case <-done:
+		return true
+	case reply := <-s.snaps:
+		reply <- s.snapshot()
+		return true
+	case <-timerC:
+		s.wakeExpired()
+		return true
+	case <-s.wake:
+		return true
+	case <-s.stop:
+		return false
+	}
 }
 
 // awaitNested — актор сессии a встал в recv вложенного вызова. Цикл

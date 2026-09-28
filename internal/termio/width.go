@@ -1,4 +1,4 @@
-package term
+package termio
 
 import (
 	"strings"
@@ -33,6 +33,64 @@ func isWide(c rune) bool {
 		c >= 0x1f300 && c <= 0x1f64f ||
 		c >= 0x1f900 && c <= 0x1f9ff ||
 		c >= 0x20000 && c <= 0x3fffd)
+}
+
+// Cells — ширина текста на экране; ANSI-последовательности места не занимают.
+func Cells(s string) int { return cells(s) }
+
+// Visible заменяет управляющие символы на `^X`, оставляя ANSI как есть.
+func Visible(s string) string { return visible(s) }
+
+// Fit обрезает s до width колонок. Хвост, который не влез, заменяется
+// на «…» (одна колонка). width <= 0 — пустая строка.
+func Fit(s string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	if cells(s) <= width {
+		return s
+	}
+	if width == 1 {
+		return "…"
+	}
+	var b strings.Builder
+	n := 0
+	limit := width - 1
+	for i := 0; i < len(s); {
+		if j := skipCSI(s, i); j > i {
+			b.WriteString(s[i:j])
+			i = j
+			continue
+		}
+		c, size := utf8.DecodeRuneInString(s[i:])
+		w := runeWidth(c)
+		if n+w > limit {
+			break
+		}
+		b.WriteString(s[i : i+size])
+		n += w
+		i += size
+	}
+	b.WriteString("…")
+	return b.String()
+}
+
+// Pad дополняет s пробелами справа до width колонок, предварительно обрезая.
+func Pad(s string, width int) string {
+	s = Fit(s, width)
+	if d := width - cells(s); d > 0 {
+		s += strings.Repeat(" ", d)
+	}
+	return s
+}
+
+// PadLeft дополняет s пробелами слева до width колонок.
+func PadLeft(s string, width int) string {
+	s = Fit(s, width)
+	if d := width - cells(s); d > 0 {
+		s = strings.Repeat(" ", d) + s
+	}
+	return s
 }
 
 // cells — ширина текста на экране; ANSI-последовательности `ESC [ … m`

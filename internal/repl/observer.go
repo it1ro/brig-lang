@@ -1,87 +1,90 @@
 package repl
 
 import (
-	"errors"
 	"fmt"
 	"math"
 	"regexp"
 	"sort"
 	"strings"
 
+	"github.com/it1ro/brig-lang/internal/actorview"
 	"github.com/it1ro/brig-lang/internal/runtime"
+	"github.com/it1ro/brig-lang/internal/vm"
 )
 
-// tree/info/top (§11.4). Сбор дерева, которому нужен блокирующий
-// which_children, — Observer.nodes на Brig (CallNested умеет await).
-// Печать — здесь, pretty-выводом T-204 для записей Actor.info.
+// tree/info/top (§11.4). Дерево собирает actorview из снимка и
+// Supervisor.which_children (CallNested умеет await). Печать записей
+// Actor.info — pretty-выводом T-204.
 
 func (s *Session) tree() (runtime.Value, error) {
-	fn := s.vm.Global("Observer.nodes")
-	if fn.Kind != runtime.KindFunction && fn.Kind != runtime.KindClosure {
-		return runtime.Unit, errors.New("internal: Observer.nodes is missing")
-	}
-	v, err := s.vm.Scheduler().CallNested(fn, nil)
+	snap := s.vm.Scheduler().SnapshotHere()
+	links, err := s.supervisorLinks(snap)
 	if err != nil {
 		return runtime.Unit, err
 	}
 	var b strings.Builder
-	if err := writeActorTree(&b, v, 0); err != nil {
-		return runtime.Unit, err
-	}
+	actorview.Walk(snap, links, func(depth int, a vm.ActorSnapshot) {
+		fmt.Fprintf(&b, "%s%s name=%s status=%s mailbox=%s\n",
+			strings.Repeat("  ", depth), pidText(a.Pid), nameText(a), statusText(a.Status), mailboxText(a.Mailbox))
+	})
 	if err := s.writeOut("%s", b.String()); err != nil {
 		return runtime.Unit, err
 	}
 	return runtime.Unit, nil
 }
 
-func writeActorTree(b *strings.Builder, v runtime.Value, depth int) error {
+func pidText(pid int) string {
+	return runtime.Value{Kind: runtime.KindPid, Pid: pid}.Inspect()
+}
+
+func nameText(a vm.ActorSnapshot) string {
+	if !a.HasName {
+		return runtime.Variant("None").Inspect()
+	}
+	return runtime.Variant("Some", a.Name).Inspect()
+}
+
+func statusText(status string) string { return runtime.Atom(status).Inspect() }
+
+func mailboxText(n int) string { return runtime.Int(int64(n)).Inspect() }
+
+// supervisorLinks — pid детей по which_children для каждого супервизора
+// в снимке. Порядок — порядок старта. Звать с горутины цикла.
+func (s *Session) supervisorLinks(snaps []vm.ActorSnapshot) (map[int][]int, error) {
+	fn := s.vm.Global("Supervisor.which_children")
+	if fn.Kind != runtime.KindFunction && fn.Kind != runtime.KindClosure {
+		return nil, fmt.Errorf("internal: Supervisor.which_children is missing")
+	}
+	links := make(map[int][]int)
+	for _, a := range snaps {
+		if a.InitialFn != actorview.SupervisorInitialFn {
+			continue
+		}
+		v, err := s.vm.Scheduler().CallNested(fn, []runtime.Value{{Kind: runtime.KindPid, Pid: a.Pid}})
+		if err != nil {
+			return nil, err
+		}
+		pids, err := childPids(v)
+		if err != nil {
+			return nil, err
+		}
+		links[a.Pid] = pids
+	}
+	return links, nil
+}
+
+func childPids(v runtime.Value) ([]int, error) {
 	if v.Kind != runtime.KindList {
-		return fmt.Errorf("internal: observer tree is %s", v.Inspect())
+		return nil, fmt.Errorf("internal: which_children is %s", v.Inspect())
 	}
-	for _, node := range v.List {
-		if err := writeActorNode(b, node, depth); err != nil {
-			return err
+	out := make([]int, 0, len(v.List))
+	for _, item := range v.List {
+		if item.Kind != runtime.KindTuple || len(item.Tuple) < 2 || item.Tuple[1].Kind != runtime.KindPid {
+			return nil, fmt.Errorf("internal: which_children row is %s", item.Inspect())
 		}
+		out = append(out, item.Tuple[1].Pid)
 	}
-	return nil
-}
-
-func writeActorNode(b *strings.Builder, node runtime.Value, depth int) error {
-	pid, err := recField(node, "pid")
-	if err != nil {
-		return err
-	}
-	name, err := recField(node, "name")
-	if err != nil {
-		return err
-	}
-	status, err := recField(node, "status")
-	if err != nil {
-		return err
-	}
-	mailbox, err := recField(node, "mailbox")
-	if err != nil {
-		return err
-	}
-	children, err := recField(node, "children")
-	if err != nil {
-		return err
-	}
-	fmt.Fprintf(b, "%s%s name=%s status=%s mailbox=%s\n",
-		strings.Repeat("  ", depth), pid.Inspect(), name.Inspect(), status.Inspect(), mailbox.Inspect())
-	return writeActorTree(b, children, depth+1)
-}
-
-func recField(node runtime.Value, name string) (runtime.Value, error) {
-	if node.Kind != runtime.KindRecord || node.Record == nil {
-		return runtime.Unit, fmt.Errorf("internal: observer node is %s", node.Inspect())
-	}
-	for _, f := range node.Record.Fields {
-		if f.Name == name {
-			return f.Val, nil
-		}
-	}
-	return runtime.Unit, fmt.Errorf("internal: observer node has no %s", name)
+	return out, nil
 }
 
 // infoActor — info(pid). Хелпер i — другой: он печатает вид значения.

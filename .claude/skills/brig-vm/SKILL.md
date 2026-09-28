@@ -163,11 +163,15 @@ description: >
   `exit`. Лимиты — `SPAWN` с битом `C&SpawnLimits`, запись в `R[B+1]`
   (`parseLimits`, ошибка до создания актора). `Actor.info` — натив,
   модуль `Actor` в списках встроенных (compiler, sema, loader).
-- **Хелперы observer (T-223)** живут в `internal/repl`, не в VM: `tree`/`info`/`top`.
-  `tree` узнаёт супервизор по `initial_fn` == `Supervisor.start$lambda$0$`
-  (`Observer.supervisor?`) и зовёт `Supervisor.which_children` через
-  `CallNested` — вложенный `await` крутит остальных. Новых опкодов нет.
-  `ActorInfoValue` — тот же `Actor.info` для натива на горутине цикла.
+- **Хелперы observer (T-223, T-224)** живут в `internal/repl`, не в VM:
+  `tree`/`info`/`top`/`observe`. Дерево — `internal/actorview` из снимка и
+  `Supervisor.which_children` (`CallNested`). `initial_fn` супервизора —
+  `Supervisor.start$lambda$0$` (`actorview.SupervisorInitialFn`, та же
+  строка, что `Observer.supervisor?`). `observe()` на TTY не держит цикл:
+  `YieldUntil` крутит остальных и `Snapshot`, TUI и его опросчик — на
+  другой горутине; `Wake` будит цикл из опросчика. Лента падений —
+  натив арности 3 в `Telemetry.attach`, без правок VM. `ActorInfoValue` —
+  тот же `Actor.info` для натива на горутине цикла.
 - **Интроспекция (§12.13, T-221, `introspect.go`).** `Actor.list`,
   `Actor.info` и Go-API `Snapshot` строятся одной `describe`: жив —
   `liveActor` (mainPid после выхода в таблице, но не жив); `status` из
@@ -175,9 +179,10 @@ description: >
   `watchers`/`watching` — из `target.watchers` (`watchEdges`, по ref, только
   живые концы), `Actor.watching` для этого не годится (повторный `watch`
   его перетирает). `initial_fn` — имя кадра при `Spawn`, у актора сессии
-  `<repl>`. `Snapshot()` — запрос в `s.snaps`, его обслуживают цикл сессии
-  между слайсами (`serveSnapshots`), `waitSession` и `awaitNested`; натив на
-  горутине цикла зовёт `SnapshotHere`. Без сессии `Snapshot` — ошибка.
+  `<repl>`.   `Snapshot()` — запрос в `s.snaps`, его обслуживают цикл сессии
+  между слайсами (`serveSnapshots`), `waitSession`, `awaitNested` и
+  `YieldUntil`; натив на горутине цикла зовёт `SnapshotHere`. Без сессии
+  `Snapshot` — ошибка. `ErrSessionClosed` — сессию закрыли во время ввода.
 - **Мёртвые акторы удаляются из `s.actors`** при `actorDone`/`actorFailed`
   через `reapActor` (кроме `mainPid`; I-F9, T-40 #29). Поэтому `watch` на
   завершившийся pid даёт немедленный `:down` с `:noproc`, `send` →
