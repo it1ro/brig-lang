@@ -107,6 +107,9 @@ func testFile(path string, t *testTally) {
 	}
 	newVM := func() *vm.VM {
 		m := vm.New()
+		if err := compiler.InstallStdlib(m); err != nil {
+			fail(exitInternal, "brig: %v", err)
+		}
 		for name, fn := range img.Functions {
 			m.DefineGlobal(name, vm.FuncValue(fn))
 		}

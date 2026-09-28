@@ -18,6 +18,8 @@ description: >
    - `make test-vm` / `make test-compiler`
    - `go test ./internal/sema/...`
    - `make test-one PKG=./internal/xxx TEST=TestYyy` — для одного теста
+   - `make test-stdlib` — доктесты `##` модулей `stdlib/*.brig` через
+     `brig test` (они же — `go test ./stdlib/ ./cmd/brig/`)
 2. **`make ci-quick`** — `fmt-check` + `vet` + focused tests
    (`test-lexer test-parser test-roundtrip test-vm test-compiler`) +
    `run-examples`. Не требует `golangci-lint`, быстрый — гонять перед

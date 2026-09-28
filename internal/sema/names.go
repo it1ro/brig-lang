@@ -4,8 +4,10 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/it1ro/brig-lang/internal/ast"
+	"github.com/it1ro/brig-lang/stdlib"
 )
 
 // Проход имён (§F.3, T-139): вызов имени, которое не связано как значение,
@@ -172,13 +174,55 @@ var modBuiltins = map[string]map[string]sig{
 	"Sys": {"args": exact(0)},
 }
 
-// isBuiltinMod совпадает с loader.builtinModules и compiler.isPreludeModule.
-func isBuiltinMod(name string) bool {
+// isNativeMod — встроенный модуль на Go. Список совпадает с
+// loader.builtinModules и compiler.isNativeModule.
+func isNativeMod(name string) bool {
 	switch name {
 	case "Vec", "Map", "Str", "Bytes", "Json", "Test", "Sys", "Prelude":
 		return true
 	}
 	return false
+}
+
+// isBuiltinMod — модуль, доступный без import (§11.1): Go-нативный или
+// встроенный модуль на Brig (stdlib, T-146).
+func isBuiltinMod(name string) bool { return isNativeMod(name) || stdlib.IsModule(name) }
+
+// stdlibWorld — сигнатуры и приватность модулей stdlib на Brig. Строится
+// из тех же встроенных исходников, что компилирует compiler.StdlibImage.
+var stdlibWorld = sync.OnceValue(func() *World {
+	ms := stdlib.MustModules()
+	mods := make([]Module, len(ms))
+	for i, m := range ms {
+		mods[i] = Module{Name: m.Name, Prog: m.Prog}
+	}
+	return NewWorld(mods)
+})
+
+// worldFor — где искать функции модуля full: модуль stdlib, которого нет
+// среди модулей программы, — во встроенном мире stdlib.
+func (c *checker) worldFor(full string) *World {
+	if stdlib.IsModule(full) && !c.world.has(full) {
+		return stdlibWorld()
+	}
+	return c.world
+}
+
+// stdlibPub — публичные функции модулей stdlib (для подсветки). Их
+// документацию h строит из исходника, как у загруженных модулей.
+func stdlibPub() map[string]map[string]sig {
+	w := stdlibWorld()
+	out := make(map[string]map[string]sig, len(w.mods))
+	for mod, fns := range w.mods {
+		pub := make(map[string]sig, len(fns))
+		for name, sg := range fns {
+			if !w.priv[mod][name] {
+				pub[name] = sg
+			}
+		}
+		out[mod] = pub
+	}
+	return out
 }
 
 func lookupBuiltin(mod, member string) (sig, bool) {
@@ -362,7 +406,7 @@ func (c *checker) checkQual(mod, member string, args []ast.Expr, at ast.Node) {
 		c.err(line, col, "module %s is not imported", mod)
 		return
 	}
-	if found && full != c.module && c.world.private(full, member) {
+	if found && full != c.module && c.worldFor(full).private(full, member) {
 		line, col := posOf(at)
 		argc, _ := argcOf(args)
 		c.err(line, col, "%s/%d is private to %s", member, argc, full)
@@ -390,11 +434,11 @@ func (c *checker) qualSig(mod, member string) (s sig, full string, found, missin
 	default:
 		return sig{}, mod, false, false
 	}
-	if isBuiltinMod(full) {
+	if isNativeMod(full) {
 		s, found = lookupBuiltin(full, member)
 		return s, full, found, false
 	}
-	s, found = c.world.lookup(full, member)
+	s, found = c.worldFor(full).lookup(full, member)
 	return s, full, found, false
 }
 
@@ -511,11 +555,15 @@ func BuiltinModules() map[string][]string {
 	}
 	sort.Strings(pre)
 	out["Prelude"] = pre
+	for mod, fns := range stdlibPub() {
+		out[mod] = sortedKeys(fns)
+	}
 	return out
 }
 
-// BuiltinArities — арности встроенных функций для документации h (§11.4),
-// из тех же сигнатур, что проверяет sema. Ключ "" — голые имена прелюдии,
+// BuiltinArities — арности Go-нативных встроенных функций для документации
+// h (§11.4), из тех же сигнатур, что проверяет sema. Модули stdlib на Brig
+// сюда не входят: их h берёт из исходника. Ключ "" — голые имена прелюдии,
 // "Repl" — хелперы консоли, остальные — встроенные модули. Метка — "2"
 // или "0.." у вариадика, по возрастанию.
 func BuiltinArities() map[string]map[string][]string {

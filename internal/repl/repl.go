@@ -84,6 +84,10 @@ func New(m *vm.VM, out io.Writer) *Session {
 		out:      out,
 		diagFile: "<repl>",
 	}
+	// Встроенные модули на Brig (T-146) — как Go-нативные из vm.New.
+	if err := compiler.InstallStdlib(m); err != nil {
+		panic(err)
+	}
 	if err := m.StartSession(); err != nil {
 		panic(err)
 	}

@@ -420,6 +420,9 @@ func runModule(file string, progArgs []string, dump bool) {
 
 	machine := vm.New()
 	machine.SetArgs(progArgs)
+	if err := compiler.InstallStdlib(machine); err != nil {
+		fail(exitInternal, "brig: %v", err)
+	}
 	for name, fn := range img.Functions {
 		machine.DefineGlobal(name, vm.FuncValue(fn))
 	}

@@ -20,6 +20,7 @@ import (
 	"github.com/it1ro/brig-lang/internal/ast"
 	"github.com/it1ro/brig-lang/internal/runtime"
 	"github.com/it1ro/brig-lang/internal/vm"
+	"github.com/it1ro/brig-lang/stdlib"
 )
 
 // Verify — если true, компилятор прогоняет vm.Verify по каждому чанку
@@ -51,6 +52,12 @@ type Compiler struct {
 	// имя модуля или `M.f`, компилируется как значение для хелпера.
 	// `M.f` как значение вне этого места — срез T-144.
 	replHelpers bool
+	// preludeQualified — входной модуль исполнения неизвестен при
+	// компиляции (stdlib, T-146: её образ ставится в ВМ любой программы).
+	// Голое имя функции не своего модуля в не-входном модуле — всегда
+	// `Prelude.name`: fn входного модуля программы лежат под голыми
+	// именами и затенили бы прелюдию.
+	preludeQualified bool
 }
 
 // Module — модуль программы для CompileProgram (§11.1): имя, путь файла
@@ -688,12 +695,15 @@ type modRef struct {
 func (c *Compiler) resolveModule(name string) (modRef, bool) {
 	full, ok := c.cur.locals[name]
 	if !ok {
-		if !isPreludeModule(name) {
+		if !isBuiltinModule(name) {
 			return modRef{}, false
 		}
 		full = name
 	}
-	if isPreludeModule(full) {
+	// Go-нативный модуль — всегда глобалы ВМ; модуль stdlib на Brig —
+	// тоже, если он не компилируется вместе с программой (его функции
+	// ставит InstallStdlib под теми же именами `M.f`).
+	if isNativeModule(full) || (stdlib.IsModule(full) && c.mods[full] == nil) {
 		return modRef{builtin: full, full: full}, true
 	}
 	return modRef{full: full, mod: c.mods[full]}, true
@@ -1511,11 +1521,15 @@ func (fc *funcCompiler) compileVar(name string, d dest) error {
 // своя fn модуля, иначе прелюдия. fn входного модуля лежат под голыми
 // именами и затеняют прелюдию только в нём самом: в других модулях имя
 // прелюдии, совпавшее с fn входного, берётся как `Prelude.name` (§11.5).
+// С preludeQualified — любое имя функции (конструкторы и `None` — не
+// функции, их fn входного модуля не затеняет).
 func (c *Compiler) bareGlobal(name string) string {
 	switch {
 	case c.cur.fns[name]:
 		return c.cur.prefix + name
 	case c.cur != c.entry && c.entry.fns[name]:
+		return "Prelude." + name
+	case c.cur != c.entry && c.preludeQualified && !isUpperName(name):
 		return "Prelude." + name
 	}
 	return name
@@ -2131,12 +2145,20 @@ func (fc *funcCompiler) compileArg(a ast.Expr, r int, helperH bool) error {
 	return fc.compileExpr(a, val(r))
 }
 
-func isPreludeModule(name string) bool {
+// isNativeModule — встроенный модуль на Go: его функции ставит в ВМ
+// vm.New. Список совпадает с loader.builtinModules и sema.isNativeMod.
+func isNativeModule(name string) bool {
 	switch name {
 	case "Vec", "Map", "Str", "Bytes", "Json", "Test", "Sys", "Prelude":
 		return true
 	}
 	return false
+}
+
+// isBuiltinModule — модуль, доступный без import (§11.1): Go-нативный
+// или встроенный модуль на Brig (stdlib, T-146).
+func isBuiltinModule(name string) bool {
+	return isNativeModule(name) || stdlib.IsModule(name)
 }
 
 // ---- collections ----

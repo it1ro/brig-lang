@@ -17,6 +17,7 @@ import (
 	"github.com/it1ro/brig-lang/internal/ast"
 	"github.com/it1ro/brig-lang/internal/loader"
 	"github.com/it1ro/brig-lang/internal/runtime"
+	"github.com/it1ro/brig-lang/stdlib"
 )
 
 // LoadFile загружает файл пользователя: модуль — в сессию (main не
@@ -281,16 +282,12 @@ func (p *privWalk) VisitExpr(e ast.Expr) error {
 		return nil
 	}
 	mod, member, ok := splitMember(segs)
-	if !ok || !p.s.deps[mod] {
+	if !ok {
 		return nil
 	}
-	m := p.s.mods[mod]
-	if m == nil || !m.priv[member] || !hasFn(m, mod+"."+member) {
+	arity, private := p.s.privateDep(mod, member)
+	if !private {
 		return nil
-	}
-	arity := 0
-	if m.arity != nil {
-		arity = m.arity[member]
 	}
 	msg := fmt.Sprintf("%s/%d is private to %s", member, arity, mod)
 	show := p.src != "" && p.s.diagFile == "<repl>"
@@ -299,6 +296,35 @@ func (p *privWalk) VisitExpr(e ast.Expr) error {
 	}
 	p.err = &printedError{err: fmt.Errorf("%s", msg)}
 	return p.err
+}
+
+// privateDep — mod.member — не-pub функция зависимости или встроенного
+// модуля на Brig (stdlib, T-146); arity — её арность для сообщения.
+func (s *Session) privateDep(mod, member string) (arity int, private bool) {
+	if stdlib.IsModule(mod) && s.mods[mod] == nil {
+		for _, m := range stdlib.MustModules() {
+			if m.Name != mod {
+				continue
+			}
+			for _, d := range m.Prog.Decls {
+				if fd, ok := d.(ast.FuncDecl); ok && fd.FnName() == member && !fd.IsPub() {
+					return fnArity(fd), true
+				}
+			}
+		}
+		return 0, false
+	}
+	if !s.deps[mod] {
+		return 0, false
+	}
+	m := s.mods[mod]
+	if m == nil || !m.priv[member] || !hasFn(m, mod+"."+member) {
+		return 0, false
+	}
+	if m.arity != nil {
+		arity = m.arity[member]
+	}
+	return arity, true
 }
 
 func hasFn(m *sessionModule, name string) bool {

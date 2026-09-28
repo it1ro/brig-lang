@@ -22,6 +22,7 @@ import (
 	"github.com/it1ro/brig-lang/internal/ast"
 	"github.com/it1ro/brig-lang/internal/lexer"
 	"github.com/it1ro/brig-lang/internal/parser"
+	"github.com/it1ro/brig-lang/stdlib"
 )
 
 // Module — один загруженный модуль.
@@ -59,15 +60,18 @@ func (e *Error) Error() string {
 
 func (e *Error) Unwrap() error { return e.Err }
 
-// builtinModules — встроенные модули: доступны без файла, не загружаются.
-// Список совпадает с isPreludeModule в internal/compiler.
+// builtinModules — встроенные модули на Go: доступны без файла, не
+// загружаются. Список совпадает с isNativeModule в internal/compiler.
 var builtinModules = map[string]bool{
 	"Vec": true, "Map": true, "Str": true, "Bytes": true,
 	"Json": true, "Test": true, "Sys": true, "Prelude": true,
 }
 
-// IsBuiltin сообщает, что name — встроенный модуль.
-func IsBuiltin(name string) bool { return builtinModules[name] }
+// IsBuiltin сообщает, что name — встроенный модуль: на Go или на Brig
+// (stdlib, T-146). Встроенный модуль не ищется среди файлов программы:
+// `import List` не читает list.brig рядом, исходник stdlib встроен в
+// бинарник, и его функции ставит в ВМ compiler.InstallStdlib.
+func IsBuiltin(name string) bool { return builtinModules[name] || stdlib.IsModule(name) }
 
 type loader struct {
 	root   string
