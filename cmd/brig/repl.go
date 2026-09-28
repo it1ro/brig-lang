@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 
 	"github.com/it1ro/brig-lang/internal/highlight"
@@ -27,8 +28,10 @@ func prompt(next int) string { return fmt.Sprintf("brig[%d]> ", next) }
 // На терминале — редактор строки с историей (consoleLoop); без TTY
 // (`brig < file` без аргументов) сюда не попадает: stdin исполняется
 // как script и значения не печатаются.
-func replLoop() {
-	s := repl.New(vm.New(), os.Stderr)
+func replLoop(inv invocation) {
+	machine := vm.New()
+	machine.SetArgs(inv.progArgs)
+	s := repl.New(machine, os.Stderr)
 	defer s.Close()
 	// Во время ввода терминал в raw mode, и Ctrl-C — байт редактора.
 	// Пока ввод исполняется, терминал обычный: Ctrl-C приходит как SIGINT
@@ -41,13 +44,30 @@ func replLoop() {
 			s.Interrupt()
 		}
 	}()
+	if !inv.noInit {
+		runInit(s)
+	}
+	for _, path := range inv.files {
+		if err := loadTarget(s, path); err != nil {
+			break
+		}
+	}
+	fe := repl.Plain{Out: os.Stdout, Err: os.Stderr}
+	if inv.expr != "" {
+		if err := fe.Eval(s, inv.expr); err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			os.Exit(exitInternal)
+		}
+	}
+
 	tty := term.IsTerminal(os.Stdin)
+	plain := inv.dash || !tty || !term.IsTerminal(os.Stdout)
 	var err error
-	if tty && term.IsTerminal(os.Stdout) {
+	if !plain {
 		err = consoleLoop(s)
 	} else {
-		fe := repl.Plain{In: os.Stdin, Out: os.Stdout, Err: os.Stderr}
-		if tty {
+		fe.In = os.Stdin
+		if tty && !inv.dash {
 			fmt.Fprintln(os.Stderr, replBanner)
 			fe.Prompt = func(next int, more bool) string {
 				if more {
@@ -62,9 +82,48 @@ func replLoop() {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(exitInternal)
 	}
-	if tty {
+	if tty && !inv.dash {
 		fmt.Fprintln(os.Stderr, "bye")
 	}
+}
+
+// runInit исполняет ~/.config/brig/init.brig, если файл есть.
+// Нет файла — не ошибка. Ошибка в файле печатается, сессия продолжается.
+func runInit(s *repl.Session) {
+	path, err := initFile()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: init: %v\n", err)
+		return
+	}
+	fi, err := os.Stat(path)
+	if err != nil || fi.IsDir() {
+		return
+	}
+	_ = s.LoadFile(path, false)
+}
+
+func initFile() (string, error) {
+	if dir := os.Getenv("XDG_CONFIG_HOME"); filepath.IsAbs(dir) {
+		return filepath.Join(dir, "brig", "init.brig"), nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, ".config", "brig", "init.brig"), nil
+}
+
+// loadTarget грузит файл или каталог проекта в сессию. Ошибка уже
+// напечатана; REPL открывается в любом случае.
+func loadTarget(s *repl.Session, path string) error {
+	fi, err := os.Stat(path)
+	if err != nil {
+		return s.LoadFile(path, true)
+	}
+	if fi.IsDir() {
+		return s.LoadProject(path)
+	}
+	return s.LoadFile(path, true)
 }
 
 // consoleLoop — REPL на терминале: редактор строки (term.Terminal) и
@@ -76,7 +135,7 @@ func consoleLoop(s *repl.Session) error {
 	t.NeedMore = s.NeedMore
 	t.Indent = repl.Indent
 	t.IndentWidth = repl.IndentWidth
-	t.History = openHistory()
+	t.History = openHistory(s.ProjectRoot())
 	pal := highlight.PaletteFromEnv(nil)
 	t.Highlight = func(src string, cursor int) string {
 		return highlight.Highlight(src, cursor, s.HighlightEnv(), pal)
@@ -108,7 +167,16 @@ func consoleLoop(s *repl.Session) error {
 		}
 		if err := t.History.Add(src); err != nil {
 			fmt.Fprintf(os.Stderr, "warning: history: %v\n", err)
-			t.History.Path = ""
+			project := s.ProjectRoot()
+			if project != "" && t.History.Path == projectHistory(project) {
+				t.History = openGlobalHistory()
+				if err := t.History.Add(src); err != nil {
+					fmt.Fprintf(os.Stderr, "warning: history: %v\n", err)
+					t.History.Path = ""
+				}
+			} else {
+				t.History.Path = ""
+			}
 		}
 		if err := fe.Eval(s, src); err != nil {
 			return err
@@ -116,9 +184,29 @@ func consoleLoop(s *repl.Session) error {
 	}
 }
 
-// openHistory загружает историю консоли. Файл недоступен — предупреждение
-// и история только в памяти.
-func openHistory() *term.History {
+func projectHistory(root string) string {
+	return filepath.Join(root, ".brig", "history")
+}
+
+// openHistory — история проекта `<корень>/.brig/history` для `-i` каталога.
+// Нет прав — глобальная история (T-202).
+func openHistory(project string) *term.History {
+	if project != "" {
+		dir := filepath.Join(project, ".brig")
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: history: %v\n", err)
+		} else if h, err := term.LoadHistory(projectHistory(project)); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: history: %v\n", err)
+		} else {
+			return h
+		}
+	}
+	return openGlobalHistory()
+}
+
+// openGlobalHistory загружает историю консоли. Файл недоступен —
+// предупреждение и история только в памяти.
+func openGlobalHistory() *term.History {
 	path, err := term.DefaultHistoryPath()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "warning: history: %v\n", err)

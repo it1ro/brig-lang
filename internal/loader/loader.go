@@ -82,15 +82,25 @@ type loaded struct {
 }
 
 // Load загружает входной файл entry и все модули, достижимые из него.
-// Ошибка чтения входного файла возвращается как есть; остальные
-// ошибки — *Error.
+// Корень импортов — каталог entry. Ошибка чтения входного файла
+// возвращается как есть; остальные ошибки — *Error.
 func Load(entry string) (*Graph, error) {
+	return LoadFrom(filepath.Dir(entry), entry)
+}
+
+// LoadFrom — Load, но импорты разрешаются от root, а не от каталога
+// entry. Вложенный файл проекта (`lib/http/client.brig`) тогда находит
+// соседей от корня модулей. Пустой root — каталог entry, как у Load.
+func LoadFrom(root, entry string) (*Graph, error) {
+	if root == "" {
+		root = filepath.Dir(entry)
+	}
 	src, err := os.ReadFile(entry)
 	if err != nil {
 		return nil, err
 	}
 	l := &loader{
-		root:   filepath.Dir(entry),
+		root:   root,
 		byPath: map[string]*loaded{},
 	}
 	l.graph = &Graph{Root: l.root}
@@ -221,6 +231,51 @@ func pathName(rel string) string {
 		segs[i] = b.String()
 	}
 	return strings.Join(segs, ".")
+}
+
+// ProjectRoot — каталог с `project.brig`, ближайший к start при подъёме
+// вверх. start — файл или каталог. Нет манифеста — ошибка.
+func ProjectRoot(start string) (string, error) {
+	abs, err := filepath.Abs(start)
+	if err != nil {
+		return "", err
+	}
+	fi, err := os.Stat(abs)
+	if err != nil {
+		return "", err
+	}
+	dir := abs
+	if !fi.IsDir() {
+		dir = filepath.Dir(abs)
+	}
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "project.brig")); err == nil {
+			return dir, nil
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return "", fmt.Errorf("project.brig not found from %s", start)
+		}
+		dir = parent
+	}
+}
+
+// FileFor — файл модуля name под корнем root (§11.1), если он есть
+// и путь обратно даёт то же имя. Нет файла — ("", false).
+func FileFor(root, name string) (string, bool) {
+	if IsBuiltin(name) || name == "" {
+		return "", false
+	}
+	rel := modulePath(name)
+	if pathName(rel) != name {
+		return "", false
+	}
+	path := filepath.Join(root, rel)
+	fi, err := os.Stat(path)
+	if err != nil || fi.IsDir() {
+		return "", false
+	}
+	return path, true
 }
 
 // modulePath — относительный путь файла по имени модуля, обратное к

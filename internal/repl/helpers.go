@@ -275,6 +275,19 @@ func displayName(name string) string {
 	return name
 }
 
+func clauseArity(lists [][]ast.Pattern) int {
+	if len(lists) == 0 {
+		return 0
+	}
+	n := len(lists[0])
+	if n > 0 {
+		if _, ok := lists[0][n-1].(ast.SpreadPattern); ok {
+			n--
+		}
+	}
+	return n
+}
+
 func sigsFrom(name string, lists [][]ast.Pattern) []clauseSig {
 	out := make([]clauseSig, 0, len(lists))
 	for _, ps := range lists {
@@ -344,6 +357,12 @@ func (s *Session) indexModule(m *loader.Module) {
 			lists = append(lists, cl.Params)
 		}
 		qualified := m.Name + "." + fd.FnName()
+		if sm := s.mods[m.Name]; sm != nil {
+			if sm.arity == nil {
+				sm.arity = map[string]int{}
+			}
+			sm.arity[fd.FnName()] = clauseArity(lists)
+		}
 		doc := &helpDoc{
 			name: qualified,
 			text: fnText[fd.FnName()],
@@ -353,6 +372,10 @@ func (s *Session) indexModule(m *loader.Module) {
 			continue
 		}
 		s.docs[qualified] = doc
+		// Зависимость: h(M) перечисляет только pub. До T-143 pub нет.
+		if s.deps[m.Name] {
+			continue
+		}
 		funs = append(funs, fd.FnName()+"/"+doc.sigs[0].label)
 	}
 	sort.Strings(funs)
@@ -589,20 +612,44 @@ func sourceIsModule(src []byte) (bool, error) {
 }
 
 func (s *Session) runScript(path, src string) error {
+	if err := s.execScript(path, src, true); err != nil {
+		if errors.Is(err, vm.ErrInterrupted) {
+			return err
+		}
+		return loadErr(path, err)
+	}
+	return nil
+}
+
+// execScript исполняет script-файл как вводы сессии. here — вызов с
+// горутины актора (хелпер load). wrap не используется здесь: ошибку
+// оборачивает runScript, а загрузка CLI печатает её как есть.
+func (s *Session) execScript(path, src string, here bool) error {
 	lines, err := parser.ParseReplInput(src)
 	if err != nil {
-		return loadErr(path, err)
+		if here {
+			return err
+		}
+		return s.present(path, src, err)
 	}
 	prev := s.diagFile
 	s.diagFile = path
 	defer func() { s.diagFile = prev }()
 	for _, line := range lines {
-		res, err := s.evalLineHere(src, line)
+		var res Result
+		if here {
+			res, err = s.evalLineHere(src, line)
+		} else {
+			res, err = s.evalLine(src, line)
+		}
 		if errors.Is(err, vm.ErrInterrupted) {
 			return err
 		}
 		if err != nil {
-			return loadErr(path, err)
+			if here {
+				return err
+			}
+			return s.present(path, src, err)
 		}
 		if res.Value.Kind != runtime.KindUnit {
 			s.history = append(s.history, res.Value)

@@ -1,0 +1,10 @@
+module App
+
+import Util
+
+fn secret() -> 4
+
+fn open() -> Util.n()
+
+fn main() ->
+    print("ran-main")
