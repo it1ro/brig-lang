@@ -137,20 +137,3 @@ func positiveInt(v runtime.Value) (int64, bool) {
 	}
 	return math.MaxInt64, v.AsBig().Sign() > 0
 }
-
-// actorInfo — Actor.info(pid): Some({ reductions, alloc_bytes, mailbox,
-// turn_reductions, turn_alloc_bytes }) живого актора, None — мёртвого или
-// несуществующего. Для чужого актора значения racy, как mailbox_size.
-func (s *Scheduler) actorInfo(pid int) runtime.Value {
-	a, ok := s.actors[pid]
-	if !ok || a.status == actorDone || a.status == actorFailed {
-		return runtime.Variant("None")
-	}
-	return runtime.Variant("Some", runtime.Record("", []runtime.RecordField{
-		{Name: "reductions", Val: runtime.Int(a.pastReds + a.turnReds)},
-		{Name: "alloc_bytes", Val: runtime.Int(a.pastAlloc + a.turnAlloc)},
-		{Name: "mailbox", Val: runtime.Int(int64(len(a.mailbox)))},
-		{Name: "turn_reductions", Val: runtime.Int(a.turnReds)},
-		{Name: "turn_alloc_bytes", Val: runtime.Int(a.turnAlloc)},
-	}))
-}

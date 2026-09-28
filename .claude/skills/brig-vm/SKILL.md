@@ -153,6 +153,16 @@ description: >
   `exit`. Лимиты — `SPAWN` с битом `C&SpawnLimits`, запись в `R[B+1]`
   (`parseLimits`, ошибка до создания актора). `Actor.info` — натив,
   модуль `Actor` в списках встроенных (compiler, sema, loader).
+- **Интроспекция (§12.13, T-221, `introspect.go`).** `Actor.list`,
+  `Actor.info` и Go-API `Snapshot` строятся одной `describe`: жив —
+  `liveActor` (mainPid после выхода в таблице, но не жив); `status` из
+  `actorStatus` + `awaiting`; `name` — первая запись `s.names` с этим pid;
+  `watchers`/`watching` — из `target.watchers` (`watchEdges`, по ref, только
+  живые концы), `Actor.watching` для этого не годится (повторный `watch`
+  его перетирает). `initial_fn` — имя кадра при `Spawn`, у актора сессии
+  `<repl>`. `Snapshot()` — запрос в `s.snaps`, его обслуживают цикл сессии
+  между слайсами (`serveSnapshots`), `waitSession` и `awaitNested`; натив на
+  горутине цикла зовёт `SnapshotHere`. Без сессии `Snapshot` — ошибка.
 - **Мёртвые акторы удаляются из `s.actors`** при `actorDone`/`actorFailed`
   через `reapActor` (кроме `mainPid`; I-F9, T-40 #29). Поэтому `watch` на
   завершившийся pid даёт немедленный `:down` с `:noproc`, `send` →
