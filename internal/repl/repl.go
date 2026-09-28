@@ -54,6 +54,12 @@ type Session struct {
 	diagFile string          // имя в диагностике sema; у REPL — `<repl>`
 	seq      int             // счётчик инструкций: префикс глобальных имён
 	history  []runtime.Value // значения пронумерованных вводов, history[n-1] — ввод n
+
+	// Модули пользователя (modules.go): roots — файлы LoadModules,
+	// mods — загруженные модули по имени, gen — поколение кода (recompile).
+	roots []string
+	mods  map[string]*sessionModule
+	gen   int
 }
 
 // New создаёт сессию поверх ВМ и запускает её актор (§11.4): планировщик
