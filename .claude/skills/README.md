@@ -15,6 +15,7 @@ Claude Code и Cursor подхватывают `.claude/skills/<name>/SKILL.md`
 | Skill | Когда триггерится |
 |---|---|
 | `brig-workflow` | Начало и конец любой задачи с доски: issue, ветка, коммиты `[T-NN]`, PR, статусы, новые issues |
+| `brig-design-decision` | Label `design-decision`: решение и реализация — один issue, PR на нём же; «уже сделано» проверять по этому PR |
 | `brig-overview` | Любая задача — принципы §0, источники истины, структура репо, где искать известные findings |
 | `brig-lexer` | Правки `internal/lexer/*`, офсайд-алгоритм, escape-последовательности |
 | `brig-parser-ast` | Правки `internal/parser/*`, `internal/ast/*`, грамматика `brig.ebnf` |

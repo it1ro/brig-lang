@@ -18,7 +18,7 @@ description: >
 - Работа начинается только с issue, у которого label `audit` (finding аудита) или `spec-gap` (пробел относительно спеки §16) и карточка на доске 5 в статусе **Todo**. Нет issue — сначала создать (раздел «Новый issue»), не работать «просто так».
 - Прочитать: `gh issue view <N> --repo it1ro/brig-lang --json title,body,labels`. Body — это контракт: **Файлы**, **Тест-якорь**, **DoD**, **НЕ делать**, строки `> Blocked by #M`.
 - Проверить, что все `Blocked by` закрыты: `gh issue view <M> --json state`. Хоть один открыт — стоп, сообщить.
-- Label `design-decision` или `human` — не брать, это работа человека.
+- Label `design-decision` или `human` — не брать, это работа человека. У DD решение и реализация — один issue, PR на нём же (`brig-design-decision`): «уже сделано» смотреть по этому PR, не по коду мимо тикета.
 - Effort large — работать только моделью из поля Model (`opus` и т.п.).
 - Подтянуть skills затронутых подсистем (`brig-compiler`, `brig-vm`, …) и соответствующий finding в `AUDIT_REPORT.md` по ID из meta (`findings: [...]`).
 
