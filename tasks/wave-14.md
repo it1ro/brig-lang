@@ -68,7 +68,7 @@
 - T-137 (#195), компиляция программы из нескольких модулей — для T-209
   (закрыт);
 - T-139 (#197), неизвестные имена в `brig check` — для T-206;
-- #202, детерминированный порядок ключей Map при печати — для T-204;
+- T-212 (#202), детерминированный порядок ключей Map при печати — для T-204;
 - остальные задачи волны от других волн не зависят.
 
 **Зачем:** Brig — язык с акторами и неизменяемыми данными. Его основной
@@ -105,7 +105,7 @@ API из T-206. `--watch` для `-i`, post-mortem после raise, `-I` пут
 | 2 | T-201 [#239](https://github.com/it1ro/brig-lang/issues/239) | `repl.Session`: ядро без транспорта, полнота ввода по лексеру | T-200 | opus | medium | — |
 | 3 | T-202 [#240](https://github.com/it1ro/brig-lang/issues/240) | Редактор строки на `x/term`, история, bracketed paste | T-201 | opus | large | T-205, T-207 |
 | 4 | T-203 [#241](https://github.com/it1ro/brig-lang/issues/241) | Подсветка: `internal/highlight`, проверка имён, скобки, отступы | T-202 | opus | large | T-205, T-206 |
-| 5 | T-204 [#242](https://github.com/it1ro/brig-lang/issues/242) | Вывод: pretty-printer, ошибки с кодом и stack trace | T-201, T-203, #202 | sonnet | medium | T-206 |
+| 5 | T-204 [#242](https://github.com/it1ro/brig-lang/issues/242) | Вывод: pretty-printer, ошибки с кодом и stack trace | T-201, T-203, T-212 | sonnet | medium | T-206 |
 | 6 | T-205 [#243](https://github.com/it1ro/brig-lang/issues/243) | VM: REPL-актор, фоновый планировщик, прерывание | T-200, T-201 | opus | large | T-202, T-203 |
 | 7 | T-206 [#244](https://github.com/it1ro/brig-lang/issues/244) | Хелперы консоли и API регистрации | T-139, T-201, T-205 | opus | medium | T-203, T-204 |
 | 8 | T-207 [#245](https://github.com/it1ro/brig-lang/issues/245) | CLI: `brig` без подкоманд — файл-вход, `-e`, `-`, script-режим | T-200, T-201 | opus | medium | T-202…T-206 |

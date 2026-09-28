@@ -8,5 +8,5 @@ fn main() ->
     print(Json.encode(Some(42)))
     print(Json.encode(None))
 
-    parsed = Json.decode("{\"x\": [true, false]}")
+    parsed = Json.decode("{\"x\": 1, \"y\": [true, false]}")
     print(parsed)

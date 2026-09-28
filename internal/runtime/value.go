@@ -319,8 +319,11 @@ func (v Value) Inspect() string {
 	case KindVector:
 		return "%[" + inspectJoin(v.Vector) + "]"
 	case KindMap:
-		parts := make([]string, len(v.Map))
-		for i, e := range v.Map {
+		// Печать и to_str — по term order (§7.4), как сравнение карт.
+		// Порядок вставки и обход map при Json.decode не наблюдаются.
+		entries := sortedEntries(v.Map)
+		parts := make([]string, len(entries))
+		for i, e := range entries {
 			parts[i] = inspectLit(e.Key) + " => " + inspectLit(e.Val)
 		}
 		return "%{" + strings.Join(parts, ", ") + "}"
