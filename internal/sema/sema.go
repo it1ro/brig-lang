@@ -340,23 +340,19 @@ func (c *checker) checkStmt(s ast.Stmt) {
 }
 
 // checkParams — variadic-параметр обязан быть последним (§6.3) +
-// параметры связываются в текущей области.
+// параметры связываются в текущей области. Диагностика указывает на сам
+// параметр; позиция объявления site — только если у паттерна её нет.
 func (c *checker) checkParams(params []ast.Pattern, site ast.Node) {
-	line, col := posOf(site)
 	for i, p := range params {
-		if sp, ok := p.(ast.SpreadPattern); ok {
-			if i != len(params)-1 {
-				c.err(line, col, "variadic parameter %q must be last (§6.3)", p)
+		if _, ok := p.(ast.SpreadPattern); ok && i != len(params)-1 {
+			line, col := posOf(p)
+			if line == 0 {
+				line, col = posOf(site)
 			}
-			// Имя параметра связываем без префикса `..` — оно
-			// доступно в теле как обычная переменная.
-			c.bind(sp.SpreadName(), "param", line, col)
-			continue
+			c.err(line, col, "variadic parameter %q must be last (§6.3)", p)
 		}
-		if id, ok := p.(ast.IdentPattern); ok {
-			c.bind(id.IdentName(), "param", line, col)
-			continue
-		}
+		// Имя variadic-параметра связывается без префикса `..` — оно
+		// доступно в теле как обычная переменная.
 		c.checkPatternBinding(p, "param")
 	}
 }

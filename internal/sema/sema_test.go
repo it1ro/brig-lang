@@ -343,6 +343,34 @@ fn f(print) ->
 `, "shadows prelude")
 }
 
+// Диагностика параметра указывает на сам параметр, а не на `fn`:
+// у `fn f(a, print)` — строка 2, колонка 9.
+func TestParamDiagnosticPosition(t *testing.T) {
+	r := check(t, `module Main
+fn f(a, print) ->
+    print
+fn g(..xs, b) -> b
+`)
+	var shadow, variadic bool
+	for _, d := range r.Diagnostics {
+		switch {
+		case strings.Contains(d.Message, "shadows prelude"):
+			shadow = true
+			if d.Line != 2 || d.Col != 9 {
+				t.Errorf("shadow info at %d:%d, want 2:9", d.Line, d.Col)
+			}
+		case strings.Contains(d.Message, "must be last"):
+			variadic = true
+			if d.Line != 4 || d.Col != 6 {
+				t.Errorf("variadic error at %d:%d, want 4:6", d.Line, d.Col)
+			}
+		}
+	}
+	if !shadow || !variadic {
+		t.Fatalf("diagnostics: %v", r.Diagnostics)
+	}
+}
+
 func TestNoShadowNoInfo(t *testing.T) {
 	r := check(t, `module Main
 fn main() ->
