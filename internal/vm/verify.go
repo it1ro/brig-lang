@@ -146,6 +146,9 @@ func RegUse(in Instr) (reads, writes []int, err error) {
 		}
 		return reads, []int{a}, nil
 	case SPAWN:
+		if cc&SpawnLimits != 0 {
+			return []int{b, b + 1}, []int{a}, nil
+		}
 		return []int{b}, []int{a}, nil
 	case SEND, EXIT, REGISTER, AWAIT:
 		return []int{b, cc}, []int{a}, nil

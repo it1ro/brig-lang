@@ -154,8 +154,8 @@ var bareBuiltins = map[string]sig{
 	"print": variadic(0), "eprint": variadic(0), "log": variadic(0),
 	"assert": exact(1), "raise": exact(1),
 	"Some": exact(1), "Ok": exact(1), "Error": exact(1),
-	"send": exact(2), "spawn": exact(1), "spawn_linked": exact(1),
-	"spawn_watched": exact(1), "exit": exact(2),
+	"send": exact(2), "spawn": exact(1, 2), "spawn_linked": exact(1, 2),
+	"spawn_watched": exact(1, 2), "exit": exact(2),
 	"register": exact(2), "unregister": exact(1), "whereis": exact(1),
 	"await": exact(2), "reply": exact(3),
 	"link": exact(1), "watch": exact(1), "unwatch": exact(1),
@@ -174,14 +174,15 @@ var modBuiltins = map[string]map[string]sig{
 		"describe": exact(1), "it": exact(2), "run": exact(0),
 		"assert_eq": exact(2), "assert_ne": exact(2), "assert": exact(1), "fail": exact(1),
 	},
-	"Sys": {"args": exact(0)},
+	"Sys":   {"args": exact(0)},
+	"Actor": {"info": exact(1)},
 }
 
 // isNativeMod — встроенный модуль на Go. Список совпадает с
 // loader.builtinModules и compiler.isNativeModule.
 func isNativeMod(name string) bool {
 	switch name {
-	case "Vec", "Map", "Str", "Bytes", "Json", "Test", "Sys", "Prelude":
+	case "Vec", "Map", "Str", "Bytes", "Json", "Test", "Sys", "Actor", "Prelude":
 		return true
 	}
 	return false

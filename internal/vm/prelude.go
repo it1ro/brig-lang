@@ -420,6 +420,15 @@ func InstallPrelude(vm *VM) {
 		return runtime.List(out...), nil
 	})
 
+	// ---- Actor (§12.10) ----
+
+	def("Actor.info", 1, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+		if args[0].Kind != runtime.KindPid {
+			return runtime.Unit, typeErr("Actor.info", args[0])
+		}
+		return vm.scheduler.actorInfo(args[0].Pid), nil
+	})
+
 	// ---- Встроенные варианты (§10.1) ----
 
 	globals["None"] = runtime.Variant("None")

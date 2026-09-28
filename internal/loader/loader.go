@@ -64,7 +64,7 @@ func (e *Error) Unwrap() error { return e.Err }
 // загружаются. Список совпадает с isNativeModule в internal/compiler.
 var builtinModules = map[string]bool{
 	"Vec": true, "Map": true, "Str": true, "Bytes": true,
-	"Json": true, "Test": true, "Sys": true, "Prelude": true,
+	"Json": true, "Test": true, "Sys": true, "Actor": true, "Prelude": true,
 }
 
 // IsBuiltin сообщает, что name — встроенный модуль: на Go или на Brig

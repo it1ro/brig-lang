@@ -842,7 +842,8 @@ var builtinParams = map[string]string{
 	"len/1": "v", "list/0..": "..xs", "set/0..": "..xs",
 	"to_str/1": "v", "to_int/1": "v", "to_float/1": "v",
 	"send/2": "pid, msg", "spawn/1": "f", "spawn_linked/1": "f",
-	"spawn_watched/1": "f", "exit/2": "pid, reason",
+	"spawn_watched/1": "f", "spawn/2": "f, limits", "spawn_linked/2": "f, limits",
+	"spawn_watched/2": "f, limits", "exit/2": "pid, reason",
 	"register/2": "name, pid", "unregister/1": "name", "whereis/1": "name",
 	"await/2": "ref, timeout", "reply/3": "pid, ref, value",
 	"link/1": "pid", "watch/1": "pid", "unwatch/1": "ref",
@@ -857,7 +858,7 @@ var builtinParams = map[string]string{
 	"Json.encode/1": "v", "Json.encode/2": "v, opts", "Json.decode/1": "s",
 	"Test.describe/1": "name", "Test.it/2": "name, thunk", "Test.run/0": "",
 	"Test.assert_eq/2": "a, b", "Test.assert_ne/2": "a, b", "Test.assert/1": "x", "Test.fail/1": "msg",
-	"Sys.args/0": "",
+	"Sys.args/0": "", "Actor.info/1": "pid",
 
 	"Repl.h/1": "f", "Repl.i/1": "v", "Repl.v/0": "", "Repl.v/1": "n",
 	"Repl.load/1": "path", "Repl.flush/0": "", "Repl.time/1": "f", "Repl.dis/1": "f",

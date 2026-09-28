@@ -254,6 +254,9 @@ func (s *Scheduler) enterCall(a *Actor, fn runtime.Value, args []runtime.Value) 
 			return a.pushNative(fn.Func.Name, k), runtime.Unit, nil
 		}
 		r, err := fn.Func.Native(s.vm, fresh)
+		if err == nil {
+			s.charge(a, &r)
+		}
 		return nil, r, err
 	}
 	nf, err := a.pushCall(fn, args)
@@ -374,6 +377,9 @@ type Actor struct {
 
 	// exit — полученный сигнал exit (§12.7); nil — сигнала нет.
 	exit *exitSig
+
+	// budget — счётчики и лимиты хода (§12.10).
+	budget
 }
 
 // Scheduler — единый run-loop (§15.2).
@@ -850,6 +856,7 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 					regs[in.B()].Inspect(), regs[in.C()].Inspect()))
 			}
 			regs[in.A()] = runtime.Str(regs[in.B()].Str + regs[in.C()].Str)
+			s.charge(a, &regs[in.A()])
 			f.ip++
 
 		case SUB:
@@ -1096,6 +1103,7 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 				if err != nil {
 					return fail(err)
 				}
+				s.charge(a, &r)
 				a.result = r
 				return stepDone
 			}
@@ -1150,6 +1158,7 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 			case VECTOR:
 				regs[in.A()] = runtime.Vector(elems...)
 			}
+			s.charge(a, &regs[in.A()])
 			f.ip++
 
 		case MAP:
@@ -1163,6 +1172,7 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 				}
 			}
 			regs[in.A()] = runtime.Map(entries)
+			s.charge(a, &regs[in.A()])
 			f.ip++
 
 		case LISTSPREAD, VECSPREAD:
@@ -1180,6 +1190,7 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 				return fail(err)
 			}
 			regs[in.A()] = r
+			s.charge(a, &r)
 			f.ip++
 
 		case MAPSPREAD:
@@ -1197,6 +1208,7 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 				return fail(err)
 			}
 			regs[in.A()] = r
+			s.charge(a, &r)
 			f.ip++
 
 		case RANGE:
@@ -1231,6 +1243,7 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 				return fail(err)
 			}
 			regs[in.A()] = r
+			s.charge(a, &r)
 			f.ip++
 
 		case GETFIELD:
@@ -1261,6 +1274,7 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 			copy(caps, regs[in.B()+1:in.B()+1+n])
 			regs[in.A()] = runtime.MakeClosure(
 				fnVal.Func.Name, fnVal.Func.Arity, fnVal.Func.Body, caps)
+			s.charge(a, &regs[in.A()])
 			f.ip++
 
 		case TRAPBEGIN, TRAPENSURE:
@@ -1287,24 +1301,36 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 
 		case MAKEOK:
 			regs[in.A()] = runtime.Variant("Ok", regs[in.B()])
+			s.charge(a, &regs[in.A()])
 			f.ip++
 
 		case MAKEERROR:
 			regs[in.A()] = runtime.Variant("Error", regs[in.B()])
+			s.charge(a, &regs[in.A()])
 			f.ip++
 
 		// ---- Акторные опкоды (§6) ----
 
 		case SPAWN:
-			base, mode := in.A(), in.C()
+			base, mode := in.A(), in.C()&spawnModeMask
 			fn := regs[in.B()]
-			pid, err := s.Spawn(fn, nil)
+			var limReds, limAlloc int64
+			var err error
+			if in.C()&SpawnLimits != 0 {
+				limReds, limAlloc, err = parseLimits(regs[in.B()+1])
+			}
+			var pid int
+			if err == nil {
+				pid, err = s.Spawn(fn, nil)
+			}
 			if err != nil {
 				if f.catch(err) {
 					continue
 				}
 				return fail(err)
 			}
+			child := s.actors[pid]
+			child.limitReds, child.limitAlloc = limReds, limAlloc
 			pidVal := runtime.Value{Kind: runtime.KindPid, Pid: pid}
 			switch mode {
 			case 1: // linked
@@ -1492,6 +1518,7 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 				msg := a.downMsgs[0]
 				a.downMsgs = a.downMsgs[1:]
 				s.clearTimer(a)
+				a.newTurn()
 				regs[slot] = msg
 				f.ip++
 				continue
@@ -1500,6 +1527,7 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 				msg := a.mailbox[0]
 				a.mailbox = a.mailbox[1:]
 				s.clearTimer(a)
+				a.newTurn()
 				regs[slot] = msg
 				f.ip++
 				continue
@@ -1508,6 +1536,7 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 			if !a.recvDeadline.IsZero() && !time.Now().Before(a.recvDeadline) {
 				s.clearTimer(a)
 				if sbx != 0 {
+					a.newTurn()
 					f.ip += 1 + sbx
 					continue
 				}
@@ -1562,6 +1591,7 @@ func (s *Scheduler) stepNative(a *Actor, f *Frame) stepOutcome {
 			return fail(err)
 		}
 		if st.done {
+			s.charge(a, &st.res)
 			a.result = st.res
 			return stepDone
 		}
