@@ -2,6 +2,9 @@ package highlight
 
 import "unicode/utf8"
 
+// brackets помечает лишние закрывающие скобки и скобки чужого вида как
+// error и выделяет пару скобки под курсором. Незакрытая открывающая —
+// неполный ввод, не ошибка: консоль ждёт продолжения.
 func brackets(src string, toks []token, ann []ann, cursor int) {
 	type br struct{ kind, idx int }
 	var st []br
@@ -24,9 +27,6 @@ func brackets(src string, toks []token, ann []ann, cursor int) {
 		} else {
 			bad[i] = true
 		}
-	}
-	for _, b := range st {
-		bad[b.idx] = true
 	}
 	for i := range bad {
 		ann[i].class = Error

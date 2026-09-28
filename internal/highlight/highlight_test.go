@@ -175,7 +175,8 @@ func TestHighlightUnknownName(t *testing.T) {
 	}
 }
 
-// TestBracketMatch — пара скобки под курсором выделена, непарная — error.
+// TestBracketMatch — пара скобки под курсором выделена, лишняя
+// закрывающая — error.
 func TestBracketMatch(t *testing.T) {
 	env := highlight.Env{}
 	res := highlight.Classify("(a)", 0, env)
@@ -192,8 +193,8 @@ func TestBracketMatch(t *testing.T) {
 		t.Errorf("pair: open %+v close %+v", open, end)
 	}
 
-	res = highlight.Classify("(", 0, env)
-	if c, _ := classAt("(", 0, 0, env); c != highlight.Error {
+	res = highlight.Classify("a)", 1, env)
+	if c, _ := classAt("a)", 1, 1, env); c != highlight.Error {
 		t.Errorf("unmatched class %q", c)
 	}
 	for _, sp := range res.Spans {
@@ -405,5 +406,35 @@ func TestBracketMatchStyle(t *testing.T) {
 	out = highlight.Highlight("(a)", 0, highlight.Env{Bindings: map[string]bool{"a": true}}, pal)
 	if strings.Count(out, "\x1b[34;1;4m") != 2 {
 		t.Errorf("colored match paint = %q", out)
+	}
+}
+
+// TestOpenBracketNotError — незакрытая открывающая скобка — обычный
+// неполный ввод; error — лишняя закрывающая и чужой вид.
+func TestOpenBracketNotError(t *testing.T) {
+	env := highlight.REPLEnv()
+	for _, src := range []string{"(", "print(", "%[1, ", "%{", "f(%[1, (2"} {
+		for _, sp := range highlight.Classify(src, len(src), env).Spans {
+			if sp.Class == highlight.Error {
+				t.Errorf("%q: error span %+v", src, sp)
+			}
+		}
+	}
+	cases := []struct {
+		src string
+		off int
+	}{
+		{"(]", 1},
+		{")", 0},
+		{"f(a))", 4},
+		{"%[1}", 3},
+	}
+	for _, c := range cases {
+		if got, _ := classAt(c.src, c.off, -1, env); got != highlight.Error {
+			t.Errorf("%q at %d: %q, want error", c.src, c.off, got)
+		}
+	}
+	if got, _ := classAt("(]", 0, -1, env); got == highlight.Error {
+		t.Errorf("open bracket before wrong close is error")
 	}
 }
