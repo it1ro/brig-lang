@@ -8,9 +8,9 @@
 #   GET  /events          — последние 100 событий, JSON
 #   GET  /events/stream   — новые события вживую (SSE)
 #
-# needs: T-146, T-155, T-164, T-165, T-166, horizon
+# needs: T-155, T-164, T-165, T-166, horizon
 #   реестр имён (02/R5) — T-164; await/reply по ref (02/R12) — T-165; Time.now (02/R7) — T-166;
-#   Option.unwrap, Result.unwrap_or, List.take (04) — T-146; спред в List/Map (§5.2) — T-155;
+#   спред в List/Map (§5.2) — T-155;
 #   horizon: fn project() в скрипте (12/#2), Whelk (12), Http.Plug/Sse (04, B2),
 #   Crypto.hmac/secure_compare, Hex, Env (04).
 #   Доступ к полям (03/L4) уже работает.
