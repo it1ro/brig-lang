@@ -180,6 +180,7 @@ var actorPrimitives = map[string]bool{
 	"send": true, "spawn": true, "spawn_linked": true, "spawn_watched": true,
 	"link": true, "exit": true, "watch": true, "unwatch": true,
 	"self": true, "make_ref": true, "mailbox_size": true,
+	"register": true, "unregister": true, "whereis": true,
 }
 
 // preludeNames — имена прелюдии и встроенных вариантов (§11.5).
@@ -196,6 +197,7 @@ func preludeNames() map[string]bool {
 		// Акторы
 		"send", "spawn", "spawn_linked", "spawn_watched", "link", "watch", "unwatch",
 		"exit", "self", "make_ref", "mailbox_size",
+		"register", "unregister", "whereis",
 		// I/O
 		"print", "eprint", "log",
 		// Эффекты

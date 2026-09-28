@@ -1536,7 +1536,7 @@ fn main() ->
 
 ### 12.8 Реестр имён
 
-```brig pending(T-164)
+```brig
 fn checker_loop(id) ->
     recv
         :check -> checker_loop(id)

@@ -375,8 +375,11 @@ type Actor struct {
 
 // Scheduler — единый run-loop (§15.2).
 type Scheduler struct {
-	vm      *VM
-	actors  map[int]*Actor
+	vm     *VM
+	actors map[int]*Actor
+	// names — реестр имён (§12.8) в порядке регистрации; ключи сравниваются
+	// как ключи Map (runtime.KeyEqual).
+	names   []nameEntry
 	nextPid int
 	nextRef int
 	nextSeq uint64
@@ -515,6 +518,8 @@ func (s *Scheduler) Unwatch(watcherPid, ref int) {
 }
 
 func (s *Scheduler) notifyWatchers(a *Actor, reason runtime.Value) {
+	// Имена снимаются в той же редукции, что и ставится :down (§12.8).
+	s.dropNames(a.pid)
 	for ref, watcherPid := range a.watchers {
 		s.sendDown(watcherPid, runtime.Tuple(
 			runtime.Atom("down"),
@@ -1319,6 +1324,27 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 				return stepExit
 			}
 			s.Exit(pidVal.Pid, regs[in.C()])
+
+		case REGISTER:
+			pidVal := regs[in.C()]
+			if pidVal.Kind != runtime.KindPid {
+				err := typeErr("register", pidVal)
+				if f.catch(err) {
+					continue
+				}
+				return fail(err)
+			}
+			regs[in.A()] = s.Register(regs[in.B()], pidVal.Pid)
+			f.ip++
+
+		case UNREGISTER:
+			s.Unregister(regs[in.B()])
+			regs[in.A()] = runtime.Unit
+			f.ip++
+
+		case WHEREIS:
+			regs[in.A()] = s.Whereis(regs[in.B()])
+			f.ip++
 
 		case SEND:
 			pidVal := regs[in.B()]
