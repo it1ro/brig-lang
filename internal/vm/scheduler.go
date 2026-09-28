@@ -58,6 +58,9 @@ type Frame struct {
 	// cont != nil — кадр возобновляемого натива (T-58): chunk == nil,
 	// regs[0] принимает результат колбэка (callDst == 0).
 	cont nativeCont
+	// dropResult — кадр доставки Telemetry, вставленный опкодом (spawn,
+	// send): завершение не пишет callDst вызывающего (§12.14).
+	dropResult bool
 }
 
 // catch пытается поймать *ErrRaise активным trap-регионом. При успехе
@@ -246,6 +249,13 @@ func (s *Scheduler) enterCall(a *Actor, fn runtime.Value, args []runtime.Value) 
 			return nil, runtime.Unit, functionClause(args)
 		}
 		fresh := append([]runtime.Value(nil), args...)
+		if fn.Func == s.vm.teleEmit {
+			f, r, err := s.beginEmit(a, fresh)
+			if err == nil && f == nil {
+				s.charge(a, &r)
+			}
+			return f, r, err
+		}
 		if start, ok := s.vm.resumable[fn.Func]; ok {
 			k, err := start(fresh)
 			if err != nil {
@@ -383,6 +393,8 @@ type Actor struct {
 
 	// initialFn — имя начальной функции в виде trace (Actor.info, §12.13).
 	initialFn string
+	// bornMs — Time.monotonic_ms в момент создания (lifetime_ms, §12.14).
+	bornMs int64
 }
 
 // Scheduler — единый run-loop (§15.2).
@@ -395,9 +407,16 @@ type Scheduler struct {
 	// globalTable — Global.put/get (§12.11): имя → значение на планировщике,
 	// не на акторе. Ключи — runtime.KeyEqual; удаление записи не предусмотрено.
 	globalTable []globalEntry
-	nextPid     int
-	nextRef     int
-	nextSeq     uint64
+	// tele — подписки Telemetry (§12.14) в порядке attach. Не Global.
+	tele []teleSub
+	// teleQ — события смерти и потерянного Timer.send_after. Обычный ящик
+	// им не служит: HWM не должен их глотать.
+	teleQ []teleEvent
+	// telePid — служебный актор телеметрии; -1, пока его нет.
+	telePid int
+	nextPid int
+	nextRef int
+	nextSeq uint64
 	// timers — min-куча таймеров по (deadline, seq): recv … after, await
 	// и Timer.send_after. Обслуживание не обходит s.actors (T-102, T-166).
 	timers timerHeap
@@ -442,6 +461,7 @@ func NewScheduler(vm *VM) *Scheduler {
 		sends:      make(map[int]*timerEntry),
 		reds:       defaultReductions,
 		sessionPid: -1,
+		telePid:    -1,
 	}
 }
 
@@ -458,6 +478,7 @@ func (s *Scheduler) Spawn(fn runtime.Value, args []runtime.Value) (int, error) {
 		return 0, err
 	}
 	a.initialFn = f.name
+	a.bornMs = monotonicMillis()
 	pid := s.nextPid
 	s.nextPid++
 	a.pid = pid
@@ -762,8 +783,11 @@ func (s *Scheduler) wakeExpired() {
 		}
 		delete(s.sends, e.ref)
 		// Как send: мёртвый pid и полный ящик — сообщение теряется.
-		// Отправителя нет, Error(:busy) некому вернуть.
-		s.Send(e.pid, e.msg)
+		// Отправителя нет, Error(:busy) некому вернуть. Потеря из-за HWM
+		// излучается служебным актором (§12.14).
+		if isBusyResult(s.Send(e.pid, e.msg)) {
+			s.teleTimerHWM(e.pid)
+		}
 	}
 }
 
@@ -849,8 +873,7 @@ func (s *Scheduler) runSlice(a *Actor) {
 			}
 			a.status = actorDone
 			a.result = runtime.Unit
-			s.notifyWatchers(a, runtime.Atom("normal"))
-			s.reapActor(a)
+			s.actorDied(a, runtime.Atom("normal"), false, nil)
 			return
 		}
 
@@ -858,6 +881,7 @@ func (s *Scheduler) runSlice(a *Actor) {
 		outcome := s.stepFrame(a, f)
 		switch outcome {
 		case stepDone:
+			drop := f.dropResult
 			a.popFrame()
 			s.burn(a, &reds)
 			if len(a.frames) == 0 {
@@ -865,12 +889,13 @@ func (s *Scheduler) runSlice(a *Actor) {
 					return
 				}
 				a.status = actorDone
-				s.notifyWatchers(a, runtime.Atom("normal"))
-				s.reapActor(a)
+				s.actorDied(a, runtime.Atom("normal"), false, nil)
 				return
 			}
-			caller := a.frames[len(a.frames)-1]
-			caller.regs[caller.callDst] = a.result
+			if !drop {
+				caller := a.frames[len(a.frames)-1]
+				caller.regs[caller.callDst] = a.result
+			}
 
 		case stepExit:
 			// обработка — в начале цикла
@@ -893,8 +918,15 @@ func (s *Scheduler) runSlice(a *Actor) {
 				return
 			}
 			a.status = actorFailed
-			s.notifyWatchers(a, downRaiseReason(a))
-			s.reapActor(a)
+			reason := downRaiseReason(a)
+			var tr []TraceFrame
+			crash := false
+			var rerr *ErrRaise
+			if errors.As(a.err, &rerr) {
+				crash = true
+				tr = rerr.Trace
+			}
+			s.actorDied(a, reason, crash, tr)
 			return
 
 		case stepBlock:
@@ -1211,6 +1243,22 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 					return fail(functionClause(args))
 				}
 				fresh := append([]runtime.Value(nil), args...)
+				if cv.Func == s.vm.teleEmit {
+					run, r, err := s.prepEmit(fresh)
+					if err != nil {
+						return fail(err)
+					}
+					if run == nil {
+						s.charge(a, &r)
+						a.result = r
+						return stepDone
+					}
+					// Кадр становится кадром emit: результат — туда же, куда ушёл бы у f.
+					clear(f.regs[:cap(f.regs)])
+					f.regs, f.chunk, f.name, f.captures, f.ip, f.cont =
+						f.regs[:1], nil, "Telemetry.emit", nil, 0, run
+					return stepContinue
+				}
 				if start, ok := s.vm.resumable[cv.Func]; ok {
 					// Кадр становится кадром натива: колбэки пойдут поверх
 					// него, результат — туда же, куда ушёл бы у f.
@@ -1467,6 +1515,9 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 				regs[base] = pidVal
 			}
 			f.ip++
+			if s.teleInlineSpawn(a, child) {
+				return stepContinue
+			}
 
 		case EXIT:
 			pidVal := regs[in.B()]
@@ -1518,6 +1569,9 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 			}
 			regs[in.A()] = s.Send(pidVal.Pid, msg)
 			f.ip++
+			if isBusyResult(regs[in.A()]) && s.teleInlineHWM(a, pidVal.Pid) {
+				return stepContinue
+			}
 
 		case SELF:
 			regs[in.A()] = runtime.Value{Kind: runtime.KindPid, Pid: a.pid}
@@ -1714,6 +1768,9 @@ func (s *Scheduler) stepNative(a *Actor, f *Frame) stepOutcome {
 		if err != nil {
 			return fail(err)
 		}
+		if st.block {
+			return stepBlock
+		}
 		if st.done {
 			s.charge(a, &st.res)
 			a.result = st.res
@@ -1721,6 +1778,17 @@ func (s *Scheduler) stepNative(a *Actor, f *Frame) stepOutcome {
 		}
 		nf, r, err := s.enterCall(a, st.fn, st.args)
 		if err != nil {
+			if run, ok := f.cont.(*teleRun); ok {
+				var rerr *ErrRaise
+				if errors.As(err, &rerr) {
+					before := len(a.frames)
+					s.catchTele(a, run, rerr.Val)
+					if len(a.frames) > before {
+						return stepContinue
+					}
+					continue
+				}
+			}
 			return fail(err)
 		}
 		if nf == nil {
@@ -2072,6 +2140,10 @@ func (s *Scheduler) raiseCatchable(a *Actor) bool {
 		if len(a.frames[i].handlers) > 0 {
 			return true
 		}
+		// Кадр Telemetry ловит raise обработчика: актор не падает (§12.14).
+		if _, ok := a.frames[i].cont.(*teleRun); ok {
+			return true
+		}
 	}
 	return false
 }
@@ -2124,6 +2196,10 @@ func (s *Scheduler) tryUnwindRaise(a *Actor) bool {
 			parent.ip = h.ip
 			a.err = nil
 			a.result = runtime.Unit
+			return true
+		}
+		if run, ok := parent.cont.(*teleRun); ok {
+			s.catchTele(a, run, rerr.Val)
 			return true
 		}
 		a.popFrame()

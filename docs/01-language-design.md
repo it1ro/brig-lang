@@ -1733,7 +1733,7 @@ fn main() ->
 
 Один механизм для метрик, логов медленных запросов, observer и отчётов о падениях: кто-то излучает событие, подписчики на его путь его получают. Библиотеки не заводят своих хуков.
 
-```brig pending(T-222)
+```brig
 fn main() ->
     me = self()
     Ok(()) = Telemetry.attach(:slow_log, [:app, :request], (event, m, meta) -> send(me, (:event, event, m.duration_ms, meta.route)))

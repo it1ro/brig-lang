@@ -452,6 +452,10 @@ func InstallPrelude(vm *VM) {
 		return vm.scheduler.actorInfo(args[0].Pid), nil
 	})
 
+	// ---- Telemetry (§12.14) ----
+
+	installTelemetry(vm)
+
 	// ---- Встроенные варианты (§10.1) ----
 
 	globals["None"] = runtime.Variant("None")
@@ -517,6 +521,8 @@ type nativeStep struct {
 	args []runtime.Value
 	done bool
 	res  runtime.Value
+	// block — кадр ждёт (служебный актор Telemetry: очередь пуста).
+	block bool
 }
 
 // nativeCont — состояние нативной функции высшего порядка между вызовами

@@ -455,8 +455,9 @@ func (s *Scheduler) CallNested(fn runtime.Value, args []runtime.Value) (runtime.
 		top := a.frames[len(a.frames)-1]
 		switch s.stepFrame(a, top) {
 		case stepDone:
+			drop := top.dropResult
 			a.popFrame()
-			if len(a.frames) > base {
+			if !drop && len(a.frames) > base {
 				caller := a.frames[len(a.frames)-1]
 				caller.regs[caller.callDst] = a.result
 			}
@@ -541,6 +542,10 @@ func (s *Scheduler) unwindAbove(a *Actor, base int) bool {
 			parent.ip = h.ip
 			a.err = nil
 			a.result = runtime.Unit
+			return true
+		}
+		if run, ok := parent.cont.(*teleRun); ok {
+			s.catchTele(a, run, rerr.Val)
 			return true
 		}
 		a.popFrame()

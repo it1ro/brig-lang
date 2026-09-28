@@ -143,6 +143,5 @@ func (s *Scheduler) exitDone(a *Actor) {
 	}
 	a.status = actorFailed
 	a.err = err
-	s.notifyWatchers(a, sig.reason)
-	s.reapActor(a)
+	s.actorDied(a, sig.reason, false, nil)
 }

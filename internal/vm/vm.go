@@ -50,6 +50,8 @@ type VM struct {
 	args         []string
 	// resumable — нативы, исполняемые кадром актора (map, filter, …; T-58).
 	resumable map[*runtime.FuncValue]resumableFunc
+	// teleEmit — Telemetry.emit: enterCall узнаёт его по указателю (§12.14).
+	teleEmit *runtime.FuncValue
 }
 
 // New создаёт ВМ с установленной прелюдией.
