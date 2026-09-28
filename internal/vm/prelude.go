@@ -410,6 +410,10 @@ func InstallPrelude(vm *VM) {
 		return runtime.Unit, typeErr("to_float", a)
 	})
 
+	// ---- Global (§12.11) ----
+
+	installGlobal(def)
+
 	// ---- Sys ----
 
 	def("Sys.args", 0, func(_ runtime.Caller, _ []runtime.Value) (runtime.Value, error) {

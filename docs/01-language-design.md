@@ -1627,7 +1627,7 @@ fn main() ->
     Time.monotonic_ms() - t0
 ```
 
-```brig pending(T-167)
+```brig
 fn main() ->
     Global.put(:config, %{:retries => 3})
     match Global.get(:config)
