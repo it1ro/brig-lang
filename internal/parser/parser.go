@@ -246,10 +246,10 @@ func (p *parser) parseTopDecl() (ast.Decl, error) {
 		return p.parseAliasDecl()
 	case lexer.KW_TYPE:
 		return p.parseTypeDecl()
-	case lexer.KW_FN:
+	case lexer.KW_FN, lexer.KW_PUB:
 		return p.parseFnDecl()
 	}
-	return nil, p.errf("module top-level allows only module/import/alias/type/fn, got %s",
+	return nil, p.errf("module top-level allows only module/import/alias/type/fn/pub fn, got %s",
 		p.cur().Type)
 }
 

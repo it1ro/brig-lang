@@ -164,6 +164,9 @@ func (p *printer) funcDeclString(v *funcDecl) string {
 	var sb strings.Builder
 	for i := range v.clauses {
 		c := &v.clauses[i]
+		if c.pub {
+			sb.WriteString("pub ")
+		}
 		sb.WriteString("fn ")
 		sb.WriteString(v.name)
 		sb.WriteString("(")

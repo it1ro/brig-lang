@@ -570,7 +570,7 @@ func equalNodes(a, b Node) bool {
 		for i := range x.clauses {
 			xc := &x.clauses[i]
 			yc := &y.clauses[i]
-			if !equalOptionalExpr(xc.guard, yc.guard) || len(xc.params) != len(yc.params) {
+			if xc.pub != yc.pub || !equalOptionalExpr(xc.guard, yc.guard) || len(xc.params) != len(yc.params) {
 				return false
 			}
 			for j := range xc.params {
