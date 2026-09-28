@@ -24,7 +24,9 @@ type sessionJob struct {
 	fn   runtime.Value
 	args []runtime.Value
 	defs map[string]runtime.Value
-	done chan sessionResult
+	// undef — глобалы, которые снимаются до defs (Redefine).
+	undef []string
+	done  chan sessionResult
 }
 
 type sessionResult struct {
@@ -92,12 +94,31 @@ func (s *Scheduler) Submit(fn runtime.Value, args []runtime.Value, defs map[stri
 	if !s.session {
 		return runtime.Unit, errors.New("internal: repl session is not started")
 	}
-	job := &sessionJob{
+	return s.submit(&sessionJob{
 		fn:   fn,
 		args: args,
 		defs: defs,
 		done: make(chan sessionResult, 1),
+	})
+}
+
+// Redefine снимает глобалы undef и регистрирует defs одной порцией работы
+// цикла: между редукциями, атомарно для всех акторов. Ввод при этом не
+// исполняется. Так recompile() подменяет функции модулей (T-208, #246).
+func (s *Scheduler) Redefine(defs map[string]runtime.Value, undef []string) error {
+	if !s.session {
+		return errors.New("internal: repl session is not started")
 	}
+	_, err := s.submit(&sessionJob{
+		fn:    runtime.Unit,
+		defs:  defs,
+		undef: undef,
+		done:  make(chan sessionResult, 1),
+	})
+	return err
+}
+
+func (s *Scheduler) submit(job *sessionJob) (runtime.Value, error) {
 	select {
 	case s.jobs <- job:
 	case <-s.stop:
@@ -216,8 +237,15 @@ func (s *Scheduler) takeJob(job *sessionJob) {
 
 func (s *Scheduler) beginJob(job *sessionJob) {
 	a := s.actors[s.sessionPid]
+	for _, name := range job.undef {
+		delete(s.vm.globals, name)
+	}
 	for name, v := range job.defs {
 		s.vm.globals[name] = v
+	}
+	if job.fn.Kind == runtime.KindUnit {
+		job.done <- sessionResult{val: runtime.Unit}
+		return
 	}
 	if _, err := a.pushCall(job.fn, job.args); err != nil {
 		job.done <- sessionResult{val: runtime.Unit, err: err}
