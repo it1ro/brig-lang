@@ -61,13 +61,16 @@ func TestRunTTYRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := out.String()
-	for _, seq := range []string{"\x1b[?1049h", "\x1b[?25l", "\x1b[?1049l", "\x1b[?25h", "\x1b[0m"} {
+	for _, seq := range []string{"\x1b[?1049h", "\x1b[?25l", "\x1b[?7l", "\x1b[?1049l", "\x1b[?25h", "\x1b[?7h", "\x1b[0m"} {
 		if strings.Count(got, seq) != 1 {
 			t.Fatalf("%q count %d\n%s", seq, strings.Count(got, seq), got)
 		}
 	}
 	if strings.Count(got, "\x1b[H") != 1 {
 		t.Fatalf("frames %d", strings.Count(got, "\x1b[H"))
+	}
+	if !strings.Contains(got, "\r\n") || strings.Contains(got, "\x1b[K") {
+		t.Fatal("frame is not CR LF without EL")
 	}
 }
 

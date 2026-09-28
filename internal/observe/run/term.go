@@ -3,14 +3,20 @@ package run
 import (
 	"io"
 	"os"
+	"strings"
 	"sync"
 
 	xterm "golang.org/x/term"
 )
 
 const (
-	enterSeq = "\x1b[?1049h\x1b[?25l"
-	exitSeq  = "\x1b[0m\x1b[?25h\x1b[?1049l"
+	// ?7l — без автопереноса. Строка кадра ровно в ширину окна, и с
+	// включённым переносом терминал уносит её на следующую строку:
+	// список акторов уезжает вверх, внизу остаются пустые строки.
+	// Сам по себе ?7l курсор после такой строки оставляет на последней
+	// колонке; перевод строк — в termFrame.
+	enterSeq = "\x1b[?1049h\x1b[?25l\x1b[?7l"
+	exitSeq  = "\x1b[0m\x1b[?7h\x1b[?25h\x1b[?1049l"
 )
 
 // termState — raw mode и альтернативный экран. restore идемпотентен.
@@ -46,6 +52,16 @@ func (t *termState) write(s string) {
 		return
 	}
 	t.writeUnlocked(s)
+}
+
+// termFrame готовит кадр view к raw mode. MakeRaw снимает OPOST, и LF
+// не возвращает каретку: без CR каждая следующая строка начинается там,
+// где кончилась предыдущая. С ?7l это последняя колонка, ESC[K стирает
+// её, и на экране остаётся только шапка. Строка и так ровно в ширину
+// окна, поэтому EL не нужен: CR LF переводит курсор в колонку 0.
+func termFrame(frame string) string {
+	frame = strings.ReplaceAll(frame, "\x1b[K\n", "\r\n")
+	return strings.TrimSuffix(frame, "\x1b[K")
 }
 
 func (t *termState) writeUnlocked(s string) {
