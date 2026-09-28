@@ -2,7 +2,6 @@ package vm
 
 import (
 	"errors"
-	goruntime "runtime"
 	"sync/atomic"
 	"time"
 
@@ -108,13 +107,10 @@ func (s *Scheduler) Submit(fn runtime.Value, args []runtime.Value, defs map[stri
 // Redefine снимает глобалы undef и регистрирует defs одной порцией работы
 // цикла: между редукциями, атомарно для всех акторов. Ввод при этом не
 // исполняется. Так recompile() подменяет функции модулей (T-208, #246).
+// Натив на горутине цикла зовёт RedefineHere: сдача в jobs оттуда deadlock.
 func (s *Scheduler) Redefine(defs map[string]runtime.Value, undef []string) error {
 	if !s.session {
 		return errors.New("internal: repl session is not started")
-	}
-	if s.onLoop() {
-		s.applyGlobals(undef, defs)
-		return nil
 	}
 	_, err := s.submit(&sessionJob{
 		fn:    runtime.Unit,
@@ -125,14 +121,17 @@ func (s *Scheduler) Redefine(defs map[string]runtime.Value, undef []string) erro
 	return err
 }
 
-// Sync выполняет fn на горутине цикла, между вводами. С самой горутины
-// цикла (натив хелпера) fn зовётся сразу: сдача в jobs оттуда deadlock.
+// RedefineHere — Redefine из натива, который исполняет цикл сессии
+// (хелперы load и recompile): цикл уже стоит между редукциями.
+func (s *Scheduler) RedefineHere(defs map[string]runtime.Value, undef []string) {
+	s.applyGlobals(undef, defs)
+}
+
+// Sync выполняет fn на горутине цикла, между вводами. Натив на горутине
+// цикла зовёт fn сам: сдача в jobs оттуда deadlock.
 func (s *Scheduler) Sync(fn func() error) error {
 	if !s.session {
 		return errors.New("internal: repl session is not started")
-	}
-	if s.onLoop() {
-		return fn()
 	}
 	_, err := s.submit(&sessionJob{
 		fn:   runtime.Unit,
@@ -140,26 +139,6 @@ func (s *Scheduler) Sync(fn func() error) error {
 		done: make(chan sessionResult, 1),
 	})
 	return err
-}
-
-func (s *Scheduler) onLoop() bool {
-	id := s.loopGID.Load()
-	return id != 0 && id == goroutineID()
-}
-
-func goroutineID() uint64 {
-	var buf [64]byte
-	n := goruntime.Stack(buf[:], false)
-	const p = "goroutine "
-	s := buf[:n]
-	if len(s) < len(p) {
-		return 0
-	}
-	var id uint64
-	for i := len(p); i < len(s) && s[i] >= '0' && s[i] <= '9'; i++ {
-		id = id*10 + uint64(s[i]-'0')
-	}
-	return id
 }
 
 func (s *Scheduler) submit(job *sessionJob) (runtime.Value, error) {
@@ -200,9 +179,7 @@ func (s *Scheduler) stopping() bool {
 // что и в runMain; пустая очередь не deadlock, а ожидание таймера, ввода
 // или прерывания.
 func (s *Scheduler) sessionLoop() {
-	s.loopGID.Store(goroutineID())
 	defer close(s.loopDone)
-	defer s.loopGID.Store(0)
 	for {
 		if s.stopping() {
 			s.shutdownSession()
@@ -213,7 +190,7 @@ func (s *Scheduler) sessionLoop() {
 		}
 		s.pollJob()
 		if len(s.ready) == 0 {
-			if !s.waitSession() {
+			if !s.waitSession(true) {
 				s.shutdownSession()
 				return
 			}
@@ -230,12 +207,14 @@ func (s *Scheduler) sessionLoop() {
 }
 
 // waitSession блокируется, пока нечего крутить. false — сессию закрыли.
-func (s *Scheduler) waitSession() bool {
+// takeJobs — принять новый ввод; вложенный вызов (awaitNested) не берёт:
+// ввод исполнится после текущего.
+func (s *Scheduler) waitSession(takeJobs bool) bool {
 	next := s.nextDeadline()
 	var timer *time.Timer
 	var timerC <-chan time.Time
 	var jobs <-chan *sessionJob
-	if s.pending == nil {
+	if takeJobs && s.pending == nil {
 		jobs = s.jobs
 	}
 	if !next.IsZero() {
@@ -441,6 +420,9 @@ func (s *Scheduler) burn(a *Actor, reds *int) {
 // CallNested исполняет fn на акторе сессии, не трогая кадры, которые уже
 // на стеке. Звать с горутины цикла из натива хелпера: сдача ввода в jobs
 // оттуда deadlock, а отдельный актор callSync подменил бы self().
+// recv без сообщения не ошибка: пока актор сессии ждёт, цикл крутит
+// остальные акторы и таймеры (awaitNested). Непойманный raise несёт trace,
+// как в runSlice.
 func (s *Scheduler) CallNested(fn runtime.Value, args []runtime.Value) (runtime.Value, error) {
 	a := s.actors[s.sessionPid]
 	if a == nil {
@@ -464,6 +446,9 @@ func (s *Scheduler) CallNested(fn runtime.Value, args []runtime.Value) (runtime.
 				caller.regs[caller.callDst] = a.result
 			}
 		case stepFailed:
+			if !s.raiseCatchable(a) {
+				attachTrace(a)
+			}
 			err := a.err
 			if s.unwindAbove(a, base) {
 				continue
@@ -471,11 +456,45 @@ func (s *Scheduler) CallNested(fn runtime.Value, args []runtime.Value) (runtime.
 			s.dropAbove(a, base)
 			return runtime.Unit, err
 		case stepBlock:
-			s.dropAbove(a, base)
-			return runtime.Unit, errors.New("internal: blocked in nested call")
+			if err := s.awaitNested(a); err != nil {
+				s.dropAbove(a, base)
+				s.clearTimer(a)
+				return runtime.Unit, err
+			}
 		}
 	}
 	return a.result, nil
+}
+
+// awaitNested — актор сессии a встал в recv вложенного вызова. Цикл
+// крутит остальные акторы и таймеры, пока a не разбудят (send, :down,
+// таймер after), прерывание или закрытие сессии.
+func (s *Scheduler) awaitNested(a *Actor) error {
+	a.status = actorBlocked
+	for a.status == actorBlocked {
+		if s.stopping() {
+			return errSessionClosed
+		}
+		if s.interrupt.Load() {
+			return ErrInterrupted
+		}
+		if len(s.ready) == 0 {
+			if !s.waitSession(false) {
+				return errSessionClosed
+			}
+			continue
+		}
+		b := s.ready[0]
+		s.ready = s.ready[1:]
+		if b == a || b.status == actorDone || b.status == actorFailed {
+			continue
+		}
+		b.status = actorReady
+		s.runSlice(b)
+	}
+	s.unready(a)
+	a.status = actorReady
+	return nil
 }
 
 func (s *Scheduler) dropAbove(a *Actor, base int) {

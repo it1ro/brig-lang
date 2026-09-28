@@ -401,10 +401,6 @@ type Scheduler struct {
 	// redCount — необязательный счётчик редукций (тест границы прерывания).
 	// Указатель пишется до старта sessionLoop.
 	redCount *atomic.Uint64
-	// loopGID — id горутины sessionLoop. Хелперы консоли зовутся с неё
-	// (натив внутри ввода) и не могут сдавать работу в jobs: цикл её не
-	// прочитает, пока не вернётся из натива.
-	loopGID atomic.Uint64
 }
 
 // NewScheduler создаёт планировщик.
@@ -1806,10 +1802,11 @@ func (s *Scheduler) raiseCatchable(a *Actor) bool {
 // attachTrace кладёт в ErrRaise кадры от места raise к main. Кадры,
 // заменённые TAILCALL, в trace не попадают: их уже нет в a.frames.
 // У вызывающих кадров ip уже сдвинут за CALL, поэтому берём ip-1.
-// Вызывается только на пути непойманного raise.
+// Вызывается только на пути непойманного raise. Trace, уже собранный во
+// вложенном вызове (CallNested), не перезаписывается: он длиннее.
 func attachTrace(a *Actor) {
 	var rerr *ErrRaise
-	if !errors.As(a.err, &rerr) {
+	if !errors.As(a.err, &rerr) || rerr.Trace != nil {
 		return
 	}
 	n := len(a.frames)

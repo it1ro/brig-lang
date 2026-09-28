@@ -2110,12 +2110,14 @@ func (fc *funcCompiler) passModuleName(call ast.CallExpr) bool {
 }
 
 // compileArg компилирует аргумент вызова в уже выделенный регистр r.
-// Для `h`/`Repl.h` в REPL: голое имя модуля — строка с этим именем
-// (`h(Map)`), `M.f` — глобал функции. Вне этого случая — обычное выражение.
+// Для `h`/`Repl.h` в REPL: голое имя модуля — атом с этим именем
+// (`h(Map)` → `:Map`; атом с заглавной буквы в исходнике не записать,
+// поэтому строку `h("Map")` хелпер отличает), `M.f` — глобал функции.
+// Вне этого случая — обычное выражение.
 func (fc *funcCompiler) compileArg(a ast.Expr, r int, helperH bool) error {
 	if helperH {
 		if v, ok := a.(ast.VariableExpr); ok && isUpperName(v.Name()) {
-			return fc.loadConst(runtime.Str(v.Name()), val(r))
+			return fc.loadConst(runtime.Atom(v.Name()), val(r))
 		}
 		if me, ok := a.(ast.MemberExpr); ok {
 			if segs, ok := modulePath(me); ok {

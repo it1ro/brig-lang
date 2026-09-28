@@ -150,6 +150,12 @@ func (vm *VM) SessionRedefine(defs map[string]runtime.Value, undef []string) err
 	return vm.scheduler.Redefine(defs, undef)
 }
 
+// SessionRedefineHere — SessionRedefine из натива, который исполняет цикл
+// сессии (хелперы консоли): глобалы меняются сразу, без сдачи работы.
+func (vm *VM) SessionRedefineHere(defs map[string]runtime.Value, undef []string) {
+	vm.scheduler.RedefineHere(defs, undef)
+}
+
 // CountSessionReductions включает счёт редукций актора сессии в c.
 // Вызывать до StartSession.
 func (vm *VM) CountSessionReductions(c *atomic.Uint64) {

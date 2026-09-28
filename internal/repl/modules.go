@@ -12,6 +12,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"sort"
 	"strings"
@@ -43,6 +44,11 @@ type sessionModule struct {
 // формате E.1 в вывод сессии; сессия остаётся без изменений.
 // script-файл (§11.3) — не модуль: его исполняет load.
 func (s *Session) LoadModules(path string) ([]string, error) {
+	return s.loadModules(path, false)
+}
+
+// loadModules — LoadModules; here — зовёт натив на горутине цикла (load).
+func (s *Session) loadModules(path string, here bool) ([]string, error) {
 	g, err := s.loadGraph(path)
 	if err != nil {
 		return nil, err
@@ -65,7 +71,7 @@ func (s *Session) LoadModules(path string) ([]string, error) {
 			fresh = append(fresh, m)
 		}
 	}
-	if err := s.install(mods, fresh); err != nil {
+	if err := s.install(mods, fresh, here); err != nil {
 		return nil, err
 	}
 	s.roots = roots
@@ -79,6 +85,11 @@ func (s *Session) LoadModules(path string) ([]string, error) {
 // любом модуле печатается в формате E.1, и ничего не заменяется: сессия
 // остаётся на старом коде. script-файлы Recompile не трогает.
 func (s *Session) Recompile() ([]string, error) {
+	return s.recompile(false)
+}
+
+// recompile — Recompile; here — зовёт натив на горутине цикла (recompile()).
+func (s *Session) recompile(here bool) ([]string, error) {
 	if !s.modulesChanged() {
 		return nil, nil
 	}
@@ -114,7 +125,7 @@ func (s *Session) Recompile() ([]string, error) {
 		}
 		return nil, nil
 	}
-	if err := s.install(mods, changed); err != nil {
+	if err := s.install(mods, changed, here); err != nil {
 		return nil, err
 	}
 	return moduleNames(changed), nil
@@ -139,13 +150,15 @@ func (s *Session) modulesChanged() bool {
 
 // install проверяет и компилирует граф mods целиком и заменяет в ВМ
 // функции модулей install (новое поколение). Ошибка — ничего не заменено.
-func (s *Session) install(mods, install []*loader.Module) error {
+// here — вызов из натива на горутине цикла: глобалы меняются сразу.
+func (s *Session) install(mods, install []*loader.Module, here bool) error {
 	world := make([]sema.Module, len(mods))
 	for i, m := range mods {
 		world[i] = sema.Module{Name: m.Name, Prog: m.Prog}
 	}
 	w := sema.NewWorld(world)
 	failed := 0
+	failedPath := ""
 	for _, m := range mods {
 		res := sema.CheckNamesSession(m.Prog, w)
 		for _, d := range res.Diagnostics {
@@ -157,10 +170,15 @@ func (s *Session) install(mods, install []*loader.Module) error {
 				return err
 			}
 		}
-		failed += countErrors(res)
+		if n := countErrors(res); n > 0 {
+			failed += n
+			if failedPath == "" {
+				failedPath = m.Path
+			}
+		}
 	}
 	if failed > 0 {
-		return fmt.Errorf("sema: %d error(s)", failed)
+		return &fs.PathError{Op: "sema", Path: failedPath, Err: fmt.Errorf("%d error(s)", failed)}
 	}
 
 	// Модули сессии — не входные: пустой входной модуль в начале, у
@@ -209,7 +227,9 @@ func (s *Session) install(mods, install []*loader.Module) error {
 			}
 		}
 	}
-	if err := s.vm.SessionRedefine(defs, undef); err != nil {
+	if here {
+		s.vm.SessionRedefineHere(defs, undef)
+	} else if err := s.vm.SessionRedefine(defs, undef); err != nil {
 		return err
 	}
 

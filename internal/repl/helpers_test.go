@@ -2,6 +2,7 @@ package repl_test
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -305,4 +306,210 @@ func TestHelperShadowing(t *testing.T) {
 	if !strings.Contains(out.String(), "len/1") {
 		t.Fatalf("Repl.h(len):\n%s", out.String())
 	}
+}
+
+// TestHelperRecompile — T-214 (#309) п.1: recompile() и Repl.recompile()
+// зовут Session.Recompile и печатают перекомпилированные модули; ошибка
+// компиляции — (:load_error, (path, msg)), старый код остаётся.
+func TestHelperRecompile(t *testing.T) {
+	s, out, path := newModuleSession(t, "module M\n\nfn f() -> 1\n")
+
+	out.Reset()
+	if got := evalValue(t, s, out, "recompile()\n"); got != "()" {
+		t.Fatalf("recompile() без правок = %s", got)
+	}
+	if !strings.Contains(out.String(), "нет изменений") {
+		t.Fatalf("recompile() без правок печатает:\n%s", out.String())
+	}
+
+	writeModule(t, path, "module M\n\nfn f() -> 2\n")
+	out.Reset()
+	evalValue(t, s, out, "recompile()\n")
+	if !strings.Contains(out.String(), "перекомпилировано: M") {
+		t.Fatalf("recompile() печатает:\n%s", out.String())
+	}
+	if got := evalValue(t, s, out, "M.f()\n"); got != "2" {
+		t.Fatalf("M.f() после recompile() = %s, want 2", got)
+	}
+
+	writeModule(t, path, "module M\n\nfn f() -> 3\n")
+	out.Reset()
+	evalValue(t, s, out, "Repl.recompile()\n")
+	if got := evalValue(t, s, out, "M.f()\n"); got != "3" {
+		t.Fatalf("M.f() после Repl.recompile() = %s, want 3", got)
+	}
+
+	writeModule(t, path, "module M\n\nfn f( -> 4\n")
+	_, err := s.Eval("recompile()\n")
+	if err == nil || !strings.Contains(err.Error(), ":load_error") || !strings.Contains(err.Error(), path) {
+		t.Fatalf("recompile() с ошибкой: %v", err)
+	}
+	if got := evalValue(t, s, out, "M.f()\n"); got != "3" {
+		t.Fatalf("M.f() после неудачного recompile() = %s, want 3", got)
+	}
+}
+
+// TestHelperNestedRecv — T-214 (#309) п.2: recv во вложенном вызове (time,
+// script из load) ждёт сообщения от заспавненных акторов, а не падает с
+// internal:; Interrupt снимает ожидающий вложенный вызов.
+func TestHelperNestedRecv(t *testing.T) {
+	s, out := helperSession(t)
+	mustEval(t, s, out, `fn waiter() ->
+    me = self()
+    spawn(() -> send(me, :hi))
+    recv
+        m -> m
+`)
+	got := mustEval(t, s, out, "time(waiter)\n")
+	if got.Kind != runtime.KindTuple || len(got.Tuple) != 2 || got.Tuple[1].Inspect() != ":hi" {
+		t.Fatalf("time(waiter) = %s", got.Inspect())
+	}
+
+	// Сообщение приходит после таймера другого актора.
+	mustEval(t, s, out, `fn sleeper(dst) ->
+    recv
+        _ -> ()
+    after 30 -> send(dst, :late)
+fn late() ->
+    me = self()
+    spawn(() -> sleeper(me))
+    recv
+        m -> m
+`)
+	got = mustEval(t, s, out, "time(late)\n")
+	if got.Kind != runtime.KindTuple || got.Tuple[1].Inspect() != ":late" {
+		t.Fatalf("time(late) = %s", got.Inspect())
+	}
+
+	// recv … after во вложенном вызове.
+	got = mustEval(t, s, out, `fn timeout() ->
+    recv
+        m -> m
+    after 20 -> :timeout
+time(timeout)
+`)
+	if got.Kind != runtime.KindTuple || got.Tuple[1].Inspect() != ":timeout" {
+		t.Fatalf("time(timeout) = %s", got.Inspect())
+	}
+
+	script := filepath.Join(t.TempDir(), "recv.brig")
+	src := "me = self()\nspawn(() -> send(me, 7))\ngot = recv\n    m -> m\n"
+	if err := os.WriteFile(script, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mustEval(t, s, out, "load(\""+script+"\")\n")
+	if got := mustEval(t, s, out, "got\n"); got.Inspect() != "7" {
+		t.Fatalf("got after script recv = %s", got.Inspect())
+	}
+
+	mustEval(t, s, out, "fn block() ->\n    recv\n        m -> m\n")
+	done := make(chan error, 1)
+	go func() {
+		_, err := s.Eval("time(block)\n")
+		done <- err
+	}()
+	time.Sleep(50 * time.Millisecond)
+	s.Interrupt()
+	select {
+	case err := <-done:
+		if !errors.Is(err, vm.ErrInterrupted) {
+			t.Fatalf("interrupted time(block): %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Interrupt не снял time(block)")
+	}
+	if got := mustEval(t, s, out, "1 + 1\n"); got.Inspect() != "2" {
+		t.Fatalf("ввод после прерывания = %s", got.Inspect())
+	}
+}
+
+// TestHelperNestedTrace — T-214 (#309) п.3: непойманный raise в time(f)
+// несёт stack trace, как в обычном вводе.
+func TestHelperNestedTrace(t *testing.T) {
+	s, out := helperSession(t)
+	mustEval(t, s, out, "fn boom() -> raise(:boom)\n")
+	_, err := s.Eval("time(boom)\n")
+	var rerr *vm.ErrRaise
+	if !errors.As(err, &rerr) {
+		t.Fatalf("time(boom): %v", err)
+	}
+	found := false
+	for _, fr := range rerr.Trace {
+		if strings.Contains(fr.Func, "boom") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("time(boom) trace = %+v", rerr.Trace)
+	}
+	// Пойманный raise trace не собирает и до ввода не доходит.
+	if got := mustEval(t, s, out, "r = trap(time(boom))\n"); !strings.Contains(got.Inspect(), ":boom") {
+		t.Fatalf("trap time(boom) = %s", got.Inspect())
+	}
+}
+
+// TestHelperDocNames — T-214 (#309) п.4–8: имена в h и dis — как ввёл
+// пользователь; документация прелюдии — из сигнатур sema.
+func TestHelperDocNames(t *testing.T) {
+	t.Run("bare helper", func(t *testing.T) {
+		s, out := helperSession(t)
+		mustEval(t, s, out, "h(v)\n")
+		got := out.String()
+		if strings.Contains(got, "Repl.") || !strings.Contains(got, "v/0") || !strings.Contains(got, "v()") {
+			t.Fatalf("h(v):\n%s", got)
+		}
+		out.Reset()
+		mustEval(t, s, out, "Repl.h(Repl.v)\n")
+		if !strings.Contains(out.String(), "Repl.v/0") {
+			t.Fatalf("Repl.h(Repl.v):\n%s", out.String())
+		}
+		out.Reset()
+		mustEval(t, s, out, "h(Repl)\n")
+		if !strings.Contains(out.String(), "recompile/0") {
+			t.Fatalf("h(Repl):\n%s", out.String())
+		}
+	})
+	t.Run("json arities", func(t *testing.T) {
+		s, out := helperSession(t)
+		mustEval(t, s, out, "h(Json)\n")
+		for _, frag := range []string{"decode/1", "encode/1", "encode/2"} {
+			if !strings.Contains(out.String(), frag) {
+				t.Fatalf("h(Json) missing %q:\n%s", frag, out.String())
+			}
+		}
+	})
+	t.Run("local fn keeps prelude doc", func(t *testing.T) {
+		s, out := helperSession(t)
+		mustEval(t, s, out, "## Своя.\nfn len(x) -> 0\n")
+		out.Reset()
+		mustEval(t, s, out, "h(Prelude.len)\n")
+		if !strings.Contains(out.String(), "len(v)") || strings.Contains(out.String(), "Своя.") {
+			t.Fatalf("h(Prelude.len):\n%s", out.String())
+		}
+		out.Reset()
+		mustEval(t, s, out, "h(len)\n")
+		if !strings.Contains(out.String(), "len(x)") || !strings.Contains(out.String(), "Своя.") {
+			t.Fatalf("h(len) локальной:\n%s", out.String())
+		}
+	})
+	t.Run("string is not a module", func(t *testing.T) {
+		s, _ := helperSession(t)
+		_, err := s.Eval("h(\"Map\")\n")
+		if err == nil || !strings.Contains(err.Error(), ":type_error") {
+			t.Fatalf("h(\"Map\"): %v", err)
+		}
+		_, err = s.Eval("h(Foo)\n")
+		if err == nil || strings.Contains(err.Error(), `"Foo"`) {
+			t.Fatalf("h(Foo): %v", err)
+		}
+	})
+	t.Run("dis local fn", func(t *testing.T) {
+		s, out := helperSession(t)
+		mustEval(t, s, out, "fn sq(x) -> x * x\n")
+		out.Reset()
+		mustEval(t, s, out, "dis(sq)\n")
+		if strings.Contains(out.String(), "__repl__") || !strings.Contains(out.String(), "== sq ") {
+			t.Fatalf("dis(sq):\n%s", out.String())
+		}
+	})
 }
