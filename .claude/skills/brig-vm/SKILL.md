@@ -130,6 +130,16 @@ description: >
   значение неизменяемо, ранее прочитанное `get` от нового `put` не меняется.
   Имя, не равное себе (`NaN` и контейнер с ним), — ловимый
   `(:type_error, (:put|:get, name))`.
+- **`Telemetry` (§12.14, T-222, `telemetry.go`).** Реестр подписок —
+  `Scheduler.tele`, не `Global`. `emit` без подписок — проверка аргументов
+  без аллокаций и без кадра. С подписками — кадр `teleRun`: обработчики
+  по порядку `attach`, снимок на входе в `emit`; непойманный `raise`
+  снимает подписку и вкладывает `[:telemetry, :handler, :failed]`,
+  `exit` кадр не ловит. `[:vm, :spawn]` и `[:vm, :mailbox, :hwm]` от
+  `send` — в кадре излучателя (`dropResult`, `callDst` не затирается).
+  Смерть и потерянный `Timer.send_after` — очередь `teleQ` служебного
+  актора (`telePid`, `initial_fn` `<telemetry>`), без событий на его
+  собственную смерть. Без совпавшей подписки измерения не собираются.
 - **`await`/`reply` (§12.9, T-165, `await.go`).** Слот ответа —
   `runtime.RefSlot` за указателем `Value.Slot` в самом ref: его создаёт
   только `make_ref` (`makeRef`, `Owner` = pid), у ref из `watch` слота нет.

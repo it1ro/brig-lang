@@ -863,6 +863,8 @@ var builtinParams = map[string]string{
 	"Global.put/2": "name, value", "Global.get/1": "name",
 	"Timer.send_after/3": "ms, pid, msg", "Timer.cancel/1": "ref",
 	"Time.monotonic_ms/0": "", "Time.now/0": "",
+	"Telemetry.attach/3": "id, prefix, handler", "Telemetry.detach/1": "id",
+	"Telemetry.emit/3": "event, measurements, meta",
 
 	"Repl.h/1": "f", "Repl.i/1": "v", "Repl.v/0": "", "Repl.v/1": "n",
 	"Repl.load/1": "path", "Repl.flush/0": "", "Repl.time/1": "f", "Repl.dis/1": "f",
