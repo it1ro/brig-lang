@@ -344,7 +344,7 @@ func (p *parser) parsePow() (ast.Expr, error) {
 }
 
 // postfix_expr ::= primary_expr { postfix_op }
-// postfix_op ::= "." ( LOWER_IDENT | UPPER_IDENT ) | "(" [ args ] ")" | "[" expr "]"
+// postfix_op ::= "." ( LOWER_IDENT | UPPER_IDENT | "fn" ) | "(" [ args ] ")" | "[" expr "]"
 func (p *parser) parsePostfix() (ast.Expr, error) {
 	left, err := p.parsePrimary()
 	if err != nil {
@@ -354,7 +354,8 @@ func (p *parser) parsePostfix() (ast.Expr, error) {
 		switch p.cur().Type {
 		case lexer.OP_DOT:
 			dot := p.advance()
-			if !p.at(lexer.LOWER_IDENT) && !p.at(lexer.UPPER_IDENT) {
+			// `fn` — ключевое слово и имя поля stack trace (§12.14).
+			if !p.at(lexer.LOWER_IDENT) && !p.at(lexer.UPPER_IDENT) && !p.at(lexer.KW_FN) {
 				return nil, p.errf("expected name after '.'")
 			}
 			name := p.advance().Lit
