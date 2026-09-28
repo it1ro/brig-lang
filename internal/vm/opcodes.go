@@ -59,7 +59,7 @@ const (
 	MAKEOK    // R[A] = Ok(R[B])
 	MAKEERROR // R[A] = Error(R[B])
 
-	SPAWN       // R[A] = spawn(R[B]); C == 1 — linked; C == 2 — watched, R[A] = (pid, ref)
+	SPAWN       // R[A] = spawn(R[B]); C&3 == 1 — linked; C&3 == 2 — watched, R[A] = (pid, ref); C&SpawnLimits — лимиты хода в R[B+1]
 	SEND        // R[A] = send(pid=R[B], msg=R[C])
 	SELF        // R[A] = Pid(a.pid)
 	MAKEREF     // R[A] = Ref(next)
@@ -110,6 +110,13 @@ const (
 	// Ответ по ref мимо ящика (§12.9, T-165).
 	AWAIT // R[A] = await(ref=R[B], timeout=R[C]); Result<V, Atom>; ждёт — исполняется снова
 	REPLY // reply(pid=R[B], ref=R[B+1], value=R[B+2]); R[A] = ()
+)
+
+// SpawnLimits — бит операнда C у SPAWN: второй аргумент spawn (лимиты
+// хода, §12.10) лежит в R[B+1]. Младшие биты (spawnModeMask) — режим.
+const (
+	SpawnLimits   = 4
+	spawnModeMask = 3
 )
 
 // opNames индексируется OpCode; размер массива фиксирован числом опкодов.

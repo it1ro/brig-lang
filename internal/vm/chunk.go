@@ -215,13 +215,17 @@ func (c *Chunk) disInstr(sb *strings.Builder, ip int) {
 	case TRAPEND, YIELD, ENSEND:
 		// без операндов
 	case SPAWN:
-		switch in.C() {
+		args := fmt.Sprintf("r%d", in.B())
+		if in.C()&SpawnLimits != 0 {
+			args = fmt.Sprintf("r%d, r%d", in.B(), in.B()+1)
+		}
+		switch in.C() & spawnModeMask {
 		case 1:
-			fmt.Fprintf(sb, "r%d <- spawn(r%d) linked", in.A(), in.B())
+			fmt.Fprintf(sb, "r%d <- spawn(%s) linked", in.A(), args)
 		case 2:
-			fmt.Fprintf(sb, "r%d <- spawn(r%d) watched", in.A(), in.B())
+			fmt.Fprintf(sb, "r%d <- spawn(%s) watched", in.A(), args)
 		default:
-			fmt.Fprintf(sb, "r%d <- spawn(r%d)", in.A(), in.B())
+			fmt.Fprintf(sb, "r%d <- spawn(%s)", in.A(), args)
 		}
 	case SEND:
 		fmt.Fprintf(sb, "r%d <- send(r%d, r%d)", in.A(), in.B(), in.C())

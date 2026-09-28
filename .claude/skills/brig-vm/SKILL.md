@@ -141,6 +141,18 @@ description: >
   только `Reply`, `wakeExpired` и `hurry` (exit). `clearTimer` сбрасывает
   и `awaiting` — прерванное ожидание (exit, interrupt REPL) слот не
   закрывает. Слот закрывают только Ok и `Error(:timeout)` в `await`.
+- **Бюджет хода и `Actor.info` (§12.10, T-169, `budget.go`).** Счётчики в
+  `Actor.budget`: за ход (`turnReds`/`turnAlloc`) и прошлые ходы
+  (`past*`); `newTurn` зовёт только `RECVTAKE` (сообщение или ветка
+  `after`), `await` ход не завершает. Редукцию считает `burn` → `reduce`
+  (равенство с лимитом: нулевой лимит = нет лимита, конструкторам `Actor`
+  ничего инициализировать не надо). Байты — `charge`: поверхностный
+  `sizeEstimate` результата конструирующих опкодов и нативов; новый
+  опкод, строящий значение, тоже зовёт `charge`. Превышение —
+  `signalExit` с `(:resource_limit, (kind, used, limit))`, дальше как
+  `exit`. Лимиты — `SPAWN` с битом `C&SpawnLimits`, запись в `R[B+1]`
+  (`parseLimits`, ошибка до создания актора). `Actor.info` — натив,
+  модуль `Actor` в списках встроенных (compiler, sema, loader).
 - **Мёртвые акторы удаляются из `s.actors`** при `actorDone`/`actorFailed`
   через `reapActor` (кроме `mainPid`; I-F9, T-40 #29). Поэтому `watch` на
   завершившийся pid даёт немедленный `:down` с `:noproc`, `send` →

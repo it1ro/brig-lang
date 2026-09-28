@@ -403,8 +403,10 @@ func (s *Scheduler) unready(a *Actor) {
 	s.ready = s.ready[:n]
 }
 
+// burn тратит редукцию слайса и считает её в бюджете хода актора (§12.10).
 func (s *Scheduler) burn(a *Actor, reds *int) {
 	*reds--
+	s.reduce(a)
 	if a.pid != s.sessionPid {
 		return
 	}

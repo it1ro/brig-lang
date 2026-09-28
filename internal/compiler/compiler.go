@@ -2163,7 +2163,7 @@ func (fc *funcCompiler) compileArg(a ast.Expr, r int, helperH bool) error {
 // vm.New. Список совпадает с loader.builtinModules и sema.isNativeMod.
 func isNativeModule(name string) bool {
 	switch name {
-	case "Vec", "Map", "Str", "Bytes", "Json", "Test", "Sys", "Prelude", "Global", "Timer", "Time":
+	case "Vec", "Map", "Str", "Bytes", "Json", "Test", "Sys", "Actor", "Prelude", "Global", "Timer", "Time":
 		return true
 	}
 	return false
@@ -2541,10 +2541,11 @@ func (fc *funcCompiler) compileMember(me ast.MemberExpr, d dest) error {
 // ---- actor ops ----
 
 // compileSpawn: mode — операнд C у SPAWN: 0 — spawn, 1 — spawn_linked,
-// 2 — spawn_watched (результат (pid, ref)).
+// 2 — spawn_watched (результат (pid, ref)). Второй аргумент — лимиты хода
+// (§12.10): в регистре за fn, в C — бит vm.SpawnLimits.
 func (fc *funcCompiler) compileSpawn(args []ast.Expr, mode int, d dest) error {
-	if len(args) != 1 {
-		return fmt.Errorf("spawn требует 1 аргумент (fn)")
+	if len(args) != 1 && len(args) != 2 {
+		return fmt.Errorf("spawn требует 1 или 2 аргумента (fn, limits)")
 	}
 	mark := fc.nextReg
 	dst := fc.destReg(d)
@@ -2552,6 +2553,16 @@ func (fc *funcCompiler) compileSpawn(args []ast.Expr, mode int, d dest) error {
 	fnReg := fc.allocReg()
 	if err := fc.compileExpr(args[0], val(fnReg)); err != nil {
 		return err
+	}
+	if len(args) == 2 {
+		limReg := fc.allocReg()
+		if limReg != fnReg+1 {
+			return fmt.Errorf("internal: spawn limits register r%d, want r%d", limReg, fnReg+1)
+		}
+		if err := fc.compileExpr(args[1], val(limReg)); err != nil {
+			return err
+		}
+		mode |= vm.SpawnLimits
 	}
 
 	fc.emit(vm.ABC(vm.SPAWN, dst, fnReg, mode))
