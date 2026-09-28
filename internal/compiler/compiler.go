@@ -1965,6 +1965,12 @@ func (fc *funcCompiler) compileCall(call ast.CallExpr, d dest) error {
 			return fc.compileUnwatch(call.Args(), d)
 		case "mailbox_size":
 			return fc.compileMailboxSize(call.Args(), d)
+		case "register":
+			return fc.compileRegistry(vm.REGISTER, name, 2, call.Args(), d)
+		case "unregister":
+			return fc.compileRegistry(vm.UNREGISTER, name, 1, call.Args(), d)
+		case "whereis":
+			return fc.compileRegistry(vm.WHEREIS, name, 1, call.Args(), d)
 		}
 		if strings.HasSuffix(name, "{}") {
 			return fc.compileRecord(strings.TrimSuffix(name, "{}"), call, d)
@@ -2676,6 +2682,31 @@ func (fc *funcCompiler) compileMailboxSize(args []ast.Expr, d dest) error {
 		return err
 	}
 	fc.emit(vm.ABC(vm.MAILBOXSIZE, dst, pidReg, 0))
+	fc.finish(d, dst)
+	fc.releaseToMark(mark)
+	return nil
+}
+
+// compileRegistry — `register(name, pid)`, `unregister(name)`, `whereis(name)`
+// (§12.8): аргументы в подряд идущих регистрах B, C.
+func (fc *funcCompiler) compileRegistry(op vm.OpCode, name string, arity int, args []ast.Expr, d dest) error {
+	if len(args) != arity {
+		return fmt.Errorf("%s требует %d аргумента(ов)", name, arity)
+	}
+	mark := fc.nextReg
+	dst := fc.destReg(d)
+	regs := make([]int, arity)
+	for i, arg := range args {
+		regs[i] = fc.allocReg()
+		if err := fc.compileExpr(arg, val(regs[i])); err != nil {
+			return err
+		}
+	}
+	c := 0
+	if arity == 2 {
+		c = regs[1]
+	}
+	fc.emit(vm.ABC(op, dst, regs[0], c))
 	fc.finish(d, dst)
 	fc.releaseToMark(mark)
 	return nil

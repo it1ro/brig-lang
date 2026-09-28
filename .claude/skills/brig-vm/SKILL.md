@@ -120,6 +120,10 @@ description: >
   Непойманная ошибка во время unwind причину не меняет. `callSync` и
   `CallNested` ensure не исполняют (ErrExit сразу). `spawn_watched` —
   `SPAWN` с C=2, `Watch` в том же шаге, результат `(pid, ref)`.
+- **Реестр имён (§12.8, T-164, `registry.go`).** Опкоды `REGISTER`/
+  `UNREGISTER`/`WHEREIS`; `Scheduler.names` — список `(name, pid)` с
+  `runtime.KeyEqual`. Имена снимает `notifyWatchers` (`dropNames`) — в той же
+  редукции, что и `:down`, поэтому после `:down` `whereis` → `None`.
 - **Мёртвые акторы удаляются из `s.actors`** при `actorDone`/`actorFailed`
   через `reapActor` (кроме `mainPid`; I-F9, T-40 #29). Поэтому `watch` на
   завершившийся pid даёт немедленный `:down` с `:noproc`, `send` →

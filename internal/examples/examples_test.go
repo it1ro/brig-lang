@@ -360,7 +360,7 @@ func TestCheckBlockPendingNeedsTask(t *testing.T) {
 	}{
 		{"pending, не компилируется", "brig pending(T-500)", notCompiling, true, ""},
 		{"pending с режимом", "brig stmt pending(T-500)", notCompiling, true, ""},
-		{"pending, неизвестная функция", "brig pending(T-500)", "whereis(:repo)", true, ""},
+		{"pending, неизвестная функция", "brig pending(T-500)", "await(make_ref(), 5000)", true, ""},
 		{"pending компилируется", "brig pending(T-500)", "x = 1", false, "снять pending"},
 		{"pending неизвестной задачи", "brig pending(T-999)", notCompiling, false, "T-999"},
 		{"pending без номера", "brig pending", notCompiling, false, "pending"},

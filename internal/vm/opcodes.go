@@ -101,6 +101,11 @@ const (
 	EXIT       // R[A] = exit(pid=R[B], reason=R[C]); Ok(())
 	TRAPENSURE // как TRAPBEGIN; handler ensure-блока: unwind от exit входит в него
 	ENSEND     // конец ensure-блока: unwind от exit, вошедший в этот блок, продолжается
+
+	// Реестр имён (§12.8, T-164).
+	REGISTER   // R[A] = register(name=R[B], pid=R[C]); Result<(), Atom>
+	UNREGISTER // unregister(R[B]); R[A] = ()
+	WHEREIS    // R[A] = whereis(R[B]); Option<Pid>
 )
 
 // opNames индексируется OpCode; размер массива фиксирован числом опкодов.
@@ -166,6 +171,9 @@ var opNames = [...]string{
 	EXIT:           "EXIT",
 	TRAPENSURE:     "TRAPENSURE",
 	ENSEND:         "ENSEND",
+	REGISTER:       "REGISTER",
+	UNREGISTER:     "UNREGISTER",
+	WHEREIS:        "WHEREIS",
 }
 
 func (op OpCode) String() string {
