@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"golang.org/x/sys/unix"
+
+	"github.com/it1ro/brig-lang/internal/repl"
 )
 
 // T-207: brig app.brig a --port 80 — файл-вход, хвост это Sys.args(),
@@ -573,6 +575,41 @@ func TestInteractiveHistory(t *testing.T) {
 	}
 }
 
+// T-223: brig -i . с живым приложением. Планировщик идёт между вводами,
+// tree() печатает супервизор и именованного ребёнка, ребёнок отвечает.
+func TestObserverLiveProject(t *testing.T) {
+	bin := buildBrig(t)
+	root := t.TempDir()
+	writeFiles(t, root, map[string]string{
+		"project.brig": "module Project\n\nfn name() -> \"obs\"\n",
+		"app.brig": `module App
+
+fn worker() ->
+    recv
+        (:ping, from) -> send(from, :pong)
+
+fn boot(name) ->
+    pid = spawn_linked(worker)
+    register(name, pid)
+    pid
+
+pub fn start() ->
+    Supervisor.start({ strategy: :one_for_one, max_restarts: 1, within: 5000, children: [{ name: :worker, start: () -> boot(:worker), restart: :permanent }] })
+`,
+	})
+	stdin := "sup = App.start()\ntree()\ncs = Supervisor.which_children(sup)\nsend(cs[0][1], (:ping, self()))\nrecv\n    m -> m\nafter 1000 -> :timeout\n"
+	stdout, stderr, code := runCLI(t, bin, stdin, "-i", "--no-init", root)
+	if code != exitOK {
+		t.Fatalf("exit %d\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	}
+	if !strings.Contains(stderr, "Some(:worker)") || !strings.Contains(stderr, "\n  #<pid ") || !strings.Contains(stderr, "status=:recv") {
+		t.Fatalf("tree:\n%s", stderr)
+	}
+	if !strings.Contains(stdout, ":pong") || strings.Contains(stdout, ":timeout") {
+		t.Fatalf("stdout:\n%s\nstderr:\n%s", stdout, stderr)
+	}
+}
+
 // T-209: golden-сессии гоняются как `brig -i -` без TTY.
 func TestInteractivePlainSessions(t *testing.T) {
 	bin := buildBrig(t)
@@ -591,8 +628,12 @@ func TestInteractivePlainSessions(t *testing.T) {
 				t.Fatalf("%s: no output separator", path)
 			}
 			got, code := runCombined(t, bin, input, "-i", "--no-init", "-")
-			if code != exitOK || got != want {
-				t.Fatalf("exit %d\n--- got ---\n%s--- want ---\n%s", code, got, want)
+			wantOut := want
+			if strings.HasPrefix(filepath.Base(path), "observer_") {
+				got, wantOut = repl.MaskObserverCounters(got), repl.MaskObserverCounters(wantOut)
+			}
+			if code != exitOK || got != wantOut {
+				t.Fatalf("exit %d\n--- got ---\n%s--- want ---\n%s", code, got, wantOut)
 			}
 		})
 	}

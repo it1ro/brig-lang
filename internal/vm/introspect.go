@@ -211,6 +211,10 @@ func (s *Scheduler) Snapshot() ([]ActorSnapshot, error) {
 // SnapshotHere — Snapshot из натива, который исполняет цикл сессии.
 func (s *Scheduler) SnapshotHere() []ActorSnapshot { return s.snapshot() }
 
+// ActorInfoValue — Actor.info(pid) для хелперов консоли. Звать с горутины
+// цикла (натив хелпера): это тот же снимок, что у натива Actor.info.
+func (s *Scheduler) ActorInfoValue(pid int) runtime.Value { return s.actorInfo(pid) }
+
 // serveSnapshots отвечает на ждущие запросы Snapshot. Зовёт цикл сессии
 // между слайсами; простаивающий цикл берёт запрос в waitSession.
 func (s *Scheduler) serveSnapshots() {

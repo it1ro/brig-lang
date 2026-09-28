@@ -1,0 +1,27 @@
+fn idle() ->
+    recv
+        _msg -> idle()
+
+pid = spawn(() -> idle())
+register(:worker, pid)
+info(pid)
+info(1)
+Repl.info(:nope)
+watched = spawn_watched(() -> ())
+dead = watched[0]
+ref = watched[1]
+recv
+    (:down, r, _) when r == ref -> ()
+info(dead)
+-- output --
+pid = #<pid 1>
+Ok(())
+{ reductions: _, alloc_bytes: _, mailbox: 0, turn_reductions: _, turn_alloc_bytes: _, name: Some(:worker), status: :recv, watchers: [], watching: [], initial_fn: "__repl__2$lambda$0$" }
+error: raise: (:type_error, (:info, 1))
+  at __repl__ (<repl>:1:1)
+error: raise: (:type_error, (:info, :nope))
+  at __repl__ (<repl>:1:5)
+watched = (#<pid 2>, #<ref 0>)
+dead = #<pid 2>
+ref = #<ref 0>
+не жив

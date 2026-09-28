@@ -48,8 +48,13 @@ func TestReplGoldenSessions(t *testing.T) {
 				}
 				return
 			}
-			if out.String() != want {
-				t.Errorf("%s: output mismatch\n--- got ---\n%s--- want ---\n%s", path, out.String(), want)
+			got, wantOut := out.String(), want
+			if strings.HasPrefix(filepath.Base(path), "observer_") {
+				// Счётчики Actor.info зависят от байткода. Форма и pid — нет.
+				got, wantOut = repl.MaskObserverCounters(got), repl.MaskObserverCounters(wantOut)
+			}
+			if got != wantOut {
+				t.Errorf("%s: output mismatch\n--- got ---\n%s--- want ---\n%s", path, got, wantOut)
 			}
 		})
 	}
