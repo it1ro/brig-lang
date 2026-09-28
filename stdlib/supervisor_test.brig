@@ -1,0 +1,222 @@
+# Тесты Supervisor (T-170, §13.1). Дети сообщают тесту о старте и об
+# остановке (ensure), поэтому порядок событий виден без таймингов.
+# `:down` берётся `recv` раньше обычных сообщений (§12.2): его ждут
+# первым, когда он может прийти вместе с `:stopped`.
+
+fn idle() ->
+    recv
+        _msg -> idle()
+
+# Ребёнок: шлёт `(:started, name, pid)` и ждёт; при остановке любым
+# exit, кроме :kill, — `(:stopped, name)`.
+fn worker(me, name) ->
+    send(me, (:started, name, self()))
+    r = trap
+        ensure send(me, (:stopped, name))
+        idle()
+    r
+
+fn child(me, name, restart) ->
+    { name: name, start: () -> spawn_linked(() -> worker(me, name)), restart: restart }
+
+fn started(name) ->
+    recv
+        (:started, n, pid) when n == name -> pid
+
+fn stopped() ->
+    recv
+        (:stopped, n) -> n
+
+fn down(ref) ->
+    recv
+        (:down, r, reason) when r == ref -> reason
+
+# n сообщений любого вида в порядке recv. Для случаев, где `:down` может
+# прийти раньше или позже `:stopped`.
+fn msgs(0) -> []
+fn msgs(n) ->
+    m = recv x -> x
+    [m, ..msgs(n - 1)]
+
+fn stop_msg?((:stopped, _)) -> true
+fn stop_msg?(_) -> false
+
+fn stops(ms) -> filter(ms, stop_msg?)
+fn downs(ms) -> filter(ms, m -> not stop_msg?(m))
+
+fn sleep(ms) ->
+    recv
+        :never -> ()
+    after ms -> ()
+
+fn sup_of(children, max_restarts, within) ->
+    Supervisor.start({ strategy: :one_for_one, max_restarts: max_restarts, within: within, children: children })
+
+fn counter_loop(n) ->
+    recv
+        :inc -> counter_loop(n + 1)
+
+fn worker_loop(n) ->
+    recv
+        :stop -> n
+        _msg -> worker_loop(n + 1)
+
+# Пример §13.1 исполняется.
+fn test_supervisor_spec_example() ->
+    sup = Supervisor.start({
+        strategy: :one_for_one,
+        max_restarts: 3,
+        within: 5000,
+        children: [
+            { name: :counter, start: () -> spawn_linked(() -> counter_loop(0)), restart: :permanent },
+            { name: :worker,  start: () -> spawn_linked(() -> worker_loop(0)),  restart: :transient },
+        ],
+    })
+    ref = watch(sup)
+    match Actor.info(sup)
+        Some(i) -> Test.assert_eq(len(i.watching), 2)
+        None -> Test.fail("supervisor is dead")
+    Test.assert_eq(Supervisor.stop(sup, :shutdown, { timeout: 1000 }), Ok(()))
+    Test.assert_eq(down(ref), :shutdown)
+
+# :one_for_one — перезапускается только упавший ребёнок, с новым pid;
+# :permanent — после любого выхода.
+fn test_supervisor_one_for_one_restart() ->
+    me = self()
+    sup = sup_of([child(me, :a, :permanent), child(me, :b, :permanent)], 3, 5000)
+    a = started(:a)
+    b = started(:b)
+    exit(a, :boom)
+    Test.assert_eq(stopped(), :a)
+    a2 = started(:a)
+    Test.assert_ne(a2, a)
+    Test.assert(Actor.info(b) != None)
+    exit(a2, :normal)
+    Test.assert_eq(stopped(), :a)
+    Test.assert_ne(started(:a), a2)
+    Test.assert_eq(mailbox_size(), 0)
+    Test.assert_eq(Supervisor.stop(sup, :shutdown, { timeout: 1000 }), Ok(()))
+    Test.assert_eq([stopped(), stopped()], [:b, :a])
+
+# :transient — перезапуск только после аварийного выхода; :normal,
+# :shutdown и (:shutdown, _) — нормальный.
+fn test_supervisor_transient_normal_exit() ->
+    me = self()
+    sup = sup_of([child(me, :t, :transient), child(me, :u, :transient), child(me, :v, :transient)], 5, 5000)
+    t = started(:t)
+    u = started(:u)
+    v = started(:v)
+    exit(t, :boom)
+    Test.assert_eq(stopped(), :t)
+    t2 = started(:t)
+    Test.assert_ne(t2, t)
+    _ = [watch(t2), watch(u), watch(v)]
+    exit(t2, :normal)
+    exit(u, :shutdown)
+    exit(v, (:shutdown, :done))
+    # Порядок смерти жертв exit не задан.
+    ms = msgs(6)
+    Test.assert_eq(List.sort(stops(ms)), [(:stopped, :t), (:stopped, :u), (:stopped, :v)])
+    Test.assert_eq(List.sort(map(downs(ms), d -> d[2])), List.sort([:normal, :shutdown, (:shutdown, :done)]))
+    # Супервизор берёт :down раньше запроса stop: будь кто-то
+    # перезапущен, его :started и :stopped были бы в ящике.
+    Test.assert_eq(Supervisor.stop(sup, :shutdown, { timeout: 1000 }), Ok(()))
+    Test.assert_eq(mailbox_size(), 0)
+
+# Больше max_restarts за within — остальные дети гасятся, супервизор
+# падает: raise((:max_restarts, (name, reason))), в :down — (:raise, …).
+fn test_supervisor_max_restarts_escalates() ->
+    me = self()
+    sup = sup_of([child(me, :a, :permanent), child(me, :b, :permanent)], 1, 60_000)
+    ref = watch(sup)
+    a = started(:a)
+    _b = started(:b)
+    exit(a, :boom)
+    Test.assert_eq(stopped(), :a)
+    a2 = started(:a)
+    exit(a2, :bang)
+    ms = msgs(3)
+    Test.assert_eq(stops(ms), [(:stopped, :a), (:stopped, :b)])
+    Test.assert_eq(downs(ms), [(:down, ref, (:raise, (:max_restarts, (:a, :bang))))])
+    Test.assert_eq(mailbox_size(), 0)
+
+# Перезапуски старше within не считаются.
+fn test_supervisor_restart_window() ->
+    me = self()
+    sup = sup_of([child(me, :a, :permanent)], 1, 50)
+    ref = watch(sup)
+    a = started(:a)
+    exit(a, :boom)
+    Test.assert_eq(stopped(), :a)
+    a2 = started(:a)
+    sleep(100)
+    exit(a2, :boom)
+    Test.assert_eq(stopped(), :a)
+    _a3 = started(:a)
+    Test.assert_eq(Supervisor.stop(sup, :shutdown, { timeout: 1000 }), Ok(()))
+    Test.assert_eq(down(ref), :shutdown)
+
+# stop гасит детей в обратном порядке старта и завершает супервизор с
+# reason.
+fn test_supervisor_stop_order() ->
+    me = self()
+    sup = sup_of([child(me, :a, :permanent), child(me, :b, :transient), child(me, :c, :permanent)], 3, 5000)
+    ref = watch(sup)
+    _a = started(:a)
+    _b = started(:b)
+    _c = started(:c)
+    Test.assert_eq(Supervisor.stop(sup, (:shutdown, :deploy), { timeout: 1000 }), Ok(()))
+    ms = msgs(4)
+    Test.assert_eq(stops(ms), [(:stopped, :c), (:stopped, :b), (:stopped, :a)])
+    Test.assert_eq(downs(ms), [(:down, ref, (:shutdown, :deploy))])
+
+# Ребёнок, который не завершается к дедлайну (зависший ensure), получает
+# :kill; stop всё равно возвращает Ok(()).
+fn stubborn(me) ->
+    send(me, (:started, :stubborn, self()))
+    r = trap
+        ensure idle()
+        idle()
+    r
+
+fn test_supervisor_stop_kills_after_timeout() ->
+    me = self()
+    sup = sup_of([{ name: :stubborn, start: () -> spawn_linked(() -> stubborn(me)), restart: :permanent }], 3, 5000)
+    pid = started(:stubborn)
+    ref = watch(pid)
+    Test.assert_eq(Supervisor.stop(sup, :shutdown, { timeout: 20 }), Ok(()))
+    Test.assert_eq(down(ref), :shutdown)
+
+# stop мёртвого супервизора — Error(:timeout).
+fn test_supervisor_stop_dead() ->
+    sup = sup_of([], 3, 5000)
+    ref = watch(sup)
+    Test.assert_eq(Supervisor.stop(sup, :shutdown, { timeout: 0 }), Ok(()))
+    Test.assert_eq(down(ref), :shutdown)
+    Test.assert_eq(Supervisor.stop(sup, :shutdown, { timeout: 0 }), Error(:timeout))
+
+# start ребёнка упал — уже запущенные гасятся (до ответа вызывающему), в
+# вызывающем — (:start_failed, (name, reason)).
+fn spawned(me, pid) ->
+    send(me, (:spawned, pid))
+    pid
+
+fn test_supervisor_start_failed() ->
+    me = self()
+    ok = { name: :ok, start: () -> spawned(me, spawn_linked(() -> idle())), restart: :permanent }
+    bad = { name: :bad, start: () -> raise(:nope), restart: :permanent }
+    r = trap(sup_of([ok, bad], 3, 5000))
+    Test.assert_eq(r, Error((:start_failed, (:bad, :nope))))
+    pid = recv (:spawned, p) -> p
+    Test.assert_eq(Actor.info(pid), None)
+    not_pid = { name: :np, start: () -> :oops, restart: :permanent }
+    r2 = trap(sup_of([not_pid], 3, 5000))
+    Test.assert_eq(r2, Error((:start_failed, (:np, (:type_error, (:watch, :oops))))))
+
+fn test_supervisor_bad_spec() ->
+    me = self()
+    r = trap(sup_of([{ ..child(me, :a, :permanent), restart: :temporary }], 3, 5000))
+    Test.assert_eq(r, Error((:type_error, (:start, :temporary))))
+    r2 = trap(Supervisor.start({ strategy: :one_for_one, max_restarts: 3, within: 5000, children: :none }))
+    Test.assert_eq(r2, Error((:type_error, (:start, :none))))
+    Test.assert_eq(mailbox_size(), 0)

@@ -678,6 +678,9 @@ func (c *checker) checkPipe(p ast.PipeExpr) {
 			if i := strings.IndexByte(name, '.'); i >= 0 {
 				base = name[:i]
 			}
+			if m, ok := strings.CutPrefix(name, "Prelude."); ok {
+				base = m
+			}
 			if actorPrimitives[base] {
 				line, col := posOf(callee)
 				c.err(line, col,

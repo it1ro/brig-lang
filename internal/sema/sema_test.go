@@ -73,6 +73,10 @@ func TestPipeAllowsQualifiedModule(t *testing.T) {
 	wantOK(t, "module Main\nfn main() ->\n    x |> Foo.send\n")
 }
 
+func TestPipeBanPreludeActorPrimitive(t *testing.T) {
+	wantErr(t, "module Main\nfn main() ->\n    x |> Prelude.send(:m)\n", `actor primitive "send"`)
+}
+
 func TestPipeChain(t *testing.T) {
 	wantErr(t,
 		"module Main\nfn main() ->\n    xs |> map(f) |> send\n",
@@ -556,6 +560,11 @@ func TestNames(t *testing.T) {
 	ok("fn main() -> mailbox_size()\n")
 	ok("fn main() -> mailbox_size(self())\n")
 	errAt("fn main() -> self(1)\n", "undefined function self/1", 1, 14)
+	// Акторный примитив, затенённый fn модуля, — через Prelude (§11.5).
+	ok("fn reply(from, v) -> Prelude.reply(from, make_ref(), v)\nfn main() -> reply(self(), 1)\n")
+	ok("fn main() -> Prelude.send(Prelude.self(), :hi)\n")
+	errAt("fn reply(from, v) -> reply(from, make_ref(), v)\n", "undefined function reply/3", 1, 22)
+	errAt("fn main() -> Prelude.reply(self(), 1)\n", "undefined function Prelude.reply/2", 1, 14)
 
 	util := checkNamesProg(t, "module Util\npub fn twice(x) -> scale(x)\nfn scale(x) -> x * 2\n")
 	world := sema.NewWorld([]sema.Module{{Name: "Util", Prog: util}})

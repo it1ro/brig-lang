@@ -5,8 +5,8 @@
 # клиентом и тишину (keep-alive ping через after). Ни async, ни каналов,
 # ни колбэков, ни отдельного «event loop»-API.
 #
-# needs: T-135, T-137, T-170, horizon
-#   Server.call (04) — T-170; модули проекта — T-135, T-137;
+# needs: T-135, T-137, horizon
+#   модули проекта — T-135, T-137;
 #   horizon: Conn.json/read_json (06), Calmar.Sse, PubSub, Log (04),
 #   Json.encode через to_json (03/L6).
 #   Guard с полем в recv уже работает.
