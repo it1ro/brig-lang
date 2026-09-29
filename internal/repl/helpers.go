@@ -892,7 +892,8 @@ var builtinParams = map[string]string{
 	"Time.monotonic_ms/0": "", "Time.now/0": "",
 	"Telemetry.attach/3": "id, prefix, handler", "Telemetry.detach/1": "id",
 	"Telemetry.emit/3": "event, measurements, meta",
-	"Port.close/1":     "port", "Signal.subscribe/1": "names",
+	"Port.close/1":     "port", "Port.request/1": "port", "Port.write/2": "port, data",
+	"Port.give/2": "port, pid", "Signal.subscribe/1": "names", "File.open/2": "path, mode",
 
 	"Repl.h/1": "f", "Repl.i/1": "v", "Repl.v/0": "", "Repl.v/1": "n",
 	"Repl.load/1": "path", "Repl.flush/0": "", "Repl.time/1": "f", "Repl.dis/1": "f",

@@ -209,15 +209,16 @@ var modBuiltins = map[string]map[string]sig{
 	"Timer":     {"send_after": exact(3), "cancel": exact(1)},
 	"Time":      {"monotonic_ms": exact(0), "now": exact(0)},
 	"Telemetry": {"attach": exact(3), "detach": exact(1), "emit": exact(3)},
-	"Port":      {"close": exact(1)},
+	"Port":      {"close": exact(1), "request": exact(1), "write": exact(2), "give": exact(2)},
 	"Signal":    {"subscribe": exact(1)},
+	"File":      {"open": exact(2)},
 }
 
 // isNativeMod — встроенный модуль на Go. Список совпадает с
 // loader.builtinModules и compiler.isNativeModule.
 func isNativeMod(name string) bool {
 	switch name {
-	case "Vec", "Map", "Record", "Str", "Bytes", "Json", "Test", "Sys", "Actor", "Prelude", "Global", "Timer", "Time", "Telemetry", "Port", "Signal":
+	case "Vec", "Map", "Record", "Str", "Bytes", "Json", "Test", "Sys", "Actor", "Prelude", "Global", "Timer", "Time", "Telemetry", "Port", "Signal", "File":
 		return true
 	}
 	return false

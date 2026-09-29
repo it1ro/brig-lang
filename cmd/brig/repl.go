@@ -31,6 +31,7 @@ func prompt(next int) string { return fmt.Sprintf("brig[%d]> ", next) }
 func replLoop(inv invocation) {
 	machine := vm.New()
 	machine.SetSignals(osSignals{skip: map[string]bool{"sigint": true}})
+	machine.SetFiles(osFiles{})
 	machine.SetArgs(inv.progArgs)
 	s := repl.New(machine, os.Stderr)
 	defer s.Close()

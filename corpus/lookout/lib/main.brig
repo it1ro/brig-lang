@@ -17,7 +17,7 @@ fn main() ->
     Signal.subscribe([:sigterm, :sigint])
     Log.info("lookout started", { port: config.port })
     recv
-        (:signal, sig) ->
+        (:signal, _, sig) ->
             Log.info("shutting down", { signal: sig })
             # Supervisor.stop гасит детей в обратном порядке старта:
             # Endpoint перестаёт принимать, запросы дорабатывают до дедлайна,

@@ -73,7 +73,7 @@ func waitExit(t *testing.T, cmd *exec.Cmd, done <-chan error) error {
 }
 
 // TestSignalSubscribeE2E — Signal.subscribe([:sigterm]) в `brig <file>`:
-// kill -TERM доставляется владельцу как (:signal, :sigterm), программа
+// kill -TERM доставляется владельцу как (:signal, port, :sigterm), программа
 // ждёт его и завершается сама с кодом 0 (§12.12, §15.2).
 func TestSignalSubscribeE2E(t *testing.T) {
 	bin := buildBrig(t)
@@ -82,7 +82,7 @@ fn guard(parent) ->
     port = Signal.subscribe([:sigterm])
     send(parent, :subscribed)
     recv
-        (:signal, name) ->
+        (:signal, _, name) ->
             print(name)
             Port.close(port)
 

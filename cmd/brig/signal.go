@@ -60,10 +60,11 @@ func (h osSignals) Open(names []string, emit func(name string)) func() {
 	}
 }
 
-// newMachine — VM программы: сигналы ОС подключены.
+// newMachine — VM программы: сигналы ОС и файлы подключены.
 func newMachine() *vm.VM {
 	m := vm.New()
 	m.SetSignals(osSignals{})
+	m.SetFiles(osFiles{})
 	return m
 }
 

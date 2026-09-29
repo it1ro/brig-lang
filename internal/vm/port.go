@@ -44,14 +44,24 @@ var signalNames = []string{"sigterm", "sigint"}
 
 // openPort — открытый порт в таблице планировщика.
 type openPort struct {
-	h     *runtime.PortHandle
-	close func() // освобождает ресурс; nil — ресурса нет
+	h      *runtime.PortHandle
+	close  func()      // освобождает ресурс; nil — ресурса нет
+	stream *streamPort // nil — порт не потоковый (Signal)
 }
 
-// injectEvent — событие ресурса для владельца порта.
+// live — от порта можно ждать событие (§15.2): Signal — всегда,
+// потоковый — пока взведён запрос или не всё записано.
+func (p *openPort) live() bool {
+	return p.stream == nil || p.stream.armed || p.stream.pending > 0
+}
+
+// injectEvent — событие ресурса для владельца порта: готовое сообщение
+// (msg) или событие потокового ресурса (stream), которое run-loop
+// превращает в сообщение сам.
 type injectEvent struct {
-	port *runtime.PortHandle
-	msg  runtime.Value
+	port   *runtime.PortHandle
+	msg    runtime.Value
+	stream *StreamEvent
 }
 
 // injectQueue — единственный вход для событий, порождённых не акторами.
@@ -83,26 +93,47 @@ func (q *injectQueue) take() []injectEvent {
 
 // drainInject разбирает inject-очередь: событие открытого порта — в конец
 // ящика владельца мимо HWM (§12.12), владелец будится; событие закрытого
-// порта отбрасывается.
+// порта отбрасывается. Владелец берётся в момент разбора: после
+// Port.give событие получает новый.
 func (s *Scheduler) drainInject() {
 	for _, ev := range s.inject.take() {
 		if ev.port.Closed {
 			continue
 		}
-		a, ok := s.actors[ev.port.Owner]
-		if !ok {
+		if ev.stream != nil {
+			s.streamEvent(s.ports[ev.port.ID], ev.stream)
 			continue
 		}
-		a.mailbox = append(a.mailbox, ev.msg)
-		s.wakeIfBlocked(a)
+		s.deliver(ev.port, ev.msg)
 	}
 }
 
+// deliver кладёт событие порта в конец ящика владельца мимо HWM.
+func (s *Scheduler) deliver(h *runtime.PortHandle, msg runtime.Value) {
+	a, ok := s.actors[h.Owner]
+	if !ok {
+		return
+	}
+	a.mailbox = append(a.mailbox, msg)
+	s.wakeIfBlocked(a)
+}
+
+// portsLive — есть порт, от которого можно ждать событие (§15.2).
+func (s *Scheduler) portsLive() bool {
+	for _, p := range s.ports {
+		if p.live() {
+			return true
+		}
+	}
+	return false
+}
+
 // waitEvent — ready пуст: ждёт ближайший таймер или событие порта.
-// false — ждать нечего (ни таймеров, ни открытых портов).
+// false — ждать нечего: ни таймеров, ни портов, от которых событие
+// возможно (потоковый порт без запроса и без записи молчит).
 func (s *Scheduler) waitEvent() bool {
 	next := s.nextDeadline()
-	if next.IsZero() && len(s.ports) == 0 {
+	if next.IsZero() && !s.portsLive() {
 		return false
 	}
 	var timerC <-chan time.Time
@@ -124,18 +155,26 @@ func (s *Scheduler) waitEvent() bool {
 	return true
 }
 
-// newPort открывает порт, владелец — a. open получает функцию, которой
-// ресурс отдаёт события, и возвращает закрытие ресурса.
-func (s *Scheduler) newPort(a *Actor, open func(emit func(runtime.Value)) func()) runtime.Value {
+// newPort открывает порт, владелец — a. open получает сам порт (для
+// событий, §12.12: порт — второй элемент) и функцию, которой ресурс
+// отдаёт события, и возвращает закрытие ресурса.
+func (s *Scheduler) newPort(a *Actor, open func(port runtime.Value, emit func(runtime.Value)) func()) runtime.Value {
+	p := s.addPort(a)
+	pv := runtime.Value{Kind: runtime.KindPort, Port: p.h}
+	p.close = open(pv, func(msg runtime.Value) {
+		s.inject.push(injectEvent{port: p.h, msg: msg})
+	})
+	return pv
+}
+
+// addPort заводит открытый порт с владельцем a, без ресурса.
+func (s *Scheduler) addPort(a *Actor) *openPort {
 	h := &runtime.PortHandle{ID: s.nextPort, Owner: a.pid}
 	s.nextPort++
 	p := &openPort{h: h}
 	s.ports[h.ID] = p
 	a.ports = append(a.ports, h)
-	p.close = open(func(msg runtime.Value) {
-		s.inject.push(injectEvent{port: h, msg: msg})
-	})
-	return runtime.Value{Kind: runtime.KindPort, Port: h}
+	return p
 }
 
 // closePort закрывает порт: ресурс освобождается, события больше не
@@ -147,6 +186,14 @@ func (s *Scheduler) closePort(h *runtime.PortHandle) {
 	h.Closed = true
 	p := s.ports[h.ID]
 	delete(s.ports, h.ID)
+	s.unownPort(h)
+	if p != nil && p.close != nil {
+		p.close()
+	}
+}
+
+// unownPort убирает порт из списка портов его владельца.
+func (s *Scheduler) unownPort(h *runtime.PortHandle) {
 	if a, ok := s.actors[h.Owner]; ok {
 		for i, x := range a.ports {
 			if x == h {
@@ -154,9 +201,6 @@ func (s *Scheduler) closePort(h *runtime.PortHandle) {
 				break
 			}
 		}
-	}
-	if p != nil && p.close != nil {
-		p.close()
 	}
 }
 
@@ -175,6 +219,13 @@ func (s *Scheduler) closeAllPorts() {
 	}
 }
 
+// finishPorts — выход из программы: все порты закрыты, закрытые
+// потоковые ресурсы дописали принятое (§12.12).
+func (s *Scheduler) finishPorts() {
+	s.closeAllPorts()
+	s.closing.Wait()
+}
+
 // halting — ошибка актора — Sys.halt: планировщик останавливается, ensure
 // не исполняются (§12.12).
 func (s *Scheduler) halting(a *Actor) bool {
@@ -186,9 +237,11 @@ func (s *Scheduler) halting(a *Actor) bool {
 	return true
 }
 
-// installPorts регистрирует Port.close, Signal.subscribe и Sys.halt.
-// Порт создаёт и закрывает актор, который исполняет натив (s.active).
+// installPorts регистрирует Port.*, Signal.subscribe, File.open и
+// Sys.halt. Порт создаёт и закрывает актор, который исполняет натив
+// (s.active).
 func installPorts(def func(name string, arity int, fn runtime.NativeFunc)) {
+	installStreams(def)
 	def("Signal.subscribe", 1, func(c runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		m := c.(*VM)
 		names, ok := subscribeNames(args[0])
@@ -201,19 +254,19 @@ func installPorts(def func(name string, arity int, fn runtime.NativeFunc)) {
 			return runtime.Unit, errors.New("internal: Signal.subscribe outside an actor")
 		}
 		hub := m.signals
-		return s.newPort(a, func(emit func(runtime.Value)) func() {
+		return s.newPort(a, func(port runtime.Value, emit func(runtime.Value)) func() {
 			if hub == nil {
 				return nil
 			}
 			return hub.Open(names, func(name string) {
-				emit(runtime.Tuple(runtime.Atom("signal"), runtime.Atom(name)))
+				emit(runtime.Tuple(runtime.Atom("signal"), port, runtime.Atom(name)))
 			})
 		}), nil
 	})
 	def("Port.close", 1, func(c runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		s := c.(*VM).scheduler
 		p := args[0]
-		if p.Kind != runtime.KindPort || s.active == nil || p.Port.Owner != s.active.pid {
+		if !s.ownsPort(p) {
 			return runtime.Unit, typeErr("close", p)
 		}
 		s.closePort(p.Port)
