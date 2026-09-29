@@ -54,6 +54,8 @@ type VM struct {
 	teleEmit *runtime.FuncValue
 	// signals — реализация портов Signal (§12.12); nil — без ОС.
 	signals SignalHub
+	// files — реализация портов File (§12.12); nil — без файловой системы.
+	files FileHub
 }
 
 // New создаёт ВМ с установленной прелюдией.

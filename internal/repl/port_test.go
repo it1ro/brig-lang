@@ -92,7 +92,7 @@ func TestSessionSignalPort(t *testing.T) {
     _p = Signal.subscribe([:sigterm])
     send(me, :subscribed)
     recv
-        (:signal, name) -> send(me, (:bg, name))
+        (:signal, _, name) -> send(me, (:bg, name))
 `)
 	h.eval(t, "_bg = spawn(bg)\n")
 	waitStub(t, hub.opened, "background subscription")
@@ -102,7 +102,7 @@ func TestSessionSignalPort(t *testing.T) {
 	hub.fire("sigterm")
 	// Фоновый владелец умер после ответа — его порт закрыт.
 	waitStub(t, hub.closed, "background close")
-	got := h.eval(t, "[recv\n    (:signal, n) -> n\n, recv\n    (:bg, n) -> n\n]\n")
+	got := h.eval(t, "[recv\n    (:signal, _, n) -> n\n, recv\n    (:bg, n) -> n\n]\n")
 	want := runtime.List(runtime.Atom("sigterm"), runtime.Atom("sigterm"))
 	if !runtime.Equal(got, want) {
 		t.Fatalf("got %s, want %s", got.Inspect(), want.Inspect())

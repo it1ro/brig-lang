@@ -342,6 +342,9 @@ func (s *Scheduler) shutdownSession() { s.endSession(errSessionClosed) }
 func (s *Scheduler) haltSession() { s.endSession(s.halt) }
 
 func (s *Scheduler) endSession(err error) {
+	// Порты — до ответа вводам: получив ответ, CLI может выйти, а
+	// закрытые файлы должны успеть дописаться (§12.12).
+	s.finishPorts()
 	pending := s.pending
 	s.pending = nil
 	if a := s.actors[s.sessionPid]; a != nil && s.current != nil {
@@ -353,7 +356,6 @@ func (s *Scheduler) endSession(err error) {
 	if pending != nil {
 		pending.done <- sessionResult{val: runtime.Unit, err: err}
 	}
-	s.closeAllPorts()
 }
 
 // consumeInterrupt снимает текущий ввод, если прерывание уже запрошено.

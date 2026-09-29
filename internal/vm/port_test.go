@@ -4,7 +4,9 @@ import (
 	"errors"
 	goparser "go/parser"
 	"go/token"
+	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -87,6 +89,16 @@ func waitNames(t *testing.T, ch <-chan []string, what string) []string {
 // startModule компилирует модуль и запускает main в отдельной goroutine.
 func startModule(t *testing.T, src string, hub vm.SignalHub) (*vm.VM, <-chan error) {
 	t.Helper()
+	return startModuleWith(t, src, func(m *vm.VM) {
+		if hub != nil {
+			m.SetSignals(hub)
+		}
+	})
+}
+
+// startModuleWith — startModule, setup подключает реализации портов.
+func startModuleWith(t *testing.T, src string, setup func(*vm.VM)) (*vm.VM, <-chan error) {
+	t.Helper()
 	prog, err := parser.ParseProgram(parser.ModeModule, src)
 	if err != nil {
 		t.Fatalf("parse: %v", err)
@@ -96,9 +108,7 @@ func startModule(t *testing.T, src string, hub vm.SignalHub) (*vm.VM, <-chan err
 		t.Fatalf("compile: %v", err)
 	}
 	m := vm.New()
-	if hub != nil {
-		m.SetSignals(hub)
-	}
+	setup(m)
 	for name, fn := range img.Functions {
 		m.DefineGlobal(name, vm.FuncValue(fn))
 	}
@@ -149,7 +159,7 @@ fn guard(parent) ->
     port = Signal.subscribe([:sigterm])
     send(parent, :subscribed)
     recv
-        (:signal, :sigterm) ->
+        (:signal, p, :sigterm) when p == port ->
             Global.put(:got, :sigterm)
             Port.close(port)
 
@@ -174,7 +184,7 @@ fn main() ->
 fn main() ->
     _port = Signal.subscribe([:sigint])
     recv
-        (:signal, name) -> Global.put(:got, name)
+        (:signal, _, name) -> Global.put(:got, name)
 `, hub)
 		waitNames(t, hub.opened, "subscription")
 		assertRunning(t, done)
@@ -195,7 +205,7 @@ fn guard(parent) ->
     port = Signal.subscribe([:sigterm])
     send(parent, :subscribed)
     recv
-        (:signal, _) ->
+        (:signal, _, _) ->
             Global.put(:send, send(parent, :late))
             ref = watch(parent)
             recv
@@ -225,11 +235,11 @@ fn main() ->
 fn main() ->
     port = Signal.subscribe([:sigterm])
     first = recv
-        (:signal, _) -> :signal
+        (:signal, _, _) -> :signal
     after 30 -> :timeout
     Global.put(:first, first)
     recv
-        (:signal, name) -> Global.put(:got, name)
+        (:signal, _, name) -> Global.put(:got, name)
     Port.close(port)
 `, hub)
 		waitNames(t, hub.opened, "subscription")
@@ -307,7 +317,7 @@ fn main() ->
 	})
 }
 
-// TestSignalDeliveredToOwner — событие (:signal, name) получает владелец
+// TestSignalDeliveredToOwner — событие (:signal, port, name) получает владелец
 // каждого открытого порта, подписанного на name; остальные — нет (§12.12).
 func TestSignalDeliveredToOwner(t *testing.T) {
 	hub := newFakeSignals()
@@ -316,7 +326,7 @@ fn listen(parent, names) ->
     port = Signal.subscribe(names)
     send(parent, :subscribed)
     recv
-        (:signal, name) ->
+        (:signal, p, name) when p == port ->
             send(parent, (:got, self(), name))
             Port.close(port)
 
@@ -368,7 +378,7 @@ func TestSignalOrderOnePort(t *testing.T) {
 	m, done := startModule(t, `module Main
 fn take() ->
     recv
-        (:signal, name) -> name
+        (:signal, _, name) -> name
 
 fn main() ->
     port = Signal.subscribe([:sigterm, :sigint])
@@ -563,6 +573,8 @@ fn main() ->
 // портов живут за интерфейсом (R14, docs/02 §6).
 func TestVMCoreNoOSPorts(t *testing.T) {
 	banned := []string{"os/signal", "os/exec", "net"}
+	// Файлы — тоже за интерфейсом (FileHub, T-228): ядро не открывает их само.
+	fileCalls := regexp.MustCompile(`\bos\.(Open|OpenFile|Create|ReadFile|WriteFile|ReadDir|Stat)\b`)
 	for _, dir := range []string{".", "../runtime"} {
 		files, err := filepath.Glob(filepath.Join(dir, "*.go"))
 		if err != nil {
@@ -575,6 +587,13 @@ func TestVMCoreNoOSPorts(t *testing.T) {
 			ast, err := goparser.ParseFile(token.NewFileSet(), f, nil, goparser.ImportsOnly)
 			if err != nil {
 				t.Fatal(err)
+			}
+			src, err := os.ReadFile(f)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if loc := fileCalls.Find(src); loc != nil {
+				t.Errorf("%s calls %s", f, loc)
 			}
 			for _, imp := range ast.Imports {
 				path := strings.Trim(imp.Path.Value, `"`)

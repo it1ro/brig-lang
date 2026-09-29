@@ -434,7 +434,7 @@ type Scheduler struct {
 	// (§15.2), и send/watch ему — как мёртвому pid. Итог читается отсюда.
 	main *Actor
 	// active — актор, чей кадр исполняется: владелец порта для нативов
-	// Signal.subscribe и Port.close.
+	// Signal.subscribe, File.open и Port.*.
 	active *Actor
 	// ports — открытые порты по ID (§12.12); их число держит программу
 	// после завершения main (§15.2).
@@ -442,6 +442,9 @@ type Scheduler struct {
 	nextPort int
 	// inject — события портов из goroutine ресурсов (docs/02 §6).
 	inject injectQueue
+	// closing — ресурсы закрытых потоковых портов, которые ещё дописывают
+	// принятое; выход из программы их ждёт (§12.12, T-228).
+	closing sync.WaitGroup
 	// halt — вызван Sys.halt: run-loop выходит на ближайшей итерации.
 	halt *ErrHalt
 	// timerVisits — сколько записей кучи осмотрели nextDeadline/wakeExpired
@@ -636,10 +639,11 @@ func (s *Scheduler) runMain(mainFn runtime.Value, args []runtime.Value) (runtime
 		return runtime.Unit, err
 	}
 	s.main = s.actors[pid]
-	defer s.closeAllPorts()
+	defer s.finishPorts()
 
 	// Выход (§15.2): main завершился и открытых портов нет; main упал;
-	// Sys.halt. Пока порт открыт, пустая ready — ожидание, не deadlock.
+	// Sys.halt. Пока от порта или таймера можно ждать событие, пустая
+	// ready — ожидание; ждать неоткуда — выход после main или deadlock.
 	for {
 		if s.halt != nil {
 			return runtime.Unit, s.halt
@@ -653,6 +657,9 @@ func (s *Scheduler) runMain(mainFn runtime.Value, args []runtime.Value) (runtime
 
 		if len(s.ready) == 0 {
 			if !s.waitEvent() {
+				if m := s.main; m.status == actorDone {
+					return m.result, nil
+				}
 				return runtime.Unit, fmt.Errorf("deadlock: all actors blocked")
 			}
 			continue
