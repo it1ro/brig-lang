@@ -858,24 +858,6 @@ func clauseVariadic(params []ast.Pattern) (bool, error) {
 	return variadic, nil
 }
 
-// checkLambdaParams — fail-fast для полной лямбды `fn (…) ->` (T-44).
-// `..name` допустим последним параметром (§6.3); параметр-паттерн — ошибка,
-// а не молчаливое имя.
-func checkLambdaParams(params []string) error {
-	for i, p := range params {
-		if strings.HasPrefix(p, "..") {
-			if i != len(params)-1 {
-				return fmt.Errorf("variadic parameter %q must be last", p)
-			}
-			p = strings.TrimPrefix(p, "..")
-		}
-		if !isIdentParam(p) {
-			return fmt.Errorf("срез: параметр-паттерн %q в лямбде не реализован", p)
-		}
-	}
-	return nil
-}
-
 // isIdentParam: LOWER_IDENT (с опциональным trailing `?`), не true/false.
 func isIdentParam(p string) bool {
 	if p == "" || p[0] < 'a' || p[0] > 'z' || p == "true" || p == "false" {
@@ -1451,7 +1433,7 @@ func (fc *funcCompiler) compileExpr(e ast.Expr, d dest) (err error) {
 	case ast.LambdaEmpty:
 		return fc.compileLambda("", nil, ex.Body(), d)
 	case ast.LambdaFull:
-		return fc.compileLambda("", ex.ParamNames(), ex.BlockBody(), d)
+		return fc.compileLambdaFull("", ex.Params(), ex.BlockBody(), d)
 	case ast.PipeExpr:
 		return fc.compilePipe(ex, d)
 	}
@@ -3365,9 +3347,6 @@ func (fc *funcCompiler) compileIndex(ie ast.IndexExpr, d dest) error {
 // ---- lambda / closure ----
 
 func (fc *funcCompiler) compileLambda(name string, params []string, body ast.Expr, d dest) error {
-	if err := checkLambdaParams(params); err != nil {
-		return err
-	}
 	child := fc.compiler.newFuncCompiler(fc)
 	// Уникальный префикс на лямбду: иначе одноимённые локальные fn в
 	// разных лямбдах одной функции перезаписывают друг друга в image.Functions (A-F6).
@@ -3408,13 +3387,116 @@ func (fc *funcCompiler) compileLambda(name string, params []string, body ast.Exp
 	}
 	child.chunk.NumRegs = child.maxReg
 
-	fnName := name
-	if fnName == "" {
-		fnName = child.prefix
-	}
 	arity := len(params)
 	if child.chunk.Variadic {
 		arity = -1
+	}
+	return fc.emitClosure(child, name, arity, d)
+}
+
+// compileLambdaFull компилирует полную лямбду fn (params) -> body с
+// параметрами-полными-паттернами (§6.3, T-141): образец — compileOneClause,
+// но лямбда — единственный "клоз", поэтому несовпадение паттерна не
+// прыгает к следующему клозу, а сразу даёт ловимый (:function_clause, args)
+// (§5.3), как многоклозная fn после последнего клоза.
+func (fc *funcCompiler) compileLambdaFull(name string, params []ast.Pattern, body *ast.BlockStmt, d dest) error {
+	variadic, err := clauseVariadic(params)
+	if err != nil {
+		return err
+	}
+	fixed := len(params)
+	if variadic {
+		fixed--
+	}
+	n := fixed
+	if variadic {
+		n++
+	}
+
+	child := fc.compiler.newFuncCompiler(fc)
+	child.prefix = fmt.Sprintf("%slambda$%d$", fc.prefix, fc.lambdaSeq)
+	fc.lambdaSeq++
+
+	child.chunk.Variadic = variadic
+	child.chunk.NumParams = n
+	for i := 0; i < n; i++ {
+		r := child.allocReg()
+		if r != i {
+			fc.fail("lambda: param %d in r%d", i, r)
+		}
+	}
+
+	var fails []int
+	for i, p := range params[:fixed] {
+		switch x := p.(type) {
+		case ast.IdentPattern:
+			if isIdentParam(x.IdentName()) {
+				child.bindLocal(x.IdentName(), i)
+				continue
+			}
+		case ast.PatternWildcard:
+			if p.String() == "_" {
+				continue
+			}
+		}
+		cp, err := child.compilePattern(p)
+		if err != nil {
+			return err
+		}
+		patIdx := child.chunk.AddPattern(cp)
+		child.pos = posOf(p)
+		child.emit(vm.ABx(vm.MATCHLOCAL, i, patIdx))
+		fails = append(fails, child.emitJump(vm.JMP, 0))
+	}
+	if variadic {
+		jump, err := child.bindRestTail(ast.FnClauseArg{Params: params}, 0, fixed)
+		if err != nil {
+			return err
+		}
+		if jump >= 0 {
+			fails = append(fails, jump)
+		}
+	}
+
+	// Успешный матч продолжает выполнение прямо в тело (падает мимо JMP,
+	// см. компилятор MATCHLOCAL). Raise — после тела, недостижим иначе как
+	// через fail-переходы (тело всегда завершается RETURN).
+	if body == nil || len(body.Body()) == 0 {
+		scratch := child.allocReg()
+		if err := child.loadUnit(dest{reg: scratch, tail: true}); err != nil {
+			return err
+		}
+	} else {
+		scratch := child.allocReg()
+		if err := child.compileStmts(body.Body(), dest{reg: scratch, tail: true}); err != nil {
+			return err
+		}
+	}
+
+	if len(fails) > 0 {
+		here := len(child.chunk.Code)
+		for _, j := range fails {
+			if perr := child.chunk.PatchJump(j, here); perr != nil {
+				child.fail("patch: %v", perr)
+			}
+		}
+		child.raiseFunctionClause(ast.FnClauseArg{Params: params}, 0, n)
+	}
+	child.chunk.NumRegs = child.maxReg
+
+	arity := n
+	if variadic {
+		arity = -1
+	}
+	return fc.emitClosure(child, name, arity, d)
+}
+
+// emitClosure — общий хвост compileLambda/compileLambdaFull: константа
+// Function, MAKECLOSURE с захватами по upvalues скомпилированного child.
+func (fc *funcCompiler) emitClosure(child *funcCompiler, name string, arity int, d dest) error {
+	fnName := name
+	if fnName == "" {
+		fnName = child.prefix
 	}
 	fn := &vm.Function{Name: fnName, Arity: arity, Chunk: child.chunk}
 

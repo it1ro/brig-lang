@@ -289,8 +289,12 @@ func (p *printer) exprString(e Expr, indent int) string {
 		if len(v.params) == 0 {
 			sb.WriteString("fn ->\n")
 		} else {
+			parts := make([]string, len(v.params))
+			for i, pat := range v.params {
+				parts[i] = p.patternString(pat)
+			}
 			sb.WriteString("fn (")
-			sb.WriteString(strings.Join(v.params, ", "))
+			sb.WriteString(strings.Join(parts, ", "))
 			sb.WriteString(") ->\n")
 		}
 		p.writeBlock(&sb, v.body, indent+1)

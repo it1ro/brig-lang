@@ -187,7 +187,7 @@ func NewLambdaShortExpr(params []string, body Expr, pos, end int) Expr {
 }
 
 // NewLambdaFullExpr creates an expression node.
-func NewLambdaFullExpr(params []string, body *BlockStmt, pos, end int) Expr {
+func NewLambdaFullExpr(params []Pattern, body *BlockStmt, pos, end int) Expr {
 	return &lambdaFullExpr{posEnd{pos, end}, params, body}
 }
 

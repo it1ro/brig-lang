@@ -236,7 +236,7 @@ func equalNodes(a, b Node) bool {
 			return false
 		}
 		for i := range x.params {
-			if x.params[i] != y.params[i] {
+			if !equalNodes(x.params[i], y.params[i]) {
 				return false
 			}
 		}

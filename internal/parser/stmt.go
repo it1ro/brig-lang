@@ -167,17 +167,6 @@ func (p *parser) parseParams() ([]ast.Pattern, error) {
 	return out, nil
 }
 
-// lambdaParamStrings — LambdaFull хранит params как []string (T-44/T-50:
-// смена контракта лямбд — отдельно). Конвертация из Pattern без
-// обратной записи строк в AST именованных fn.
-func lambdaParamStrings(params []ast.Pattern) []string {
-	out := make([]string, len(params))
-	for i, pat := range params {
-		out[i] = pat.String()
-	}
-	return out
-}
-
 // fn_body ::= expr | NEWLINE INDENT stmt_list DEDENT
 func (p *parser) parseFnBody() (*ast.BlockStmt, error) {
 	if p.at(lexer.NEWLINE) {
