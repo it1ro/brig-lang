@@ -283,6 +283,19 @@ func InstallPrelude(vm *VM) {
 		return runtime.Int(int64(len(args[0].Vector))), nil
 	})
 
+	// ---- Record module (§4.7) ----
+
+	def("Record.to_anon", 1, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+		r := args[0]
+		if r.Kind != runtime.KindRecord {
+			return runtime.Unit, typeErr("to_anon", r)
+		}
+		if r.Record.Type == "" {
+			return r, nil
+		}
+		return runtime.Record("", r.Record.Fields), nil
+	})
+
 	// ---- Map module (§4.5) ----
 
 	def("Map.put", 3, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {

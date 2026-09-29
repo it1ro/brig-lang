@@ -125,6 +125,9 @@ type VariantValue struct {
 type RecordValue struct {
 	Type   string
 	Fields []RecordField
+	// Declared — поля типа номинальной записи (Str) для record update
+	// (§4.7); в равенстве и печати не участвует.
+	Declared []Value
 }
 
 // RecordField — поле записи.

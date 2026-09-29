@@ -873,7 +873,8 @@ var builtinParams = map[string]string{
 
 	"Vec.push/2": "v, x", "Vec.set/3": "v, i, x", "Vec.get/2": "v, i", "Vec.len/1": "v",
 	"Map.put/3": "m, k, v", "Map.get/2": "m, k", "Map.remove/2": "m, k", "Map.keys/1": "m",
-	"Str.to_bytes/1": "s", "Bytes.to_str/1": "b",
+	"Record.to_anon/1": "r",
+	"Str.to_bytes/1":   "s", "Bytes.to_str/1": "b",
 	"Json.encode/1": "v", "Json.encode/2": "v, opts", "Json.decode/1": "s",
 	"Test.describe/1": "name", "Test.it/2": "name, thunk", "Test.run/0": "",
 	"Test.assert_eq/2": "a, b", "Test.assert_ne/2": "a, b", "Test.assert/1": "x", "Test.fail/1": "msg",
