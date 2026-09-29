@@ -161,6 +161,21 @@ description: >
   запроса и без `pending` молчит — при пустой ready `runMain` выходит
   (main Done) или даёт `deadlock`. Новый потоковый вид — свой `*Hub` и
   `newStreamPort`, без правки протокола.
+- **`HttpServer` (§12.12, T-229, `http.go`).** Слушатель — потоковый порт
+  с ресурсом `listenerStream` (Read = `HTTPListener.Accept`); ответ
+  ресурса — `HTTPEvent` в `injectEvent.http`, `drainInject` → `httpEvent`
+  создаёт порт запроса (`newRequestPort`, владелец — владелец слушателя в
+  момент разбора) и зовёт `HTTPRequest.Start`. Событие закрытого
+  слушателя отбрасывается: не начатый (без `Start`) запрос закрывает `503`
+  сам ресурс. Порт запроса — `streamPort.duplex` (`:port_eof` его не
+  закрывает, `armed` снимается) с `req`; `write` включает только
+  `HttpServer.respond` (не для 204/304), флаг `responded`. Закрытие не
+  через `Port.close` (`closeActorPorts`, `closeAllPorts`) идёт через
+  `abortPort` → `openPort.abort` (HTTP: 500 или обрыв; у `File` abort нет —
+  дописывает). Реализация на `net/http` — `cmd/brig/http.go` (горутина
+  обработчика исполняет команды из очереди, лимиты — `defaultHTTPLimits`),
+  in-memory — `http_test.go` (`memHTTP`). Ядро не импортирует `net`,
+  `net/http` (`TestVMCoreNoOSPorts`).
 - **Реестр имён (§12.8, T-164, `registry.go`).** Опкоды `REGISTER`/
   `UNREGISTER`/`WHEREIS`; `Scheduler.names` — список `(name, pid)` с
   `runtime.KeyEqual`. Имена снимает `notifyWatchers` (`dropNames`) — в той же
