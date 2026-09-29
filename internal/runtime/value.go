@@ -36,6 +36,7 @@ const (
 	KindBytes   // Sprint 5.4 (§3.2)
 	KindDecimal // Sprint 5.4 (§3.1)
 	KindRecord  // T-73 (§4.7): номинальная и анонимная запись
+	KindPort    // T-168 (§12.12): порт внешних событий
 )
 
 func (k Kind) String() string {
@@ -80,6 +81,8 @@ func (k Kind) String() string {
 		return "Decimal"
 	case KindRecord:
 		return "Record"
+	case KindPort:
+		return "Port"
 	}
 	return "unknown"
 }
@@ -165,6 +168,14 @@ const (
 	SlotClosed
 )
 
+// PortHandle — порт (§12.12): общий для всех копий значения. Равенство и
+// порядок — по ID; владельца и Closed ведёт только run-loop VM.
+type PortHandle struct {
+	ID     int
+	Owner  int // pid создавшего актора
+	Closed bool
+}
+
 // MapEntry — пара ключ/значение в иммутабельной мапе.
 type MapEntry struct{ Key, Val Value }
 
@@ -203,6 +214,7 @@ type Value struct {
 	Pid        int
 	Ref        int
 	Slot       *RefSlot
+	Port       *PortHandle
 	RangeStart int64
 	RangeEnd   int64
 	Bytes      []byte
@@ -374,6 +386,8 @@ func (v Value) Inspect() string {
 		return fmt.Sprintf("#<pid %d>", v.Pid)
 	case KindRef:
 		return fmt.Sprintf("#<ref %d>", v.Ref)
+	case KindPort:
+		return fmt.Sprintf("#<port %d>", v.Port.ID)
 	}
 	return fmt.Sprintf("<%v>", v.Kind)
 }
@@ -594,6 +608,8 @@ func equal(a, b Value, strict bool) bool {
 		return a.Pid == b.Pid
 	case KindRef:
 		return a.Ref == b.Ref
+	case KindPort:
+		return a.Port.ID == b.Port.ID
 	}
 	return false
 }
@@ -712,6 +728,8 @@ func Compare(a, b Value) (int, error) {
 		return cmpInt(a.Pid, b.Pid), nil
 	case rankRef:
 		return cmpInt(a.Ref, b.Ref), nil
+	case rankPort:
+		return cmpInt(a.Port.ID, b.Port.ID), nil
 	}
 	return 0, cmpErr(a, b)
 }
@@ -734,6 +752,7 @@ const (
 	rankAnon
 	rankPid
 	rankRef
+	rankPort
 )
 
 func termRank(v Value) (int, bool) {
@@ -774,6 +793,8 @@ func termRank(v Value) (int, bool) {
 		return rankPid, true
 	case KindRef:
 		return rankRef, true
+	case KindPort:
+		return rankPort, true
 	}
 	return 0, false
 }
@@ -1070,6 +1091,8 @@ func serializeValue(v Value, depth int) error {
 		return fmt.Errorf("(:serialize_error, :pid) — Pid не сериализуем (§14.8)")
 	case KindRef:
 		return fmt.Errorf("(:serialize_error, :ref) — Ref не сериализуем (§14.8)")
+	case KindPort:
+		return fmt.Errorf("(:serialize_error, :port) — Port не сериализуем (§14.8)")
 	case KindTuple:
 		for _, e := range v.Tuple {
 			if err := serializeValue(e, depth+1); err != nil {

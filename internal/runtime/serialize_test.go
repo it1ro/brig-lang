@@ -30,6 +30,32 @@ func TestSerializeRejectsPidRef(t *testing.T) {
 	}
 }
 
+// TestPortOpaque — Port (§12.12): печать #<port N>, равенство по identity,
+// не сериализуется ни в Serialize, ни в JSON (§14.8).
+func TestPortOpaque(t *testing.T) {
+	h := &PortHandle{ID: 3, Owner: 1}
+	p := Value{Kind: KindPort, Port: h}
+	if got := p.Inspect(); got != "#<port 3>" {
+		t.Fatalf("Inspect = %q", got)
+	}
+	closed := Value{Kind: KindPort, Port: &PortHandle{ID: 3, Owner: 1, Closed: true}}
+	if !Equal(p, closed) || !KeyEqual(p, closed) {
+		t.Fatal("ports with one ID must be equal")
+	}
+	if Equal(p, Value{Kind: KindPort, Port: &PortHandle{ID: 4, Owner: 1}}) {
+		t.Fatal("ports with different IDs must differ")
+	}
+	if Equal(p, Value{Kind: KindRef, Ref: 3}) {
+		t.Fatal("port must differ from ref")
+	}
+	if err := Serialize(List(p)); err == nil {
+		t.Fatal("Serialize(port) = nil, want error")
+	}
+	if _, err := JSONEncode(p); err == nil {
+		t.Fatal("JSONEncode(port) = nil, want error")
+	}
+}
+
 func TestSerializeAcceptsPrimitives(t *testing.T) {
 	cases := []Value{Unit, Bool(true), Int(42), Float(3.14), Str("hi"), Atom("ok")}
 	for _, v := range cases {
