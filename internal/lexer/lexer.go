@@ -832,8 +832,6 @@ func (l *lexer) scanTripleString(pl physLine, i int) error {
 	if j := strings.IndexFunc(afterOpen, func(r rune) bool { return r != ' ' }); j != -1 {
 		return errf(pl.line, i+3+j+1, "text after opening \"\"\" must be empty (§3.5)")
 	}
-	openLine := pl.line
-
 	type rawLine struct {
 		text string
 		line int
@@ -843,7 +841,10 @@ func (l *lexer) scanTripleString(pl physLine, i int) error {
 	var remainder string
 	for {
 		if l.pos >= len(l.src) {
-			return incompletef(openLine, i+1, "unclosed triple-quoted string at EOF")
+			// l.line, не строка открывающих """: REPL (input.go NeedMore)
+			// продолжает ввод только если Incomplete-ошибка на строке ≥
+			// последней введённой (§11.4) — литерал мог ещё не закрыться.
+			return incompletef(l.line, 1, "unclosed triple-quoted string at EOF")
 		}
 		text, lineNo := l.readRawLine()
 		ind := countLeadingSpaces(text)
