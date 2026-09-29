@@ -583,7 +583,11 @@ func equal(a, b Value, strict bool) bool {
 	case KindRecord:
 		return equalRecords(a.Record, b.Record, strict)
 	case KindFunction:
-		return a.Func == b.Func
+		// Identity функции — полное имя и арность, не адрес (§7.6, T-144):
+		// `Util.g == Util.g`, в том числе после переопределения в REPL.
+		// Имена значений Function уникальны: глобалы, поднятые локальные fn
+		// (mangled) и конструкторы (с префиксом модуля); лямбды — Closure.
+		return a.Func == b.Func || a.Func.Name == b.Func.Name && a.Func.Arity == b.Func.Arity
 	case KindClosure:
 		return a.ClosureVal == b.ClosureVal
 	case KindPid:

@@ -80,6 +80,7 @@ type checker struct {
 	world   *World
 	module  string // имя проверяемого модуля: его приватные fn видны (§11.2)
 	own     map[string]sig
+	ctors   map[string]bool   // конструкторы своего модуля, в том числе без полей
 	imports map[string]string // локальное имя модуля → полное
 }
 
@@ -495,6 +496,7 @@ func (c *checker) checkExpr(e ast.Expr) {
 			c.err(line, col,
 				"reference to named wildcard %q is not allowed (§1.2): it never binds", x.Name())
 		}
+		c.checkModuleValue(x)
 
 	case ast.LiteralExpr, ast.BytesExpr, ast.DecimalExpr, ast.RegexExpr,
 		ast.AtomExpr:
@@ -516,6 +518,12 @@ func (c *checker) checkExpr(e ast.Expr) {
 		c.checkExpr(x.Right())
 
 	case ast.MemberExpr:
+		// `M.f` — ссылка на функцию модуля (§7.6), `M.Ctor` — конструктор:
+		// левая часть — имя модуля, не значение.
+		if segs, ok := modulePath(x); ok {
+			c.checkQualRef(x, segs)
+			return
+		}
 		c.checkExpr(x.Obj())
 
 	case ast.IndexExpr:
@@ -524,8 +532,19 @@ func (c *checker) checkExpr(e ast.Expr) {
 
 	case ast.CallExpr:
 		c.checkCall(x)
-		c.checkExpr(x.Callee())
+		// `M.f(…)` проверен checkCall: не повторять его как ссылку.
+		if me, ok := x.Callee().(ast.MemberExpr); ok {
+			if _, ok := modulePath(me); !ok {
+				c.checkExpr(me)
+			}
+		} else {
+			c.checkExpr(x.Callee())
+		}
+		helperArgs := c.session && isHelperH(x.Callee())
 		for _, a := range x.Args() {
+			if v, ok := a.(ast.VariableExpr); ok && helperArgs && isUpper(v.Name()) {
+				continue // `Repl.h(Map)` — имя модуля как аргумент хелпера (§11.4)
+			}
 			c.checkExpr(a)
 		}
 

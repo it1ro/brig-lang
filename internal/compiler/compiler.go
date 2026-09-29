@@ -49,8 +49,7 @@ type Compiler struct {
 	// кадров (T-208, #246); у первой компиляции пуст.
 	gen string
 	// replHelpers — инструкция REPL: аргумент `h`/`Repl.h`, который есть
-	// имя модуля или `M.f`, компилируется как значение для хелпера.
-	// `M.f` как значение вне этого места — срез T-144.
+	// имя модуля, компилируется как атом для хелпера.
 	replHelpers bool
 	// preludeQualified — входной модуль исполнения неизвестен при
 	// компиляции (stdlib, T-146: её образ ставится в ВМ любой программы).
@@ -709,6 +708,33 @@ func (c *Compiler) resolveModule(name string) (modRef, bool) {
 	return modRef{full: full, mod: c.mods[full]}, true
 }
 
+// funcModule — модуль функции `name.f` в вызове или ссылке-значении.
+// Модуль программы без import/alias не виден (§11.1). Неизвестный
+// модуль — глобал `name.f` (known == false): REPL и прямой Compile
+// проход имён не гоняют, и имя падает в рантайме (`undefined: Mod.f`).
+func (fc *funcCompiler) funcModule(name string, at vm.SrcPos) (ref modRef, known bool, err error) {
+	ref, known = fc.compiler.resolveModule(name)
+	if known {
+		return ref, true, nil
+	}
+	if fc.compiler.mods[name] != nil {
+		return modRef{}, false, errAt(at, "module %s is not imported", name)
+	}
+	return modRef{full: name}, false, nil
+}
+
+// isActorPrimitive — акторный примитив прелюдии: опкод, а не глобал
+// (compileActorCall), значением не бывает.
+func isActorPrimitive(name string) bool {
+	switch name {
+	case "send", "spawn", "spawn_linked", "spawn_watched", "exit", "self",
+		"make_ref", "watch", "link", "unwatch", "mailbox_size",
+		"register", "unregister", "whereis", "await", "reply":
+		return true
+	}
+	return false
+}
+
 // isModule сообщает, что name — локальное имя модуля в текущем модуле.
 func (c *Compiler) isModule(name string) bool {
 	_, ok := c.resolveModule(name)
@@ -741,8 +767,10 @@ func (c *Compiler) declareCtors(td ast.TypeDecl, vs []ast.VariantArg) {
 		val := runtime.UserVariant(typ, ord, v.Name)
 		if n := len(v.Fields); n > 0 {
 			tag, ord := v.Name, ord
+			// Имя с префиксом модуля: равенство Function — по имени (T-144),
+			// одноимённые конструкторы двух модулей различны.
 			val = runtime.Func(&runtime.FuncValue{
-				Name: tag, Arity: n, IsNative: true,
+				Name: m.prefix + tag, Arity: n, IsNative: true,
 				Native: func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 					return runtime.UserVariant(typ, ord, tag, append([]runtime.Value(nil), args...)...), nil
 				},
@@ -1598,14 +1626,24 @@ func moduleCtor(ref modRef, tag string, at vm.SrcPos) (userCtor, error) {
 }
 
 // compileModulePath — значение пути `Mod.x` вне позиции вызова:
-// конструктор пользовательского модуля. Функция модуля как значение и
-// члены встроенных модулей — срез (T-144).
+// функция модуля (§7.6, T-144) — её глобал, как у вызова `Mod.f(…)`;
+// иначе конструктор пользовательского модуля.
 func (fc *funcCompiler) compileModulePath(segs []string, at vm.SrcPos, d dest) error {
+	if name, member := splitPath(segs); !isUpperName(member) {
+		ref, _, err := fc.funcModule(name, at)
+		if err != nil {
+			return err
+		}
+		if ref.builtin == "Prelude" && isActorPrimitive(member) {
+			return errAt(at, "actor primitive %s.%s cannot be used as a value (§12.6)", name, member)
+		}
+		return fc.loadGlobal(d, ref.global(member))
+	}
 	ref, member, err := fc.resolvePath(segs, at)
 	if err != nil {
 		return err
 	}
-	if ref.builtin != "" || !isUpperName(member) {
+	if ref.builtin != "" {
 		return fmt.Errorf("срез: неподдерживаемое выражение %s", strings.Join(segs, "."))
 	}
 	ct, err := moduleCtor(ref, member, at)
@@ -1918,12 +1956,9 @@ func (fc *funcCompiler) compileCall(call ast.CallExpr, d dest) error {
 	if me, ok := callee.(ast.MemberExpr); ok {
 		if segs, ok := modulePath(me); ok {
 			name, member := splitPath(segs)
-			ref, known := fc.compiler.resolveModule(name)
-			if !known {
-				if fc.compiler.mods[name] != nil {
-					return errAt(pathStart(me), "module %s is not imported", name)
-				}
-				ref = modRef{full: name}
+			ref, known, err := fc.funcModule(name, pathStart(me))
+			if err != nil {
+				return err
 			}
 			// `Prelude.send(…)` — акторный примитив по имени прелюдии, когда
 			// голое имя затенено fn модуля (§11.5): тот же опкод.
@@ -2161,20 +2196,12 @@ func (fc *funcCompiler) passModuleName(call ast.CallExpr) bool {
 // compileArg компилирует аргумент вызова в уже выделенный регистр r.
 // Для `h`/`Repl.h` в REPL: голое имя модуля — атом с этим именем
 // (`h(Map)` → `:Map`; атом с заглавной буквы в исходнике не записать,
-// поэтому строку `h("Map")` хелпер отличает), `M.f` — глобал функции.
-// Вне этого случая — обычное выражение.
+// поэтому строку `h("Map")` хелпер отличает). Вне этого случая, в том
+// числе `M.f`, — обычное выражение.
 func (fc *funcCompiler) compileArg(a ast.Expr, r int, helperH bool) error {
 	if helperH {
 		if v, ok := a.(ast.VariableExpr); ok && isUpperName(v.Name()) {
 			return fc.loadConst(runtime.Atom(v.Name()), val(r))
-		}
-		if me, ok := a.(ast.MemberExpr); ok {
-			if segs, ok := modulePath(me); ok {
-				mod, member := splitPath(segs)
-				if member != "" && !isUpperName(member) {
-					return fc.loadGlobal(val(r), mod+"."+member)
-				}
-			}
 		}
 	}
 	return fc.compileExpr(a, val(r))
@@ -2540,8 +2567,10 @@ func (fc *funcCompiler) recordType(written string, at vm.SrcPos) (string, []stri
 // compileMember — доступ к полю записи `obj.field` (§4.7) или путь
 // модуля `Mod.x` (compileModulePath).
 func (fc *funcCompiler) compileMember(me ast.MemberExpr, d dest) error {
+	// Имя с заглавной — не переменная: `M.f` — функция модуля, даже если
+	// модуль неизвестен компилятору (модуль сессии REPL), как у вызова.
 	if segs, ok := modulePath(me); ok {
-		if name, _ := splitPath(segs); fc.compiler.isModule(name) {
+		if name, member := splitPath(segs); fc.compiler.isModule(name) || !isUpperName(member) {
 			return fc.compileModulePath(segs, pathStart(me), d)
 		}
 	}

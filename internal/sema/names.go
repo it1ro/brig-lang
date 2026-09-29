@@ -106,6 +106,7 @@ func checkNames(prog *ast.Program, world *World, session bool) *Result {
 		world:   world,
 		module:  prog.Module,
 		own:     signatures(prog),
+		ctors:   ctorNames(prog),
 		imports: importMap(prog),
 	}
 	c.checkProgram(prog)
@@ -130,6 +131,25 @@ type sig struct {
 }
 
 func exact(ns ...int) sig { return sig{exact: ns, varMin: -1} }
+
+// label — арности для сообщения: `1`, `1,2`, `1..` у вариадика.
+func (s sig) label() string {
+	return strings.Join(arityLabels(s), ",")
+}
+
+// arityLabels — арности по возрастанию: "2", у вариадика "0..".
+func arityLabels(s sig) []string {
+	ns := append([]int(nil), s.exact...)
+	sort.Ints(ns)
+	var ls []string
+	for _, n := range ns {
+		ls = append(ls, strconv.Itoa(n))
+	}
+	if s.varMin >= 0 {
+		ls = append(ls, strconv.Itoa(s.varMin)+"..")
+	}
+	return ls
+}
 
 func variadic(fixed int) sig { return sig{varMin: fixed} }
 
@@ -423,6 +443,69 @@ func (c *checker) checkQual(mod, member string, args []ast.Expr, at ast.Node) {
 	c.finish(mod+"."+member, s, found, false, args, at)
 }
 
+// checkQualRef — путь `M.x` вне позиции вызова (§7.6, T-144). `M.f` —
+// значение-функция: неизвестная функция, приватная функция другого модуля
+// (§11.2) и модуль без import — ошибки, как у вызова; арность в сообщении
+// — из объявления. Акторный примитив опкод, не значение (§12.6).
+// Конструкторы `M.Ctor` проверяет компилятор.
+func (c *checker) checkQualRef(me ast.MemberExpr, segs []string) {
+	mod, member := splitPath(segs)
+	if isUpper(member) {
+		return
+	}
+	line, col := posOf(pathStart(me))
+	if mod == "Prelude" && actorPrimitives[member] {
+		c.err(line, col, "actor primitive %s.%s cannot be used as a value (§12.6)", mod, member)
+		return
+	}
+	if !c.resolve {
+		return
+	}
+	s, full, found, missingImport := c.qualSig(mod, member)
+	switch {
+	case missingImport:
+		c.err(line, col, "module %s is not imported", mod)
+	case !found:
+		c.err(line, col, "undefined function %s.%s", mod, member)
+	case full != c.module && c.worldFor(full).private(full, member):
+		c.err(line, col, "%s/%s is private to %s", member, s.label(), full)
+	}
+}
+
+// checkModuleValue — имя модуля в позиции выражения значением не является
+// (§7.6): модули как значения вне v0.4.8.
+func (c *checker) checkModuleValue(v ast.VariableExpr) {
+	name := v.Name()
+	if !c.resolve || !isUpper(name) || strings.Contains(name, ".") || c.ctors[name] {
+		return
+	}
+	if _, imported := c.imports[name]; imported || isBuiltinMod(name) || c.world.has(name) {
+		line, col := posOf(v)
+		c.err(line, col, "module %s is not a value (§7.6)", name)
+	}
+}
+
+// isHelperH — callee `Repl.h`: в сессии его аргумент может быть именем модуля.
+func isHelperH(callee ast.Expr) bool {
+	segs, ok := modulePath(callee)
+	return ok && len(segs) == 2 && segs[0] == "Repl" && segs[1] == "h"
+}
+
+// ctorNames — конструкторы вариант-деклараций модуля, в том числе без полей.
+func ctorNames(prog *ast.Program) map[string]bool {
+	out := map[string]bool{}
+	for _, d := range prog.Decls {
+		if td, ok := d.(ast.TypeDecl); ok {
+			if vs, ok := td.Variants(); ok {
+				for _, v := range vs {
+					out[v.Name] = true
+				}
+			}
+		}
+	}
+	return out
+}
+
 // qualSig разрешает Mod.f: import/alias, затем встроенный модуль (§11.1).
 // full — полное имя модуля. missingImport — модуль есть в программе, но в
 // этом файле не импортирован.
@@ -578,16 +661,7 @@ func BuiltinArities() map[string]map[string][]string {
 	labels := func(fns map[string]sig) map[string][]string {
 		out := make(map[string][]string, len(fns))
 		for name, sg := range fns {
-			ns := append([]int(nil), sg.exact...)
-			sort.Ints(ns)
-			var ls []string
-			for _, n := range ns {
-				ls = append(ls, strconv.Itoa(n))
-			}
-			if sg.varMin >= 0 {
-				ls = append(ls, strconv.Itoa(sg.varMin)+"..")
-			}
-			out[name] = ls
+			out[name] = arityLabels(sg)
 		}
 		return out
 	}

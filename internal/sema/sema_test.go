@@ -594,6 +594,57 @@ func TestNames(t *testing.T) {
 	}
 }
 
+// T-144 (§7.6): ссылка `M.f` без вызова проверяется как вызов — модуль,
+// функция, приватность (арность — из объявления); имя модуля без `.f`
+// значением не является; акторный примитив — не значение.
+func TestModuleFunctionRef(t *testing.T) {
+	util := checkNamesProg(t, "module Util\npub fn twice(x) -> scale(x)\nfn scale(x) -> x * 2\nfn many(a, ..r) -> a\n")
+	world := sema.NewWorld([]sema.Module{{Name: "Util", Prog: util}})
+	errAt := func(src, msg string, line, col int) {
+		t.Helper()
+		r := checkNames(t, src, world)
+		for _, d := range r.Diagnostics {
+			if d.Severity == sema.SeverityError && d.Message == msg && d.Line == line && d.Col == col {
+				return
+			}
+		}
+		t.Fatalf("%q: want %d:%d %q, got %v", src, line, col, msg, r.Diagnostics)
+	}
+	ok := func(src string) {
+		t.Helper()
+		if r := checkNames(t, src, world); r.HasErrors() {
+			t.Fatalf("%q: unexpected: %v", src, r.Diagnostics)
+		}
+	}
+
+	ok("module Main\nimport Util\nfn main() -> map([1], Util.twice)\n")
+	ok("module Main\nalias Util as U\nfn main() ->\n    f = U.twice\n    f(1)\n")
+	ok("module Main\nfn main() -> map([[1]], Json.encode)\n")
+	ok("module Main\nfn main() -> List.reverse\n")
+	ok("module Main\ntype T { Json }\nfn main() -> Json\n")
+	ok("module Main\nimport Util\nfn main() -> Util.twice(1) + len(Util.twice(2))\n")
+
+	errAt("module Main\nimport Util\nfn main() -> Util.scale\n", "scale/1 is private to Util", 3, 14)
+	errAt("module Main\nimport Util\nfn main() -> Util.many\n", "many/1.. is private to Util", 3, 14)
+	errAt("module Main\nimport Util\nfn main() -> Util.nope\n", "undefined function Util.nope", 3, 14)
+	errAt("module Main\nfn main() -> Json.nope\n", "undefined function Json.nope", 2, 14)
+	errAt("module Main\nfn main() -> Util.twice\n", "module Util is not imported", 2, 14)
+	errAt("module Main\nimport Util\nfn main() -> Util\n", "module Util is not a value (§7.6)", 3, 14)
+	errAt("module Main\nfn main() -> print(Json)\n", "module Json is not a value (§7.6)", 2, 20)
+	errAt("module Main\nfn main() -> Prelude.send\n", "actor primitive Prelude.send cannot be used as a value (§12.6)", 2, 14)
+
+	// Акторный примитив ловит и Check (REPL); остальное — только проход имён.
+	for src, want := range map[string]bool{
+		"fn main() -> Prelude.self\n": true,
+		"fn main() -> Util.nope\n":    false,
+		"fn main() -> print(Json)\n":  false,
+	} {
+		if got := sema.Check(checkNamesProg(t, src)).HasErrors(); got != want {
+			t.Fatalf("Check %q: errors = %v, want %v", src, got, want)
+		}
+	}
+}
+
 // T-143: клозы одной функции с pub и без — ошибка (§11.2).
 func TestPubMixedClauses(t *testing.T) {
 	prog := checkNamesProg(t, "module M\npub fn f(0) -> 0\nfn f(n) -> n\n")

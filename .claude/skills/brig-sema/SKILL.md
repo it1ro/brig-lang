@@ -54,7 +54,13 @@ Message}`; `SeverityError` блокирует компиляцию, `SeverityInf
    не-`pub` функции другого модуля — `f/1 is private to M` (`World.priv`,
    `PrivateFns`; свой модуль — `prog.Module`). `Check`: клозы одной fn с
    `pub` и без — `clauses of f mix pub and non-pub`. Ссылка `M.f` как
-   значение пока не компилируется (T-144) — проверку для неё добавить там.
+   значение (T-144) — `checkQualRef` из случая `MemberExpr` в `checkExpr`
+   (callee вызова не повторяется): `undefined function M.f`,
+   `f/N is private to M` (N — `sig.label()` из объявления), модуль без
+   import. `Prelude.send` и др. как значение — ошибка и в `Check`.
+   Голое имя модуля в выражении — `module M is not a value (§7.6)`
+   (`checkModuleValue`, только проход имён; свои конструкторы и аргумент
+   `Repl.h` в сессии — исключения).
    REPL: зависимостям (`deps/`) вводы видят только `pub`, модулям
    пользователя — всё (`sessionModule.priv`).
 
