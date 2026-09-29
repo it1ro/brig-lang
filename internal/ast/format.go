@@ -53,6 +53,104 @@ func (p *printer) formatProgram(sb *strings.Builder, prog *Program) {
 
 func indentStr(n int) string { return strings.Repeat("    ", n) }
 
+// inlineExprString форматирует выражение внутри \(...): """ нельзя корректно
+// встроить в интерполяцию другой строки (переводы строк там не переживают
+// повторный разбор в общем случае — вложенность), поэтому строковый литерал
+// или интерполяция, которым иначе потребовалась бы """, здесь вместо этого
+// экранируются (raw '\n'/'"' → `\n`/`\"`), а не меняют синтаксис.
+func (p *printer) inlineExprString(e Expr, indent int) string {
+	switch v := e.(type) {
+	case *literalExpr:
+		if len(v.value) >= 2 && v.value[0] == '"' && v.value[len(v.value)-1] == '"' {
+			body := v.value[1 : len(v.value)-1]
+			return `"` + escapeForInlineStr(body) + `"`
+		}
+		return v.value
+	case *interpExpr:
+		// Только литеральные части (v.parts) могут нести сырой перевод
+		// строки/голую кавычку (родом из """, §3.5) — вложенные exprs уже
+		// безопасны рекурсивно, экранировать их текст заново нельзя: это
+		// испортит их собственный синтаксис (скобки, кавычки и т.п.).
+		var raw strings.Builder
+		for i, part := range v.parts {
+			raw.WriteString(escapeForInlineStr(part))
+			if i < len(v.exprs) {
+				raw.WriteString(`\(`)
+				raw.WriteString(p.inlineExprString(v.exprs[i], indent))
+				raw.WriteByte(')')
+			}
+		}
+		return `"` + raw.String() + `"`
+	default:
+		return p.exprString(e, indent)
+	}
+}
+
+// escapeForInlineStr экранирует голые '"' и реальный '\n' в теле, рождённом
+// из """ (§3.5), оставляя уже существующие escape-пары (`\n`, `\"`, `\(`,
+// `\u{...}`) нетронутыми — нужно, чтобы встроить такое тело в обычный "..."
+// там, где """ недоступен (внутри чужой интерполяции).
+func escapeForInlineStr(body string) string {
+	var sb strings.Builder
+	for i := 0; i < len(body); i++ {
+		c := body[i]
+		switch {
+		case c == '\n':
+			sb.WriteString(`\n`)
+		case c == '"':
+			sb.WriteString(`\"`)
+		case c == '\\' && i+1 < len(body):
+			sb.WriteByte(c)
+			i++
+			sb.WriteByte(body[i])
+		default:
+			sb.WriteByte(c)
+		}
+	}
+	return sb.String()
+}
+
+// needsTripleQuote — true, если body нельзя напечатать как обычный "..."
+// (только литералы, рождённые из """ §3.5, могут содержать такое): реальный
+// перевод строки или неэкранированная `"` вне признанных escape-пар. Общий
+// escape-код (`\n`, `\"`, `\u{...}`, `\(` для interpExpr) не анализируется
+// подробно — достаточно пропустить символ сразу после `\`, чтобы не принять
+// его начало за голую кавычку.
+func needsTripleQuote(body string) bool {
+	for i := 0; i < len(body); i++ {
+		switch body[i] {
+		case '\n', '"':
+			return true
+		case '\\':
+			i++
+		}
+	}
+	return false
+}
+
+// tripleQuoteBody печатает тело Str-литерала, содержащее реальный перевод
+// строки (т.е. изначально был """), в каноническом виде """: закрывающие
+// """ и все строки содержимого — на уровне indent (§3.5). Отступ выбран
+// произвольно (лишь бы одинаково для закрывающих и содержимого) — при
+// повторном разборе он снимается обратно, так что раунд-трип сохраняет
+// значение независимо от выбора pad.
+func (p *printer) tripleQuoteBody(body string, indent int) string {
+	pad := indentStr(indent)
+	lines := strings.Split(body, "\n")
+	var sb strings.Builder
+	sb.WriteString("\"\"\"\n")
+	for _, ln := range lines {
+		if ln != "" {
+			sb.WriteString(pad)
+			sb.WriteString(ln)
+		}
+		sb.WriteByte('\n')
+	}
+	sb.WriteString(pad)
+	sb.WriteString(`"""`)
+	return sb.String()
+}
+
 func (p *printer) writeStmt(sb *strings.Builder, s Stmt, indent int) {
 	pad := indentStr(indent)
 	switch v := s.(type) {
@@ -191,20 +289,37 @@ func (p *printer) funcDeclString(v *funcDecl) string {
 func (p *printer) exprString(e Expr, indent int) string {
 	switch v := e.(type) {
 	case *literalExpr:
-		return v.value
-	case *interpExpr:
-		var sb strings.Builder
-		sb.WriteByte('"')
-		for i, part := range v.parts {
-			sb.WriteString(part)
-			if i < len(v.exprs) {
-				sb.WriteString(`\(`)
-				sb.WriteString(p.exprString(v.exprs[i], indent))
-				sb.WriteByte(')')
+		if len(v.value) >= 2 && v.value[0] == '"' && v.value[len(v.value)-1] == '"' {
+			if body := v.value[1 : len(v.value)-1]; needsTripleQuote(body) {
+				return p.tripleQuoteBody(body, indent)
 			}
 		}
-		sb.WriteByte('"')
-		return sb.String()
+		return v.value
+	case *interpExpr:
+		// Триггер """ — только по литеральным частям (v.parts): их сырой
+		// перевод строки/голая кавычка могут прийти только из """ (§3.5).
+		// exprs форматируются как inline (безопасно для """ и для "...").
+		triple := false
+		for _, part := range v.parts {
+			if needsTripleQuote(part) {
+				triple = true
+				break
+			}
+		}
+		var raw strings.Builder
+		for i, part := range v.parts {
+			raw.WriteString(part)
+			if i < len(v.exprs) {
+				raw.WriteString(`\(`)
+				raw.WriteString(p.inlineExprString(v.exprs[i], indent))
+				raw.WriteByte(')')
+			}
+		}
+		body := raw.String()
+		if triple {
+			return p.tripleQuoteBody(body, indent)
+		}
+		return `"` + body + `"`
 	case *variableExpr:
 		return v.name
 	case *decimalExpr:

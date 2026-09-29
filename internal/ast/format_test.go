@@ -99,6 +99,25 @@ func TestFormatIdempotent(t *testing.T) {
 	}
 }
 
+// TestFormatTripleQuoteRoundTrip — литерал с реальным переводом строки
+// (изначально """, §3.5) печатается обратно как """ и разбирается в то же
+// значение; интерполяция внутри """ — как в обычном Str.
+func TestFormatTripleQuoteRoundTrip(t *testing.T) {
+	cases := []string{
+		"x = \"\"\"\n    a\n    b\n    \"\"\"\n",
+		"x = \"\"\"\n    hi \\(name)!\n    \"\"\"\n",
+	}
+	for _, src := range cases {
+		roundTrip(t, parser.ModeRepl, src)
+	}
+	moduleCases := []string{
+		"module M\nfn f() ->\n    x = \"\"\"\n        create table t (\n            id int\n        )\n        \"\"\"\n    x\n",
+	}
+	for _, src := range moduleCases {
+		roundTrip(t, parser.ModeModule, src)
+	}
+}
+
 func FuzzRoundTrip(f *testing.F) {
 	f.Add("fn main() ->\n    1 + 2\n")
 	f.Add("x = %{ \"a\" => 1 }\n")
