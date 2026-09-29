@@ -35,8 +35,7 @@ type ActorSnapshot struct {
 	InitialFn string
 }
 
-// liveActor — актор pid, если он жив; иначе nil. mainPid после выхода
-// остаётся в таблице, но уже не жив.
+// liveActor — актор pid, если он жив; иначе nil.
 func (s *Scheduler) liveActor(pid int) *Actor {
 	a := s.actors[pid]
 	if a == nil || a.status == actorDone || a.status == actorFailed {

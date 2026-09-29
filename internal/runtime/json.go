@@ -228,7 +228,7 @@ func jsonEncode(sb *strings.Builder, opts JSONOptions, v Value, depth int) error
 		}
 		sb.WriteByte('}')
 
-	case KindFunction, KindClosure, KindPid, KindRef:
+	case KindFunction, KindClosure, KindPid, KindRef, KindPort:
 		return fmt.Errorf("(:json_encode, (:not_serializable, %s))", v.Kind)
 
 	default:

@@ -392,6 +392,9 @@ type Actor struct {
 	// budget — счётчики и лимиты хода (§12.10).
 	budget
 
+	// ports — открытые порты, которыми актор владеет (§12.12).
+	ports []*runtime.PortHandle
+
 	// initialFn — имя начальной функции в виде trace (Actor.info, §12.13).
 	initialFn string
 	// bornMs — Time.monotonic_ms в момент создания (lifetime_ms, §12.14).
@@ -423,11 +426,24 @@ type Scheduler struct {
 	timers timerHeap
 	// sends — взведённые Timer.send_after по ref. Срабатывание и cancel
 	// снимают запись. Таймер принадлежит VM и переживает актора.
-	sends   map[int]*timerEntry
-	ready   []*Actor
-	reds    int
-	mainPid int
-	active  *Actor
+	sends map[int]*timerEntry
+	ready []*Actor
+	reds  int
+	// main — актор main программы (runMain). Умерший main снят с таблицы,
+	// как любой актор: программа с открытым портом живёт дольше него
+	// (§15.2), и send/watch ему — как мёртвому pid. Итог читается отсюда.
+	main *Actor
+	// active — актор, чей кадр исполняется: владелец порта для нативов
+	// Signal.subscribe и Port.close.
+	active *Actor
+	// ports — открытые порты по ID (§12.12); их число держит программу
+	// после завершения main (§15.2).
+	ports    map[int]*openPort
+	nextPort int
+	// inject — события портов из goroutine ресурсов (docs/02 §6).
+	inject injectQueue
+	// halt — вызван Sys.halt: run-loop выходит на ближайшей итерации.
+	halt *ErrHalt
 	// timerVisits — сколько записей кучи осмотрели nextDeadline/wakeExpired
 	// (якорь сложности таймеров, T-102).
 	timerVisits uint64
@@ -460,6 +476,8 @@ func NewScheduler(vm *VM) *Scheduler {
 		vm:         vm,
 		actors:     make(map[int]*Actor),
 		sends:      make(map[int]*timerEntry),
+		ports:      make(map[int]*openPort),
+		inject:     injectQueue{ready: make(chan struct{}, 1)},
 		reds:       defaultReductions,
 		sessionPid: -1,
 		telePid:    -1,
@@ -567,8 +585,10 @@ func (s *Scheduler) Unwatch(watcherPid, ref int) {
 }
 
 func (s *Scheduler) notifyWatchers(a *Actor, reason runtime.Value) {
-	// Имена снимаются в той же редукции, что и ставится :down (§12.8).
+	// Имена снимаются и порты закрываются в той же редукции, что и
+	// ставится :down (§12.8, §12.12).
 	s.dropNames(a.pid)
+	s.closeActorPorts(a)
 	for ref, watcherPid := range a.watchers {
 		s.sendDown(watcherPid, runtime.Tuple(
 			runtime.Atom("down"),
@@ -578,13 +598,10 @@ func (s *Scheduler) notifyWatchers(a *Actor, reason runtime.Value) {
 	}
 }
 
-// reapActor удаляет завершённый актор из таблицы (I-F9). mainPid
-// оставляем: runMain читает его result/err после выхода из цикла.
+// reapActor удаляет завершённый актор из таблицы (I-F9).
 func (s *Scheduler) reapActor(a *Actor) {
 	s.clearTimer(a)
-	if a.pid != s.mainPid {
-		delete(s.actors, a.pid)
-	}
+	delete(s.actors, a.pid)
 }
 
 // downRaiseReason — причина :down при actorFailed: значение из *ErrRaise,
@@ -618,28 +635,27 @@ func (s *Scheduler) runMain(mainFn runtime.Value, args []runtime.Value) (runtime
 	if err != nil {
 		return runtime.Unit, err
 	}
-	s.mainPid = pid
+	s.main = s.actors[pid]
+	defer s.closeAllPorts()
 
+	// Выход (§15.2): main завершился и открытых портов нет; main упал;
+	// Sys.halt. Пока порт открыт, пустая ready — ожидание, не deadlock.
 	for {
-		if m, ok := s.actors[s.mainPid]; ok {
-			if m.status == actorDone {
-				return m.result, nil
-			}
-			if m.status == actorFailed {
-				return runtime.Unit, m.err
-			}
+		if s.halt != nil {
+			return runtime.Unit, s.halt
+		}
+		s.drainInject()
+		if m := s.main; m.status == actorDone && len(s.ports) == 0 {
+			return m.result, nil
+		} else if m.status == actorFailed {
+			return runtime.Unit, m.err
 		}
 
 		if len(s.ready) == 0 {
-			next := s.nextDeadline()
-			if !next.IsZero() {
-				if d := time.Until(next); d > 0 {
-					time.Sleep(d)
-				}
-				s.wakeExpired()
-				continue
+			if !s.waitEvent() {
+				return runtime.Unit, fmt.Errorf("deadlock: all actors blocked")
 			}
-			return runtime.Unit, fmt.Errorf("deadlock: all actors blocked")
+			continue
 		}
 
 		a := s.ready[0]
@@ -863,6 +879,10 @@ func (s *Scheduler) runSlice(a *Actor) {
 		s.abortSession(a)
 		return
 	}
+	// Вложенный слайс (awaitNested) возвращает active внешнему актору.
+	prev := s.active
+	s.active = a
+	defer func() { s.active = prev }()
 	reds := s.reds
 	for reds > 0 {
 		if a.exitPending() && s.exitStep(a) {
@@ -902,6 +922,9 @@ func (s *Scheduler) runSlice(a *Actor) {
 			// обработка — в начале цикла
 
 		case stepFailed:
+			if s.halting(a) {
+				return
+			}
 			if a.exit != nil {
 				// Ошибка, не пойманная ensure при unwind от exit, причину
 				// не меняет: unwind продолжается с текущего места.

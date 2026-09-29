@@ -30,6 +30,7 @@ func TestCompareTermOrderAcrossKinds(t *testing.T) {
 		{"anonymous record", rec("", "a", Int(1))},
 		{"pid", Value{Kind: KindPid, Pid: 1}},
 		{"ref", Value{Kind: KindRef, Ref: 1}},
+		{"port", Value{Kind: KindPort, Port: &PortHandle{ID: 0}}},
 	}
 	for i := 0; i+1 < len(ordered); i++ {
 		a, b := ordered[i], ordered[i+1]
@@ -96,6 +97,7 @@ func TestCompareWithinKind(t *testing.T) {
 		{"Error<anon", Variant("Error", Int(1)), rec("", "a", Int(1)), -1},
 		{"pid", Value{Kind: KindPid, Pid: 1}, Value{Kind: KindPid, Pid: 2}, -1},
 		{"ref", Value{Kind: KindRef, Ref: 2}, Value{Kind: KindRef, Ref: 1}, 1},
+		{"port", Value{Kind: KindPort, Port: &PortHandle{ID: 1}}, Value{Kind: KindPort, Port: &PortHandle{ID: 2}}, -1},
 	}
 	for _, tc := range cases {
 		got, err := Compare(tc.a, tc.b)
