@@ -333,3 +333,136 @@ func TestLexSF11(t *testing.T) {
 			LOWER_IDENT, LPAREN, RPAREN, COLON, LOWER_IDENT, NEWLINE, EOF)
 	})
 }
+
+// TestLexTripleQuoteIndentStrip — §3.5, research L9: отступ строки с
+// закрывающими """ снимается со всех строк (как в Swift); перевод строки
+// сразу после открывающих и перед закрывающими в значение не входит.
+func TestLexTripleQuoteIndentStrip(t *testing.T) {
+	src := "x = \"\"\"\n    a\n    b\n    \"\"\"\n"
+	toks, err := Lex(src)
+	if err != nil {
+		t.Fatalf("Lex(%q): %v", src, err)
+	}
+	var str *Token
+	for i := range toks {
+		if toks[i].Type == STRING {
+			str = &toks[i]
+			break
+		}
+	}
+	if str == nil {
+		t.Fatalf("no STRING token in %v", toks)
+	}
+	if want := "a\nb"; str.Lit != want {
+		t.Fatalf("Lit = %q, want %q", str.Lit, want)
+	}
+
+	// Отступ содержимого может быть глубже закрывающих """ — лишнее не
+	// снимается, а остаётся частью значения.
+	src2 := "x = \"\"\"\n        create table t (\n            id int\n        )\n        \"\"\"\n"
+	toks2, err := Lex(src2)
+	if err != nil {
+		t.Fatalf("Lex(%q): %v", src2, err)
+	}
+	str = nil
+	for i := range toks2 {
+		if toks2[i].Type == STRING {
+			str = &toks2[i]
+			break
+		}
+	}
+	if str == nil {
+		t.Fatalf("no STRING token in %v", toks2)
+	}
+	want := "create table t (\n    id int\n)"
+	if str.Lit != want {
+		t.Fatalf("Lit = %q, want %q", str.Lit, want)
+	}
+}
+
+// TestLexTripleQuoteLessIndentError — строка с меньшим отступом, чем у
+// закрывающих """, — ошибка лексера с line:col (§3.5).
+func TestLexTripleQuoteLessIndentError(t *testing.T) {
+	src := "x = \"\"\"\n  a\n    \"\"\"\n"
+	_, err := Lex(src)
+	if err == nil {
+		t.Fatalf("Lex(%q): want error, got nil", src)
+	}
+	le, ok := err.(*Error)
+	if !ok {
+		t.Fatalf("error %v is not *lexer.Error", err)
+	}
+	if le.Line != 2 || le.Col != 3 {
+		t.Fatalf("error at %d:%d, want 2:3 (%v)", le.Line, le.Col, err)
+	}
+	if !strings.Contains(err.Error(), "less indent") {
+		t.Fatalf("error %q: want substring %q", err, "less indent")
+	}
+
+	// Пустая (из пробелов) строка внутри содержимого не считается
+	// нарушением отступа.
+	src2 := "x = \"\"\"\n    a\n\n    b\n    \"\"\"\n"
+	toks, err := Lex(src2)
+	if err != nil {
+		t.Fatalf("Lex(%q): %v", src2, err)
+	}
+	var str *Token
+	for i := range toks {
+		if toks[i].Type == STRING {
+			str = &toks[i]
+			break
+		}
+	}
+	if str == nil || str.Lit != "a\n\nb" {
+		got := ""
+		if str != nil {
+			got = str.Lit
+		}
+		t.Fatalf("Lit = %q, want %q", got, "a\n\nb")
+	}
+}
+
+// TestLexTripleQuoteInterp — интерполяция \(expr) и escape внутри """
+// работают как в обычном Str (§3.5).
+func TestLexTripleQuoteInterp(t *testing.T) {
+	src := "x = \"\"\"\n    hi \\(name)!\\n\n    \"\"\"\n"
+	toks, err := Lex(src)
+	if err != nil {
+		t.Fatalf("Lex(%q): %v", src, err)
+	}
+	var str *Token
+	for i := range toks {
+		if toks[i].Type == STRING {
+			str = &toks[i]
+			break
+		}
+	}
+	if str == nil {
+		t.Fatalf("no STRING token in %v", toks)
+	}
+	if want := `hi \(name)!\n`; str.Lit != want {
+		t.Fatalf("Lit = %q, want %q", str.Lit, want)
+	}
+	parts, exprs, err := SplitInterp(str.Lit)
+	if err != nil {
+		t.Fatalf("SplitInterp(%q): %v", str.Lit, err)
+	}
+	if len(exprs) != 1 || exprs[0] != "name" {
+		t.Fatalf("exprs = %v, want [name]", exprs)
+	}
+	if parts[0] != "hi " || parts[1] != `!\n` {
+		t.Fatalf("parts = %v", parts)
+	}
+
+	// Многострочная строка внутри списка с закрывающими """ на своей строке
+	// и последующим токеном (','), как в корпусе (corpus/lookout).
+	src2 := "xs = [\n    \"\"\"\n    a\n    \"\"\",\n    \"b\",\n]\n"
+	if _, err := Lex(src2); err != nil {
+		t.Fatalf("Lex(%q): %v", src2, err)
+	}
+
+	// Ошибка escape внутри """ ловится так же, как в обычном Str.
+	if _, err := Lex("x = \"\"\"\n    \\x41\n    \"\"\"\n"); err == nil {
+		t.Fatal("want error for \\x in triple-quoted string, got nil")
+	}
+}

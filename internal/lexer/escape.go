@@ -6,6 +6,44 @@ import "strconv"
 // Сканеры строк/байтов/регексов живут в lexer.go; здесь — валидаторы,
 // завязанные только на содержимое литерала.
 
+// validateLineEscapes проверяет escape/интерполяцию (A4.1) в одной уже
+// очищенной от общего отступа строке содержимого """ (§3.5): в отличие от
+// scanString, здесь нет завершающей `"` — литеральная `"` внутри """ не
+// требует экранирования, а границей служит вся физическая строка.
+func validateLineEscapes(text string, line int) error {
+	n := len(text)
+	j := 0
+	for j < n {
+		if text[j] != '\\' {
+			j++
+			continue
+		}
+		if j+1 >= n {
+			return errf(line, j+1, "trailing backslash in string")
+		}
+		esc := text[j+1]
+		switch esc {
+		case 'n', 't', 'r', '0', '\\', '"':
+			j += 2
+		case '(':
+			end, err := scanInterpolation(text, j+1, line)
+			if err != nil {
+				return err
+			}
+			j = end
+		case 'u':
+			end, err := scanUnicodeEscape(text, j, line)
+			if err != nil {
+				return err
+			}
+			j = end
+		default:
+			return errf(line, j+1, "invalid escape '\\%c' in string", esc)
+		}
+	}
+	return nil
+}
+
 // scanUnicodeEscape — \u{1–6 hex}, ≤ U+10FFFF, не surrogate (П-002).
 func scanUnicodeEscape(text string, i, line int) (int, error) {
 	if i+2 >= len(text) || text[i+2] != '{' {

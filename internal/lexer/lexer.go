@@ -381,6 +381,9 @@ func (l *lexer) lexLine(pl physLine) error {
 			return nil
 		}
 
+		if prefixAt(text, i, `"""`) {
+			return l.scanTripleString(pl, i)
+		}
 		if c == '"' {
 			body, end, err := scanString(text, i, pl.line)
 			if err != nil {
@@ -799,6 +802,85 @@ func scanNumber(text string, i, line int) (string, int, error) {
 	}
 
 	return text[i:j], j, nil
+}
+
+// readRawLine читает следующую физическую строку напрямую из l.src, минуя
+// blank/comment-пропуск nextPhysLine (§3.5): внутри """ строка "#..." или
+// пустая строка — литеральное содержимое, а не комментарий/пропуск.
+func (l *lexer) readRawLine() (text string, lineNo int) {
+	start := l.pos
+	for l.pos < len(l.src) && l.src[l.pos] != '\n' {
+		l.pos++
+	}
+	text = l.src[start:l.pos]
+	if l.pos < len(l.src) {
+		l.pos++
+	}
+	lineNo = l.line
+	l.line++
+	return text, lineNo
+}
+
+// scanTripleString сканирует многострочную строку `"""..."""` (§3.5, research
+// L9): отступ снимается по закрывающим """ (как в Swift), перевод строки
+// сразу после открывающих и перед закрывающими в значение не входит,
+// интерполяция и escape — как в обычном Str. Вызывается из lexLine при
+// встрече """ и полностью берёт на себя чтение до закрывающих кавычек,
+// минуя офсайд-обработку промежуточных физических строк.
+func (l *lexer) scanTripleString(pl physLine, i int) error {
+	afterOpen := pl.text[i+3:]
+	if j := strings.IndexFunc(afterOpen, func(r rune) bool { return r != ' ' }); j != -1 {
+		return errf(pl.line, i+3+j+1, "text after opening \"\"\" must be empty (§3.5)")
+	}
+	openLine := pl.line
+
+	type rawLine struct {
+		text string
+		line int
+	}
+	var lines []rawLine
+	var closingIndent, closingLine int
+	var remainder string
+	for {
+		if l.pos >= len(l.src) {
+			return incompletef(openLine, i+1, "unclosed triple-quoted string at EOF")
+		}
+		text, lineNo := l.readRawLine()
+		ind := countLeadingSpaces(text)
+		if strings.HasPrefix(text[ind:], `"""`) {
+			closingIndent = ind
+			closingLine = lineNo
+			remainder = text[ind+3:]
+			break
+		}
+		lines = append(lines, rawLine{text: text, line: lineNo})
+	}
+
+	parts := make([]string, len(lines))
+	for idx, ln := range lines {
+		ind := countLeadingSpaces(ln.text)
+		if ind == len(ln.text) {
+			// строка пустая или из одних пробелов — не участвует в проверке
+			// отступа, значение для неё — пустая строка.
+			continue
+		}
+		if ind < closingIndent {
+			return errf(ln.line, ind+1,
+				"line has less indent than closing \"\"\" at col %d (§3.5)", closingIndent+1)
+		}
+		stripped := ln.text[closingIndent:]
+		if err := validateLineEscapes(stripped, ln.line); err != nil {
+			return err
+		}
+		parts[idx] = stripped
+	}
+
+	l.addToken(Token{Type: STRING, Lit: strings.Join(parts, "\n")}, pl, i)
+
+	// Остаток закрывающей строки после """ (например ',' в списке) —
+	// продолжение той же логической строки: офсайд для него не эмитируется.
+	padded := strings.Repeat(" ", closingIndent+3) + remainder
+	return l.lexLine(physLine{text: padded, line: closingLine, hasTok: true})
 }
 
 func scanString(text string, i, line int) (string, int, error) {
