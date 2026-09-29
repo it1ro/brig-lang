@@ -166,11 +166,12 @@ var bareBuiltins = map[string]sig{
 // modBuiltins — функции встроенных модулей. Json.encode — 1 или 2
 // аргумента (§4.7), не открытый вариадик.
 var modBuiltins = map[string]map[string]sig{
-	"Vec":   {"push": exact(2), "set": exact(3), "get": exact(2), "len": exact(1)},
-	"Map":   {"put": exact(3), "get": exact(2), "remove": exact(2), "keys": exact(1)},
-	"Str":   {"to_bytes": exact(1)},
-	"Bytes": {"to_str": exact(1)},
-	"Json":  {"encode": exact(1, 2), "decode": exact(1)},
+	"Vec":    {"push": exact(2), "set": exact(3), "get": exact(2), "len": exact(1)},
+	"Map":    {"put": exact(3), "get": exact(2), "remove": exact(2), "keys": exact(1)},
+	"Record": {"to_anon": exact(1)},
+	"Str":    {"to_bytes": exact(1)},
+	"Bytes":  {"to_str": exact(1)},
+	"Json":   {"encode": exact(1, 2), "decode": exact(1)},
 	"Test": {
 		"describe": exact(1), "it": exact(2), "run": exact(0),
 		"assert_eq": exact(2), "assert_ne": exact(2), "assert": exact(1), "fail": exact(1),
@@ -187,7 +188,7 @@ var modBuiltins = map[string]map[string]sig{
 // loader.builtinModules и compiler.isNativeModule.
 func isNativeMod(name string) bool {
 	switch name {
-	case "Vec", "Map", "Str", "Bytes", "Json", "Test", "Sys", "Actor", "Prelude", "Global", "Timer", "Time", "Telemetry":
+	case "Vec", "Map", "Record", "Str", "Bytes", "Json", "Test", "Sys", "Actor", "Prelude", "Global", "Timer", "Time", "Telemetry":
 		return true
 	}
 	return false

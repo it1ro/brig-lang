@@ -26,7 +26,7 @@ fn main() ->
     assert(v == User{ id: 1, name: "b" })
     assert(u.name == "a")
 
-    r = { ..u }
+    r = Record.to_anon(u)
     assert(r == { id: 1, name: "a" })
     assert(r != u)
     w = User{ ..r }
@@ -110,6 +110,67 @@ fn main() ->
     r = { id: 1, extra: 2 }
     e = trap(User{ ..r })
     assert(e == Error((:field_error, (:extra, "User"))))
+`)
+}
+
+// T-142: литерал без имени типа со спредом — record update, вид первого
+// спреда (§4.7, проба g09).
+func TestRecordUpdateKeepsKind(t *testing.T) {
+	runModule(t, `module Main
+type User { id: Int, name: Str }
+
+fn rename(u, name) -> { ..u, name: name }
+
+fn main() ->
+    u = User{ id: 1, name: "a" }
+    assert({ ..u, name: "b" } == User{ id: 1, name: "b" })
+    assert(rename(u, "c") == User{ id: 1, name: "c" })
+    assert({ ..u } == u)
+    assert({ name: "z", ..u } == u)
+    assert({ ..u, ..{ name: "d" } } == User{ id: 1, name: "d" })
+    p = User{ id: 2 }
+    assert({ ..p, name: "e" } == User{ id: 2, name: "e" })
+    assert(to_str({ ..p, name: "e" }) == "User{ id: 2, name: \"e\" }")
+    a = { id: 1 }
+    assert({ ..a, x: 2 } == { id: 1, x: 2 })
+    assert({ ..a, ..u } == { id: 1, name: "a" })
+`)
+}
+
+// T-142: поле не из типа при update номинальной записи —
+// (:no_field, (name, rec)), rec — первый спред; ловится trap.
+func TestRecordUpdateUnknownFieldOnNominal(t *testing.T) {
+	runModule(t, `module Main
+type User { id: Int, name: Str }
+
+fn main() ->
+    u = User{ id: 1, name: "a" }
+    e = trap({ ..u, age: 3 })
+    assert(e == Error((:no_field, (:age, u))))
+    f = trap({ ..u, ..{ extra: 1 } })
+    assert(f == Error((:no_field, (:extra, u))))
+    g = trap({ age: 3, ..u })
+    assert(g == Error((:no_field, (:age, u))))
+`)
+}
+
+// T-142: Record.to_anon — явная конвертация в анонимную запись.
+func TestRecordToAnon(t *testing.T) {
+	runModule(t, `module Main
+type User { id: Int, name: Str }
+
+fn main() ->
+    u = User{ id: 1, name: "a" }
+    anon = Record.to_anon(u)
+    assert(anon == { id: 1, name: "a" })
+    assert(anon != u)
+    assert(to_str(anon) == "{ id: 1, name: \"a\" }")
+    assert(Record.to_anon(anon) == anon)
+    assert({ ..anon, x: 1 } == { id: 1, name: "a", x: 1 })
+    assert({ ..Record.to_anon(u), kind: :user } == { id: 1, name: "a", kind: :user })
+    assert(User{ ..anon } == u)
+    e = trap(Record.to_anon(1))
+    assert(e == Error((:type_error, (:to_anon, 1))))
 `)
 }
 

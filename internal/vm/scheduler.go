@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -1979,7 +1980,9 @@ func vmSpreadMap(segs []runtime.Value) (runtime.Value, error) {
 // записи идут в порядке декларации, анонимной — в порядке первого
 // появления; повторное поле (спред, затем явное) перезаписывает значение.
 // Спред в номинальную запись поля, которого нет в декларации, —
-// raise (:field_error, (:field, "Type")).
+// raise (:field_error, (:field, "Type")). Литерал без имени типа со
+// спредом — record update (§4.7): вид первого спреда; поле не из его
+// типа — raise (:no_field, (:field, rec)), rec — первый спред.
 func vmMakeRecord(shape runtime.Value, vals []runtime.Value) (runtime.Value, error) {
 	if shape.Kind != runtime.KindTuple || len(shape.Tuple) != 3 ||
 		shape.Tuple[0].Kind != runtime.KindStr ||
@@ -1989,6 +1992,16 @@ func vmMakeRecord(shape runtime.Value, vals []runtime.Value) (runtime.Value, err
 		return runtime.Unit, fmt.Errorf("internal: RECORD: bad shape %s", shape.Inspect())
 	}
 	typ, declared, slots := shape.Tuple[0].Str, shape.Tuple[1].Tuple, shape.Tuple[2].Tuple
+
+	var base runtime.Value
+	update := false
+	if typ == "" {
+		if i := slices.IndexFunc(slots, func(s runtime.Value) bool { return s.Str == ".." }); i >= 0 {
+			if src := vals[i]; src.Kind == runtime.KindRecord && src.Record.Type != "" {
+				typ, declared, base, update = src.Record.Type, src.Record.Declared, src, true
+			}
+		}
+	}
 
 	var fields []runtime.RecordField
 	put := func(name string, v runtime.Value) {
@@ -2008,9 +2021,28 @@ func vmMakeRecord(shape runtime.Value, vals []runtime.Value) (runtime.Value, err
 		}
 		return false
 	}
+	check := func(name string) error {
+		switch {
+		case typ == "" || isDeclared(name):
+			return nil
+		case update:
+			return &ErrRaise{Val: runtime.Tuple(
+				runtime.Atom("no_field"),
+				runtime.Tuple(runtime.Atom(name), base))}
+		default:
+			return &ErrRaise{Val: runtime.Tuple(
+				runtime.Atom("field_error"),
+				runtime.Tuple(runtime.Atom(name), runtime.Str(typ)))}
+		}
+	}
 
 	for i, slot := range slots {
 		if slot.Str != ".." {
+			if update {
+				if err := check(slot.Str); err != nil {
+					return runtime.Unit, err
+				}
+			}
 			put(slot.Str, vals[i])
 			continue
 		}
@@ -2019,28 +2051,28 @@ func vmMakeRecord(shape runtime.Value, vals []runtime.Value) (runtime.Value, err
 			return runtime.Unit, typeErr("record_spread", src)
 		}
 		for _, f := range src.Record.Fields {
-			if typ != "" && !isDeclared(f.Name) {
-				return runtime.Unit, &ErrRaise{Val: runtime.Tuple(
-					runtime.Atom("field_error"),
-					runtime.Tuple(runtime.Atom(f.Name), runtime.Str(typ)))}
+			if err := check(f.Name); err != nil {
+				return runtime.Unit, err
 			}
 			put(f.Name, f.Val)
 		}
 	}
 
-	if typ != "" {
-		ordered := make([]runtime.RecordField, 0, len(fields))
-		for _, d := range declared {
-			for _, f := range fields {
-				if f.Name == d.Str {
-					ordered = append(ordered, f)
-					break
-				}
+	if typ == "" {
+		return runtime.Record("", fields), nil
+	}
+	ordered := make([]runtime.RecordField, 0, len(fields))
+	for _, d := range declared {
+		for _, f := range fields {
+			if f.Name == d.Str {
+				ordered = append(ordered, f)
+				break
 			}
 		}
-		fields = ordered
 	}
-	return runtime.Record(typ, fields), nil
+	r := runtime.Record(typ, ordered)
+	r.Record.Declared = declared
+	return r, nil
 }
 
 // vmGetField — доступ к полю записи. Отсутствующее поле — raise
