@@ -418,7 +418,7 @@ func runModule(file string, progArgs []string, dump bool) {
 		return
 	}
 
-	machine := vm.New()
+	machine := newMachine()
 	machine.SetArgs(progArgs)
 	if err := compiler.InstallStdlib(machine); err != nil {
 		fail(exitInternal, "brig: %v", err)
@@ -428,6 +428,7 @@ func runModule(file string, progArgs []string, dump bool) {
 	}
 	mainVal := machine.Global("main")
 	if _, err := machine.RunMain(mainVal); err != nil {
+		exitHalt(err)
 		exitRaise(file, err)
 	}
 }
@@ -440,7 +441,7 @@ func runScript(name, src string, progArgs []string) {
 	if os.Getenv("BRIG_VERIFY") == "1" {
 		compiler.Verify = true
 	}
-	machine := vm.New()
+	machine := newMachine()
 	machine.SetArgs(progArgs)
 	s := repl.New(machine, os.Stderr)
 	defer s.Close()
@@ -453,6 +454,7 @@ func runScript(name, src string, progArgs []string) {
 // exitScript переводит ошибку script-ввода в exit-код CLI.
 // Диагностику sema сессия уже напечатала.
 func exitScript(name string, err error) {
+	exitHalt(err)
 	if strings.HasPrefix(err.Error(), "sema:") {
 		os.Exit(exitParse)
 	}

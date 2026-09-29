@@ -106,7 +106,7 @@ func testFile(path string, t *testTally) {
 		return
 	}
 	newVM := func() *vm.VM {
-		m := vm.New()
+		m := newMachine()
 		if err := compiler.InstallStdlib(m); err != nil {
 			fail(exitInternal, "brig: %v", err)
 		}

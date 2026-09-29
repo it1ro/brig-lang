@@ -30,6 +30,7 @@ func prompt(next int) string { return fmt.Sprintf("brig[%d]> ", next) }
 // как script и значения не печатаются.
 func replLoop(inv invocation) {
 	machine := vm.New()
+	machine.SetSignals(osSignals{skip: map[string]bool{"sigint": true}})
 	machine.SetArgs(inv.progArgs)
 	s := repl.New(machine, os.Stderr)
 	defer s.Close()
@@ -55,6 +56,7 @@ func replLoop(inv invocation) {
 	fe := repl.Plain{Out: os.Stdout, Err: os.Stderr}
 	if inv.expr != "" {
 		if err := fe.Eval(s, inv.expr); err != nil {
+			exitHalt(err)
 			fmt.Fprintf(os.Stderr, "error: %v\n", err)
 			os.Exit(exitInternal)
 		}
@@ -79,6 +81,7 @@ func replLoop(inv invocation) {
 		err = fe.Run(s)
 	}
 	if err != nil {
+		exitHalt(err)
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(exitInternal)
 	}
