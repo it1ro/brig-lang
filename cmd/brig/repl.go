@@ -32,6 +32,7 @@ func replLoop(inv invocation) {
 	machine := vm.New()
 	machine.SetSignals(osSignals{skip: map[string]bool{"sigint": true}})
 	machine.SetFiles(osFiles{})
+	machine.SetHTTP(newOsHTTP())
 	machine.SetArgs(inv.progArgs)
 	s := repl.New(machine, os.Stderr)
 	defer s.Close()
