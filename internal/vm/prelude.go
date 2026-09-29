@@ -1,8 +1,10 @@
 package vm
 
 import (
+	"bytes"
 	"fmt"
 	"math/big"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -378,6 +380,216 @@ func InstallPrelude(vm *VM) {
 		return runtime.Bytes([]byte(args[0].Str)), nil
 	})
 
+	def("Bytes.slice", 3, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+		if args[0].Kind != runtime.KindBytes {
+			return runtime.Unit, typeErr("Bytes.slice", args[0])
+		}
+		start, end, err := sliceBounds(args[1], args[2], int64(len(args[0].Bytes)))
+		if err != nil {
+			return runtime.Unit, err
+		}
+		out := make([]byte, end-start)
+		copy(out, args[0].Bytes[start:end])
+		return runtime.Bytes(out), nil
+	})
+
+	def("Bytes.find", 2, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+		if args[0].Kind != runtime.KindBytes {
+			return runtime.Unit, typeErr("Bytes.find", args[0])
+		}
+		if args[1].Kind != runtime.KindBytes {
+			return runtime.Unit, typeErr("Bytes.find", args[1])
+		}
+		i := bytes.Index(args[0].Bytes, args[1].Bytes)
+		if i < 0 {
+			return runtime.Variant("None"), nil
+		}
+		return runtime.Variant("Some", runtime.Int(int64(i))), nil
+	})
+
+	def("Bytes.split", 2, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+		if args[0].Kind != runtime.KindBytes {
+			return runtime.Unit, typeErr("Bytes.split", args[0])
+		}
+		if args[1].Kind != runtime.KindBytes {
+			return runtime.Unit, typeErr("Bytes.split", args[1])
+		}
+		var parts [][]byte
+		if len(args[1].Bytes) == 0 {
+			for _, b := range args[0].Bytes {
+				parts = append(parts, []byte{b})
+			}
+		} else {
+			parts = bytes.Split(args[0].Bytes, args[1].Bytes)
+		}
+		out := make([]runtime.Value, len(parts))
+		for i, p := range parts {
+			out[i] = runtime.Bytes(p)
+		}
+		return runtime.List(out...), nil
+	})
+
+	def("Bytes.concat", 2, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+		if args[0].Kind != runtime.KindBytes {
+			return runtime.Unit, typeErr("Bytes.concat", args[0])
+		}
+		if args[1].Kind != runtime.KindBytes {
+			return runtime.Unit, typeErr("Bytes.concat", args[1])
+		}
+		out := make([]byte, 0, len(args[0].Bytes)+len(args[1].Bytes))
+		out = append(out, args[0].Bytes...)
+		out = append(out, args[1].Bytes...)
+		return runtime.Bytes(out), nil
+	})
+
+	def("Bytes.at", 2, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+		if args[0].Kind != runtime.KindBytes {
+			return runtime.Unit, typeErr("Bytes.at", args[0])
+		}
+		i, err := indexToInt(args[1])
+		if err != nil {
+			return runtime.Unit, err
+		}
+		if i < 0 || i >= int64(len(args[0].Bytes)) {
+			return runtime.Unit, &ErrRaise{Val: runtime.Tuple(
+				runtime.Atom("index_out_of_bounds"),
+				runtime.Tuple(args[1], runtime.Int(int64(len(args[0].Bytes)))))}
+		}
+		return runtime.Int(int64(args[0].Bytes[i])), nil
+	})
+
+	// ---- Str module (§4.8) ----
+
+	def("Str.split", 2, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+		if args[0].Kind != runtime.KindStr {
+			return runtime.Unit, typeErr("Str.split", args[0])
+		}
+		if args[1].Kind != runtime.KindStr {
+			return runtime.Unit, typeErr("Str.split", args[1])
+		}
+		var parts []string
+		if args[1].Str == "" {
+			for _, r := range args[0].Str {
+				parts = append(parts, string(r))
+			}
+		} else {
+			parts = strings.Split(args[0].Str, args[1].Str)
+		}
+		out := make([]runtime.Value, len(parts))
+		for i, p := range parts {
+			out[i] = runtime.Str(p)
+		}
+		return runtime.List(out...), nil
+	})
+
+	def("Str.join", 2, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+		if args[0].Kind != runtime.KindList {
+			return runtime.Unit, typeErr("Str.join", args[0])
+		}
+		if args[1].Kind != runtime.KindStr {
+			return runtime.Unit, typeErr("Str.join", args[1])
+		}
+		parts := make([]string, len(args[0].List))
+		for i, v := range args[0].List {
+			if v.Kind != runtime.KindStr {
+				return runtime.Unit, typeErr("Str.join", v)
+			}
+			parts[i] = v.Str
+		}
+		return runtime.Str(strings.Join(parts, args[1].Str)), nil
+	})
+
+	def("Str.trim", 1, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+		if args[0].Kind != runtime.KindStr {
+			return runtime.Unit, typeErr("Str.trim", args[0])
+		}
+		return runtime.Str(strings.TrimSpace(args[0].Str)), nil
+	})
+
+	def("Str.find", 2, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+		if args[0].Kind != runtime.KindStr {
+			return runtime.Unit, typeErr("Str.find", args[0])
+		}
+		if args[1].Kind != runtime.KindStr {
+			return runtime.Unit, typeErr("Str.find", args[1])
+		}
+		i := strings.Index(args[0].Str, args[1].Str)
+		if i < 0 {
+			return runtime.Variant("None"), nil
+		}
+		return runtime.Variant("Some", runtime.Int(int64(utf8.RuneCountInString(args[0].Str[:i])))), nil
+	})
+
+	def("Str.replace", 3, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+		if args[0].Kind != runtime.KindStr {
+			return runtime.Unit, typeErr("Str.replace", args[0])
+		}
+		if args[1].Kind != runtime.KindStr {
+			return runtime.Unit, typeErr("Str.replace", args[1])
+		}
+		if args[2].Kind != runtime.KindStr {
+			return runtime.Unit, typeErr("Str.replace", args[2])
+		}
+		return runtime.Str(strings.ReplaceAll(args[0].Str, args[1].Str, args[2].Str)), nil
+	})
+
+	def("Str.starts_with?", 2, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+		if args[0].Kind != runtime.KindStr {
+			return runtime.Unit, typeErr("Str.starts_with?", args[0])
+		}
+		if args[1].Kind != runtime.KindStr {
+			return runtime.Unit, typeErr("Str.starts_with?", args[1])
+		}
+		return runtime.Bool(strings.HasPrefix(args[0].Str, args[1].Str)), nil
+	})
+
+	def("Str.ends_with?", 2, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+		if args[0].Kind != runtime.KindStr {
+			return runtime.Unit, typeErr("Str.ends_with?", args[0])
+		}
+		if args[1].Kind != runtime.KindStr {
+			return runtime.Unit, typeErr("Str.ends_with?", args[1])
+		}
+		return runtime.Bool(strings.HasSuffix(args[0].Str, args[1].Str)), nil
+	})
+
+	def("Str.lower", 1, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+		if args[0].Kind != runtime.KindStr {
+			return runtime.Unit, typeErr("Str.lower", args[0])
+		}
+		return runtime.Str(strings.ToLower(args[0].Str)), nil
+	})
+
+	def("Str.upper", 1, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+		if args[0].Kind != runtime.KindStr {
+			return runtime.Unit, typeErr("Str.upper", args[0])
+		}
+		return runtime.Str(strings.ToUpper(args[0].Str)), nil
+	})
+
+	def("Str.slice", 3, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+		if args[0].Kind != runtime.KindStr {
+			return runtime.Unit, typeErr("Str.slice", args[0])
+		}
+		runes := []rune(args[0].Str)
+		start, end, err := sliceBounds(args[1], args[2], int64(len(runes)))
+		if err != nil {
+			return runtime.Unit, err
+		}
+		return runtime.Str(string(runes[start:end])), nil
+	})
+
+	def("Str.to_int", 1, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+		if args[0].Kind != runtime.KindStr {
+			return runtime.Unit, typeErr("Str.to_int", args[0])
+		}
+		n, err := strconv.ParseInt(strings.TrimSpace(args[0].Str), 10, 64)
+		if err != nil {
+			return runtime.Variant("None"), nil
+		}
+		return runtime.Variant("Some", runtime.Int(n)), nil
+	})
+
 	// ---- Конверсии ----
 
 	def("to_str", 1, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
@@ -523,6 +735,31 @@ func smallIdx(v runtime.Value) (int64, bool) {
 		return 0, false
 	}
 	return v.SmallInt, true
+}
+
+// sliceBounds проверяет [start, end) на длине length (Str.slice/Bytes.slice,
+// T-148). Вне границ — ловимый (:index_out_of_bounds, (idx, length)) с тем
+// аргументом, который вышел за пределы (§10.4).
+func sliceBounds(startV, endV runtime.Value, length int64) (int64, int64, error) {
+	start, err := indexToInt(startV)
+	if err != nil {
+		return 0, 0, err
+	}
+	end, err := indexToInt(endV)
+	if err != nil {
+		return 0, 0, err
+	}
+	if start < 0 || start > length {
+		return 0, 0, &ErrRaise{Val: runtime.Tuple(
+			runtime.Atom("index_out_of_bounds"),
+			runtime.Tuple(startV, runtime.Int(length)))}
+	}
+	if end < start || end > length {
+		return 0, 0, &ErrRaise{Val: runtime.Tuple(
+			runtime.Atom("index_out_of_bounds"),
+			runtime.Tuple(endV, runtime.Int(length)))}
+	}
+	return start, end, nil
 }
 
 // ---- возобновляемые нативы (G3, T-58) ----

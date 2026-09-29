@@ -1304,6 +1304,29 @@ brig[2]> v(1) + 1
 
 Не функции прелюдии: `trap` — ключевое слово (§10.2), `not` — оператор. Конструкторы `Some`, `Ok`, `Error` и значение `None` — §10.1.
 
+**Модули `Str` и `Bytes` (T-148).** Не голые имена — функции встроенных модулей, доступные без `import`, как `Vec.*`/`Map.*` (§4.4, §4.5). Субъект первым аргументом (§7.5, T-120); индексы `Str` — по кодпоинтам (§4.8), `Bytes` — по байтам (§3.2). `slice(v, start, end)` — полуоткрытый диапазон; `start`/`end` вне `[0, len(v)]` или `end < start` — `(:index_out_of_bounds, (idx, len))` (§10.4), как у индексации `v[i]`.
+
+| Имя | Арность | Аргументы | Результат | Авто-raise |
+| --- | --- | --- | --- | --- |
+| `Str.split` | 2 | `(s, sep)`; `sep == ""` — по кодпоинтам | `List<Str>` | `(:type_error, (:Str.split, v))` |
+| `Str.join` | 2 | `(xs, sep)`, `xs: List<Str>` | `Str` | `(:type_error, (:Str.join, v))` — `xs` не `List` или элемент не `Str` |
+| `Str.trim` | 1 | `(s)` | `Str` без ведущих/замыкающих пробельных | `(:type_error, (:Str.trim, s))` |
+| `Str.find` | 2 | `(s, sub)` | `Option<Int>` — индекс первого совпадения по кодпоинтам | `(:type_error, (:Str.find, v))` |
+| `Str.replace` | 3 | `(s, old, new)` | `Str`, все вхождения `old` заменены на `new` | `(:type_error, (:Str.replace, v))` |
+| `Str.starts_with?` | 2 | `(s, prefix)` | `Bool` | `(:type_error, (:Str.starts_with?, v))` |
+| `Str.ends_with?` | 2 | `(s, suffix)` | `Bool` | `(:type_error, (:Str.ends_with?, v))` |
+| `Str.lower` | 1 | `(s)` | `Str` в нижнем регистре | `(:type_error, (:Str.lower, s))` |
+| `Str.upper` | 1 | `(s)` | `Str` в верхнем регистре | `(:type_error, (:Str.upper, s))` |
+| `Str.slice` | 3 | `(s, start, end)`, по кодпоинтам | `Str` | `(:type_error, (:Str.slice, s))`; `(:index_out_of_bounds, (idx, len))` |
+| `Str.to_int` | 1 | `(s)` | `Option<Int>` | `(:type_error, (:Str.to_int, s))` |
+| `Bytes.slice` | 3 | `(b, start, end)`, по байтам | `Bytes` | `(:type_error, (:Bytes.slice, b))`; `(:index_out_of_bounds, (idx, len))` |
+| `Bytes.find` | 2 | `(b, sub)`, `sub: Bytes` | `Option<Int>` — байтовый индекс первого совпадения | `(:type_error, (:Bytes.find, v))` |
+| `Bytes.split` | 2 | `(b, sep)`, `sep: Bytes`; `sep == b""` — по байтам | `List<Bytes>` | `(:type_error, (:Bytes.split, v))` |
+| `Bytes.concat` | 2 | `(a, b)` | `Bytes` — склейка | `(:type_error, (:Bytes.concat, v))` |
+| `Bytes.at` | 2 | `(b, i)` | `Int` — байт `0..255` | `(:type_error, (:Bytes.at, b))`; `(:index_out_of_bounds, (i, len))` |
+
+`Str.to_bytes`/`Bytes.to_str` — уже в §C.3/§C.6, здесь не дублируются.
+
 **Семантика `assert`:**
 
 ```brig
