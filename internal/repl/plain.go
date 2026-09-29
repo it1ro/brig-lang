@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/it1ro/brig-lang/internal/highlight"
+	"github.com/it1ro/brig-lang/internal/vm"
 )
 
 // Plain — построчный фронтенд сессии без терминала: читает порции ввода
@@ -69,7 +70,7 @@ func (p Plain) Run(s *Session) error {
 // Eval исполняет порцию src и печатает в Out её значение (кроме `()`):
 // связывание — `name = <значение>`, выражение — `<значение>`.
 // Ошибка разбора, sema или компиляции — формат E.1, строка ввода и `^`.
-// Возвращает только ошибку записи.
+// Возвращает ошибку записи и *vm.ErrHalt: Sys.halt останавливает фронтенд.
 func (p Plain) Eval(s *Session, src string) error {
 	if p.Err != nil {
 		s.SetOutput(p.Err)
@@ -77,6 +78,10 @@ func (p Plain) Eval(s *Session, src string) error {
 	s.SetPalette(p.Pal)
 	res, err := s.Eval(src)
 	if err != nil {
+		var halt *vm.ErrHalt
+		if errors.As(err, &halt) {
+			return err
+		}
 		var pe *printedError
 		if !errors.As(err, &pe) {
 			if werr := writeEvalError(p.Err, s.diagFile, src, err, p.opt(s)); werr != nil {

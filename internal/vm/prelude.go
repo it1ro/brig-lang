@@ -654,6 +654,11 @@ func InstallPrelude(vm *VM) {
 	def("Time.now", 0, func(_ runtime.Caller, _ []runtime.Value) (runtime.Value, error) {
 		return runtime.Int(time.Now().UnixMilli()), nil
 	})
+
+	// ---- Port, Signal, Sys.halt (§12.12) ----
+
+	installPorts(def)
+
 	// ---- Sys ----
 
 	def("Sys.args", 0, func(_ runtime.Caller, _ []runtime.Value) (runtime.Value, error) {

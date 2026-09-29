@@ -80,5 +80,5 @@ func setOf(names []string) map[string]bool {
 var typeNames = []string{
 	"Int", "Float", "Decimal", "Bool", "Atom",
 	"Str", "Bytes", "List", "Map", "Set", "Range",
-	"Pid", "Ref", "Option", "Result",
+	"Pid", "Ref", "Port", "Option", "Result",
 }

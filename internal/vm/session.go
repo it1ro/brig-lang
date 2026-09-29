@@ -151,13 +151,26 @@ func (s *Scheduler) submit(job *sessionJob) (runtime.Value, error) {
 	case s.jobs <- job:
 	case <-s.stop:
 		return runtime.Unit, errSessionClosed
+	case <-s.loopDone:
+		return runtime.Unit, s.loopErr()
 	}
 	select {
 	case res := <-job.done:
 		return res.val, res.err
 	case <-s.stop:
 		return runtime.Unit, errSessionClosed
+	case <-s.loopDone:
+		return runtime.Unit, s.loopErr()
 	}
+}
+
+// loopErr — почему цикл сессии закончился: Sys.halt или закрытие. Звать
+// после <-s.loopDone: halt записан до его закрытия.
+func (s *Scheduler) loopErr() error {
+	if s.halt != nil {
+		return s.halt
+	}
+	return errSessionClosed
 }
 
 // CountSessionReductions включает счёт редукций в c. Вызывать до StartSession:
@@ -193,9 +206,14 @@ func (s *Scheduler) sessionLoop() {
 			s.shutdownSession()
 			return
 		}
+		if s.halt != nil {
+			s.haltSession()
+			return
+		}
 		if s.consumeInterrupt() {
 			continue
 		}
+		s.drainInject()
 		s.serveSnapshots()
 		s.pollJob()
 		if len(s.ready) == 0 {
@@ -245,6 +263,8 @@ func (s *Scheduler) waitSession(takeJobs bool) bool {
 		return true
 	case <-timerC:
 		s.wakeExpired()
+		return true
+	case <-s.inject.ready:
 		return true
 	case <-s.wake:
 		return true
@@ -315,18 +335,25 @@ func (s *Scheduler) completeJob(val runtime.Value, err error) {
 	}
 }
 
-func (s *Scheduler) shutdownSession() {
+func (s *Scheduler) shutdownSession() { s.endSession(errSessionClosed) }
+
+// haltSession — Sys.halt в сессии (§12.12): текущий и отложенный ввод
+// получают ErrHalt, новые — тоже (loopErr); ensure не исполняются.
+func (s *Scheduler) haltSession() { s.endSession(s.halt) }
+
+func (s *Scheduler) endSession(err error) {
 	pending := s.pending
 	s.pending = nil
 	if a := s.actors[s.sessionPid]; a != nil && s.current != nil {
 		s.dropFrames(a)
 		a.status = actorBlocked
 		s.clearTimer(a)
-		s.completeJob(runtime.Unit, errSessionClosed)
+		s.completeJob(runtime.Unit, err)
 	}
 	if pending != nil {
-		pending.done <- sessionResult{val: runtime.Unit, err: errSessionClosed}
+		pending.done <- sessionResult{val: runtime.Unit, err: err}
 	}
+	s.closeAllPorts()
 }
 
 // consumeInterrupt снимает текущий ввод, если прерывание уже запрошено.
@@ -527,10 +554,14 @@ func (s *Scheduler) YieldUntil(done <-chan struct{}, onStop func(), serve func()
 			return nil
 		default:
 		}
-		if s.stopping() {
-			requestStop(errSessionClosed)
+		if s.stopping() || s.halt != nil {
+			err := errSessionClosed
+			if !s.stopping() {
+				err = s.halt
+			}
+			requestStop(err)
 			if onStop == nil {
-				return errSessionClosed
+				return err
 			}
 			<-done
 			return stopErr
@@ -541,6 +572,7 @@ func (s *Scheduler) YieldUntil(done <-chan struct{}, onStop func(), serve func()
 			}
 		}
 		serve()
+		s.drainInject()
 		s.serveSnapshots()
 		if len(s.ready) == 0 {
 			if !s.waitYield(done) {
@@ -586,6 +618,8 @@ func (s *Scheduler) waitYield(done <-chan struct{}) bool {
 	case <-timerC:
 		s.wakeExpired()
 		return true
+	case <-s.inject.ready:
+		return true
 	case <-s.wake:
 		return true
 	case <-s.stop:
@@ -605,6 +639,10 @@ func (s *Scheduler) awaitNested(a *Actor) error {
 		if s.interrupt.Load() {
 			return ErrInterrupted
 		}
+		if s.halt != nil {
+			return s.halt
+		}
+		s.drainInject()
 		s.serveSnapshots()
 		if len(s.ready) == 0 {
 			if !s.waitSession(false) {

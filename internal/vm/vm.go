@@ -52,6 +52,8 @@ type VM struct {
 	resumable map[*runtime.FuncValue]resumableFunc
 	// teleEmit — Telemetry.emit: enterCall узнаёт его по указателю (§12.14).
 	teleEmit *runtime.FuncValue
+	// signals — реализация портов Signal (§12.12); nil — без ОС.
+	signals SignalHub
 }
 
 // New создаёт ВМ с установленной прелюдией.
