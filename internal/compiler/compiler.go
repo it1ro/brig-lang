@@ -2193,7 +2193,7 @@ func (fc *funcCompiler) compileArg(a ast.Expr, r int, helperH bool) error {
 // vm.New. Список совпадает с loader.builtinModules и sema.isNativeMod.
 func isNativeModule(name string) bool {
 	switch name {
-	case "Vec", "Map", "Record", "Str", "Bytes", "Json", "Test", "Sys", "Actor", "Prelude", "Global", "Timer", "Time", "Telemetry", "Port", "Signal", "File":
+	case "Vec", "Map", "Record", "Str", "Bytes", "Json", "Test", "Sys", "Actor", "Prelude", "Global", "Timer", "Time", "Telemetry", "Port", "Signal", "File", "HttpServer":
 		return true
 	}
 	return false

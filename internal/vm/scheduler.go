@@ -434,7 +434,7 @@ type Scheduler struct {
 	// (§15.2), и send/watch ему — как мёртвому pid. Итог читается отсюда.
 	main *Actor
 	// active — актор, чей кадр исполняется: владелец порта для нативов
-	// Signal.subscribe, File.open и Port.*.
+	// Signal.subscribe, File.open, HttpServer.* и Port.*.
 	active *Actor
 	// ports — открытые порты по ID (§12.12); их число держит программу
 	// после завершения main (§15.2).

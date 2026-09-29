@@ -65,10 +65,17 @@ func (vm *VM) SetFiles(h FileHub) { vm.files = h }
 // streamPort — состояние протокола потокового порта.
 type streamPort struct {
 	res          Stream
-	read, write  bool // что порт умеет
+	read, write  bool // что порт умеет сейчас
 	armed        bool // Port.request ждёт ответа
 	pending      int  // байт принято Port.write и ещё не записано
 	promiseReady bool // после Error(:busy) обещан :port_ready
+	// duplex — двусторонний порт: :port_eof его не закрывает, запись
+	// после конца чтения возможна (§12.12, T-229).
+	duplex bool
+	// req — ресурс порта запроса HTTP (nil — порт другого вида);
+	// responded — HttpServer.respond уже был, write разрешён по статусу.
+	req       HTTPRequest
+	responded bool
 }
 
 // newStreamPort открывает потоковый порт с владельцем a; open получает
@@ -89,7 +96,8 @@ func (s *Scheduler) newStreamPort(a *Actor, read, write bool, open func(emit fun
 }
 
 // streamEvent превращает событие ресурса в сообщение владельцу (§12.12).
-// :port_eof и :port_error закрывают порт.
+// :port_error закрывает порт; :port_eof — только порт, который лишь
+// читает (двусторонний остаётся открытым для записи, T-229).
 func (s *Scheduler) streamEvent(p *openPort, ev *StreamEvent) {
 	if p == nil || p.stream == nil {
 		return
@@ -101,8 +109,11 @@ func (s *Scheduler) streamEvent(p *openPort, ev *StreamEvent) {
 		s.deliver(h, runtime.Tuple(runtime.Atom("port_error"), pv, runtime.Atom(ev.Err)))
 		s.closePort(h)
 	case ev.EOF:
+		sp.armed = false
 		s.deliver(h, runtime.Tuple(runtime.Atom("port_eof"), pv))
-		s.closePort(h)
+		if !sp.duplex {
+			s.closePort(h)
+		}
 	case ev.Data != nil:
 		sp.armed = false
 		s.deliver(h, runtime.Tuple(runtime.Atom("port_data"), pv, runtime.Value{Kind: runtime.KindBytes, Bytes: ev.Data}))
