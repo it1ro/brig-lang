@@ -281,17 +281,22 @@ func (e *lambdaShortExpr) String() string {
 	return fmt.Sprintf("(lambda %s -> %s)", join(e.params, ", "), e.body)
 }
 
-// lambdaFullExpr — полная лямбда: fn (params) -> block.
+// lambdaFullExpr — полная лямбда: fn (params) -> block. Параметры — полные
+// паттерны (§6.3, T-141), как в клозах fn.
 type lambdaFullExpr struct {
 	posEnd
-	params []string
+	params []Pattern
 	body   *BlockStmt
 }
 
 func (e *lambdaFullExpr) IsExpression() bool { return true }
 func (e *lambdaFullExpr) IsStatement() bool  { return false }
 func (e *lambdaFullExpr) String() string {
-	return fmt.Sprintf("(fn (%s) -> %s)", join(e.params, ", "), e.body)
+	parts := make([]string, len(e.params))
+	for i, p := range e.params {
+		parts[i] = p.String()
+	}
+	return fmt.Sprintf("(fn (%s) -> %s)", join(parts, ", "), e.body)
 }
 
 // lambdaEmptyExpr — пустая лямбда: () -> expr.

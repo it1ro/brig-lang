@@ -485,20 +485,36 @@ fn main() ->
 	}
 }
 
-// T-44: полная лямбда `fn (…) ->` с параметром-паттерном обязана дать
-// ошибку компиляции, а не связать паттерн как имя. (`..name` — T-78.)
-func TestAuditLambdaPatternParamsFailFast(t *testing.T) {
-	err := compileSrc(t, `module Main
+// T-141: полная лямбда `fn (…) ->` с параметром-паттерном разбирает
+// значение, как параметр обычной fn (§6.3, образец — compileOneClause).
+// (`..name` вариадик — T-78, не затронут.)
+func TestLambdaPatternParams(t *testing.T) {
+	runModule(t, `module Main
 fn main() ->
-    f = fn (0) -> "zero"
-    print(f(5))
+    f = fn ((a, b)) -> a + b
+    assert(f((1, 2)) == 3)
+    g = fn ([h, ..t]) -> h
+    assert(g([1, 2, 3]) == 1)
+    pairs = [(1, 2), (3, 4)]
+    assert(map(pairs, fn ((k, v)) -> v) == [2, 4])
+    outer = 10
+    h = fn ((a, b)) -> a + b + outer
+    assert(h((1, 2)) == 13)
 `)
-	if err == nil {
-		t.Fatal("Compile: want error for pattern param, got nil")
-	}
-	if !strings.Contains(err.Error(), "срез:") {
-		t.Fatalf("want срез: error, got %v", err)
-	}
+}
+
+// T-141: несовпадение параметра-паттерна лямбды — ловимый
+// (:function_clause, args), как у обычной fn после последнего клоза (§5.3).
+func TestLambdaPatternParamMismatch(t *testing.T) {
+	runModule(t, `module Main
+fn main() ->
+    f = fn ((a, b)) -> a + b
+    err = trap(f(5))
+    assert(err == Error((:function_clause, [5])))
+    g = fn (0) -> "zero"
+    err2 = trap(g(5))
+    assert(err2 == Error((:function_clause, [5])))
+`)
 }
 
 // S-F1 / T-54: интерполяция компилируется в concat через to_str.

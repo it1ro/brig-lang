@@ -25,7 +25,9 @@ func TestDiagnosticsFormat(t *testing.T) {
 		{"lexer check", "check", "module Main\nfn main() ->\n    x = 1 $\n    x\n", `3:11: unexpected character '$'`},
 		{"parser file", "", "module Main\nfn main() ->\n    x = (1 + )\n    x\n", `3:14: `},
 		{"parser check", "check", "module Main\nfn main() ->\n    x = (1 + )\n    x\n", `3:14: `},
-		{"sema file", "", "module Main\nfn main() ->\n    f = fn (a, ..b, c) -> 1\n    f(1)\n", `3:9: variadic parameter`},
+		// T-141: параметры лямбды — полные паттерны (checkParams), диагностика
+		// указывает на сам параметр `..b`, не на позицию `fn` (точнее, чем раньше).
+		{"sema file", "", "module Main\nfn main() ->\n    f = fn (a, ..b, c) -> 1\n    f(1)\n", `3:16: variadic parameter`},
 		{"compiler clauses arity", "", "module Main\nfn f(a) -> 1\nfn f(a, b) -> 2\nfn main() ->\n    f(1)\n", `2:1: fn f: клозы разной арности без variadic`},
 		{"compiler unsupported", "", "module Main\nfn main() ->\n    x = rx\"a\"\n    x\n", `3:9: fn main: срез: regex не реализован`},
 		{"no main", "", "module Main\nfn f() -> 1\n", `1:1: нет функции main()`},

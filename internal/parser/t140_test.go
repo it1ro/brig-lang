@@ -41,7 +41,7 @@ func TestParseFnArrowNoParams(t *testing.T) {
 		if !ok {
 			t.Fatalf("%q: want LambdaFull, got %T", src, letValue(t, src))
 		}
-		if n := len(lf.ParamNames()); n != 0 {
+		if n := len(lf.Params()); n != 0 {
 			t.Fatalf("%q: want 0 params, got %d", src, n)
 		}
 	}

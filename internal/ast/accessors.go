@@ -218,11 +218,11 @@ func (e *lambdaEmptyExpr) Body() Expr { return e.body }
 // LambdaFull — доступ к полной лямбде.
 type LambdaFull interface {
 	Expr
-	ParamNames() []string
+	Params() []Pattern
 	BlockBody() *BlockStmt
 }
 
-func (e *lambdaFullExpr) ParamNames() []string { return e.params }
+func (e *lambdaFullExpr) Params() []Pattern { return e.params }
 
 // BlockBody возвращает тело блока полной лямбды.
 func (e *lambdaFullExpr) BlockBody() *BlockStmt { return e.body }

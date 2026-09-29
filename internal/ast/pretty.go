@@ -231,7 +231,7 @@ func prettyExpr(buf *bytes.Buffer, e Expr, indent int) {
 			if i > 0 {
 				buf.WriteString(" ")
 			}
-			buf.WriteString(p)
+			buf.WriteString(p.String())
 		}
 		buf.WriteString(") ")
 		prettyNode(buf, n.body, indent)

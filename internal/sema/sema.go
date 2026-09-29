@@ -379,22 +379,6 @@ func (c *checker) checkParams(params []ast.Pattern, site ast.Node) {
 	}
 }
 
-// checkLambdaParams — лямбда всё ещё хранит params как []string (T-50
-// не меняет LambdaFull). Variadic обязан быть последним.
-func (c *checker) checkLambdaParams(params []string, site ast.Node) {
-	line, col := posOf(site)
-	for i, p := range params {
-		if strings.HasPrefix(p, "..") {
-			if i != len(params)-1 {
-				c.err(line, col, "variadic parameter %q must be last (§6.3)", p)
-			}
-			c.bind(strings.TrimPrefix(p, ".."), "param", line, col)
-			continue
-		}
-		c.bind(p, "param", line, col)
-	}
-}
-
 // checkPatternBinding — связывает идентификаторы паттерна в текущей
 // области видимости. `_` игнорируется. Рекурсивно обходит вложенные
 // паттерны.
@@ -643,7 +627,7 @@ func (c *checker) checkExpr(e ast.Expr) {
 
 	case ast.LambdaFull:
 		c.pushScope()
-		c.checkLambdaParams(x.ParamNames(), e)
+		c.checkParams(x.Params(), e)
 		if b := x.BlockBody(); b != nil {
 			c.checkBlockBody(b)
 		}

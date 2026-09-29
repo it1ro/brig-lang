@@ -65,7 +65,7 @@ func (p *parser) tryLambda() (ast.Expr, bool, error) {
 		if err != nil {
 			return nil, true, err
 		}
-		return ast.NewLambdaFullExpr(lambdaParamStrings(params), body, start.Line, start.Col), true, nil
+		return ast.NewLambdaFullExpr(params, body, start.Line, start.Col), true, nil
 	}
 	// `fn x ->` для одного параметра не вводится (§6.2, §0.2).
 	if p.at(lexer.KW_FN) && p.peek(1).Type == lexer.LOWER_IDENT && p.peek(2).Type == lexer.OP_ARROW {
