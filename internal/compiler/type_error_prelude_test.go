@@ -51,6 +51,44 @@ func TestPreludeTypeErrorsAreCatchable(t *testing.T) {
     assert(to_str(r) == "Error((:type_error, (:Bytes.to_str, 5)))")`,
 		"str_to_bytes": `r = trap(Str.to_bytes(5))
     assert(to_str(r) == "Error((:type_error, (:Str.to_bytes, 5)))")`,
+		"str_split": `r = trap(Str.split(5, ","))
+    assert(to_str(r) == "Error((:type_error, (:Str.split, 5)))")`,
+		"str_split_sep": `r = trap(Str.split("a", 5))
+    assert(to_str(r) == "Error((:type_error, (:Str.split, 5)))")`,
+		"str_join": `r = trap(Str.join(5, ","))
+    assert(to_str(r) == "Error((:type_error, (:Str.join, 5)))")`,
+		"str_join_elem": `r = trap(Str.join([1], ","))
+    assert(to_str(r) == "Error((:type_error, (:Str.join, 1)))")`,
+		"str_trim": `r = trap(Str.trim(5))
+    assert(to_str(r) == "Error((:type_error, (:Str.trim, 5)))")`,
+		"str_find": `r = trap(Str.find(5, "a"))
+    assert(to_str(r) == "Error((:type_error, (:Str.find, 5)))")`,
+		"str_replace": `r = trap(Str.replace(5, "a", "b"))
+    assert(to_str(r) == "Error((:type_error, (:Str.replace, 5)))")`,
+		"str_starts_with": `r = trap(Str.starts_with?(5, "a"))
+    assert(to_str(r) == "Error((:type_error, (:Str.starts_with?, 5)))")`,
+		"str_ends_with": `r = trap(Str.ends_with?(5, "a"))
+    assert(to_str(r) == "Error((:type_error, (:Str.ends_with?, 5)))")`,
+		"str_lower": `r = trap(Str.lower(5))
+    assert(to_str(r) == "Error((:type_error, (:Str.lower, 5)))")`,
+		"str_upper": `r = trap(Str.upper(5))
+    assert(to_str(r) == "Error((:type_error, (:Str.upper, 5)))")`,
+		"str_slice": `r = trap(Str.slice(5, 0, 1))
+    assert(to_str(r) == "Error((:type_error, (:Str.slice, 5)))")`,
+		"str_slice_idx": `r = trap(Str.slice("ab", :a, 1))
+    assert(to_str(r) == "Error((:type_error, (:index_key, :a)))")`,
+		"str_to_int": `r = trap(Str.to_int(5))
+    assert(to_str(r) == "Error((:type_error, (:Str.to_int, 5)))")`,
+		"bytes_slice": `r = trap(Bytes.slice(5, 0, 1))
+    assert(to_str(r) == "Error((:type_error, (:Bytes.slice, 5)))")`,
+		"bytes_find": `r = trap(Bytes.find(5, b"a"))
+    assert(to_str(r) == "Error((:type_error, (:Bytes.find, 5)))")`,
+		"bytes_split": `r = trap(Bytes.split(5, b","))
+    assert(to_str(r) == "Error((:type_error, (:Bytes.split, 5)))")`,
+		"bytes_concat": `r = trap(Bytes.concat(5, b"a"))
+    assert(to_str(r) == "Error((:type_error, (:Bytes.concat, 5)))")`,
+		"bytes_at": `r = trap(Bytes.at(5, 0))
+    assert(to_str(r) == "Error((:type_error, (:Bytes.at, 5)))")`,
 
 		// индексация, диапазоны, записи
 		"index_key": `xs = [1, 2]
