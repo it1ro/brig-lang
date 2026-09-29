@@ -90,7 +90,7 @@ description: >
   `sessionLoop`. Вводы — очередь `Submit`: кадр функции ставится на этот
   актор, по `RETURN` или непойманному raise актор не завершается и не
   шлёт `:down` (ящик и pid те же). Между вводами цикл не возвращает
-  deadlock: ждёт таймер, сообщение или следующий ввод и крутит
+  deadlock: ждёт таймер, сообщение, событие порта или следующий ввод и крутит
   заспавненных акторов. `Interrupt` взводит флаг; цикл смотрит его на
   границе слайса (`defaultReductions`) и при ожидании — ввод снимается
   за ≤ 1 слайс, кадры сбрасываются без `ensure`, это не `*ErrRaise`
@@ -120,6 +120,30 @@ description: >
   Непойманная ошибка во время unwind причину не меняет. `callSync` и
   `CallNested` ensure не исполняют (ErrExit сразу). `spawn_watched` —
   `SPAWN` с C=2, `Watch` в том же шаге, результат `(pid, ref)`.
+- **Порты и внешние события (§12.12, §15.2, T-168, `port.go`).** Значение
+  `runtime.KindPort` с `*runtime.PortHandle` (ID, Owner, Closed): равенство
+  и term order по ID, после `Ref`. Таблица открытых — `Scheduler.ports`,
+  у актора — `Actor.ports`. Владелец для нативов `Signal.subscribe`/
+  `Port.close` — `s.active` (ставит `runSlice`, вложенный слайс
+  возвращает прежний; `callSync` — актор pid -1, subscribe там —
+  `internal:`). События — `injectQueue` (mutex + `ready`-канал): ресурс
+  в своей goroutine зовёт `push`, run-loop — `drainInject` в начале
+  итерации `runMain`/`sessionLoop`/`awaitNested`/`YieldUntil`; закрытый
+  порт — событие выброшено, иначе в конец ящика мимо HWM +
+  `wakeIfBlocked`. Ожидание при пустой ready — `waitEvent`
+  (`select { таймер | inject.ready }`) и `inject.ready` в `waitSession`/
+  `waitYield`. Выход `runMain`: `main` Done и `len(s.ports) == 0`;
+  `main` Failed; `s.halt`. Ни таймеров, ни портов — `deadlock`. Смерть
+  актора закрывает его порты в `notifyWatchers` (рядом с `dropNames`);
+  `runMain`/`endSession` закрывают все. `Sys.halt` — натив возвращает
+  `*ErrHalt` (не raise, `catch` его не ловит), `runSlice` в `stepFailed`
+  (`halting`) ставит `s.halt` без unwind — `ensure` не исполняются;
+  сессия (`haltSession`) отдаёт `ErrHalt` текущему и всем следующим
+  вводам (`loopErr`). ОС — только за интерфейсом `SignalHub`
+  (`vm.SetSignals`), реализация на `os/signal` — `cmd/brig/signal.go`;
+  в REPL `:sigint` не доставляется. Ядро не импортирует `os/signal`,
+  `os/exec`, `net` — якорь `TestVMCoreNoOSPorts`. Новый вид порта —
+  свой интерфейс рядом с `SignalHub` и `newPort`, без правки run-loop.
 - **Реестр имён (§12.8, T-164, `registry.go`).** Опкоды `REGISTER`/
   `UNREGISTER`/`WHEREIS`; `Scheduler.names` — список `(name, pid)` с
   `runtime.KeyEqual`. Имена снимает `notifyWatchers` (`dropNames`) — в той же
