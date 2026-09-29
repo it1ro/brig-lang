@@ -142,8 +142,25 @@ description: >
   вводам (`loopErr`). ОС — только за интерфейсом `SignalHub`
   (`vm.SetSignals`), реализация на `os/signal` — `cmd/brig/signal.go`;
   в REPL `:sigint` не доставляется. Ядро не импортирует `os/signal`,
-  `os/exec`, `net` — якорь `TestVMCoreNoOSPorts`. Новый вид порта —
-  свой интерфейс рядом с `SignalHub` и `newPort`, без правки run-loop.
+  `os/exec`, `net` и не открывает файлы (`os.Open*`/`Create`/…) — якорь
+  `TestVMCoreNoOSPorts`. Событие порта — `(tag, port, ...)`: порт второй,
+  `Signal` шлёт `(:signal, port, name)`.
+- **Потоковые порты (§12.12, T-228, `stream.go`).** Общий протокол в
+  `Port`: `request` (pull, флаг `streamPort.armed`, одно событие на запрос),
+  `write` (iodata сплющивается на run-loop, счётчик `pending`, порог
+  `streamHWM` — `Error(:busy)` и `promiseReady`), `give` (меняет
+  `PortHandle.Owner`; событие берёт владельца в `drainInject`, поэтому
+  запрос переходит с портом). Ресурс — интерфейс `Stream` (Read/Write/
+  Close(done)), события — `StreamEvent` через inject-очередь; `Written` —
+  служебное, уменьшает `pending`. `:port_eof`/`:port_error` закрывают
+  порт. Вид `File` — `FileHub` (`vm.SetFiles`), реализация на `os` —
+  `cmd/brig/file.go`, in-memory — `stream_test.go`; без реализации —
+  `noStream` (`:enotsup`). Закрытие потокового порта — `Close(done)` через
+  `Scheduler.closing`; `finishPorts` (выход `runMain`, `endSession`) ждёт
+  дозаписи. Ожидание держат только `openPort.live()` порты: потоковый без
+  запроса и без `pending` молчит — при пустой ready `runMain` выходит
+  (main Done) или даёт `deadlock`. Новый потоковый вид — свой `*Hub` и
+  `newStreamPort`, без правки протокола.
 - **Реестр имён (§12.8, T-164, `registry.go`).** Опкоды `REGISTER`/
   `UNREGISTER`/`WHEREIS`; `Scheduler.names` — список `(name, pid)` с
   `runtime.KeyEqual`. Имена снимает `notifyWatchers` (`dropNames`) — в той же
