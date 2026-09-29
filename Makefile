@@ -86,9 +86,15 @@ run:
 	@test -n "$(FILE)" || (echo "usage: make run FILE=<path.brig>"; exit 2)
 	$(GO) run ./cmd/brig $(FILE)
 
+# Долгоживущие примеры (серверы) не завершаются сами: run-examples и
+# update-examples их пропускают, проверяют их e2e-тесты в cmd/brig
+# (http_hello — TestHttpServerE2E).
+EXAMPLES_SERVE := examples/http_hello.brig
+
 # Исполнить все примеры и сравнить stdout с examples/X.out (падает с diff).
 run-examples:
 	@for f in examples/*.brig; do \
+		case " $(EXAMPLES_SERVE) " in *" $$f "*) echo "== $$f == (server, skipped)"; continue;; esac; \
 		echo "== $$f =="; \
 		$(GO) run ./cmd/brig $$f 2>&1 | diff -u $${f%.brig}.out - || exit 1; \
 	done
@@ -96,6 +102,7 @@ run-examples:
 # Перезаписать examples/*.out по текущему выводу (diff смотреть глазами).
 update-examples:
 	@for f in examples/*.brig; do \
+		case " $(EXAMPLES_SERVE) " in *" $$f "*) continue;; esac; \
 		$(GO) run ./cmd/brig $$f > $${f%.brig}.out 2>&1 || exit 1; \
 	done
 
