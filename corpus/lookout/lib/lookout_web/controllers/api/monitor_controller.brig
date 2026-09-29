@@ -47,8 +47,8 @@ fn stream(conn) ->
         (:status_changed, event) ->
             continue_or_close(Sse.event(conn, "status", Json.encode(event)))
         # Клиент ушёл: Go-транспорт отменил контекст запроса, порт прислал
-        # обычное сообщение (02/R2, B2).
-        (:http_closed, req) when req == conn.port ->
+        # обычное сообщение (02/R2, B2; форма — §12.12, T-229).
+        (:port_error, req, :closed) when req == conn.port ->
             Sse.done(conn)
     else msg
         Log.debug("sse: unexpected message", { msg: msg })
