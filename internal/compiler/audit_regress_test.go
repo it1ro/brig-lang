@@ -272,7 +272,8 @@ fn main() ->
 }
 
 // R0 / I-F2: ни одна форма trap (inline / block / ensure) не должна давать
-// TAILCALL, даже если trap стоит в хвостовой позиции функции.
+// TAILCALL, даже если trap стоит в хвостовой позиции функции. trap с
+// ensure в хвосте функции даёт TAILCALLENS (doc 02 §5.1, T-173).
 func TestAuditNoTailCallInsideTrap(t *testing.T) {
 	img := compileModule(t, `module Main
 fn g() -> 1
@@ -286,8 +287,68 @@ fn f_ensure() ->
         g()
 fn main() -> f_inline()
 `)
-	for _, name := range []string{"f_inline", "f_block", "f_ensure"} {
+	for _, name := range []string{"f_inline", "f_block"} {
 		if dis := img.Functions[name].Disassemble(); strings.Contains(dis, "TAILCALL") {
+			t.Errorf("%s: TAILCALL inside trap region:\n%s", name, dis)
+		}
+	}
+	dis := img.Functions["f_ensure"].Disassemble()
+	if !strings.Contains(dis, "TAILCALLENS") || strings.Contains(dis, "TAILCALL ") {
+		t.Errorf("f_ensure: want TAILCALLENS and no TAILCALL:\n%s", dis)
+	}
+}
+
+// TestTailCallEnsEligibility — TAILCALLENS только для хвоста последнего
+// стейтмента trap с ensure в хвостовой позиции fn, без ensure после него и
+// не для spread (doc 02 §5.1, T-173).
+func TestTailCallEnsEligibility(t *testing.T) {
+	img := compileModule(t, `module Main
+fn g(x) -> x
+fn yes_branch(n) ->
+    trap
+        ensure g(n)
+        if n == 0 then :done else yes_branch(n - 1)
+fn yes_match(n) ->
+    trap
+        x = n
+        ensure g(x)
+        match n
+            0 -> :done
+            _ -> yes_match(n - 1)
+fn no_let(n) ->
+    r = trap
+        ensure g(n)
+        no_let(n - 1)
+    r
+fn no_late_ensure(n) ->
+    trap
+        no_late_ensure(n - 1)
+        ensure g(n)
+fn no_spread(xs) ->
+    trap
+        ensure g(xs)
+        no_spread(..xs)
+fn no_nested(n) ->
+    trap
+        ensure g(n)
+        trap
+            ensure g(n)
+            no_nested(n - 1)
+fn no_plain(n) ->
+    trap
+        no_plain(n - 1)
+fn main() -> yes_branch(1)
+`)
+	for name, want := range map[string]bool{
+		"yes_branch": true, "yes_match": true,
+		"no_let": false, "no_late_ensure": false, "no_spread": false,
+		"no_nested": false, "no_plain": false,
+	} {
+		dis := img.Functions[name].Disassemble()
+		if got := strings.Contains(dis, "TAILCALLENS"); got != want {
+			t.Errorf("%s: TAILCALLENS = %v, want %v:\n%s", name, got, want, dis)
+		}
+		if strings.Contains(dis, "TAILCALL ") || strings.Contains(dis, "TAILCALLSPREAD") {
 			t.Errorf("%s: TAILCALL inside trap region:\n%s", name, dis)
 		}
 	}
