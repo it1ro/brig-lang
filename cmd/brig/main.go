@@ -316,24 +316,39 @@ func loadProgramFrom(root, file string) *loader.Graph {
 		fmt.Fprintf(os.Stderr, "brig: %v\n", err)
 		os.Exit(exitInternal)
 	}
+	if !checkGraph(g) {
+		os.Exit(exitParse)
+	}
+	return g
+}
+
+// checkGraph прогоняет sema по каждому модулю графа и печатает
+// диагностики; false — есть error.
+func checkGraph(g *loader.Graph) bool {
 	mods := make([]sema.Module, len(g.Modules))
 	for i, m := range g.Modules {
 		mods[i] = sema.Module{Name: m.Name, Prog: m.Prog}
 	}
 	world := sema.NewWorld(mods)
-	failed := false
+	ok := true
 	for _, m := range g.Modules {
 		// CheckNames включает проверки Check и разрешение имён (§F.3, T-139).
 		semaRes := sema.CheckNames(m.Prog, world)
 		reportDiagnostics(m.Path, semaRes)
 		if semaRes.HasErrors() {
-			failed = true
+			ok = false
 		}
 	}
-	if failed {
-		os.Exit(exitParse)
+	return ok
+}
+
+// compileModules — модули графа для compiler.CompileProgram.
+func compileModules(g *loader.Graph) []compiler.Module {
+	mods := make([]compiler.Module, len(g.Modules))
+	for i, m := range g.Modules {
+		mods[i] = compiler.Module{Name: m.Name, Path: m.Path, Prog: m.Prog}
 	}
-	return g
+	return mods
 }
 
 // runCheck: brig check <file.brig> — лексинг + парсинг + sema, без
@@ -431,12 +446,7 @@ func sourceIsModule(src []byte) (bool, error) {
 // runModule — файл с module: loader, sema, компилятор, fn main().
 func runModule(file string, progArgs []string, dump bool) {
 	g := loadProgram(file)
-	mods := make([]compiler.Module, len(g.Modules))
-	for i, m := range g.Modules {
-		mods[i] = compiler.Module{Name: m.Name, Path: m.Path, Prog: m.Prog}
-	}
-
-	img, err := compiler.New().CompileProgram(mods)
+	img, err := compiler.New().CompileProgram(compileModules(g))
 	if err != nil {
 		reportCompileError(file, err)
 		os.Exit(exitForCompileErr(err))
