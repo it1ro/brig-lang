@@ -6,7 +6,7 @@ VERSION ?= $(shell git describe --tags --always 2>/dev/null || echo dev)
 
 .PHONY: all build test test-race lint fmt vet check-examples spec-tables \
 	git-hooks fuzz update-golden update-bytecode update-examples run-examples clean \
-	corpus update-corpus plan-check bench \
+	corpus update-corpus plan-check bench bench-scaling \
 	test-roundtrip test-ast test-parser test-lexer test-one \
 	test-vm test-compiler test-stdlib run run-hello \
 	fmt-check cover cover-html ci-quick check repl
@@ -164,7 +164,37 @@ fuzz:
 # Не входят в all; CI сравнивает PR с main (.github/workflows/bench.yml).
 BENCH_COUNT ?= 10
 bench:
-	$(GO) test -run '^$$' -bench . -benchmem -count $(BENCH_COUNT) ./internal/vm/
+	$(GO) test -run '^$$' -bench . -skip Scaling -benchmem -count $(BENCH_COUNT) ./internal/vm/
+
+## ---- Асимптотика коллекций (T-247) ----
+# BenchmarkScaling строит коллекцию из 1k и 8k элементов; печатает
+# t(8k)/t(1k) по операциям (минимум из SCALING_COUNT прогонов) и
+# завершается 1, если отношение > SCALING_MAX_RATIO (линейный рост ~8,
+# квадратичный ~64). Не входит в all и в bench.
+SCALING_COUNT ?= 3
+SCALING_MAX_RATIO ?= 16
+bench-scaling:
+	@$(GO) test -run '^$$' -bench BenchmarkScaling -benchtime 1x -count $(SCALING_COUNT) ./internal/vm/ \
+		| awk -v max=$(SCALING_MAX_RATIO) '\
+			/^BenchmarkScaling\// { \
+				split($$1, p, "/"); op = p[2]; sz = p[3]; sub(/-[0-9]+$$/, "", sz); \
+				k = op SUBSEP sz; t = $$3 + 0; \
+				if (!(k in best) || t < best[k]) best[k] = t; \
+				if (!(op in seen)) { seen[op] = 1; ops[++n] = op } \
+				next \
+			} \
+			{ print } \
+			END { \
+				if (n == 0) { print "bench-scaling: нет результатов"; exit 2 } \
+				for (i = 1; i <= n; i++) { \
+					op = ops[i]; a = best[op SUBSEP "1k"]; b = best[op SUBSEP "8k"]; \
+					if (a <= 0) { print "bench-scaling: нет замера 1k для " op; bad = 1; continue } \
+					r = b / a; st = (r > max) ? "FAIL" : "ok"; \
+					printf "%-14s t(8k)/t(1k) = %6.1f (лимит %s) %s\n", op, r, max, st; \
+					if (r > max) bad = 1 \
+				} \
+				exit bad \
+			}'
 
 ## ---- CLI без сборки ----
 check:

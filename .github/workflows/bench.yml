@@ -54,3 +54,21 @@ jobs:
                       }
                       END { exit bad }
                   ' cmp.csv
+
+    # Асимптотика коллекций (T-247): t(8k)/t(1k) > 16 — красный. На main цель
+    # пока красная (квадратичный рост), поэтому job не блокирует PR.
+    # continue-on-error: true — до T-271…T-273; после них убрать.
+    scaling:
+        runs-on: ubuntu-latest
+        continue-on-error: true
+        steps:
+            - uses: actions/checkout@v4
+
+            - uses: actions/setup-go@v5
+              with:
+                  go-version-file: go.mod
+                  cache: true
+
+            - name: Bench scaling
+              shell: bash
+              run: make bench-scaling | tee -a "$GITHUB_STEP_SUMMARY"
