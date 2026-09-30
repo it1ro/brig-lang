@@ -86,6 +86,19 @@ func TestCheckArityMismatch(t *testing.T) {
 	}
 }
 
+// T-242: ссылка на несвязанное имя — ошибка brig check и запуска (§F.3,
+// §E), exit 1, до рантайма.
+func TestCheckUndefinedName(t *testing.T) {
+	bin := buildBrig(t)
+	const src = "module Main\nfn main() ->\n    print(y)\n"
+	for _, cmd := range []string{"check", ""} {
+		out, code := brigFile(t, bin, cmd, src)
+		if code != exitParse || !strings.Contains(out, "error: ") || !strings.Contains(out, "main.brig:3:11: undefined name y") || strings.Contains(out, "undefined:") {
+			t.Fatalf("%s: exit %d, out %q", cmd, code, out)
+		}
+	}
+}
+
 func brigFile(t *testing.T, bin, cmd, src string) (string, int) {
 	t.Helper()
 	dir := t.TempDir()

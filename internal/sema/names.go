@@ -593,6 +593,40 @@ func (c *checker) bareSig(name string) (s sig, dynamic, found bool) {
 	return sig{}, false, false
 }
 
+// checkUnbound — ссылка на имя (не вызов) вне позиции вызова (§F.3,
+// T-242): имя не связано в области (локаль, параметр, имя из паттерна,
+// локальная fn — вперёд-ссылки в блоке разрешены, §6.5) и не является
+// функцией или конструктором своего модуля, прелюдии или голым именем
+// stdlib — `undefined name x`. Имя модуля разбирает checkModuleValue.
+// Модуль сессии REPL (ввод -i) не проверяется: там это ошибка рантайма
+// (§11.4), как и в самом REPL (Check).
+func (c *checker) checkUnbound(v ast.VariableExpr) {
+	if !c.resolve || c.session {
+		return
+	}
+	name := v.Name()
+	if name == "" || name == "_" || isNamedWildcard(name) || isSpecialCall(name) || strings.Contains(name, ".") {
+		return
+	}
+	if c.isBound(name) || c.ctors[name] || c.prelude[name] {
+		return
+	}
+	if _, ok := c.own[name]; ok {
+		return
+	}
+	if _, ok := bareBuiltins[name]; ok {
+		return
+	}
+	if _, ok := bareStdlib[name]; ok {
+		return
+	}
+	if _, imported := c.imports[name]; imported || isBuiltinMod(name) || c.world.has(name) {
+		return
+	}
+	line, col := posOf(v)
+	c.err(line, col, "undefined name %s", name)
+}
+
 func (c *checker) finish(display string, s sig, found, dynamic bool, args []ast.Expr, at ast.Node) {
 	if dynamic {
 		return

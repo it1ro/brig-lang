@@ -286,6 +286,7 @@ func TestCheckFile(t *testing.T) {
 		"```",
 		"",
 		"```brig stmt",
+		"x = 1",
 		"y = x + 1",
 		"```",
 	}, "\n")

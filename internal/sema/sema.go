@@ -350,9 +350,10 @@ func (c *checker) checkStmt(s ast.Stmt) {
 	case *ast.BlockStmt:
 		c.checkBlock(x)
 	case ast.LetBind:
-		c.checkPatternBinding(x.Pat(), "let")
-		// §10.2: trap разрешён на верхнем уровне RHS let_bind.
+		// §10.2: trap разрешён на верхнем уровне RHS let_bind. Правая
+		// часть не видит имён своего паттерна (T-242).
 		c.checkExprAllowTrap(x.Val())
+		c.checkPatternBinding(x.Pat(), "let")
 	case ast.ExprStmt:
 		// §10.2: trap разрешён как отдельный expr_stmt.
 		c.checkExprAllowTrap(x.ExprValue())
@@ -488,17 +489,8 @@ func (c *checker) checkExpr(e ast.Expr) {
 		c.checkBlock(x)
 
 	case ast.VariableExpr:
-		// Именованный wildcard (`_msg`, `_unused`, §1.2) лексически —
-		// LOWER_IDENT, но не связывается ни в каком паттерне/параметре
-		// (bind() пропускает такие имена). Обращение к нему в теле —
-		// ошибка контекстного анализа (§F.3), независимо от того, есть
-		// ли в области видимости одноимённое связывание.
-		if isNamedWildcard(x.Name()) {
-			line, col := posOf(x)
-			c.err(line, col,
-				"reference to named wildcard %q is not allowed (§1.2): it never binds", x.Name())
-		}
-		c.checkModuleValue(x)
+		c.checkVariable(x)
+		c.checkUnbound(x)
 
 	case ast.LiteralExpr, ast.BytesExpr, ast.DecimalExpr, ast.RegexExpr,
 		ast.AtomExpr:
@@ -516,7 +508,12 @@ func (c *checker) checkExpr(e ast.Expr) {
 		c.checkExpr(x.Operand())
 
 	case ast.BinaryExpr:
-		c.checkExpr(x.Left())
+		// `name: v` литерала записи: слева имя поля, не ссылка (T-242).
+		if fv, ok := x.Left().(ast.VariableExpr); ok && x.OpStr() == ":" {
+			c.checkVariable(fv)
+		} else {
+			c.checkExpr(x.Left())
+		}
 		c.checkExpr(x.Right())
 
 	case ast.MemberExpr:
@@ -539,6 +536,9 @@ func (c *checker) checkExpr(e ast.Expr) {
 			if _, ok := modulePath(me); !ok {
 				c.checkExpr(me)
 			}
+		} else if v, ok := x.Callee().(ast.VariableExpr); ok {
+			// Имя вызова разрешил checkCall (`undefined function f/N`).
+			c.checkVariable(v)
 		} else {
 			c.checkExpr(x.Callee())
 		}
@@ -609,8 +609,9 @@ func (c *checker) checkExpr(e ast.Expr) {
 	case ast.WithExpr:
 		c.pushScope()
 		for _, it := range x.WithItems() {
-			c.checkPatternBinding(it.Pattern, "with")
+			// Выражение bind не видит имён своего паттерна (T-242).
 			c.checkExpr(it.Expr)
+			c.checkPatternBinding(it.Pattern, "with")
 			c.checkIgnoredResult(it)
 		}
 		if x.WithBody() != nil {
@@ -654,6 +655,21 @@ func (c *checker) checkExpr(e ast.Expr) {
 	}
 }
 
+// checkVariable — проверки имени в выражении, общие для ссылки, имени
+// вызова и имени поля литерала записи. Именованный wildcard (`_msg`,
+// `_unused`, §1.2) лексически — LOWER_IDENT, но не связывается ни в
+// каком паттерне/параметре (bind() пропускает такие имена). Обращение к
+// нему в теле — ошибка контекстного анализа (§F.3), независимо от того,
+// есть ли в области видимости одноимённое связывание.
+func (c *checker) checkVariable(x ast.VariableExpr) {
+	if isNamedWildcard(x.Name()) {
+		line, col := posOf(x)
+		c.err(line, col,
+			"reference to named wildcard %q is not allowed (§1.2): it never binds", x.Name())
+	}
+	c.checkModuleValue(x)
+}
+
 // checkBranchBody — тело ветки if/match/recv/with. Если это BlockStmt —
 // отдельная область видимости; иначе — выражение. Trap на верхнем уровне
 // выражения ветки запрещён (§10.2): допустимая идиома — блок со
@@ -682,10 +698,14 @@ func (c *checker) checkTrapInner(x ast.TrapExpr) {
 	if x.TrapInline() != nil {
 		c.checkExpr(x.TrapInline())
 	}
-	if b := x.TrapBody(); b != nil {
-		c.pushScope()
+	// ensure видят имена тела: компилятор компилирует их в области тела
+	// (I-F5, T-37), `ensure close(f)` после `f = open(…)` (T-242).
+	c.pushScope()
+	defer c.popScope()
+	if blk, ok := x.TrapBody().(*ast.BlockStmt); ok && blk != nil {
+		c.checkBlockBody(blk)
+	} else if b := x.TrapBody(); b != nil {
 		c.checkStmt(b)
-		c.popScope()
 	}
 	for _, en := range x.TrapEnsures() {
 		c.checkExpr(en)
