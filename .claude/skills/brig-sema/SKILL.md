@@ -63,6 +63,13 @@ Message}`; `SeverityError` блокирует компиляцию, `SeverityInf
    `Repl.h` в сессии — исключения).
    REPL: зависимостям (`deps/`) вводы видят только `pub`, модулям
    пользователя — всё (`sessionModule.priv`).
+9. Проигнорированный `Result` (L17, T-177) — **info**. `_ <- f(…)` (и
+   `M.f(…)`, `x |> M.f(…)`) в `with`, где `f` есть в таблице `resultFns`
+   (`sema.go`: встроенные с `Result` по §4.7/§12.6; `exit` не входит), —
+   `result of f is ignored; use Ok(_) <-`. Аннотаций возврата в грамматике
+   нет, пользовательские fn и Brig-stdlib не проверяются. Своя переменная,
+   fn модуля (`own` теперь заполнен и в `Check`/`CheckRepl`) и модуль
+   программы встроенное имя затеняют.
 
 Sema обходит выражения внутри `InterpExpr` (`checkExpr`, S-F1 / T-53).
 Guard'ы `recv` есть в AST (`RecvBranchArg.Guard`, S-F3 / T-02); `Walk`
