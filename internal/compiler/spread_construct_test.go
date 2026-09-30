@@ -1,9 +1,6 @@
 package compiler_test
 
-import (
-	"strings"
-	"testing"
-)
+import "testing"
 
 func TestListSpreadConstruct(t *testing.T) {
 	runModule(t, `module Main
@@ -86,15 +83,22 @@ fn main() ->
 `)
 }
 
-func TestCallSpreadLocalCaptureStillRejected(t *testing.T) {
-	err := runModuleErr(t, `module Main
+func TestCallSpreadLocalCapture(t *testing.T) {
+	runModule(t, `module Main
 fn outer(k) ->
     fn add(a, b) -> a + b + k
-    add(1, ..[2])
+    xs = [1, 2]
+    assert(add(1, ..[2]) == 4)
+    assert(add(..xs) == 4)
+    assert(add(..[1], ..[2]) == 4)
+    assert(add(..[1], 2) == 4)
+    assert(1 |> add(..[2]) == 4)
+    r = trap(add(..[1, 2, 3]))
+    assert(r == Error((:function_clause, [1, 2, 3])))
+    r2 = trap(add(..5))
+    assert(r2 == Error((:type_error, (:spread, 5))))
+    add(..xs)
 fn main() ->
-    outer(1)
+    assert(outer(1) == 4)
 `)
-	if err == nil || !strings.Contains(err.Error(), "спред-вызов локальной fn с захватом") {
-		t.Fatalf("want capture-spread compile error, got: %v", err)
-	}
 }

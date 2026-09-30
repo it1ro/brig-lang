@@ -2058,24 +2058,28 @@ func (fc *funcCompiler) compileGenericCall(call ast.CallExpr, d dest) error {
 	if v, ok := call.Callee().(ast.VariableExpr); ok {
 		callee, owner, isLocalFn = fc.resolveLocalFn(v.Name())
 	}
+	args := call.Args()
+	nSpread, singleTrailing := spreadShape(args)
 	if isLocalFn {
 		if lf := fc.compiler.lifted[callee]; lf != nil {
 			caps = lf.caps
 		}
-		if err := fc.loadGlobal(val(base), callee); err != nil {
+		// У variadic-fn захваты идут перед аргументами (см. liftedFn), у прочих —
+		// после, и при спреде их место неизвестно до рантайма: такой вызов идёт
+		// через значение-обёртку (loadLocalFn), захваты — её upvalue.
+		if nSpread > 0 && len(caps) > 0 && !fc.compiler.lifted[callee].variadic {
+			caps = nil
+			if err := fc.loadLocalFn(val(base), callee, owner); err != nil {
+				return err
+			}
+		} else if err := fc.loadGlobal(val(base), callee); err != nil {
 			return err
 		}
 	} else if err := fc.compileExpr(call.Callee(), val(base)); err != nil {
 		return err
 	}
 
-	args := call.Args()
-	nSpread, singleTrailing := spreadShape(args)
-	// У variadic-fn захваты идут перед аргументами (см. liftedFn), у прочих — после.
 	leadCaps := len(caps) > 0 && fc.compiler.lifted[callee].variadic
-	if nSpread > 0 && len(caps) > 0 && !leadCaps {
-		return fmt.Errorf("срез: спред-вызов локальной fn с захватом")
-	}
 	// Несколько спредов или спред не в конце: собрать аргументы списком
 	// и развернуть его одним CALLSPREAD (§5.2, §5.3).
 	if nSpread > 0 && !singleTrailing {
