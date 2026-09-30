@@ -59,6 +59,7 @@ func (r *Result) HasErrors() bool {
 func Check(prog *ast.Program) *Result {
 	c := &checker{
 		prelude: preludeNames(),
+		imports: importMap(prog),
 	}
 	c.checkProgram(prog)
 	return &Result{Diagnostics: c.diags}
@@ -130,6 +131,7 @@ func CheckRepl(prog *ast.Program, extra []string) *Result {
 	c := &checker{
 		prelude: preludeNames(),
 		helpers: h,
+		imports: importMap(prog),
 	}
 	c.checkProgram(prog)
 	return &Result{Diagnostics: c.diags}

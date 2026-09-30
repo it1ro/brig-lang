@@ -458,13 +458,17 @@ func (c *checker) checkQual(mod, member string, args []ast.Expr, at ast.Node) {
 // значение-функция: неизвестная функция, приватная функция другого модуля
 // (§11.2) и модуль без import — ошибки, как у вызова; арность в сообщении
 // — из объявления. Акторный примитив опкод, не значение (§12.6).
-// Конструкторы `M.Ctor` проверяет компилятор.
+// Конструкторы `M.Ctor` модулей программы проверяет компилятор; у
+// встроенного модуля конструкторов нет (T-231).
 func (c *checker) checkQualRef(me ast.MemberExpr, segs []string) {
 	mod, member := splitPath(segs)
+	line, col := posOf(pathStart(me))
 	if isUpper(member) {
+		if full, ok := c.builtinRef(mod); ok {
+			c.err(line, col, "unknown constructor %s in module %s: built-in modules have no constructors (§7.6)", member, full)
+		}
 		return
 	}
-	line, col := posOf(pathStart(me))
 	if mod == "Prelude" && actorPrimitives[member] {
 		c.err(line, col, "actor primitive %s.%s cannot be used as a value (§12.6)", mod, member)
 		return
@@ -481,6 +485,20 @@ func (c *checker) checkQualRef(me ast.MemberExpr, segs []string) {
 	case full != c.module && c.worldFor(full).private(full, member):
 		c.err(line, col, "%s/%s is private to %s", member, s.label(), full)
 	}
+}
+
+// builtinRef — mod разрешается во встроенный модуль (Go-нативный или
+// stdlib вне программы), как compiler.resolveModule: сначала import/alias
+// файла, затем встроенные модули (§11.1).
+func (c *checker) builtinRef(mod string) (full string, ok bool) {
+	full, imported := c.imports[mod]
+	if !imported {
+		if !isBuiltinMod(mod) {
+			return "", false
+		}
+		full = mod
+	}
+	return full, isNativeMod(full) || (stdlib.IsModule(full) && !c.world.has(full))
 }
 
 // checkModuleValue — имя модуля в позиции выражения значением не является
