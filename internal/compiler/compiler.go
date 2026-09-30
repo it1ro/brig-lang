@@ -1625,9 +1625,8 @@ func (fc *funcCompiler) compileModulePath(segs []string, at vm.SrcPos, d dest) e
 	if err != nil {
 		return err
 	}
-	if ref.builtin != "" {
-		return fmt.Errorf("срез: неподдерживаемое выражение %s", strings.Join(segs, "."))
-	}
+	// У встроенного модуля (ref.mod == nil) конструкторов нет: sema ловит
+	// `Vec.Foo` раньше (T-231), здесь — defensive-ветка для путей мимо sema.
 	ct, err := moduleCtor(ref, member, at)
 	if err != nil {
 		return err

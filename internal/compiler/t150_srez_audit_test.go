@@ -23,23 +23,18 @@ fn main() ->
 	}
 }
 
-// Сайт compiler.go:1629 (compileModulePath, ветка ref.builtin != "") —
-// голый member встроенного модуля с большой буквы, не вызов. Реальная
-// (хоть и бессмысленная) программа доходит именно до этой строки и
-// получает протекающее сообщение вместо нормальной ошибки sema/`brig check`.
-// Must-баг: sema пропускает это без диагностики.
+// Бывший сайт compiler.go:1629 (compileModulePath, ветка ref.builtin != "")
+// — голый member встроенного модуля с большой буквы, не вызов. T-231: sema
+// ловит его до компилятора.
 func TestT150BareBuiltinModuleUpperMember(t *testing.T) {
 	err := runModuleErr(t, `module Main
 fn main() ->
     x = Vec.Foo
     print(x)
 `)
-	want := "срез: неподдерживаемое выражение Vec.Foo"
-	if err == nil || !strings.Contains(err.Error(), want) {
-		t.Fatalf("err = %v, want contains %q", err, want)
-	}
-	if strings.HasPrefix(err.Error(), "sema:") {
-		t.Fatalf("expected compile-time error (past sema), got sema rejection: %v", err)
+	want := "unknown constructor Foo in module Vec"
+	if err == nil || !strings.Contains(err.Error(), want) || !strings.HasPrefix(err.Error(), "sema:") {
+		t.Fatalf("err = %v, want sema error containing %q", err, want)
 	}
 }
 
