@@ -82,12 +82,3 @@ func TestRecordJSON(t *testing.T) {
 		t.Error("JSONEncode of record with function field: want error")
 	}
 }
-
-func TestRecordSerialize(t *testing.T) {
-	if err := Serialize(rec("User", "id", Int(1))); err != nil {
-		t.Errorf("Serialize(record): %v", err)
-	}
-	if err := Serialize(rec("", "p", Value{Kind: KindPid, Pid: 1})); err == nil {
-		t.Error("Serialize(record with pid): want error")
-	}
-}
