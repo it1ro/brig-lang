@@ -1,0 +1,56 @@
+name: bench
+
+# Микро-бенчмарки VM (T-152): PR сравнивается с базой main через benchstat.
+# Значимая (по benchstat) регрессия больше порога по времени или
+# аллокациям — красный статус. Бенчмарки не входят в make all.
+
+on:
+    pull_request:
+        branches: [main]
+
+env:
+    # Порог регрессии в процентах — единственное место, где он задан.
+    BENCH_THRESHOLD_PCT: 5
+    BENCHSTAT: golang.org/x/perf/cmd/benchstat@v0.0.0-20260929162123-406019bb8b68
+
+jobs:
+    bench:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
+
+            - uses: actions/setup-go@v5
+              with:
+                  go-version-file: go.mod
+                  cache: true
+
+            - name: Install benchstat
+              run: go install "$BENCHSTAT"
+
+            # База гоняется Makefile'ом PR: в main цели bench может ещё не быть.
+            # Прогоны base и PR чередуются, чтобы дрейф раннера делился поровну.
+            - name: Bench base (main) and head (PR)
+              run: |
+                  git worktree add ../base "${{ github.event.pull_request.base.sha }}"
+                  for i in $(seq 10); do
+                      make -s --no-print-directory -C ../base -f "$PWD/Makefile" bench BENCH_COUNT=1 >> base.txt
+                      make -s bench BENCH_COUNT=1 >> head.txt
+                  done
+
+            - name: Compare
+              run: |
+                  { echo "\`\`\`"; benchstat base.txt head.txt; echo "\`\`\`"; } | tee -a "$GITHUB_STEP_SUMMARY"
+                  benchstat -format csv base.txt head.txt > cmp.csv
+                  # Строки: имя,база,CI,PR,CI,vs base,P. Заголовок таблицы
+                  # задаёт единицу; "~" — разница незначима.
+                  awk -F, -v t="$BENCH_THRESHOLD_PCT" '
+                      $1 == "" && $6 == "vs base" { unit = $2; next }
+                      $1 == "" || $1 == "geomean" { next }
+                      unit ~ /^(sec\/op|B\/op|allocs\/op|allocs\/call)$/ && $6 ~ /^\+[0-9.]+%$/ {
+                          d = substr($6, 2) + 0
+                          if (d > t) { printf "regression: %s %s %s (> %s%%)\n", $1, unit, $6, t; bad = 1 }
+                      }
+                      END { exit bad }
+                  ' cmp.csv

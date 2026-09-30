@@ -6,7 +6,7 @@ VERSION ?= $(shell git describe --tags --always 2>/dev/null || echo dev)
 
 .PHONY: all build test test-race lint fmt vet check-examples spec-tables \
 	git-hooks changelog fuzz update-golden update-bytecode update-examples run-examples clean \
-	corpus update-corpus plan-check \
+	corpus update-corpus plan-check bench \
 	test-roundtrip test-ast test-parser test-lexer test-one \
 	test-vm test-compiler test-stdlib run run-hello \
 	fmt-check cover cover-html ci-quick check repl
@@ -163,6 +163,13 @@ fuzz:
 	$(GO) test ./internal/lexer/  -run=^$$ -fuzz=FuzzLex        -fuzztime=60s
 	$(GO) test ./internal/parser/ -run=^$$ -fuzz=FuzzParse      -fuzztime=60s
 	$(GO) test ./internal/ast/    -run=^$$ -fuzz=FuzzRoundTrip  -fuzztime=60s
+
+## ---- Бенчмарки (T-152) ----
+# Микро-бенчмарки VM с -benchmem, BENCH_COUNT повторов (для benchstat).
+# Не входят в all; CI сравнивает PR с main (.github/workflows/bench.yml).
+BENCH_COUNT ?= 10
+bench:
+	$(GO) test -run '^$$' -bench . -benchmem -count $(BENCH_COUNT) ./internal/vm/
 
 ## ---- CLI без сборки ----
 check:
