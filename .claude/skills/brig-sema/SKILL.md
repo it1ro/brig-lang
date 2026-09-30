@@ -49,7 +49,10 @@ Message}`; `SeverityError` блокирует компиляцию, `SeverityInf
    `module X is not imported`. Вызов значения из переменной и вызов со
    спредом по арности не проверяются. `Check` этого не делает: REPL
    вызывает его и оставляет неизвестное имя ошибкой рантайма (§11.4).
-   `brig check`/`run` вызывают `CheckNames` по графу модулей.
+   `brig check`/`run` вызывают `CheckNames` по графу модулей; script
+   (файл без `module`) `brig check` проверяет как `run` — `CheckRepl`
+   по инструкциям, плюс `CheckScriptMain` (info о невызванной
+   `fn main()`, T-243).
    Ссылка (не вызов) на несвязанное имя — `undefined name y` (T-242,
    `checkUnbound` из случая `VariableExpr`): имя не связано в области и
    не функция/конструктор своего модуля, не прелюдия, не голое stdlib-имя

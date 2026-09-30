@@ -23,10 +23,12 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/it1ro/brig-lang/internal/ast"
 	"github.com/it1ro/brig-lang/internal/compiler"
 	"github.com/it1ro/brig-lang/internal/highlight"
 	"github.com/it1ro/brig-lang/internal/lexer"
 	"github.com/it1ro/brig-lang/internal/loader"
+	"github.com/it1ro/brig-lang/internal/parser"
 	"github.com/it1ro/brig-lang/internal/repl"
 	"github.com/it1ro/brig-lang/internal/repl/term"
 	"github.com/it1ro/brig-lang/internal/sema"
@@ -250,6 +252,10 @@ Sys.args(), включая то, что выглядит как флаги. Фл
 (§11.3): top-level инструкции по порядку, fn main() сама не вызывается.
 Подкоманд run и repl нет.
 
+brig check выбирает режим так же и ничего не исполняет. Импорты модуля
+ищутся от корня проекта (project.brig вверх от файла; lib/, если он есть),
+без project.brig — от каталога файла.
+
 -i грузит перечисленные файлы в сессию: модуль виден по имени, script
 исполняется как вводы, fn main() сама не вызывается. Каталог (или «.») —
 проект: корень ищется по project.brig вверх от пути. -e вместе с -i
@@ -295,8 +301,12 @@ func reportCompileError(file string, err error) {
 // loadProgram загружает граф модулей от входного файла (§11.1, T-135)
 // и прогоняет sema по каждому модулю. Ошибка загрузки или sema —
 // сообщение E.1 и выход; ошибка чтения входного файла — exitInternal.
-func loadProgram(file string) *loader.Graph {
-	g, err := loader.Load(file)
+// Корень импортов — каталог файла.
+func loadProgram(file string) *loader.Graph { return loadProgramFrom("", file) }
+
+// loadProgramFrom — loadProgram с корнем импортов root ("" — каталог файла).
+func loadProgramFrom(root, file string) *loader.Graph {
+	g, err := loader.LoadFrom(root, file)
 	if err != nil {
 		var le *loader.Error
 		if errors.As(err, &le) {
@@ -326,15 +336,59 @@ func loadProgram(file string) *loader.Graph {
 	return g
 }
 
-// runCheck: brig check <file.brig> — лексинг + парсинг + sema по всем
-// модулям графа.
+// runCheck: brig check <file.brig> — лексинг + парсинг + sema, без
+// исполнения. Режим — как у brig <file> (§11.3): файл с module — граф
+// модулей от корня проекта (loader.ModuleRoot), без module — script.
 func runCheck(args []string) {
 	if len(args) != 1 {
 		fmt.Fprintln(os.Stderr, "brig check: ожидается один файл")
 		os.Exit(exitParse)
 	}
-	loadProgram(args[0])
-	fmt.Printf("%s: ok\n", args[0])
+	file := args[0]
+	src, err := os.ReadFile(file)
+	if err != nil {
+		fail(exitInternal, "brig: %v", err)
+	}
+	mod, err := sourceIsModule(src)
+	if err != nil {
+		reportCompileError(file, err)
+		os.Exit(exitForCompileErr(err))
+	}
+	if mod {
+		loadProgramFrom(loader.ModuleRoot(file), file)
+	} else {
+		checkScript(file, string(src))
+	}
+	fmt.Printf("%s: ok\n", file)
+}
+
+// checkScript — sema script-файла так же, как при его исполнении
+// (runScript): каждая top-level инструкция — отдельный ввод (§11.3).
+// Плюс info о fn main(), которую script не вызывает. Ошибка — выход.
+func checkScript(file, src string) {
+	lines, err := parser.ParseReplInput(src)
+	if err != nil {
+		reportCompileError(file, err)
+		os.Exit(exitForCompileErr(err))
+	}
+	failed := false
+	whole := &ast.Program{}
+	for _, line := range lines {
+		whole.Decls = append(whole.Decls, line.Decls...)
+		whole.Stmts = append(whole.Stmts, line.Stmts...)
+		if len(line.Stmts) == 0 {
+			continue
+		}
+		res := sema.CheckRepl(line, nil)
+		reportDiagnostics(file, res)
+		if res.HasErrors() {
+			failed = true
+		}
+	}
+	if failed {
+		os.Exit(exitParse)
+	}
+	reportDiagnostics(file, sema.CheckScriptMain(whole))
 }
 
 // runEntry запускает файл: с `module` — модуль и fn main(), без — script.
