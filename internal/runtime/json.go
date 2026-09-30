@@ -114,9 +114,9 @@ func jsonEncode(sb *strings.Builder, opts JSONOptions, v Value, depth int) error
 		var elems []Value
 		switch v.Kind {
 		case KindList:
-			elems = v.List
+			elems = v.list
 		case KindVector:
-			elems = v.Vector
+			elems = v.vector
 		case KindTuple:
 			elems = v.Tuple
 		}
@@ -133,7 +133,7 @@ func jsonEncode(sb *strings.Builder, opts JSONOptions, v Value, depth int) error
 
 	case KindSet:
 		sb.WriteByte('[')
-		for i, e := range v.Set {
+		for i, e := range v.set {
 			if i > 0 {
 				sb.WriteByte(',')
 			}
@@ -145,7 +145,7 @@ func jsonEncode(sb *strings.Builder, opts JSONOptions, v Value, depth int) error
 
 	case KindMap:
 		sb.WriteByte('{')
-		for i, e := range v.Map {
+		for i, e := range v.entries {
 			if i > 0 {
 				sb.WriteByte(',')
 			}

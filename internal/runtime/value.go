@@ -194,19 +194,21 @@ type MapEntry struct{ Key, Val Value }
 // Decimal (Sprint 5.4, §3.1): *big.Rat — точная арифметика, равенство
 // и сравнение по значению; dec"1.50" == dec"1.5".
 type Value struct {
-	Kind       Kind
-	Bool       bool
-	SmallInt   int64
-	IsSmall    bool
-	intBig     *big.Int
-	Float      float64
-	Str        string
-	Atom       string
-	Tuple      []Value
-	List       []Value
-	Vector     []Value
-	Map        []MapEntry
-	Set        []Value
+	Kind     Kind
+	Bool     bool
+	SmallInt int64
+	IsSmall  bool
+	intBig   *big.Int
+	Float    float64
+	Str      string
+	Atom     string
+	Tuple    []Value
+	// Представление коллекций скрыто (T-283, шаг 0 T-250): доступ только
+	// через методы Len/At/Elems/Entries и конструкторы List/Vector/Set/Map.
+	list       []Value
+	vector     []Value
+	entries    []MapEntry
+	set        []Value
 	Func       *FuncValue
 	ClosureVal *ClosureValue
 	Variant    *VariantValue
@@ -219,6 +221,52 @@ type Value struct {
 	RangeEnd   int64
 	Bytes      []byte
 	Dec        *big.Rat
+}
+
+// ---- доступ к коллекциям (T-283) ----
+
+// Len — число элементов List, Vector, Set или пар Map; для прочих видов 0.
+func (v Value) Len() int {
+	switch v.Kind {
+	case KindList:
+		return len(v.list)
+	case KindVector:
+		return len(v.vector)
+	case KindSet:
+		return len(v.set)
+	case KindMap:
+		return len(v.entries)
+	}
+	return 0
+}
+
+// At — i-й элемент List, Vector или Set (порядок хранения). Границы
+// проверяет вызывающий: 0 <= i < Len().
+func (v Value) At(i int) Value {
+	return v.Elems()[i]
+}
+
+// Elems — элементы List, Vector или Set в порядке хранения; для прочих
+// видов nil. Срез нельзя изменять (значения неизменяемы, §0.13).
+func (v Value) Elems() []Value {
+	switch v.Kind {
+	case KindList:
+		return v.list
+	case KindVector:
+		return v.vector
+	case KindSet:
+		return v.set
+	}
+	return nil
+}
+
+// Entries — пары Map в порядке хранения; для прочих видов nil. Срез нельзя
+// изменять.
+func (v Value) Entries() []MapEntry {
+	if v.Kind == KindMap {
+		return v.entries
+	}
+	return nil
 }
 
 // ---- конструкторы ----
@@ -266,13 +314,13 @@ func Atom(a string) Value { return Value{Kind: KindAtom, Atom: a} }
 func Tuple(vs ...Value) Value { return Value{Kind: KindTuple, Tuple: vs} }
 
 // List создаёт список.
-func List(vs ...Value) Value { return Value{Kind: KindList, List: vs} }
+func List(vs ...Value) Value { return Value{Kind: KindList, list: vs} }
 
 // Vector создаёт вектор.
-func Vector(vs ...Value) Value { return Value{Kind: KindVector, Vector: vs} }
+func Vector(vs ...Value) Value { return Value{Kind: KindVector, vector: vs} }
 
 // Set создаёт множество (Sprint 5.2, §4.6).
-func Set(vs ...Value) Value { return Value{Kind: KindSet, Set: vs} }
+func Set(vs ...Value) Value { return Value{Kind: KindSet, set: vs} }
 
 // Range создаёт диапазон (Sprint 5.1, §4.3).
 func Range(start, end int64) Value {
@@ -318,7 +366,7 @@ func Record(typ string, fields []RecordField) Value {
 }
 
 // Map создаёт мапу.
-func Map(entries []MapEntry) Value { return Value{Kind: KindMap, Map: entries} }
+func Map(entries []MapEntry) Value { return Value{Kind: KindMap, entries: entries} }
 
 // ---- печать ----
 
@@ -350,20 +398,20 @@ func (v Value) Inspect() string {
 		}
 		return "(" + strings.Join(parts, ", ") + ")"
 	case KindList:
-		return "[" + inspectJoin(v.List) + "]"
+		return "[" + inspectJoin(v.list) + "]"
 	case KindVector:
-		return "%[" + inspectJoin(v.Vector) + "]"
+		return "%[" + inspectJoin(v.vector) + "]"
 	case KindMap:
 		// Печать и to_str — по term order (§7.4), как сравнение карт.
 		// Порядок вставки и обход map при Json.decode не наблюдаются.
-		entries := sortedEntries(v.Map)
+		entries := sortedEntries(v.entries)
 		parts := make([]string, len(entries))
 		for i, e := range entries {
 			parts[i] = inspectLit(e.Key) + " => " + inspectLit(e.Val)
 		}
 		return "%{" + strings.Join(parts, ", ") + "}"
 	case KindSet:
-		return "set(" + inspectJoin(v.Set) + ")"
+		return "set(" + inspectJoin(v.set) + ")"
 	case KindRange:
 		return strconv.FormatInt(v.RangeStart, 10) + " to " +
 			strconv.FormatInt(v.RangeEnd, 10)
@@ -465,9 +513,9 @@ func MatchEqual(a, b Value) bool {
 	case KindTuple:
 		return matchEqualSlice(a.Tuple, b.Tuple)
 	case KindList:
-		return matchEqualSlice(a.List, b.List)
+		return matchEqualSlice(a.list, b.list)
 	case KindVector:
-		return matchEqualSlice(a.Vector, b.Vector)
+		return matchEqualSlice(a.vector, b.vector)
 	}
 	return Equal(a, b)
 }
@@ -551,16 +599,16 @@ func equal(a, b Value, strict bool) bool {
 		}
 		return true
 	case KindList:
-		return equalSlice(a.List, b.List, strict)
+		return equalSlice(a.list, b.list, strict)
 	case KindVector:
-		return equalSlice(a.Vector, b.Vector, strict)
+		return equalSlice(a.vector, b.vector, strict)
 	case KindMap:
-		if len(a.Map) != len(b.Map) {
+		if len(a.entries) != len(b.entries) {
 			return false
 		}
-		for _, ae := range a.Map {
+		for _, ae := range a.entries {
 			found := false
-			for _, be := range b.Map {
+			for _, be := range b.entries {
 				if equal(ae.Key, be.Key, strict) && equal(ae.Val, be.Val, strict) {
 					found = true
 					break
@@ -572,12 +620,12 @@ func equal(a, b Value, strict bool) bool {
 		}
 		return true
 	case KindSet:
-		if len(a.Set) != len(b.Set) {
+		if len(a.set) != len(b.set) {
 			return false
 		}
-		for _, ae := range a.Set {
+		for _, ae := range a.set {
 			found := false
-			for _, be := range b.Set {
+			for _, be := range b.set {
 				if equal(ae, be, strict) {
 					found = true
 					break
@@ -711,13 +759,13 @@ func Compare(a, b Value) (int, error) {
 	case rankTuple:
 		return compareSlices(a.Tuple, b.Tuple)
 	case rankVector:
-		return compareSlices(a.Vector, b.Vector)
+		return compareSlices(a.vector, b.vector)
 	case rankList:
-		return compareSlices(a.List, b.List)
+		return compareSlices(a.list, b.list)
 	case rankMap:
-		return compareMaps(a.Map, b.Map)
+		return compareMaps(a.entries, b.entries)
 	case rankSet:
-		return compareSlices(sortedValues(a.Set), sortedValues(b.Set))
+		return compareSlices(sortedValues(a.set), sortedValues(b.set))
 	case rankNominal:
 		return compareNominal(a, b)
 	case rankAnon:

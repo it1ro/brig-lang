@@ -472,13 +472,13 @@ func fnNameAt(s string) (string, bool) {
 func (s *Session) info(v runtime.Value) error {
 	switch v.Kind {
 	case runtime.KindList:
-		return s.writeOut("List size=%d\n", len(v.List))
+		return s.writeOut("List size=%d\n", v.Len())
 	case runtime.KindVector:
-		return s.writeOut("Vector size=%d\n", len(v.Vector))
+		return s.writeOut("Vector size=%d\n", v.Len())
 	case runtime.KindMap:
-		return s.writeOut("Map size=%d\n", len(v.Map))
+		return s.writeOut("Map size=%d\n", v.Len())
 	case runtime.KindSet:
-		return s.writeOut("Set size=%d\n", len(v.Set))
+		return s.writeOut("Set size=%d\n", v.Len())
 	case runtime.KindTuple:
 		return s.writeOut("Tuple size=%d\n", len(v.Tuple))
 	case runtime.KindStr:

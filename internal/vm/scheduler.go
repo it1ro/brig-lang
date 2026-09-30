@@ -178,9 +178,9 @@ func spreadArgs(args []runtime.Value) ([]runtime.Value, error) {
 	if last.Kind != runtime.KindList {
 		return nil, typeErr("spread", last)
 	}
-	out := make([]runtime.Value, 0, len(args)-1+len(last.List))
+	out := make([]runtime.Value, 0, len(args)-1+last.Len())
 	out = append(out, args[:len(args)-1]...)
-	return append(out, last.List...), nil
+	return append(out, last.Elems()...), nil
 }
 
 // pushCall кладёт на стек актора кадр вызова fn(args). args может быть
@@ -1920,24 +1920,24 @@ func vmIndex(obj, idx runtime.Value) (runtime.Value, error) {
 		if err != nil {
 			return runtime.Unit, err
 		}
-		if i < 0 || i >= int64(len(obj.List)) {
+		if i < 0 || i >= int64(obj.Len()) {
 			return runtime.Unit, &ErrRaise{Val: runtime.Tuple(
 				runtime.Atom("index_out_of_bounds"),
-				runtime.Tuple(idx, runtime.Int(int64(len(obj.List)))))}
+				runtime.Tuple(idx, runtime.Int(int64(obj.Len()))))}
 		}
-		return obj.List[i], nil
+		return obj.At(int(i)), nil
 
 	case runtime.KindVector:
 		i, err := indexToInt(idx)
 		if err != nil {
 			return runtime.Unit, err
 		}
-		if i < 0 || i >= int64(len(obj.Vector)) {
+		if i < 0 || i >= int64(obj.Len()) {
 			return runtime.Unit, &ErrRaise{Val: runtime.Tuple(
 				runtime.Atom("index_out_of_bounds"),
-				runtime.Tuple(idx, runtime.Int(int64(len(obj.Vector)))))}
+				runtime.Tuple(idx, runtime.Int(int64(obj.Len()))))}
 		}
-		return obj.Vector[i], nil
+		return obj.At(int(i)), nil
 
 	case runtime.KindStr:
 		i, err := indexToInt(idx)
@@ -1977,7 +1977,7 @@ func vmIndex(obj, idx runtime.Value) (runtime.Value, error) {
 		return obj.Tuple[i], nil
 
 	case runtime.KindMap:
-		for _, e := range obj.Map {
+		for _, e := range obj.Entries() {
 			if runtime.KeyEqual(e.Key, idx) {
 				return runtime.Variant("Some", e.Val), nil
 			}
@@ -2006,12 +2006,12 @@ func vmSpreadSeq(segs []runtime.Value, vector bool) (runtime.Value, error) {
 		}
 		switch val.Kind {
 		case runtime.KindList:
-			out = append(out, val.List...)
+			out = append(out, val.Elems()...)
 		case runtime.KindVector:
 			if !vector {
 				return runtime.Unit, typeErr("spread", val)
 			}
-			out = append(out, val.Vector...)
+			out = append(out, val.Elems()...)
 		default:
 			return runtime.Unit, typeErr("spread", val)
 		}
@@ -2050,7 +2050,7 @@ func vmSpreadMap(segs []runtime.Value) (runtime.Value, error) {
 			if src.Kind != runtime.KindMap {
 				return runtime.Unit, typeErr("spread", src)
 			}
-			for _, e := range src.Map {
+			for _, e := range src.Entries() {
 				put(e.Key, e.Val)
 			}
 			continue

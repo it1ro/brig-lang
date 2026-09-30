@@ -12,8 +12,8 @@ fn main() ->
 	if got.Inspect() != `%{"a" => 2}` {
 		t.Fatalf("Inspect = %s, want %%{\"a\" => 2}", got.Inspect())
 	}
-	if len(got.Map) != 1 {
-		t.Fatalf("len = %d, want 1", len(got.Map))
+	if got.Len() != 1 {
+		t.Fatalf("len = %d, want 1", got.Len())
 	}
 
 	runModuleSync(t, `module Main

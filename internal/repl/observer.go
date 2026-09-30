@@ -77,8 +77,8 @@ func childPids(v runtime.Value) ([]int, error) {
 	if v.Kind != runtime.KindList {
 		return nil, fmt.Errorf("internal: which_children is %s", v.Inspect())
 	}
-	out := make([]int, 0, len(v.List))
-	for _, item := range v.List {
+	out := make([]int, 0, v.Len())
+	for _, item := range v.Elems() {
 		if item.Kind != runtime.KindTuple || len(item.Tuple) < 2 || item.Tuple[1].Kind != runtime.KindPid {
 			return nil, fmt.Errorf("internal: which_children row is %s", item.Inspect())
 		}

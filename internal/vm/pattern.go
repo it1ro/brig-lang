@@ -185,19 +185,19 @@ func MatchPattern(v runtime.Value, p *CompiledPattern, locals []runtime.Value) b
 			return false
 		}
 		if p.HasRest {
-			if len(v.List) < len(p.Subs) {
+			if v.Len() < len(p.Subs) {
 				return false
 			}
-		} else if len(v.List) != len(p.Subs) {
+		} else if v.Len() != len(p.Subs) {
 			return false
 		}
 		for i, sub := range p.Subs {
-			if !MatchPattern(v.List[i], sub, locals) {
+			if !MatchPattern(v.At(i), sub, locals) {
 				return false
 			}
 		}
 		if p.HasRest && p.RestSlot >= 0 && p.RestSlot < len(locals) {
-			rest := v.List[len(p.Subs):]
+			rest := v.Elems()[len(p.Subs):]
 			locals[p.RestSlot] = runtime.List(rest...)
 		}
 		return true
@@ -208,7 +208,7 @@ func MatchPattern(v runtime.Value, p *CompiledPattern, locals []runtime.Value) b
 		}
 		for _, pair := range p.Pairs {
 			found := false
-			for _, entry := range v.Map {
+			for _, entry := range v.Entries() {
 				if runtime.MatchEqual(entry.Key, pair.Key) {
 					if !MatchPattern(entry.Val, pair.Value, locals) {
 						return false

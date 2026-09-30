@@ -244,7 +244,7 @@ func appendIOData(b []byte, v runtime.Value) ([]byte, bool) {
 	case runtime.KindStr:
 		return append(b, v.Str...), true
 	case runtime.KindList:
-		for _, e := range v.List {
+		for _, e := range v.Elems() {
 			var ok bool
 			if b, ok = appendIOData(b, e); !ok {
 				return nil, false

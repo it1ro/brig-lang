@@ -125,7 +125,7 @@ func (sub *teleSub) matches(event []runtime.Value) bool {
 // matchHandlers — снимок совпавших обработчиков в порядке attach.
 // nil, nil — совпадений нет и ничего не аллоцировано.
 func (s *Scheduler) matchHandlers(event runtime.Value) (hs, ids []runtime.Value) {
-	ev := event.List
+	ev := event.Elems()
 	for i := range s.tele {
 		if !s.tele[i].matches(ev) {
 			continue
@@ -167,8 +167,8 @@ func (s *Scheduler) teleAttach(id, prefix, handler runtime.Value) (runtime.Value
 	if s.teleIndex(id) >= 0 {
 		return runtime.Variant("Error", runtime.Atom("already_exists")), nil
 	}
-	pref := make([]string, len(prefix.List))
-	for i, a := range prefix.List {
+	pref := make([]string, prefix.Len())
+	for i, a := range prefix.Elems() {
 		pref[i] = a.Atom
 	}
 	s.tele = append(s.tele, teleSub{id: id, prefix: pref, handler: handler})
@@ -182,14 +182,14 @@ func (s *Scheduler) teleDetach(id runtime.Value) runtime.Value {
 }
 
 func checkTelePrefix(p runtime.Value) error {
-	if p.Kind != runtime.KindList || !allAtoms(p.List) {
+	if p.Kind != runtime.KindList || !allAtoms(p.Elems()) {
 		return typeErr("attach", p)
 	}
 	return nil
 }
 
 func checkEmitArgs(event, meas, meta runtime.Value) error {
-	if event.Kind != runtime.KindList || len(event.List) == 0 || !allAtoms(event.List) {
+	if event.Kind != runtime.KindList || event.Len() == 0 || !allAtoms(event.Elems()) {
 		return typeErr("emit", event)
 	}
 	if meas.Kind != runtime.KindRecord {
