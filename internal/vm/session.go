@@ -697,6 +697,9 @@ func (s *Scheduler) unwindAbove(a *Actor, base int) bool {
 			s.catchTele(a, run, rerr.Val)
 			return true
 		}
+		if s.catchCleanups(a, parent, rerr.Val) {
+			return true
+		}
 		a.popFrame()
 	}
 	return false

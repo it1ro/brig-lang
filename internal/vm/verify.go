@@ -8,7 +8,8 @@ import "fmt"
 //  1. все регистры и окна < NumRegs;
 //  2. цели переходов внутри кода;
 //  3. за каждым MATCHLOCAL идёт JMP;
-//  4. TAILCALL вне активных trap-регионов;
+//  4. TAILCALL вне активных trap-регионов; TAILCALLENS — ровно в одном
+//     регионе TRAPENSURE (doc 02 §5.1);
 //  5. нет «падения с конца» кода;
 //  6. definite assignment (регистр определён на всех путях).
 //
@@ -114,6 +115,13 @@ func RegUse(in Instr) (reads, writes []int, err error) {
 			reads = append(reads, a+i)
 		}
 		return reads, nil, nil
+	case TAILCALLENS:
+		// R[A] — callee, R[A+1..A+B] — аргументы, R[A+B+1..A+B+C] — ensure.
+		reads = []int{a}
+		for i := 1; i <= b+cc; i++ {
+			reads = append(reads, a+i)
+		}
+		return reads, nil, nil
 	case TUPLE, LIST, VECTOR:
 		reads = nil
 		for i := 0; i < cc; i++ {
@@ -199,29 +207,40 @@ func verifyMatchLocal(c *Chunk) error {
 	return nil
 }
 
-// verifyTailCall: линейный счётчик глубины trap-регионов.
-// TRAPBEGIN +1, TRAPEND -1; TAILCALL при глубине > 0 — ошибка.
+// verifyTailCall: линейный стек видов trap-регионов.
+// TRAPBEGIN/TRAPENSURE открывают регион, TRAPEND закрывает; TAILCALL при
+// открытом регионе — ошибка; TAILCALLENS — только при ровно одном открытом
+// регионе, открытом TRAPENSURE (doc 02 §5.1).
 func verifyTailCall(c *Chunk) error {
-	depth := 0
+	var open []OpCode
 	for ip, in := range c.Code {
-		switch in.Op() {
+		switch op := in.Op(); op {
 		case TRAPBEGIN, TRAPENSURE:
-			depth++
+			open = append(open, op)
 		case TRAPEND:
-			depth--
-			if depth < 0 {
+			if len(open) == 0 {
 				return fmt.Errorf("verify: TRAPEND at %d underflow", ip)
 			}
+			open = open[:len(open)-1]
 		case TAILCALL, TAILCALLSPREAD:
-			if depth > 0 {
+			if len(open) > 0 {
 				return fmt.Errorf(
 					"verify: TAILCALL at %d under active trap (depth=%d)",
-					ip, depth)
+					ip, len(open))
+			}
+		case TAILCALLENS:
+			if len(open) != 1 || open[0] != TRAPENSURE {
+				return fmt.Errorf(
+					"verify: TAILCALLENS at %d outside single TRAPENSURE region (depth=%d)",
+					ip, len(open))
+			}
+			if in.C() < 1 {
+				return fmt.Errorf("verify: TAILCALLENS at %d without ensure closures", ip)
 			}
 		}
 	}
-	if depth != 0 {
-		return fmt.Errorf("verify: unbalanced trap regions: depth=%d at EOF", depth)
+	if len(open) != 0 {
+		return fmt.Errorf("verify: unbalanced trap regions: depth=%d at EOF", len(open))
 	}
 	return nil
 }
@@ -234,7 +253,7 @@ func verifyFallThrough(c *Chunk) error {
 	}
 	last := c.Code[len(c.Code)-1].Op()
 	switch last {
-	case RETURN, JMP, TAILCALL, TAILCALLSPREAD, RAISE:
+	case RETURN, JMP, TAILCALL, TAILCALLSPREAD, TAILCALLENS, RAISE:
 		return nil
 	}
 	return fmt.Errorf(
@@ -356,7 +375,7 @@ func edges(c *Chunk, ip int, before []bool) []cfgEdge {
 		handler := cloneBoolSlice(out)
 		markDefined(handler, in.A())
 		return []cfgEdge{{ip + 1, out}, {ip + 1 + in.SBx(), handler}}
-	case RETURN, TAILCALL, TAILCALLSPREAD, RAISE:
+	case RETURN, TAILCALL, TAILCALLSPREAD, TAILCALLENS, RAISE:
 		return nil
 	default:
 		return []cfgEdge{{ip + 1, out}}
