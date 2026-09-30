@@ -518,3 +518,28 @@ func ExecRunner(brig string, timeout time.Duration) Runner {
 		return stdout.String(), nil
 	}
 }
+
+// CheckClosed сообщает о каждой ссылке needs манифеста на закрытую задачу
+// (T-246): закрытая задача больше ничего не ждёт — её надо снять из needs, а
+// уровень поднять make update-corpus. closed — множество номеров T-NNN
+// закрытых issues; horizon не задача и не проверяется. Строки `# needs:` в
+// файлах корпуса совпадают с манифестом (Verify), поэтому читается только он.
+func CheckClosed(cfg Config, closed map[string]bool) ([]string, error) {
+	src, err := os.ReadFile(filepath.Join(cfg.Root, cfg.Manifest))
+	if err != nil {
+		return nil, err
+	}
+	entries, err := ParseManifest(string(src))
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", cfg.Manifest, err)
+	}
+	var problems []string
+	for _, e := range entries {
+		for _, n := range e.Needs {
+			if closed[n] {
+				problems = append(problems, fmt.Sprintf("%s:%d: %s: needs: задача %s закрыта — снять из needs", cfg.Manifest, e.Line, e.Path, n))
+			}
+		}
+	}
+	return problems, nil
+}

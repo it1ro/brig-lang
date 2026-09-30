@@ -280,3 +280,29 @@ func TestCorpusUpdate(t *testing.T) {
 	rep = verify(t, cfg)
 	wantProblems(t, rep, map[string]string{"corpus/broken.brig": "регрессия"})
 }
+
+// T-246: закрытая задача в needs — проблема; horizon и открытые — нет.
+func TestClosedTaskInNeeds(t *testing.T) {
+	cfg := fixture(t, strings.Join([]string{
+		"corpus/a.brig\tparse\tfail\tT-1, T-2, horizon",
+		"corpus/b.brig\tparse\tfail\tT-2",
+		"corpus/c.brig\tparse\tfail\thorizon",
+	}, "\n"), map[string]string{})
+	problems, err := CheckClosed(cfg, map[string]bool{"T-1": true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(problems) != 1 || !strings.Contains(problems[0], "corpus/a.brig") || !strings.Contains(problems[0], "T-1 закрыта") {
+		t.Fatalf("problems = %q, want одна про corpus/a.brig T-1", problems)
+	}
+	problems, err = CheckClosed(cfg, map[string]bool{"T-1": true, "T-2": true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(problems) != 3 {
+		t.Fatalf("problems = %q, want 3 (a: T-1, a: T-2, b: T-2)", problems)
+	}
+	if problems, _ = CheckClosed(cfg, nil); len(problems) != 0 {
+		t.Fatalf("без закрытых задач проблем быть не должно: %q", problems)
+	}
+}
