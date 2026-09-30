@@ -1,0 +1,96 @@
+## Сводка продаж из CSV: `region,product,qty,price`.
+##
+## Конвейер: текст → строки (`Csv.parse`) → записи (`Csv.with_header`)
+## → типизированные `Sale` (`to_sale`) → группировка по региону →
+## итоги. Любая ошибка останавливает конвейер и возвращается как
+## `Error((stage, detail))`.
+module Report
+
+import Csv
+
+type Sale { region: Str, product: Str, qty: Int, price: Float }
+
+type Total { region: Str, orders: Int, units: Int, revenue: Float }
+
+## Полный конвейер от текста до итогов по регионам (по убыванию выручки).
+pub fn build(text) ->
+    with
+        Ok(rows) <- tag(:csv, Csv.parse(text))
+        Ok(recs) <- tag(:header, Csv.with_header(rows))
+        Ok(sales) <- tag(:row, Result.all(map(recs, to_sale)))
+        Ok(sort_desc(totals(sales)))
+    else
+        Error(e) -> Error(e)
+
+fn tag(stage, Ok(v)) -> Ok(v)
+fn tag(stage, Error(e)) -> Error((stage, e))
+
+## Запись CSV → `Sale`. Числа проверяются.
+##
+## ```brig repl
+## > to_sale(%{"region" => "eu", "product" => "x", "qty" => "2", "price" => "1.5"})
+## Ok(Sale{ region: "eu", product: "x", qty: 2, price: 1.5 })
+## > to_sale(%{"region" => "eu", "product" => "x", "qty" => "two", "price" => "1.5"})
+## Error((:qty, "two"))
+## ```
+pub fn to_sale(rec) ->
+    with
+        Some(region) <- Map.get(rec, "region")
+        Some(product) <- Map.get(rec, "product")
+        Ok(qty) <- int_field(rec, "qty")
+        Ok(price) <- float_field(rec, "price")
+        Ok(Sale{ region: region, product: product, qty: qty, price: price })
+    else
+        None -> Error(:missing_column)
+        Error(e) -> Error(e)
+
+fn int_field(rec, name) ->
+    raw = Map.get_or(rec, name, "")
+    match Str.to_int(Str.trim(raw))
+        Some(n) -> Ok(n)
+        None -> Error((to_atom(name), raw))
+
+fn float_field(rec, name) ->
+    raw = Map.get_or(rec, name, "")
+    r = trap(to_float(Str.trim(raw)))
+    match r
+        Ok(f) -> Ok(f)
+        Error(_) -> Error((to_atom(name), raw))
+
+# Нет Str → Atom: имена колонок — фиксированный набор.
+fn to_atom("qty") -> :qty
+fn to_atom("price") -> :price
+fn to_atom(_) -> :field
+
+## Итоги по регионам.
+pub fn totals(sales) ->
+    groups = fold(sales, %{}, (acc, s) -> Map.put(acc, s.region, [s, ..Map.get_or(acc, s.region, [])]))
+    map(Map.keys(groups), r -> total(r, Map.get_or(groups, r, [])))
+
+fn total(region, sales) ->
+    Total{
+        region: region,
+        orders: len(sales),
+        units: fold(sales, 0, (a, s) -> a + s.qty),
+        revenue: fold(sales, 0.0, (a, s) -> a + s.qty * s.price),
+    }
+
+fn sort_desc(ts) ->
+    keyed = map(ts, t -> (0.0 - t.revenue, t.region, t))
+    map(List.sort(keyed), fn ((_, _, t)) -> t)
+
+## Таблица для печати.
+pub fn render(ts) ->
+    lines = map(ts, t -> "\(pad(t.region, 8)) \(pad(to_str(t.orders), 6)) \(pad(to_str(t.units), 6)) \(money(t.revenue))")
+    Str.join(["region   orders units  revenue", ..lines], "\n")
+
+fn pad(s, w) when len(s) >= w -> s
+fn pad(s, w) -> pad(s <> " ", w)
+
+# Нет форматирования чисел: два знака после точки руками.
+fn money(x) ->
+    cents = to_int(x * 100.0 + 0.5)
+    "\(cents div 100).\(two(cents rem 100))"
+
+fn two(n) when n < 10 -> "0\(n)"
+fn two(n) -> to_str(n)

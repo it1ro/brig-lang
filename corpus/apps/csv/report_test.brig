@@ -1,0 +1,13 @@
+module ReportTest
+
+import Report
+
+fn test_build_ok() ->
+    Ok([t]) = Report.build("region,product,qty,price\neu,x,2,1.5\n")
+    Test.assert_eq(t.revenue, 3.0)
+
+fn test_build_bad_width() ->
+    Test.assert_eq(Report.build("a,b\n1\n"), Error((:header, (:width, 2))))
+
+fn test_quoted_field() ->
+    Test.it("quoted comma", () -> Test.assert_eq(len(Report.totals([])), 0))

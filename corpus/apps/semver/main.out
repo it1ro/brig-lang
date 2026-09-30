@@ -1,0 +1,7 @@
+json 2.0.0-rc.1
+http 0.3.4 (unstable)
+error: ("log", :no_match, ">=2.0")
+error: ("csv", :no_match, "*")
+error: ("xml", :bad_spec, :bad_number, "bad")
+bump: 2.0.0 true
+true 1

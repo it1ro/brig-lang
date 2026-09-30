@@ -1,0 +1,181 @@
+## KV-сервис: HTTP API поверх актора-хранилища.
+##
+##   brig main.brig [addr]
+##   curl -X PUT localhost:4000/kv/a -d '{"value": 1, "ttl_ms": 5000}'
+##   curl localhost:4000/kv/a
+##   curl localhost:4000/stats
+##
+## Хранилище — Behavior под супервизором; раз в секунду таймер чистит
+## просроченные ключи; SIGTERM/SIGINT — graceful shutdown.
+module Main
+
+# ---------- хранилище ----------
+
+fn now() -> Time.monotonic_ms()
+
+fn store_behavior() ->
+    Behavior{
+        handlers: %{
+            :get => fn (st, key) ->
+                found = Map.get(st.items, key)
+                if alive?(found, now())
+                    (Ok(unwrap(found).value), st)
+                else
+                    (Error(:not_found), { ..st, misses: st.misses + 1 })
+            :put => fn (st, key, value, ttl) ->
+                item = { value: value, expires: expiry(ttl) }
+                (Ok(()), { ..st, items: Map.put(st.items, key, item), writes: st.writes + 1 })
+            :delete => fn (st, key) ->
+                (Ok(()), { ..st, items: Map.remove(st.items, key) })
+            :sweep => fn (st) ->
+                t = now()
+                live = sweep(st.items, t)
+                (len(st.items) - len(live), { ..st, items: live })
+            :stats => fn (st) ->
+                (Ok({ keys: len(st.items), writes: st.writes, misses: st.misses }), st)
+        }
+    }
+
+fn expiry(None) -> None
+fn expiry(Some(ms)) -> Some(now() + ms)
+
+fn sweep(items, t) ->
+    keep = filter(Map.keys(items), k -> alive?(Map.get(items, k), t))
+    fold(keep, %{}, (acc, k) -> Map.put(acc, k, unwrap(Map.get(items, k))))
+
+fn alive?(Some({ expires: None }), _t) -> true
+fn alive?(Some({ expires: Some(e) }), t) -> e > t
+fn alive?(None, _t) -> false
+
+fn unwrap(Some(x)) -> x
+
+fn start_store() ->
+    pid = spawn_behavior(store_behavior(), { items: %{}, writes: 0, misses: 0 })
+    Ok(()) = register(:store, pid)
+    pid
+
+fn store() ->
+    match whereis(:store)
+        Some(pid) -> Ok(pid)
+        None -> Error(:store_down)
+
+fn call(msg) ->
+    with
+        Ok(pid) <- store()
+        Ok(answer) <- Server.call(pid, msg, 1000)
+        answer
+    else
+        Error(e) -> Error(e)
+
+# ---------- чистильщик ----------
+
+fn sweeper() ->
+    _ = Timer.send_after(1000, self(), :tick)
+    recv
+        :tick ->
+            _ = call(:sweep)
+            sweeper()
+
+# ---------- HTTP ----------
+
+fn route(:get, ["kv", key], _body) -> kv_get(key)
+fn route(:put, ["kv", key], body) -> kv_put(key, body)
+fn route(:delete, ["kv", key], _body) -> kv_delete(key)
+fn route(:get, ["stats"], _body) -> stats()
+fn route(_m, _path, _body) -> (404, %{ "error" => "not_found" })
+
+fn kv_get(key) ->
+    match call((:get, key))
+        Ok(v) -> (200, %{ "key" => key, "value" => v })
+        Error(:not_found) -> (404, %{ "error" => "no such key" })
+        Error(e) -> (503, %{ "error" => to_str(e) })
+
+fn kv_put(key, body) ->
+    with
+        Ok(json) <- decode(body)
+        Some(v) <- Json.at(json, ["value"])
+        Ok(()) <- call((:put, key, v, Json.at(json, ["ttl_ms"])))
+        (201, %{ "key" => key })
+    else
+        None -> (400, %{ "error" => "value required" })
+        Error(e) -> (400, %{ "error" => to_str(e) })
+
+fn decode(body) ->
+    match Json.decode(body)
+        Ok(v) -> Ok(v)
+        Error(_) -> Error(:bad_json)
+
+fn kv_delete(key) ->
+    match call((:delete, key))
+        Ok(()) -> (204, %{})
+        Error(e) -> (503, %{ "error" => to_str(e) })
+
+fn stats() ->
+    match call(:stats)
+        Ok(s) -> (200, s)
+        Error(e) -> (503, %{ "error" => to_str(e) })
+
+fn split_path(path) -> filter(Str.split(path, "/"), s -> s != "")
+
+# Тело запроса целиком: pull по порциям до :port_eof.
+fn read_body(req, acc) ->
+    Ok(()) = Port.request(req)
+    recv
+        (:port_data, p, chunk) when p == req -> read_body(req, Bytes.concat(acc, chunk))
+        (:port_eof, p) when p == req -> Ok(acc)
+        (:port_error, p, reason) when p == req -> Error(reason)
+    after 5000 -> Error(:timeout)
+
+fn handler() ->
+    recv
+        (:serve, req, head) ->
+            match read_body(req, b"")
+                Ok(bytes) ->
+                    (status, payload) = route(head.method, split_path(head.path), Bytes.to_str(bytes))
+                    respond(req, status, payload)
+                Error(_) -> Port.close(req)
+
+fn respond(req, 204, _payload) ->
+    _ = HttpServer.respond(req, 204, [])
+    Port.close(req)
+fn respond(req, status, payload) ->
+    _ = HttpServer.respond(req, status, [("content-type", "application/json")])
+    _ = Port.write(req, Json.encode(payload))
+    Port.close(req)
+
+fn accept_loop(listener, sig, n) ->
+    Ok(()) = Port.request(listener)
+    recv
+        (:http_request, l, req, head) when l == listener ->
+            pid = spawn(handler)
+            Ok(()) = Port.give(req, pid)
+            _ = send(pid, (:serve, req, head))
+            accept_loop(listener, sig, n + 1)
+        (:signal, s, name) when s == sig ->
+            print("got \(name), draining after \(n) requests")
+            Port.close(listener)
+            Port.close(sig)
+            :stopped
+        (:port_error, l, reason) when l == listener ->
+            Port.close(sig)
+            raise((:listen, reason))
+
+fn main() ->
+    addr = match Sys.args()
+        [a, ..] -> a
+        [] -> "localhost:4000"
+    sup = Supervisor.start({
+        strategy: :one_for_one,
+        max_restarts: 5,
+        within: 10_000,
+        children: [
+            { name: :store, start: () -> start_store(), restart: :permanent },
+            { name: :sweeper, start: () -> spawn_linked(sweeper), restart: :permanent },
+        ],
+    })
+    sig = Signal.subscribe([:sigterm, :sigint])
+    listener = HttpServer.listen(addr)
+    print("listening on \(addr)")
+    result = accept_loop(listener, sig, 0)
+    Ok(()) = Supervisor.stop(sup, :shutdown, { timeout: 2000 })
+    print("bye", result)
