@@ -1404,12 +1404,19 @@ func (s *Scheduler) execFrame(a *Actor, f *Frame) stepOutcome {
 		case MAP:
 			n := in.C()
 			base := in.B()
-			entries := make([]runtime.MapEntry, n)
+			// Повторный ключ (KeyEqual: 1 и 1.0 — один ключ, §4.8)
+			// перезаписывает пару на месте первого появления, как Map.put (§5.2).
+			entries := make([]runtime.MapEntry, 0, n)
+		pairs:
 			for i := 0; i < n; i++ {
-				entries[i] = runtime.MapEntry{
-					Key: regs[base+2*i],
-					Val: regs[base+2*i+1],
+				k, v := regs[base+2*i], regs[base+2*i+1]
+				for j := range entries {
+					if runtime.KeyEqual(entries[j].Key, k) {
+						entries[j] = runtime.MapEntry{Key: k, Val: v}
+						continue pairs
+					}
 				}
+				entries = append(entries, runtime.MapEntry{Key: k, Val: v})
 			}
 			regs[in.A()] = runtime.Map(entries)
 			s.charge(a, &regs[in.A()])
