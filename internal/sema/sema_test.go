@@ -683,3 +683,73 @@ func hasMsg(r *sema.Result, msg string) bool {
 	}
 	return false
 }
+
+// T-242 (§F.3): ссылка на имя, которое не связано в области и не является
+// функцией своего модуля, прелюдии или видимого модуля, — ошибка прохода
+// имён `undefined name x`. Check (REPL) и CheckNamesSession (модули сессии,
+// ввод -i) имена не проверяют: там это ошибка рантайма (§11.4).
+func TestUnboundName(t *testing.T) {
+	errAt := func(src, name string, line, col int) {
+		t.Helper()
+		r := checkNames(t, src, nil)
+		for _, d := range r.Diagnostics {
+			if d.Severity == sema.SeverityError && d.Message == "undefined name "+name && d.Line == line && d.Col == col {
+				return
+			}
+		}
+		t.Fatalf("%q: want %d:%d undefined name %s, got %v", src, line, col, name, r.Diagnostics)
+	}
+	ok := func(src string) {
+		t.Helper()
+		if r := checkNames(t, src, nil); r.HasErrors() {
+			t.Fatalf("%q: unexpected: %v", src, r.Diagnostics)
+		}
+	}
+
+	errAt("module Main\nfn main() ->\n    print(y)\n", "y", 3, 11)
+	errAt("module Main\nfn main() ->\n    f = x -> x + zz\n    f(1)\n", "zz", 3, 18)
+	// Тело локальной fn не видит имя, связанное ниже в блоке.
+	errAt("module Main\nfn main() ->\n    fn g() -> z\n    z = 1\n    g()\n", "z", 3, 15)
+	// Правая часть связывания не видит своё имя.
+	errAt("module Main\nfn main() ->\n    y = y + 1\n    y\n", "y", 3, 9)
+	errAt("module Main\nfn main() ->\n    with\n        Ok(a) <- Ok(a)\n        a\n", "a", 4, 21)
+	// Имя ветки не видно после неё; параметр — вне своей fn.
+	errAt("module Main\nfn main() ->\n    match 1\n        v -> v\n    v\n", "v", 5, 5)
+	errAt("module Main\nfn f(p) -> p\nfn main() -> p\n", "p", 3, 14)
+	errAt("module Main\nfn main() -> (1, Nope)\n", "Nope", 2, 18)
+	errAt("module Main\nfn main() -> { a: b }\n", "b", 2, 19)
+
+	// Охватывающая область, параметры, паттерны, локальные fn.
+	ok("module Main\nfn main() ->\n    x = 1\n    f = () -> x + 1\n    if x > 0\n        y = x\n        y + f()\n    else\n        x\n")
+	ok("module Main\nfn f(a, (b, c), [h, ..t], ..rest) -> (a, b, c, h, t, rest)\nfn main() -> f(1, (2, 3), [4], 5)\n")
+	ok("module Main\nfn main() ->\n    g = (a, b) -> a + b\n    h = fn ((p, q)) -> p + q\n    k = () -> g(1, 2)\n    k() + h((1, 2))\n")
+	ok("module Main\nfn main() ->\n    (a, [b, ..c]) = (1, [2, 3])\n    %{ :k => v } = %{ :k => 4 }\n    (a, b, c, v)\n")
+	ok("module Main\nfn main() ->\n    match Some(1)\n        Some(x) as s -> (x, s)\n        _ -> 0\n")
+	ok("module Main\nfn main() ->\n    recv\n        (:m, x) when x > 0 -> x\n    else other\n        other\n")
+	ok("module Main\nfn main() ->\n    with\n        Ok(a) <- Ok(1)\n        Ok(b) <- Ok(a)\n        a + b\n    else\n        e -> e\n")
+	ok("module Main\nfn main() ->\n    fn a() -> b\n    fn b() -> 1\n    a()\n")
+	ok("module Main\nfn main() ->\n    fn loop(n) -> if n == 0 then n else loop(n - 1)\n    f = loop\n    f(3)\n")
+	ok("module Main\nfn main() ->\n    r = trap\n        x = 1\n        x + 1\n    r\n")
+	// ensure видит имена тела trap (компилируется в его области).
+	ok("module Main\nfn main() ->\n    r = trap\n        f = 1\n        ensure print(f)\n        f + 1\n    r\n")
+	errAt("module Main\nfn main() ->\n    r = trap\n        f = 1\n        f + 1\n    f\n", "f", 6, 5)
+	// Функции модуля, прелюдии, конструкторы, видимые модули.
+	ok("module Main\ntype T { A, B(Int) }\nfn g(x) -> x\nfn main() -> (g, len, map, print, Some, None, Ok, Error, A, B, Json.encode, List.reverse)\n")
+	ok("module Main\ntype User { name: Str }\nfn main() ->\n    n = \"a\"\n    (User{ name: n }, { name: n })\n")
+	ok("module Main\nfn main() -> spawn_behavior\n")
+	// Акторный примитив, затенённый привязкой, параметром или паттерном, —
+	// связанное имя (T-261).
+	ok("module Main\nfn main() ->\n    send = (a, b) -> (:mine, a, b)\n    send(self(), 2)\n")
+	ok("module Main\nfn call(spawn) -> spawn(1)\nfn main() -> call(x -> x + 1)\n")
+	ok("module Main\nfn main() ->\n    (reply, _) = (x -> x * 2, 0)\n    reply(21)\n")
+	ok("module Main\nfn main() ->\n    f = self\n    f\n")
+
+	// REPL и модули сессии (-i) имена не проверяют.
+	src := "module Main\nfn main() ->\n    print(y)\n"
+	if r := sema.Check(checkNamesProg(t, src)); r.HasErrors() {
+		t.Fatalf("Check: %v", r.Diagnostics)
+	}
+	if r := sema.CheckNamesSession(checkNamesProg(t, src), nil); r.HasErrors() {
+		t.Fatalf("CheckNamesSession: %v", r.Diagnostics)
+	}
+}

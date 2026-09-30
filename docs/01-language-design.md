@@ -645,14 +645,14 @@ fn main() -> trap(safe(0))   # Error((:division_by_zero, ())), а не :small
 
 **Короткая (стрелка — одна строка):**
 
-```brig
+```text
 pow = x -> x**2
 nums |> map(x -> x * 2)
 ```
 
 Короткая лямбда **всегда однострочная**: тело — одно выражение. Параметров может быть несколько — имена в скобках через запятую:
 
-```brig
+```text
 fold(xs, 0, (acc, x) -> acc + x)
 ```
 
@@ -993,7 +993,7 @@ fn transform(x) -> x
 
 ### 8.3 `match`
 
-```brig
+```text
 match expr
     pattern1 -> result1
     pattern2 -> result2
@@ -1064,7 +1064,7 @@ fn p_mixed([1, 2, _, ..rest]) -> rest
 
 ### 9.5 Map-паттерны
 
-```brig
+```text
 %{ "a" => a }
 ```
 
@@ -1471,7 +1471,7 @@ brig[2]> v(1) + 1
 
 **Семантика `assert`:**
 
-```brig
+```text
 assert(x)  # x: Bool
 # x == true  → ()
 # x == false → raise((:assertion_failed, ()))
@@ -1597,7 +1597,7 @@ fn counter_loop(n) -> n
 
 ### 12.3 Отправка сообщений
 
-```brig
+```text
 fn main() ->
     send(worker, :hello)
     send(worker, (:work, data))
@@ -2587,7 +2587,7 @@ x = "sum: \(1 + 2)"
 
 **Однострочный `if` внутри интерполяции разрешён:**
 
-```brig
+```text
 x = "value: \(if ready then 1 else 0)"
 ```
 
