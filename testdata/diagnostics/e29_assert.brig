@@ -1,0 +1,4 @@
+# expect: run 2 4:5 assertion_failed
+module Main
+fn main() ->
+    assert(1 == 2)

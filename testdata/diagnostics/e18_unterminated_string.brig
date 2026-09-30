@@ -1,0 +1,5 @@
+# expect: check 1 4:9 string
+module Main
+fn main() ->
+    x = "abc
+    x

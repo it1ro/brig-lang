@@ -1,0 +1,6 @@
+# expect: check 1 5:5 rebinding
+module Main
+fn main() ->
+    x = 1
+    x = 2
+    x

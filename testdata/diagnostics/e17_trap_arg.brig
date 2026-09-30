@@ -1,0 +1,4 @@
+# expect: check 1 4:11 trap
+module Main
+fn main() ->
+    print(trap(1 / 0))

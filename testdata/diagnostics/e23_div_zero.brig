@@ -1,0 +1,4 @@
+# expect: run 2 4:7 division_by_zero
+module Main
+fn main() ->
+    1 / 0

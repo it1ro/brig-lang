@@ -1,0 +1,5 @@
+# expect: check 1 6:1 unclosed bracket
+module Main
+fn main() ->
+    x = (1 + 2
+    x

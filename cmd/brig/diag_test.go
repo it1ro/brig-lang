@@ -1,10 +1,12 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -52,5 +54,90 @@ func TestDiagnosticsFormat(t *testing.T) {
 				t.Fatalf("stderr = %q, want prefix %q", line, "error: "+path+":"+tc.want)
 			}
 		})
+	}
+}
+
+// T-248 (F-12, D-2): корпус диагностик testdata/diagnostics/*.brig. Первая
+// строка каждого файла — `# expect: <check|run> <exit> <line>:<col>|- <подстрока>`:
+// `brig check <файл>` или `brig <файл>` обязан завершиться с кодом exit, а
+// вывод — содержать позицию `:<line>:<col>` (`-` — без позиции) и подстроку.
+// Строки нумеруются с учётом самой строки-заголовка.
+//
+// Вторая строка `# pending: T-NNN` — сообщение плохое (таблица D-2), в
+// `expect` записан желаемый результат: тест ждёт несовпадение и падает на
+// неожиданном совпадении (как корпус, T-115) — тогда снять `# pending` и
+// сдвинуть номера строк. Сообщения чинит T-265; тексты `raise` целиком не
+// сверяются — только подстрока.
+func TestDiagnosticsCorpus(t *testing.T) {
+	bin := buildBrig(t)
+	files, err := filepath.Glob(filepath.Join(findModuleRoot(t), "testdata", "diagnostics", "*.brig"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) < 28 {
+		t.Fatalf("в корпусе диагностик %d файлов, want >= 28", len(files))
+	}
+	expectRe := regexp.MustCompile(`^# expect: (check|run) (\d+) (?:(\d+):(\d+)|-) (.+)$`)
+	pendingRe := regexp.MustCompile(`^# pending: (T-\d+)$`)
+	pending := 0
+	for _, path := range files {
+		name := strings.TrimSuffix(filepath.Base(path), ".brig")
+		src, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		lines := strings.SplitN(string(src), "\n", 3)
+		pend := ""
+		if len(lines) > 1 {
+			if pm := pendingRe.FindStringSubmatch(lines[1]); pm != nil {
+				pend = pm[1]
+				pending++
+			}
+		}
+		t.Run(name, func(t *testing.T) {
+			m := expectRe.FindStringSubmatch(lines[0])
+			if m == nil {
+				t.Fatalf("первая строка %q не `# expect: <check|run> <exit> <line>:<col>|- <подстрока>`", lines[0])
+			}
+			wantExit, _ := strconv.Atoi(m[2])
+			wantSub := m[5]
+			var posRe *regexp.Regexp
+			if m[3] != "" {
+				posRe = regexp.MustCompile(`:` + m[3] + `:` + m[4] + `(\D|$)`)
+			}
+
+			argv := []string{path}
+			if m[1] == "check" {
+				argv = []string{"check", path}
+			}
+			out, err := exec.Command(bin, argv...).CombinedOutput()
+			code := 0
+			if ee, ok := err.(*exec.ExitError); ok {
+				code = ee.ExitCode()
+			} else if err != nil {
+				t.Fatal(err)
+			}
+
+			var problems []string
+			if code != wantExit {
+				problems = append(problems, fmt.Sprintf("exit %d, want %d", code, wantExit))
+			}
+			if posRe != nil && !posRe.Match(out) {
+				problems = append(problems, fmt.Sprintf("нет позиции %s:%s", m[3], m[4]))
+			}
+			if !strings.Contains(string(out), wantSub) {
+				problems = append(problems, fmt.Sprintf("нет подстроки %q", wantSub))
+			}
+
+			switch {
+			case pend == "" && len(problems) > 0:
+				t.Errorf("%s\n%s", strings.Join(problems, "; "), out)
+			case pend != "" && len(problems) == 0:
+				t.Errorf("неожиданное совпадение: сообщение уже исправлено, снять `# pending: %s`\n%s", pend, out)
+			}
+		})
+	}
+	if pending < 7 {
+		t.Errorf("pending: %d файлов, want >= 7 (таблица D-2)", pending)
 	}
 }

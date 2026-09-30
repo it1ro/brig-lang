@@ -1,0 +1,4 @@
+# expect: run 1 3:1 module Nope not found
+module Main
+import Nope
+fn main() -> 1

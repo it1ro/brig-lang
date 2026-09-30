@@ -1,0 +1,8 @@
+# expect: check 1 6:11 ведущим оператором
+# pending: T-265
+module Main
+fn main() ->
+    x = 1
+    y = x +
+        3
+    y

@@ -1,0 +1,5 @@
+# expect: run 1 4:9 regex
+module Main
+fn main() ->
+    x = rx"a"
+    x
