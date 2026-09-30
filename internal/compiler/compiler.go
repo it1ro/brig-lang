@@ -1994,8 +1994,9 @@ func (fc *funcCompiler) compileCall(call ast.CallExpr, d dest) error {
 		}
 		// Голое имя, разрешаемое в функцию модуля stdlib (§13.2):
 		// `spawn_behavior(b, state)` — `Behavior.spawn`. fn своего
-		// модуля его затеняет, как и у акторных примитивов (§11.5).
-		if global, ok := bareStdlibFn[name]; ok && !fc.compiler.cur.fns[name] {
+		// модуля и лексическая привязка его затеняют, как и у акторных
+		// примитивов (§11.5).
+		if global, ok := bareStdlibFn[name]; ok && !fc.compiler.cur.fns[name] && !fc.boundLexically(name) {
 			return fc.compileGlobalCall(global, call.Args(), d, call)
 		}
 	}

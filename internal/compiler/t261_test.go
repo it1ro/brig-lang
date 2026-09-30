@@ -48,3 +48,14 @@ fn local_fn() ->
     self()
 `)
 }
+
+// Голое имя stdlib-функции (`spawn_behavior`, §13.2) локальная привязка
+// затеняет так же.
+func TestLocalBindingShadowsBareStdlibFn(t *testing.T) {
+	runModule(t, `module Main
+
+fn main() ->
+    spawn_behavior = x -> x + 1
+    assert(spawn_behavior(1) == 2)
+`)
+}
