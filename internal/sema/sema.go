@@ -59,6 +59,7 @@ func (r *Result) HasErrors() bool {
 func Check(prog *ast.Program) *Result {
 	c := &checker{
 		prelude: preludeNames(),
+		own:     signatures(prog),
 		imports: importMap(prog),
 	}
 	c.checkProgram(prog)
@@ -96,6 +97,16 @@ type binding struct {
 func (c *checker) pushScope() { c.scopes = append(c.scopes, map[string]binding{}) }
 func (c *checker) popScope()  { c.scopes = c.scopes[:len(c.scopes)-1] }
 
+// isBound — имя связано в одной из открытых областей.
+func (c *checker) isBound(name string) bool {
+	for i := len(c.scopes) - 1; i >= 0; i-- {
+		if _, ok := c.scopes[i][name]; ok {
+			return true
+		}
+	}
+	return false
+}
+
 func (c *checker) topScope() map[string]binding {
 	return c.scopes[len(c.scopes)-1]
 }
@@ -131,6 +142,7 @@ func CheckRepl(prog *ast.Program, extra []string) *Result {
 	c := &checker{
 		prelude: preludeNames(),
 		helpers: h,
+		own:     signatures(prog),
 		imports: importMap(prog),
 	}
 	c.checkProgram(prog)
@@ -599,6 +611,7 @@ func (c *checker) checkExpr(e ast.Expr) {
 		for _, it := range x.WithItems() {
 			c.checkPatternBinding(it.Pattern, "with")
 			c.checkExpr(it.Expr)
+			c.checkIgnoredResult(it)
 		}
 		if x.WithBody() != nil {
 			c.checkBlockBody(x.WithBody())
@@ -703,5 +716,59 @@ func (c *checker) checkPipe(p ast.PipeExpr) {
 	c.checkExpr(p.PipeLHS())
 	for _, a := range p.PipeArgs() {
 		c.checkExpr(a)
+	}
+}
+
+// resultFns — встроенные функции, которые по спеке возвращают `Result`
+// (§4.7, §12.6). `exit` не входит: он всегда `Ok(())`.
+var resultFns = map[string]bool{
+	"send": true, "register": true, "await": true,
+	"Json.decode": true, "Port.request": true, "Port.write": true, "Port.give": true,
+	"HttpServer.respond": true, "Telemetry.attach": true,
+}
+
+// checkIgnoredResult — `_ <- f(…)` в `with`, где `f` по таблице resultFns
+// возвращает `Result`: info, компиляцию не блокирует (L17). Своё имя
+// (переменная, fn модуля, модуль программы) встроенное затеняет.
+func (c *checker) checkIgnoredResult(it ast.WithItemArg) {
+	if it.Pattern.String() != "_" {
+		return
+	}
+	var callee ast.Expr
+	switch x := it.Expr.(type) {
+	case ast.CallExpr:
+		callee = x.Callee()
+	case ast.PipeExpr:
+		callee = x.PipeRHS()
+	default:
+		return
+	}
+	var display, key string
+	if v, ok := callee.(ast.VariableExpr); ok && !strings.Contains(v.Name(), ".") {
+		if c.isBound(v.Name()) {
+			return
+		}
+		if _, own := c.own[v.Name()]; own {
+			return
+		}
+		display, key = v.Name(), v.Name()
+	} else {
+		segs, ok := modulePath(callee)
+		if !ok {
+			return
+		}
+		mod, member := splitPath(segs)
+		full, ok := c.builtinRef(mod)
+		if !ok || !isNativeMod(full) {
+			return
+		}
+		display, key = strings.Join(segs, "."), full+"."+member
+		if full == "Prelude" {
+			key = member
+		}
+	}
+	if resultFns[key] {
+		line, col := posOf(it.Expr)
+		c.info(line, col, "result of %s is ignored; use Ok(_) <-", display)
 	}
 }
