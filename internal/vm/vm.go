@@ -200,6 +200,16 @@ func typeErr(op string, val runtime.Value) error {
 		runtime.Tuple(runtime.Atom(op), val))}
 }
 
+// modTypeErr — :type_error функции встроенного модуля со структурным
+// тегом `((:mod, :f), val)`, mod — имя модуля в snake_case (атом
+// пишется только со строчной): без коллизий между модулями и пишется в
+// паттерне (T-176; перевод прежних `:Mod.f` — T-236).
+func modTypeErr(mod, fn string, val runtime.Value) error {
+	return &ErrRaise{Val: runtime.Tuple(
+		runtime.Atom("type_error"),
+		runtime.Tuple(runtime.Tuple(runtime.Atom(mod), runtime.Atom(fn)), val))}
+}
+
 // decArithErr — :type_error как catchable raise (для trap).
 func decArithErr(a, b runtime.Value, op string) error {
 	return typeErr(op, runtime.Tuple(a, b))

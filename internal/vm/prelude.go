@@ -335,7 +335,7 @@ func InstallPrelude(vm *VM) {
 	// Map.get_or(m, k, default) — значение по ключу или default (L16).
 	def("Map.get_or", 3, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		if args[0].Kind != runtime.KindMap {
-			return runtime.Unit, typeErr("Map.get_or", args[0])
+			return runtime.Unit, modTypeErr("map", "get_or", args[0])
 		}
 		for _, e := range args[0].Map {
 			if runtime.KeyEqual(e.Key, args[1]) {

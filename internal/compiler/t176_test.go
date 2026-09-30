@@ -24,7 +24,7 @@ fn main() ->
     assert(Json.at(d, ["xs", 1]) == Some(20))
     assert(v |> Json.at(["a", 1, "b"]) == Some(2))
     r = trap(Json.at(v, "a"))
-    assert(to_str(r) == "Error((:type_error, (:Json.at, \"a\")))")
+    assert(r == Error((:type_error, ((:json, :at), "a"))))
 
     assert(Map.get_or(%{}, :k, 0) == 0)
     assert(Map.get_or(%{:k => 1}, :k, 0) == 1)
@@ -32,6 +32,6 @@ fn main() ->
     assert(Map.get_or(%{"1" => :str}, 1, :none) == :none)
     assert(%{"a" => 1} |> Map.get_or("a", 0) == 1)
     r2 = trap(Map.get_or(5, :k, 0))
-    assert(to_str(r2) == "Error((:type_error, (:Map.get_or, 5)))")
+    assert(r2 == Error((:type_error, ((:map, :get_or), 5))))
 `)
 }

@@ -58,7 +58,7 @@ func InstallJSONPrelude(vm *VM) {
 	// шаг другого вида или спуск в скаляр — `None`.
 	def("Json.at", 2, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		if args[1].Kind != runtime.KindList {
-			return runtime.Unit, typeErr("Json.at", args[1])
+			return runtime.Unit, modTypeErr("json", "at", args[1])
 		}
 		cur := args[0]
 		for _, step := range args[1].List {
