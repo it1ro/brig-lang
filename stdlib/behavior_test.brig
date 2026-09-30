@@ -1,0 +1,85 @@
+# Тесты Behavior (T-171): диспетч по тегу верхнего уровня, контракт
+# handler'а `(reply, new_state)`, обе формы сообщения (§13.2).
+
+fn kv() ->
+    Behavior{
+        handlers: %{
+            :get => fn (state, key) ->
+                match Map.get(state, key)
+                    Some(v) -> (Ok(v), state)
+                    None -> (Error(:not_found), state)
+            :put => fn (state, key, val) -> (Ok(()), Map.put(state, key, val))
+            :size => fn (state) -> (len(state), state)
+            :set3 => fn (state, a, b, c) -> (Ok((a, b, c)), state)
+        }
+    }
+
+fn empty() ->
+    recv
+        x -> (:unexpected, x)
+    after 0 -> :empty
+
+# Пример §13.2: kv-актор отвечает на :get и :put через Server.call.
+fn test_behavior_dispatch() ->
+    pid = spawn_behavior(kv(), %{})
+    Test.assert_eq(Server.call(pid, (:get, :a), 1000), Ok(Error(:not_found)))
+    Test.assert_eq(Server.call(pid, (:put, :a, 1), 1000), Ok(Ok(())))
+    Test.assert_eq(Server.call(pid, (:get, :a), 1000), Ok(Ok(1)))
+    Test.assert_eq(Server.call(pid, :size, 1000), Ok(1))
+    Test.assert_eq(Server.call(pid, (:set3, 1, 2, 3), 1000), Ok(Ok((1, 2, 3))))
+
+# Cast: голое сообщение меняет состояние, ответ отбрасывается и ящик
+# вызывающего не трогает.
+fn test_behavior_cast() ->
+    pid = spawn_behavior(kv(), %{})
+    Test.assert_eq(send(pid, (:put, :a, 1)), Ok(()))
+    Test.assert_eq(Server.call(pid, (:get, :a), 1000), Ok(Ok(1)))
+    Test.assert_eq(empty(), :empty)
+
+# Неизвестный тег — актор падает с (:no_handler, tag).
+fn test_behavior_unknown_tag() ->
+    pid = spawn_behavior(kv(), %{})
+    ref = watch(pid)
+    send(pid, :nope)
+    Test.assert_eq(take_down(ref), (:raise, (:no_handler, :nope)))
+
+# Больше трёх аргументов у тега — (:bad_arity, tag): диспетч разбирает
+# формы от `tag` до `(tag, a, b, c)`.
+fn test_behavior_bad_arity() ->
+    pid = spawn_behavior(kv(), %{})
+    ref = watch(pid)
+    send(pid, (:set3, 1, 2, 3, 4))
+    Test.assert_eq(take_down(ref), (:raise, (:bad_arity, :set3)))
+
+# Первый аргумент не Behavior или handlers не Map — ошибка у вызывающего.
+fn test_behavior_spawn_type_error() ->
+    r = trap(spawn_behavior(:nope, %{}))
+    Test.assert_eq(r, Error((:type_error, (:spawn_behavior, :nope))))
+    r2 = trap(spawn_behavior(Behavior{ handlers: [] }, %{}))
+    Test.assert_eq(r2, Error((:type_error, (:spawn_behavior, []))))
+
+# Цикл хвостовой: 100k сообщений подряд не растят кадры.
+fn test_behavior_tail_loop() ->
+    pid = spawn_behavior(counter(), 0)
+    bump(pid, 100_000)
+    Test.assert_eq(Server.call(pid, :get, 10_000), Ok(100_000))
+
+fn counter() ->
+    Behavior{
+        handlers: %{
+            :inc => fn (n) -> (Ok(()), n + 1)
+            :get => fn (n) -> (n, n)
+        }
+    }
+
+# Синхронно: каждый :inc ждёт ответа, поэтому ящик не упирается в HWM
+# (§12.2) и счётчик равен числу сообщений.
+fn bump(_pid, 0) -> ()
+fn bump(pid, n) ->
+    Server.call(pid, :inc, 10_000)
+    bump(pid, n - 1)
+
+fn take_down(ref) ->
+    recv
+        (:down, r, reason) when r == ref -> reason
+    after 1000 -> :timeout

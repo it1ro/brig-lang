@@ -305,6 +305,8 @@ var raiseNotInSpec104 = map[string]string{
 	"max_restarts":      "нет в спеке: Supervisor — T-234",
 	"start_failed":      "нет в спеке: Supervisor — T-234",
 	"timeout":           "нет в спеке: Supervisor.which_children — T-234",
+	"no_handler":        "Behavior, §13.2",
+	"bad_arity":         "Behavior, §13.2",
 }
 
 // thrownAtoms — атомы-теги raise в Go-коде internal/ и в stdlib/*.brig.

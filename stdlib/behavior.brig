@@ -1,0 +1,94 @@
+## Behaviors (§13.2): актор, чьё поведение задано записью
+## `Behavior{ handlers: %{...} }` — мапой «тег → колбэк». Механизмы —
+## ВМ (`spawn`, `recv`, §12.6), политика диспетча — здесь.
+##
+## Колбэк вызывается как `f(state, args...)`, где `args` — элементы
+## сообщения после тега, и возвращает пару `(reply, new_state)`: цикл
+## отвечает `reply` вызывающему и продолжается с `new_state`. Формы
+## сообщения — две: `(:call, from, msg)` от `Server.call` (ответ идёт
+## `Server.reply(from, reply)`) и голое `msg` (cast — ответ
+## отбрасывается). `msg` — тег-атом или кортеж `(tag, args...)` с
+## арностью до трёх аргументов.
+##
+## Тега нет в `handlers` — `raise((:no_handler, tag))`; аргументов
+## больше трёх — `raise((:bad_arity, tag))`; колбэк вернул не пару —
+## `(:badmatch, v)`. Все три ошибки падают в акторе по обычным правилам
+## (§12.7), их видит `watch` и супервизор. Валидация колбэков — вне MVP
+## (§13.2).
+module Behavior
+
+## Запускает актор с поведением `b` и начальным состоянием
+## `init_state`; возвращает его `Pid`. Актор не связан с вызывающим —
+## линк и наблюдение делаются обычными `spawn_linked`/`watch` и
+## `Supervisor` (§13.1). `b` не `Behavior` или его `handlers` не `Map`
+## — `(:type_error, (:spawn_behavior, v))` у вызывающего.
+##
+## Вызывается как акторный примитив `spawn_behavior(b, init_state)`
+## (§13.2): голое имя разрешается в эту функцию.
+##
+## ```brig repl
+## > pid = spawn_behavior(Behavior{ handlers: %{ :inc => fn (n, k) -> (n + k, n + k) } }, 0)
+## > Server.call(pid, (:inc, 2), 1000)
+## Ok(2)
+## > spawn_behavior(:nope, 0)
+## raise (:type_error, (:spawn_behavior, :nope))
+## ```
+pub fn spawn(b, init_state) ->
+    handlers = handlers_of(b)
+    Prelude.spawn(() -> loop(handlers, init_state))
+
+# Мапа колбэков поведения. Не Behavior или handlers не Map — ошибка у
+# вызывающего, до спавна актора.
+fn handlers_of(Behavior{ handlers: h }) -> checked_map(h)
+fn handlers_of(b) -> raise((:type_error, (:spawn_behavior, b)))
+
+fn checked_map(h) ->
+    keys = trap(Map.keys(h))
+    match keys
+        Ok(_) -> h
+        Error(_) -> raise((:type_error, (:spawn_behavior, h)))
+
+# Цикл диспетча: хвостовой вызов loop в обеих ветках, кадр один на
+# всё время жизни актора.
+fn loop(handlers, state) ->
+    recv
+        (:call, from, msg) ->
+            (answer, next) = dispatch(handlers, state, msg)
+            Server.reply(from, answer)
+            loop(handlers, next)
+    else msg
+        (_, next) = dispatch(handlers, state, msg)
+        loop(handlers, next)
+
+# Диспетч по тегу верхнего уровня: формы от `tag` до `(tag, a, b, c)`.
+# У кортежей нет спреда (§4.1), поэтому арности перебираются явно.
+fn dispatch(handlers, state, msg) ->
+    match msg
+        (tag, a, b, c) ->
+            f = handler(handlers, tag)
+            f(state, a, b, c)
+        (tag, a, b) ->
+            f = handler(handlers, tag)
+            f(state, a, b)
+        (tag, a) ->
+            f = handler(handlers, tag)
+            f(state, a)
+        other -> dispatch_wide(handlers, state, other)
+
+# Сообщение, не совпавшее с формами выше: тег без аргументов (атом или
+# 1-кортеж) — диспетч, кортеж от четырёх аргументов — :bad_arity.
+fn dispatch_wide(handlers, state, msg) ->
+    sized = trap(len(msg))
+    match sized
+        Error(_) ->
+            f = handler(handlers, msg)
+            f(state)
+        Ok(1) ->
+            f = handler(handlers, msg[0])
+            f(state)
+        Ok(_) -> raise((:bad_arity, msg[0]))
+
+fn handler(handlers, tag) ->
+    match Map.get(handlers, tag)
+        Some(f) -> f
+        None -> raise((:no_handler, tag))

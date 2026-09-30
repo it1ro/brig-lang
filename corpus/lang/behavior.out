@@ -1,0 +1,6 @@
+Ok(Error(:not_found))
+Ok(Ok(()))
+Ok(Ok(1))
+Ok(2)
+(:raise, (:no_handler, :nope))
+Error((:type_error, (:spawn_behavior, :nope)))

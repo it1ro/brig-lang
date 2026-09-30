@@ -2072,7 +2072,7 @@ type Behavior { handlers: Map<Atom, Function> }
 
 Пример:
 
-```brig module pending(T-171)
+```brig module
 import Map
 
 fn main() ->
@@ -2081,10 +2081,10 @@ fn main() ->
         handlers: %{
             :get => fn (state, key) ->
                 match Map.get(state, key)
-                    Some(v) -> (:ok, v)
-                    None    -> (:error, :not_found)
+                    Some(v) -> (Ok(v), state)
+                    None    -> (Error(:not_found), state)
             :put => fn (state, key, val) ->
-                (:ok, Map.put(state, key, val))
+                (Ok(()), Map.put(state, key, val))
         }
     }
     pid = spawn_behavior(kv_behavior, init_state)
@@ -2093,7 +2093,15 @@ fn main() ->
 
 Ключи — атомы. Диспетч по тегу верхнего уровня. Валидация колбэков — вне MVP (**Should**).
 
-`spawn_behavior(Behavior, InitState)` — акторный примитив. Определяется здесь; в прелюдию не входит.
+**Контракт колбэка — `(reply, new_state)`.** Колбэк вызывается как `f(state, args...)`, где `args` — элементы сообщения после тега, и возвращает пару: `reply` — ответ вызывающему, `new_state` — состояние следующего шага цикла. Вернул не пару — `(:badmatch, v)`.
+
+**Две формы сообщения.** `(:call, from, msg)` — запрос `Server.call` (§12.9): диспетч идёт по `msg`, ответ уходит `Server.reply(from, reply)`. Голое `msg` — cast: состояние меняется, `reply` отбрасывается. Само `msg` — тег-атом (`:size`) или кортеж `(tag, args...)`.
+
+**Аргументов у тега — не больше трёх.** У кортежей нет спреда (§4.1), поэтому диспетч разбирает формы от `tag` до `(tag, a, b, c)`; кортеж длиннее — `(:bad_arity, tag)`.
+
+**Тега нет в `handlers` — `(:no_handler, tag)`.** Ошибка падает в акторе по обычным правилам (§12.7): её видят `watch` и супервизор.
+
+`spawn_behavior(Behavior, InitState)` — акторный примитив. Определяется здесь; в прелюдию не входит. Возвращает `Pid`; актор не связан с вызывающим — линк и наблюдение делаются обычными `spawn_linked`/`watch` и `Supervisor` (§13.1). Первый аргумент не `Behavior` или его `handlers` не `Map` — `(:type_error, (:spawn_behavior, v))` у вызывающего.
 
 ---
 

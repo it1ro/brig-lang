@@ -558,6 +558,10 @@ func TestNames(t *testing.T) {
 	ok("fn main() ->\n    fn a() -> b()\n    fn b() -> 1\n    a()\n")
 	ok("fn add(a, b) -> a + b\nfn main() -> [1, 2] |> map(add) |> len()\n")
 	ok("fn main() -> mailbox_size()\n")
+
+	// spawn_behavior — голое имя модуля stdlib (§13.2, T-171): арность 2.
+	ok("fn main() -> spawn_behavior(Behavior{ handlers: %{} }, %{})\n")
+	errAt("fn main() -> spawn_behavior(1)\n", "undefined function spawn_behavior/1", 1, 14)
 	ok("fn main() -> mailbox_size(self())\n")
 	errAt("fn main() -> self(1)\n", "undefined function self/1", 1, 14)
 	// Акторный примитив, затенённый fn модуля, — через Prelude (§11.5).
