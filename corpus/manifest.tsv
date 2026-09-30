@@ -20,6 +20,7 @@
 # они перечислены здесь со ссылкой на research.
 
 # ---- lang ----
+corpus/lang/behavior.brig	run	pass	-
 corpus/lang/pipe_map.brig	run	pass	-
 corpus/lang/records.brig	run	pass	-
 corpus/lang/with.brig	run	pass	-

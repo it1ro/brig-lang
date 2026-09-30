@@ -1,0 +1,34 @@
+# Behaviors: литерал Behavior, spawn_behavior, диспетч по тегу, обе
+# формы сообщения и ошибки диспетча (§13.2).
+
+module Main
+
+fn kv() ->
+    Behavior{
+        handlers: %{
+            :get => fn (state, key) ->
+                match Map.get(state, key)
+                    Some(v) -> (Ok(v), state)
+                    None -> (Error(:not_found), state)
+            :put => fn (state, key, val) -> (Ok(()), Map.put(state, key, val))
+            :size => fn (state) -> (len(state), state)
+        }
+    }
+
+fn main() ->
+    pid = spawn_behavior(kv(), %{})
+    print(Server.call(pid, (:get, :a), 1000))
+    print(Server.call(pid, (:put, :a, 1), 1000))
+    print(Server.call(pid, (:get, :a), 1000))
+    send(pid, (:put, :b, 2))
+    print(Server.call(pid, :size, 1000))
+    ref = watch(pid)
+    send(pid, :nope)
+    print(down_reason(ref))
+    bad = trap(spawn_behavior(:nope, %{}))
+    print(bad)
+
+fn down_reason(ref) ->
+    recv
+        (:down, r, reason) when r == ref -> reason
+    after 1000 -> :timeout
