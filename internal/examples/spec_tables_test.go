@@ -423,3 +423,68 @@ func TestSpecPipeForbiddenPrimitives(t *testing.T) {
 		}
 	}
 }
+
+// ---- Операторы: §B.1 = лексер = brig.ebnf; продолжения §2.2 = §D.4 = лексер ----
+
+// reEbnfOperator — терминалы brig.ebnf из символов операторов. Границы и
+// разделители ( ) [ ] { } %[ %{ , : в этот класс не входят.
+var reEbnfOperator = regexp.MustCompile(`"([|*=!<>.+\-/]+)"`)
+
+// lexerContinuation — операторы и слова, после которых строка, начавшаяся
+// с них, продолжает предыдущий стейтмент: лексер не эмитирует для неё INDENT.
+func lexerContinuation(cands []string) map[string]bool {
+	out := map[string]bool{}
+	for _, c := range cands {
+		toks, err := lexer.Lex("x = 1\n    " + c + " 2\n")
+		if err != nil {
+			continue
+		}
+		cont := true
+		for _, tk := range toks {
+			if tk.Type == lexer.INDENT {
+				cont = false
+				break
+			}
+		}
+		if cont {
+			out[c] = true
+		}
+	}
+	return out
+}
+
+func TestSpecOperatorsMatchLexer(t *testing.T) {
+	doc := readRepoFile(t, specPath)
+	sB1 := toSet(strings.Fields(firstFence(t, specSection(t, doc, "#### Операторы"))))
+
+	lex := map[string]bool{}
+	var cands []string
+	for tt := lexer.OP_PIPE; tt <= lexer.OP_DOT; tt++ {
+		lex[tt.String()] = true
+		cands = append(cands, tt.String())
+	}
+	for tt := lexer.KW_FN; tt <= lexer.KW_QUOTE; tt++ {
+		cands = append(cands, tt.String())
+	}
+	for op := range lex {
+		toks, err := lexer.Lex("a " + op + " b")
+		if err != nil || len(toks) < 3 || toks[1].Type.String() != op {
+			t.Errorf("лексер не выдаёт оператор %q", op)
+		}
+	}
+
+	ebnf := readRepoFile(t, ebnfPath)
+	eb := map[string]bool{}
+	for _, m := range reEbnfOperator.FindAllStringSubmatch(ebnf, -1) {
+		eb[m[1]] = true
+	}
+
+	assertSameSet(t, "§B.1", sB1, "лексере", lex)
+	assertSameSet(t, "brig.ebnf", eb, "лексере", lex)
+
+	s22 := toSet(strings.Fields(firstFence(t, specSection(t, doc, "### 2.2 "))))
+	sD4 := toSet(strings.Fields(firstFence(t, specSection(t, doc, "### D.4 "))))
+	code := lexerContinuation(cands)
+	assertSameSet(t, "§2.2", s22, "§D.4", sD4)
+	assertSameSet(t, "§2.2", s22, "лексере (continuationOps)", code)
+}
