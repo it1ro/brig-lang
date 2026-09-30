@@ -1,6 +1,6 @@
 # tasks/ — карта плана
 
-Карта плана работ: волны, зависимости, ссылки на issues. Статусы — только на [доске](https://github.com/users/it1ro/projects/5) «Brig — разработка» (GitHub Projects v2, проект 5). Конвенции — `CONTRIBUTING.md`, команды для доски — `MAINTAINING.md`.
+Карта плана работ: волны, зависимости, ссылки на issues. Статусы — только на [доске](https://github.com/users/it1ro/projects/5) «Brig — разработка» (GitHub Projects v2, проект 5). Конвенции и команды для доски — `WORKFLOW.md`.
 
 Волны 7–13 спланированы по второму аудиту: [AUDIT_REPORT-2.md](../AUDIT_REPORT-2.md), промпт — [AUDIT_PROMPT-2.md](../AUDIT_PROMPT-2.md).
 
