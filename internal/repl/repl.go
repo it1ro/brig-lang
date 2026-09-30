@@ -70,6 +70,9 @@ type Session struct {
 	modRoot     string
 	projectRoot string
 	deps        map[string]bool
+	// entry — программа доктеста (UseEntry): её декларации видит
+	// компилятор каждого ввода.
+	entry []compiler.Module
 
 	// docs — сигнатуры и текст `##` по имени (`len`, `Map.get`, `Map`).
 	// extra — голые имена, добавленные RegisterHelpers.
@@ -177,6 +180,9 @@ func (s *Session) evalLineOpt(src string, prog *ast.Program, here bool) (Result,
 
 	s.seq++
 	c := compiler.New()
+	if err := c.DeclareProgram(s.entry); err != nil {
+		return Result{}, err
+	}
 	fn, newName, err := c.CompileReplLine(s.seq, s.order, stmt)
 	if err != nil {
 		return Result{}, err

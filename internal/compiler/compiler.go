@@ -571,7 +571,6 @@ func (c *Compiler) Compile(prog *ast.Program) (*ProgramImage, error) {
 func (c *Compiler) CompileProgram(mods []Module) (image *ProgramImage, err error) {
 	c.image = &ProgramImage{Functions: make(map[string]*vm.Function)}
 	c.lifted = make(map[string]*liftedFn)
-	c.mods = make(map[string]*module, len(mods))
 	c.entry, c.cur = nil, nil
 	defer func() {
 		if r := recover(); r != nil {
@@ -584,21 +583,7 @@ func (c *Compiler) CompileProgram(mods []Module) (image *ProgramImage, err error
 		}
 	}()
 
-	all := make([]*module, len(mods))
-	for i, m := range mods {
-		prefix := ""
-		if i > 0 {
-			prefix = m.Name + "."
-		}
-		all[i] = newModule(m.Name, m.Path, prefix)
-		c.mods[m.Name] = all[i]
-	}
-	c.entry = all[0]
-
-	for i, m := range mods {
-		c.cur = all[i]
-		c.declareModule(m.Prog)
-	}
+	all := c.declareProgram(mods)
 
 	for i, m := range mods {
 		c.cur = all[i]
@@ -639,6 +624,51 @@ func (c *Compiler) CompileProgram(mods []Module) (image *ProgramImage, err error
 		}
 	}
 	return c.image, nil
+}
+
+// declareProgram — первый проход CompileProgram: модули программы и их
+// декларации (fn, типы, конструкторы, локальные имена модулей); mods[0] —
+// входной. Текущим остаётся входной модуль.
+func (c *Compiler) declareProgram(mods []Module) []*module {
+	c.mods = make(map[string]*module, len(mods))
+	all := make([]*module, len(mods))
+	for i, m := range mods {
+		prefix := ""
+		if i > 0 {
+			prefix = m.Name + "."
+		}
+		all[i] = newModule(m.Name, m.Path, prefix)
+		c.mods[m.Name] = all[i]
+	}
+	c.entry = all[0]
+	for i, m := range mods {
+		c.cur = all[i]
+		c.declareModule(m.Prog)
+	}
+	c.cur = c.entry
+	return all
+}
+
+// DeclareProgram собирает декларации программы mods, как CompileProgram,
+// но тела функций не компилирует: следующие CompileReplLine видят типы
+// записей, конструкторы вариантов и fn входного модуля mods[0] голыми
+// именами, а его import — как в файле (доктест, T-245). Функции
+// программы в ВМ ставит вызывающий — из образа CompileProgram тех же mods.
+func (c *Compiler) DeclareProgram(mods []Module) (err error) {
+	if len(mods) == 0 {
+		return nil
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			if ce, ok := r.(compileError); ok {
+				err = &Error{File: c.cur.path, Line: int(ce.pos.Line), Col: int(ce.pos.Col), Msg: ce.msg}
+				return
+			}
+			panic(r)
+		}
+	}()
+	c.declareProgram(mods)
+	return nil
 }
 
 // fileErr приписывает ошибке компиляции путь модуля m.
