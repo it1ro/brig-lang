@@ -4,7 +4,8 @@
 //
 // Аллокатор — bump-указатель со стековой дисциплиной (nextReg + releaseToMark).
 // Соглашение о вызовах (§3): callee в R[A], аргументы в R[A+1..A+B], результат
-// в R[C]. Хвостовость — поле dest.tail; TAILCALL эмитится только вне trap.
+// в R[C]. Хвостовость — поле dest.tail; TAILCALL эмитится только вне trap,
+// хвост тела trap с ensure — TAILCALLENS (dest.ens, doc 02 §5.1).
 package compiler
 
 import (
@@ -238,6 +239,17 @@ type funcCompiler struct {
 type dest struct {
 	reg  int  // регистр результата; в tail-контексте — scratch
 	tail bool // результат — значение функции, управление не возвращается
+	// ens — хвост тела trap с ensure (doc 02 §5.1): tail == false,
+	// результат пишется в reg, но вызов здесь эмитится TAILCALLENS.
+	// Наследуется только хвостовыми позициями, как tail.
+	ens *ensTail
+}
+
+// ensTail — контекст хвоста тела trap с ensure: ensure этого trap и
+// глубина областей тела (замыкания ensure видят только их).
+type ensTail struct {
+	ensures []ast.Expr
+	scopes  int
 }
 
 // discard — dest, отбрасывающий результат.
@@ -2123,7 +2135,9 @@ func (fc *funcCompiler) compileGenericCall(call ast.CallExpr, d dest) error {
 		loadCaps()
 	}
 
-	fc.emitInvoke(base, argc, spread, d, posOf(call))
+	if err := fc.emitInvoke(base, argc, spread, d, posOf(call)); err != nil {
+		return err
+	}
 	fc.releaseToMark(mark)
 	return nil
 }
@@ -2156,7 +2170,9 @@ func (fc *funcCompiler) compileGlobalCall(name string, args []ast.Expr, d dest, 
 		}
 	}
 
-	fc.emitInvoke(base, argc, singleTrailing, d, posOf(pos))
+	if err := fc.emitInvoke(base, argc, singleTrailing, d, posOf(pos)); err != nil {
+		return err
+	}
 	fc.releaseToMark(mark)
 	return nil
 }
@@ -2402,14 +2418,16 @@ func (fc *funcCompiler) compileCallViaList(base int, args []ast.Expr, caps []upv
 	}
 	fc.pos = at
 	fc.emit(vm.ABC(vm.LISTSPREAD, listReg, seg, len(args)))
-	fc.emitInvoke(base, next+1, true, d, at)
-	return nil
+	return fc.emitInvoke(base, next+1, true, d, at)
 }
 
-func (fc *funcCompiler) emitInvoke(base, argc int, spread bool, d dest, at vm.SrcPos) {
+func (fc *funcCompiler) emitInvoke(base, argc int, spread bool, d dest, at vm.SrcPos) error {
 	fc.pos = at
 	if d.tail && fc.trapDepth > 0 {
 		fc.fail("TAILCALL under active trap (trapDepth=%d)", fc.trapDepth)
+	}
+	if d.ens != nil && !spread {
+		return fc.emitTailCallEns(base, argc, d.ens, at)
 	}
 	tailOp, callOp := vm.TAILCALL, vm.CALL
 	if spread {
@@ -2417,13 +2435,41 @@ func (fc *funcCompiler) emitInvoke(base, argc int, spread bool, d dest, at vm.Sr
 	}
 	if d.tail {
 		fc.emit(vm.ABC(tailOp, base, argc, 0))
-		return
+		return nil
 	}
 	dst := d.reg
 	if dst == -1 {
 		dst = fc.allocReg()
 	}
 	fc.emit(vm.ABC(callOp, base, argc, dst))
+	return nil
+}
+
+// emitTailCallEns — хвостовой вызов из тела trap с ensure (doc 02 §5.1):
+// замыкания всех ensure trap в порядке LIFO в R[base+argc+1..], затем
+// TAILCALLENS. Имена в ensure разрешаются в областях тела, как в блоке
+// ENS: область ветки, где стоит вызов, их не затеняет.
+func (fc *funcCompiler) emitTailCallEns(base, argc int, et *ensTail, at vm.SrcPos) error {
+	if fc.trapDepth != 1 {
+		fc.fail("TAILCALLENS at trapDepth=%d, want 1", fc.trapDepth)
+	}
+	if fc.nextReg != base+1+argc {
+		fc.fail("TAILCALLENS: args end at r%d, want r%d", fc.nextReg, base+1+argc)
+	}
+	saved := fc.scopes
+	fc.scopes = append([]scope(nil), fc.scopes[:et.scopes]...)
+	defer func() { fc.scopes = saved }()
+	for i := len(et.ensures) - 1; i >= 0; i-- {
+		ens := et.ensures[i]
+		r := fc.allocReg()
+		fc.pos = posOf(ens)
+		if err := fc.compileLambda("", nil, ens, val(r)); err != nil {
+			return err
+		}
+	}
+	fc.pos = at
+	fc.emit(vm.ABC(vm.TAILCALLENS, base, argc, len(et.ensures)))
+	return nil
 }
 
 // ---- records (T-73, §4.7) ----
@@ -2900,7 +2946,11 @@ func (fc *funcCompiler) compileTrapWithEnsure(stmts []ast.Stmt, ensures []ast.Ex
 	bodyBegin := fc.emitJump(vm.TRAPENSURE, eReg)
 
 	fc.pushScope()
-	if err := fc.compileTrapBodyWithEnsures(stmts, ensures, regFlags, letRegs, trueIdx, val(dst)); err != nil {
+	bd := val(dst)
+	if d.tail && ensureTailEligible(stmts, ensures) {
+		bd.ens = &ensTail{ensures: ensures, scopes: len(fc.scopes)}
+	}
+	if err := fc.compileTrapBodyWithEnsures(stmts, ensures, regFlags, letRegs, trueIdx, bd); err != nil {
 		fc.popScope()
 		return err
 	}
@@ -2959,6 +3009,25 @@ func (fc *funcCompiler) compileTrapWithEnsure(stmts []ast.Stmt, ensures []ast.Ex
 	fc.finish(d, dst)
 	fc.releaseToMark(mark)
 	return nil
+}
+
+// ensureTailEligible — хвост тела trap с ensure может быть TAILCALLENS
+// (doc 02 §5.1): тело не пусто и ни один ensure не стоит текстом после
+// последнего стейтмента — иначе он регистрировался бы после вызова.
+// Порядок — как у слияния в compileTrapBodyWithEnsures.
+func ensureTailEligible(stmts []ast.Stmt, ensures []ast.Expr) bool {
+	if len(stmts) == 0 {
+		return false
+	}
+	last := stmts[len(stmts)-1]
+	sLine, sCol := last.Pos(), last.End()
+	for _, e := range ensures {
+		eLine, eCol := e.Pos(), e.End()
+		if eLine > sLine || (eLine == sLine && eCol >= sCol) {
+			return false
+		}
+	}
+	return true
 }
 
 // compileTrapBodyWithEnsures обходит стейтменты тела и точки регистрации
