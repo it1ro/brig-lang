@@ -346,6 +346,19 @@ func TestCheckBlockCompiles(t *testing.T) {
 	}
 }
 
+// TestCheckBlockUnknownFunctionFails: обычный блок проходит разрешение
+// имён (§F.3, T-179), как `brig check`: неизвестная функция — FAIL.
+func TestCheckBlockUnknownFunctionFails(t *testing.T) {
+	b := block{file: "t.md", line: 1, lang: "brig stmt", raw: "x = nope(1)\nprint(x)"}
+	r := checkBlock(b, map[string]bool{})
+	if r.OK || !strings.Contains(r.ErrMsg, "undefined function nope/1") {
+		t.Fatalf("want FAIL with undefined function nope/1, got %s", r)
+	}
+	if r.Line != 2 || r.Col != 5 {
+		t.Errorf("position: got %d:%d, want 2:5 (%s)", r.Line, r.Col, r)
+	}
+}
+
 // TestCheckBlockPendingNeedsTask: `brig pending(T-NNN)` обязан не
 // компилироваться и ссылаться на существующую задачу (T-116). Неизвестная
 // функция — тоже «не компилируется», как в `brig check` (§F.3, T-160).
