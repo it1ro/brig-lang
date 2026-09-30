@@ -359,25 +359,33 @@ func (v Value) Items() iter.Seq[Value] {
 }
 
 // ListCursor — позиция обхода List, которую можно хранить между шагами
-// (возобновляемые нативы): Next отдаёт элемент за O(1) без копии хвоста.
-type ListCursor struct{ c *listCell }
+// (возобновляемые нативы): Next сдвигает на следующий элемент за O(1),
+// Value отдаёт текущий. Промежуточных копий элемента нет.
+type ListCursor struct{ next, cur *listCell }
 
-// Cursor — курсор на начало v; для прочих видов — пустой.
+// Cursor — курсор перед первым элементом v; для прочих видов — пустой.
 func (v Value) Cursor() ListCursor {
 	if v.Kind != KindList {
 		return ListCursor{}
 	}
-	return ListCursor{v.list}
+	return ListCursor{next: v.list}
 }
 
-// Next — очередной элемент; ok == false, когда элементы кончились.
-func (it *ListCursor) Next() (e Value, ok bool) {
-	if it.c == nil {
-		return Unit, false
+// Next переходит к следующему элементу; false — элементы кончились.
+func (it *ListCursor) Next() bool {
+	it.cur = it.next
+	if it.cur == nil {
+		return false
 	}
-	e, it.c = it.c.head, it.c.tail
-	return e, true
+	it.next = it.cur.tail
+	return true
 }
+
+// Started — Next уже вернул true и курсор стоит на элементе.
+func (it *ListCursor) Started() bool { return it.cur != nil }
+
+// Value — текущий элемент; только после Next() == true.
+func (it *ListCursor) Value() Value { return it.cur.head }
 
 // ListBuilder собирает List поэлементно, без промежуточного среза Value.
 // Нулевое значение готово к работе.
@@ -389,7 +397,15 @@ func NewListBuilder(n int) ListBuilder {
 }
 
 // Add дописывает элемент в конец.
-func (b *ListBuilder) Add(v Value) { b.cells = append(b.cells, listCell{head: v}) }
+func (b *ListBuilder) Add(v Value) {
+	n := len(b.cells)
+	if n < cap(b.cells) {
+		b.cells = b.cells[:n+1]
+	} else {
+		b.cells = append(b.cells, listCell{})
+	}
+	b.cells[n].head = v
+}
 
 // List связывает ячейки в список; построитель после этого не используется.
 // Запас ёмкости больше половины отбрасывается копией, чтобы короткий

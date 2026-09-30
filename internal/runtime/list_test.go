@@ -84,3 +84,24 @@ func TestListBuilderAndItems(t *testing.T) {
 		t.Fatal("Items over Vector yields")
 	}
 }
+
+func TestListCursor(t *testing.T) {
+	it := List(Int(1), Int(2)).Cursor()
+	if it.Started() {
+		t.Fatal("started before Next")
+	}
+	var got []Value
+	for it.Next() {
+		if !it.Started() {
+			t.Fatal("not started after Next")
+		}
+		got = append(got, it.Value())
+	}
+	if len(got) != 2 || !Equal(got[0], Int(1)) || !Equal(got[1], Int(2)) {
+		t.Fatalf("cursor = %v", got)
+	}
+	empty := Vector(Int(1)).Cursor()
+	if empty.Next() {
+		t.Fatal("cursor over Vector yields")
+	}
+}

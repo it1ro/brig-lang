@@ -833,9 +833,7 @@ func runSync(c runtime.Caller, k nativeCont) (runtime.Value, error) {
 // enterCall копирует его в регистры кадра или в свежий срез натива.
 type listCont struct {
 	f     runtime.Value
-	xs    runtime.ListCursor
-	cur   runtime.Value // элемент, чей колбэк исполняется
-	begun bool
+	xs    runtime.ListCursor // стоит на элементе, чей колбэк исполняется
 	arg   [1]runtime.Value
 	args  func(e runtime.Value) []runtime.Value
 	visit func(e, r runtime.Value) (stop bool, res runtime.Value, err error)
@@ -843,8 +841,8 @@ type listCont struct {
 }
 
 func (c *listCont) resume(ret runtime.Value) (nativeStep, error) {
-	if c.begun {
-		stop, res, err := c.visit(c.cur, ret)
+	if c.xs.Started() {
+		stop, res, err := c.visit(c.xs.Value(), ret)
 		if err != nil {
 			return nativeStep{}, err
 		}
@@ -852,16 +850,14 @@ func (c *listCont) resume(ret runtime.Value) (nativeStep, error) {
 			return nativeStep{done: true, res: res}, nil
 		}
 	}
-	e, ok := c.xs.Next()
-	if !ok {
+	if !c.xs.Next() {
 		return nativeStep{done: true, res: c.final()}, nil
 	}
-	c.cur, c.begun = e, true
 	var args []runtime.Value
 	if c.args != nil {
-		args = c.args(e)
+		args = c.args(c.xs.Value())
 	} else {
-		c.arg[0] = e
+		c.arg[0] = c.xs.Value()
 		args = c.arg[:]
 	}
 	return nativeStep{fn: c.f, args: args}, nil
