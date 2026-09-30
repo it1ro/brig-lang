@@ -20,7 +20,32 @@ func (p *parser) parsePattern() (ast.Pattern, error) {
 		}
 		return ast.NewAsPat(pat, id.Lit, start.Line, start.Col), nil
 	}
+	if p.at(lexer.OP_CONCAT) {
+		return nil, p.errf("'<>' pattern requires a string literal on its left-hand side")
+	}
 	return pat, nil
+}
+
+// str_concat_pattern ::= STRING { "<>" STRING } [ "<>" pattern_atom ]
+//
+// Consecutive string-literal segments fold into a single prefix (Elixir
+// semantics); only the final segment may be a non-literal pattern.
+func (p *parser) parseStrConcatPattern() (ast.Pattern, error) {
+	start := p.advance() // STRING
+	prefix := start.Lit
+	for p.at(lexer.OP_CONCAT) {
+		p.advance()
+		if p.at(lexer.STRING) {
+			prefix += p.advance().Lit
+			continue
+		}
+		rest, err := p.parsePatternAtom()
+		if err != nil {
+			return nil, err
+		}
+		return ast.NewStrConcatPat(prefix, rest, start.Line, start.Col), nil
+	}
+	return ast.NewLiteralPat("\""+prefix+"\"", start.Line, start.Col), nil
 }
 
 // pattern_atom ::= WILDCARD | LOWER_IDENT | literal
@@ -41,8 +66,7 @@ func (p *parser) parsePatternAtom() (ast.Pattern, error) {
 		p.advance()
 		return ast.NewLiteralPat(t.Lit, t.Line, t.Col), nil
 	case lexer.STRING:
-		p.advance()
-		return ast.NewLiteralPat("\""+t.Lit+"\"", t.Line, t.Col), nil
+		return p.parseStrConcatPattern()
 	case lexer.BYTES:
 		p.advance()
 		return ast.NewLiteralPat("b\""+t.Lit+"\"", t.Line, t.Col), nil

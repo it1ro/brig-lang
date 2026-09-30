@@ -1833,6 +1833,8 @@ func binOp(s string) (vm.OpCode, bool) {
 		return vm.LE, true
 	case ">=":
 		return vm.GE, true
+	case "<>":
+		return vm.CONCAT, true
 	}
 	return 0, false
 }
@@ -3561,6 +3563,8 @@ func patternNames(pat ast.Pattern, acc []string) []string {
 	case ast.PatternAs:
 		acc = patternNames(p.AsInner(), acc)
 		acc = append(acc, p.AsName())
+	case ast.PatternStrConcat:
+		acc = patternNames(p.ConcatRest(), acc)
 	}
 	return acc
 }
@@ -3699,6 +3703,20 @@ func (fc *funcCompiler) compilePattern(pat ast.Pattern) (*vm.CompiledPattern, er
 		return &vm.CompiledPattern{
 			Kind: vm.PatAs, Inner: inner, AsSlot: slot,
 		}, nil
+
+	case ast.PatternStrConcat:
+		lit, err := parseLiteralValue(p.ConcatPrefix())
+		if err != nil {
+			return nil, err
+		}
+		if lit.Kind != runtime.KindStr {
+			return nil, fmt.Errorf("срез: '<>' паттерн требует строковый литерал слева")
+		}
+		inner, err := fc.compilePattern(p.ConcatRest())
+		if err != nil {
+			return nil, err
+		}
+		return &vm.CompiledPattern{Kind: vm.PatStrConcat, StrPrefix: lit.Str, Inner: inner}, nil
 
 	case ast.PatternWildcard:
 		if pat.String() == "_" {

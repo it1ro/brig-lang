@@ -649,6 +649,8 @@ func (p *printer) patternString(pat Pattern) string {
 		return v.name
 	case *literalPat:
 		return v.value
+	case *strConcatPat:
+		return v.prefix + " <> " + p.patternString(v.rest)
 	case *constructorPat:
 		if len(v.fields) == 0 {
 			return v.name

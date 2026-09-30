@@ -119,6 +119,8 @@ func TestParsePrecedence(t *testing.T) {
 		"1 to 10 |> list\n",
 		"a |> f == c\n",
 		"xs |> M.f(1, 2)\n",
+		"\"a\" <> \"b\" <> c\n",
+		"\"a\" <> b |> f\n",
 	}
 	for _, src := range cases {
 		mustParse(t, ModeRepl, src)
@@ -228,10 +230,18 @@ func TestParsePatterns(t *testing.T) {
 		"fn f(%{ \"a\" => a }) -> a\n",
 		"fn f(User{ id: id }) -> id\n",
 		"fn f((:ok, _) as full) -> full\n",
+		"fn f(\"Hello, \" <> name) -> name\n",
+		"fn f(\"a\" <> \"b\" <> rest) -> rest\n",
+		"fn f(\"only\") -> \"only\"\n",
 	}
 	for _, src := range cases {
 		mustParse(t, ModeModule, "module M\n"+src)
 	}
+}
+
+func TestParseStrConcatPatternRequiresLiteralLHS(t *testing.T) {
+	mustFail(t, ModeModule, "module M\nfn f(x <> rest) -> rest\n",
+		"'<>' pattern requires a string literal")
 }
 
 // ---- Types ----

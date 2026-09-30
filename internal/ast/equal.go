@@ -341,6 +341,10 @@ func equalNodes(a, b Node) bool {
 		y, ok := b.(*literalPat)
 		return ok && x.value == y.value
 
+	case *strConcatPat:
+		y, ok := b.(*strConcatPat)
+		return ok && x.prefix == y.prefix && equalNodes(x.rest, y.rest)
+
 	case *constructorPat:
 		y, ok := b.(*constructorPat)
 		if !ok || x.name != y.name || len(x.fields) != len(y.fields) {

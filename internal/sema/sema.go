@@ -423,6 +423,8 @@ func (c *checker) checkPatternBinding(pat ast.Pattern, kind string) {
 			line, col := posOf(p)
 			c.bind(name, kind, line, col)
 		}
+	case ast.PatternStrConcat:
+		c.checkPatternBinding(p.ConcatRest(), kind)
 	}
 }
 
@@ -456,6 +458,8 @@ func (c *checker) checkPattern(pat ast.Pattern) {
 		}
 	case ast.PatternAs:
 		c.checkPattern(p.AsInner())
+	case ast.PatternStrConcat:
+		c.checkPattern(p.ConcatRest())
 	}
 }
 

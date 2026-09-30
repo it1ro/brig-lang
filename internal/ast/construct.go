@@ -306,6 +306,13 @@ func NewListPattern(patterns []Pattern, hasRest bool, restName string, pos, end 
 	return &listPattern{posEnd{pos, end}, patterns, hasRest, restName}
 }
 
+// NewStrConcatPat creates a "prefix" <> rest pattern. prefix is the raw
+// (unquoted) literal text, matching the convention used for NewLiteralPat's
+// STRING case ("\""+t.Lit+"\"").
+func NewStrConcatPat(prefix string, rest Pattern, pos, end int) Pattern {
+	return &strConcatPat{posEnd{pos, end}, "\"" + prefix + "\"", rest}
+}
+
 // NewSpreadPat creates a standalone `..name` variadic parameter pattern.
 func NewSpreadPat(name string, pos, end int) Pattern {
 	return &spreadPat{posEnd{pos, end}, name}

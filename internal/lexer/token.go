@@ -67,6 +67,7 @@ const (
 	OP_ARROW    // ->
 	OP_LARROW   // <-
 	OP_FATARROW // =>
+	OP_CONCAT   // <>
 	OP_PLUS
 	OP_MINUS
 	OP_STAR
@@ -172,6 +173,8 @@ func (t TokenType) String() string {
 		return "<-"
 	case OP_FATARROW:
 		return "=>"
+	case OP_CONCAT:
+		return "<>"
 	case OP_PLUS:
 		return "+"
 	case OP_MINUS:
@@ -241,7 +244,7 @@ var continuationOps = map[string]bool{
 	"|>": true, "and": true, "or": true, "+": true, "-": true, "*": true,
 	"/": true, "**": true, "div": true, "rem": true, "to": true,
 	"==": true, "!=": true, "<": true, ">": true, "<=": true, ">=": true,
-	"..": true,
+	"..": true, "<>": true,
 }
 
 // twoCharOps is checked before single-char operators (longest match, A3.2 §12).
@@ -259,4 +262,5 @@ var twoCharOps = []struct {
 	{"->", OP_ARROW},
 	{"<-", OP_LARROW},
 	{"=>", OP_FATARROW},
+	{"<>", OP_CONCAT},
 }

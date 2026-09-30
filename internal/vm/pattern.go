@@ -2,6 +2,7 @@ package vm
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/it1ro/brig-lang/internal/runtime"
 )
@@ -20,6 +21,7 @@ const (
 	PatMap
 	PatAs
 	PatRecord
+	PatStrConcat
 )
 
 // MapPatPair — пара ключ-паттерн для PatMap.
@@ -58,6 +60,9 @@ type CompiledPattern struct {
 	// PatAs
 	AsSlot int
 	Inner  *CompiledPattern
+
+	// PatStrConcat: "prefix" <> rest — Inner holds the rest pattern.
+	StrPrefix string
 }
 
 // Slots возвращает регистры, которые MatchPattern записывает при успешном
@@ -101,6 +106,8 @@ func (p *CompiledPattern) Slots() []int {
 			for _, f := range p.Fields {
 				walk(f.Value)
 			}
+		case PatStrConcat:
+			walk(p.Inner)
 		case PatWildcard, PatLiteral:
 			// nothing
 		}
@@ -126,6 +133,12 @@ func MatchPattern(v runtime.Value, p *CompiledPattern, locals []runtime.Value) b
 
 	case PatLiteral:
 		return runtime.MatchEqual(v, p.Lit)
+
+	case PatStrConcat:
+		if v.Kind != runtime.KindStr || !strings.HasPrefix(v.Str, p.StrPrefix) {
+			return false
+		}
+		return MatchPattern(runtime.Str(v.Str[len(p.StrPrefix):]), p.Inner, locals)
 
 	case PatAs:
 		if !MatchPattern(v, p.Inner, locals) {
@@ -238,6 +251,8 @@ func FormatCompiledPattern(p *CompiledPattern) string {
 		return fmt.Sprintf("r%d", p.Slot)
 	case PatLiteral:
 		return p.Lit.Inspect()
+	case PatStrConcat:
+		return fmt.Sprintf("%q <> %s", p.StrPrefix, FormatCompiledPattern(p.Inner))
 	case PatAs:
 		return FormatCompiledPattern(p.Inner) + fmt.Sprintf(" as r%d", p.AsSlot)
 	case PatCtor:
