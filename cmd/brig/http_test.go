@@ -155,6 +155,116 @@ func TestHttpServerE2E(t *testing.T) {
 	}
 }
 
+// TestCorpusKvE2E — KV-сервис из корпуса (corpus/apps/kv/main.brig,
+// приложение A третьего аудита, T-249) в `brig <file>`: PUT и GET ключа,
+// TTL (ключ пропадает после ttl_ms), /stats, SIGTERM — graceful shutdown
+// с выходом 0.
+func TestCorpusKvE2E(t *testing.T) {
+	bin := buildBrig(t)
+	addr := freeAddr(t)
+	cmd := exec.Command(bin, filepath.Join(findModuleRoot(t), "corpus", "apps", "kv", "main.brig"), addr)
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	var out strings.Builder
+	exited := make(chan error, 1)
+	go func() {
+		sc := bufio.NewScanner(stdout)
+		for sc.Scan() {
+			out.WriteString(sc.Text() + "\n")
+		}
+		exited <- cmd.Wait()
+	}()
+	defer func() { _ = cmd.Process.Kill() }()
+
+	c := &http.Client{Timeout: 5 * time.Second}
+	base := "http://" + addr
+	waitServing(t, c, base+"/stats", exited)
+
+	do := func(method, path, body string) (int, string) {
+		t.Helper()
+		req, err := http.NewRequest(method, base+path, strings.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp, err := c.Do(req)
+		if err != nil {
+			t.Fatalf("%s %s: %v", method, path, err)
+		}
+		b, _ := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		return resp.StatusCode, string(b)
+	}
+	expect := func(method, path, body string, status int, want string) {
+		t.Helper()
+		if got, b := do(method, path, body); got != status || b != want {
+			t.Fatalf("%s %s = %d %s, want %d %s", method, path, got, b, status, want)
+		}
+	}
+
+	expect("PUT", "/kv/a", `{"value": 1}`, 201, `{"key":"a"}`)
+	expect("GET", "/kv/a", "", 200, `{"key":"a","value":1}`)
+	expect("GET", "/kv/nope", "", 404, `{"error":"no such key"}`)
+	expect("PUT", "/kv/a", `{"ttl_ms": 1}`, 400, `{"error":"value required"}`)
+
+	// TTL: ключ живёт ttl_ms, потом GET — 404 (до и после чистильщика).
+	expect("PUT", "/kv/t", `{"value": "x", "ttl_ms": 300}`, 201, `{"key":"t"}`)
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		status, b := do("GET", "/kv/t", "")
+		if status == 404 {
+			break
+		}
+		if status != 200 || b != `{"key":"t","value":"x"}` {
+			t.Fatalf("GET /kv/t before expiry = %d %s", status, b)
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("key t with ttl_ms 300 still alive after 5s")
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	// Чистильщик раз в секунду снимает просроченный t: остаётся один ключ.
+	deadline = time.Now().Add(5 * time.Second)
+	for {
+		status, b := do("GET", "/stats", "")
+		if status != 200 || !strings.HasPrefix(b, `{"keys":`) || !strings.Contains(b, `"writes":2`) {
+			t.Fatalf("GET /stats = %d %s", status, b)
+		}
+		if strings.HasPrefix(b, `{"keys":1,`) {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("sweeper did not drop expired key within 5s: %s", b)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	if err := cmd.Process.Signal(syscall.SIGTERM); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-exited:
+		if err != nil {
+			t.Fatalf("exit after SIGTERM: %v\nstderr:\n%s", err, stderr.String())
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("brig did not exit within 10s after SIGTERM")
+	}
+	got := out.String()
+	for _, want := range []string{"listening on " + addr + "\n", "got :sigterm, draining after ", "bye :stopped\n"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("stdout lacks %q:\n%s", want, got)
+		}
+	}
+}
+
 // hubServer — слушатель osHTTP без VM: события слушателя и запросов
 // приходят в каналы теста.
 type hubServer struct {

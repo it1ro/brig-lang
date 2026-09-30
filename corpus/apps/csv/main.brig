@@ -1,0 +1,26 @@
+## brig main.brig sales.csv
+module Main
+
+import Report
+
+fn read_all(port, acc) ->
+    _ = Port.request(port)
+    recv
+        (:port_data, p, chunk) when p == port -> read_all(port, Bytes.concat(acc, chunk))
+        (:port_eof, p) when p == port -> Ok(acc)
+        (:port_error, p, reason) when p == port -> Error(reason)
+
+fn main() ->
+    path = match Sys.args()
+        [p] -> p
+        _ -> "sales.csv"
+    match read_all(File.open(path, :read), b"")
+        Ok(bytes) ->
+            match Report.build(Bytes.to_str(bytes))
+                Ok(ts) -> print(Report.render(ts))
+                Error(e) ->
+                    eprint("bad input:", e)
+                    Sys.halt(1)
+        Error(reason) ->
+            eprint("cannot read \(path):", reason)
+            Sys.halt(1)

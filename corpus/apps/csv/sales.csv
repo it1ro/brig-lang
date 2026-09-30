@@ -1,0 +1,6 @@
+region,product,qty,price
+eu,widget,2,1.5
+eu,"gadget, large",1,10.25
+us,widget,5,1.5
+us,gizmo,3,4.99
+apac,widget,10,1.45

@@ -19,6 +19,18 @@
 # Шаблоны .bt в корпус не переносятся: парсера шаблонов нет (research 15),
 # они перечислены здесь со ссылкой на research.
 
+# ---- apps: программы dogfooding третьего аудита (приложение A, T-249) ----
+# Библиотечные модули и тест-файл без main — уровень check; приложения — run.
+# kv — HTTP-сервер: уровень check, исполнение — e2e TestCorpusKvE2E
+# (cmd/brig/http_test.go).
+corpus/apps/csv/csv.brig	check	pass	-
+corpus/apps/csv/main.brig	run	pass	-
+corpus/apps/csv/report.brig	check	pass	-
+corpus/apps/csv/report_test.brig	check	pass	-
+corpus/apps/kv/main.brig	check	pass	-
+corpus/apps/semver/main.brig	run	pass	-
+corpus/apps/semver/semver.brig	check	pass	-
+
 # ---- lang ----
 corpus/lang/behavior.brig	run	pass	-
 corpus/lang/pipe_map.brig	run	pass	-

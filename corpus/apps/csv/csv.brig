@@ -1,0 +1,75 @@
+## CSV (RFC 4180, подмножество): поля через запятую, кавычки `"`,
+## удвоенная кавычка внутри поля, перевод строки `\n` или `\r\n`.
+##
+## ```brig repl
+## > parse("a,b\n1,2\n")
+## Ok([["a", "b"], ["1", "2"]])
+## > parse("x,\"y, z\"\n")
+## Ok([["x", "y, z"]])
+## > parse("\"a\"\"b\"")
+## Ok([["a\"b"]])
+## > parse("\"open")
+## Error((:unclosed_quote, 1))
+## ```
+module Csv
+
+## Разбирает текст целиком. `Ok(rows)` — список строк, строка — список
+## полей `Str`; `Error((:unclosed_quote, line))` — кавычка не закрыта.
+pub fn parse(text) ->
+    chars = Str.split(text, "")
+    parse_rows(chars, 1, [], [], "", :field_start)
+
+# Автомат по кодпоинтам. Состояния: :field_start, :unquoted, :quoted,
+# :quote_in_quoted. Поле копится в cur, строка — в row, строки — в rows
+# (в обратном порядке, разворот в конце).
+fn parse_rows([], line, rows, row, cur, :quoted) -> Error((:unclosed_quote, line))
+fn parse_rows([], _line, rows, [], "", :field_start) -> Ok(List.reverse(rows))
+fn parse_rows([], _line, rows, row, cur, _st) ->
+    Ok(List.reverse([List.reverse([cur, ..row]), ..rows]))
+
+fn parse_rows(["\"", ..rest], line, rows, row, "", :field_start) ->
+    parse_rows(rest, line, rows, row, "", :quoted)
+fn parse_rows(["\"", ..rest], line, rows, row, cur, :quoted) ->
+    parse_rows(rest, line, rows, row, cur, :quote_in_quoted)
+fn parse_rows(["\"", ..rest], line, rows, row, cur, :quote_in_quoted) ->
+    parse_rows(rest, line, rows, row, cur <> "\"", :quoted)
+fn parse_rows([c, ..rest], line, rows, row, cur, :quoted) ->
+    next_line = if c == "\n" then line + 1 else line
+    parse_rows(rest, next_line, rows, row, cur <> c, :quoted)
+
+fn parse_rows([",", ..rest], line, rows, row, cur, _st) ->
+    parse_rows(rest, line, rows, [cur, ..row], "", :field_start)
+fn parse_rows(["\r", "\n", ..rest], line, rows, row, cur, st) ->
+    parse_rows(["\n", ..rest], line, rows, row, cur, st)
+fn parse_rows(["\n", ..rest], line, rows, row, cur, _st) ->
+    parse_rows(rest, line + 1, [List.reverse([cur, ..row]), ..rows], [], "", :field_start)
+fn parse_rows([c, ..rest], line, rows, row, cur, _st) ->
+    parse_rows(rest, line, rows, row, cur <> c, :unquoted)
+
+## Строки с заголовком → список записей-мап `Str → Str`.
+##
+## ```brig repl
+## > with_header([["a", "b"], ["1", "2"]])
+## Ok([%{"a" => "1", "b" => "2"}])
+## > with_header([["a"], ["1", "2"]])
+## Error((:width, 2))
+## > with_header([])
+## Error(:no_header)
+## ```
+pub fn with_header([]) -> Error(:no_header)
+pub fn with_header([header, ..rows]) ->
+    w = len(header)
+    Result.all(map(index(rows, 0, []), pair -> row_map(header, w, pair)))
+
+fn row_map(header, w, (row, i)) ->
+    if len(row) == w
+        Ok(fold(zip(header, row, []), %{}, fn (m, (k, v)) -> Map.put(m, k, v)))
+    else
+        Error((:width, i + 2))
+
+# Нет List.zip и List.with_index в stdlib — свои.
+fn zip([a, ..xs], [b, ..ys], acc) -> zip(xs, ys, [(a, b), ..acc])
+fn zip(_, _, acc) -> List.reverse(acc)
+
+fn index([], _i, acc) -> List.reverse(acc)
+fn index([x, ..xs], i, acc) -> index(xs, i + 1, [(x, i), ..acc])
