@@ -100,7 +100,7 @@ IsSmall == false  ⇒   intBig != nil   (для Kind == KindInt)
 Единственный способ прочитать целое — `AsBig()`, который соблюдает оба
 представления. Прямой доступ к `intBig` извне `runtime` невозможен: поле
 не экспортируется. Запрет на `.Int` в остальном коде enforced через
-`make check-smallint` (входит в `ci-quick` и `all`).
+`make check-smallint` (входит в `all`).
 
 Причина такого устройства — предыдущий класс nil-deref багов: поле было
 публичным, инвариант держался на дисциплине, `b.Int.Sign()` в арифметике
@@ -254,8 +254,8 @@ graph BT
 | `make update-golden`   | пересборка `testdata/golden/*.{ast,round.brig}`                         |
 | `make update-bytecode` | пересборка `testdata/bytecode/*.txt`                                    |
 | `make fuzz`            | `FuzzLex`, `FuzzParse`, `FuzzRoundTrip` — 3×60s                         |
-| `make ci-quick`        | `check-smallint` + `fmt-check` + `vet` + focused tests + `run-examples` |
-| `make all`             | `check-smallint` + `fmt` + `vet` + `test` + `lint` + `build`            |
+| `make ci-quick`        | `fmt-check` + `vet` + focused tests + `run-examples`                    |
+| `make all`             | `check-smallint` + `fmt` + `vet` + `test` + `lint` + `build` + `check-examples` + `run-examples` + `corpus` |
 
 Fuzz-сиды живут в `internal/*/testdata/fuzz/*/` и играют роль постоянных
 регрессионных кейсов. Bytecode-goldens — `testdata/bytecode/*.txt` —
@@ -283,6 +283,9 @@ Fuzz-сиды живут в `internal/*/testdata/fuzz/*/` и играют рол
 - [x] **REPL:** persistent VM, лексический снимок замыканий (N12)
 - [x] **Sprint 7:** регистровая VM с полным дизассемблером (§15.1 Must),
       `vm.Verify`, bytecode-goldens
+- [x] **Wave 6:** `match`, `with`, pipe `|>`, записи и паттерны записей,
+      вариадики и спред-вызовы, полный term order, `Sys.args`, `link`
+      (T-70…T-78); список K-8/A-F8 в doc 02 закрыт
 
 ---
 

@@ -118,7 +118,7 @@ AUDIT_REPORT.md, AUDIT_REPORT-2.md
 - Не менять AST-формы «попутно» с правкой байткода/VM.
 - Не трогать `Regex` (§3.3) — отложен, ждёт решения по движку.
 - Не переписывать `check-examples` целиком — сейчас
-  `blocks: checked 63, failed 0, pending 6`, не ломать.
+  `blocks: checked 91, failed 0, pending 3`, не ломать.
 - Не добавлять правила в `check-smallint` без необходимости.
 - Не путать `Pos()/End()` в `ast.Node`: по факту это `(Line, Col)`, а не
   байтовые смещения (см. `sema.posOf`) — это исторический артефакт
