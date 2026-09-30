@@ -122,3 +122,47 @@ func TestBrigTestDoctests(t *testing.T) {
 		t.Fatalf("mismatch: exit %d\n%s", got, out)
 	}
 }
+
+// T-244: тестовый файл и файл с `##` — программа через загрузчик модулей:
+// import модуля проекта работает в тестах и доктестах.
+func TestBrigTestImportsProjectModule(t *testing.T) {
+	bin := buildBrig(t)
+	dir := t.TempDir()
+	writeFiles(t, dir, map[string]string{
+		"calc.brig":      "module Calc\n\n## Сумма.\n##\n## ```brig repl\n## > add(1, 2)\n## 3\n## ```\npub fn add(a, b) -> a + b\n",
+		"calc_test.brig": "import Calc\n\nfn test_add() -> Test.assert_eq(Calc.add(2, 3), 5)\n",
+		"report.brig":    "module Report\nimport Calc\n\n## Итог.\n##\n## ```brig repl\n## > total([1, 2, 3])\n## 6\n## > Calc.add(1, 1)\n## 2\n## ```\npub fn total(xs) -> fold(xs, 0, (acc, x) -> Calc.add(acc, x))\n",
+	})
+	got, out := runBrigTest(t, bin, dir)
+	if got != exitOK {
+		t.Fatalf("exit %d, want 0\n%s", got, out)
+	}
+	for _, want := range []string{"ok   " + filepath.Join(dir, "calc_test.brig") + ": test_add", "calc.brig:5: doctest", "report.brig:6: doctest", "3 passed, 0 failed"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output lacks %q:\n%s", want, out)
+		}
+	}
+
+	// Модуль проекта: корень — по project.brig (lib/), как у brig check.
+	proj := t.TempDir()
+	writeFiles(t, proj, map[string]string{
+		"project.brig":             "module Project\npub fn project() -> {name: \"p\"}\n",
+		"lib/shop/cart.brig":       "module Shop.Cart\npub fn total() -> 7\n",
+		"test/shop/cart_test.brig": "import Shop.Cart\n\nfn test_total() -> Test.assert_eq(Cart.total(), 7)\n",
+	})
+	got, out = runBrigTest(t, bin, filepath.Join(proj, "test"))
+	if got != exitOK || !strings.Contains(out, "test_total") || !strings.Contains(out, "1 passed, 0 failed") {
+		t.Fatalf("project: exit %d\n%s", got, out)
+	}
+
+	// Нет модуля — ошибка загрузчика с line:col, а не undefined function.
+	miss := t.TempDir()
+	writeFiles(t, miss, map[string]string{
+		"x_test.brig": "import Nope\n\nfn test_x() -> Nope.f()\n",
+	})
+	got, out = runBrigTest(t, bin, miss)
+	want := "error: " + filepath.Join(miss, "x_test.brig") + ":1:1: module Nope not found"
+	if got != 1 || !strings.Contains(out, want) || strings.Contains(out, "undefined function") {
+		t.Fatalf("missing module: exit %d, want %q\n%s", got, want, out)
+	}
+}
