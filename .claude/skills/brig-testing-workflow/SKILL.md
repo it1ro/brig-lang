@@ -135,7 +135,7 @@ sema и компиляция; `run` — `brig <file>`, код 0 и stdout = `X.o
 
 ## Регресс-тесты аудита и `t.Skip("blocked: T-NN")`
 
-Набор §7 `AUDIT_REPORT.md` лежит в
+Набор §7 [`AUDIT_REPORT.md`](https://github.com/it1ro/brig-lang/blob/28003da/AUDIT_REPORT.md) лежит в
 `internal/compiler/audit_regress_test.go`, `internal/vm/verify_test.go`,
 `internal/ast/audit_pretty_test.go`, `internal/repl/audit_repl_test.go`
 (добавлен T-10 #8). Тест, который падает на текущем коде, помечен

@@ -11,7 +11,7 @@ import (
 
 // TestVerifyAF1SingleGoroutineScheduler verifies A-F1 (AUDIT_REPORT):
 // the scheduler is a cooperative single-goroutine run-loop, not
-// "1 actor = 1 goroutine" as stated in §15.2 / architecture.md.
+// "1 actor = 1 goroutine" as stated in §15.2.
 //
 // Probe: spawn 100 blocked actors and require that runtime.NumGoroutine
 // grows by strictly less than 100 while they are live.

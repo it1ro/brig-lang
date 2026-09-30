@@ -26,7 +26,7 @@ Claude Code и Cursor подхватывают `.claude/skills/<name>/SKILL.md`
 
 ## Актуальность
 
-Skills описывают состояние `iter/regvm` @ `8ab58cf` по `AUDIT_REPORT.md`.
+Skills описывают состояние `iter/regvm` @ `8ab58cf` по [`AUDIT_REPORT.md`](https://github.com/it1ro/brig-lang/blob/28003da/AUDIT_REPORT.md).
 Известные дефекты помечены `T-NN (#issue)`. Задача, которая снимает такое
 ограничение, правит соответствующую строку skill в том же PR:
 `rg -n 'T-NN' .claude/skills`.
@@ -41,6 +41,3 @@ Skills описывают состояние `iter/regvm` @ `8ab58cf` по `AUDI
 - **sonnet** — реализация по готовому DoD, fail-fast, тесты, docs.
 - **human** — design decisions и merge integration-ветки; агенту не
   отдаются.
-
-`CHANGELOG.md` вручную не правится — он генерируется `make changelog`
-(git-cliff).

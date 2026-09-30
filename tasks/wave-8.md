@@ -2,7 +2,7 @@
 
 [← карта плана](README.md)
 
-**Откуда:** второй аудит, слои S, G, R ([AUDIT_REPORT-2.md](../AUDIT_REPORT-2.md)).
+**Откуда:** второй аудит, слои S, G, R ([AUDIT_REPORT-2.md](https://github.com/it1ro/brig-lang/blob/28003da/AUDIT_REPORT-2.md)).
 
 **Вход:** DD можно решать сразу, параллельно Wave 7. Docs-задачи ждут
 своих DD и T-116, потому что после T-116 правки спеки сразу проверяются

@@ -3,7 +3,7 @@
 Нормативный дизайн регистровой VM (Sprint 7). Сигнатуры и структуры — контракт;
 тела функций в примерах на Go — ориентир реализации. Источник истины по VM
 ниже `docs/01-language-design.md` и `brig.ebnf` (см. иерархию в
-`.claude/skills/brig-overview`). Краткий обзор слоёв — `docs/architecture.md`.
+`.claude/skills/brig-overview`).
 
 ---
 

@@ -5,7 +5,7 @@ import "testing"
 // I-F8 / T-86 (#111, решение #43 п.3, вариант A): Decimal×Float — ловимый
 // :type_error в операторах == и <; в паттернах и ключах Map/Set/INDEX/set/
 // Map.* — разные виды, разные значения (false без ошибки).
-// Восстановление пробной программы p/v6_mixed.brig из AUDIT_REPORT.md.
+// Восстановление пробной программы p/v6_mixed.brig из 28003da:AUDIT_REPORT.md.
 func TestDecimalFloatMixed(t *testing.T) {
 	cases := []struct{ name, body string }{
 		{"eq", `r = trap(dec"1" == 1.0)

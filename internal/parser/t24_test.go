@@ -7,7 +7,7 @@ import (
 	"github.com/it1ro/brig-lang/internal/ast"
 )
 
-// S-F8: sep ::= NEWLINE in args / params / tuple (AUDIT_REPORT.md:104-107).
+// S-F8: sep ::= NEWLINE in args / params / tuple (28003da:AUDIT_REPORT.md:104-107).
 // Probes args_newline_sep, params_newline_sep; tuple after the mandatory first comma.
 func TestParseNewlineSepArgsParamsTuple(t *testing.T) {
 	cases := []struct {
@@ -57,7 +57,7 @@ fn main() ->
 	}
 }
 
-// S-F9: unit pattern () (AUDIT_REPORT.md:109-111). Probe unit_pattern.
+// S-F9: unit pattern () (28003da:AUDIT_REPORT.md:109-111). Probe unit_pattern.
 func TestParseUnitPattern(t *testing.T) {
 	src := `module M
 fn f(()) -> 1

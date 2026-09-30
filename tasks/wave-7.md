@@ -2,7 +2,7 @@
 
 [← карта плана](README.md)
 
-**Откуда:** второй аудит ([AUDIT_REPORT-2.md](../AUDIT_REPORT-2.md)), слои P и F.
+**Откуда:** второй аудит ([AUDIT_REPORT-2.md](https://github.com/it1ro/brig-lang/blob/28003da/AUDIT_REPORT-2.md)), слои P и F.
 
 **Вход:** Wave 6 закрыта. До старта мейнтейнер выполняет действия из
 `README.md` («Перед Wave 7»).
