@@ -26,7 +26,7 @@ git clone <repo> brig && cd brig
 make build            # bin/brig + bin/check-examples
 make test             # тесты
 make ci-quick         # fmt-check + vet + быстрые тесты + все examples
-make all              # полный прогон: check-smallint, fmt, vet, test, lint, build
+make all              # полный прогон: check-smallint, fmt, vet, test, lint, build, check-examples, run-examples, corpus
 ```
 
 Запуск программы:
@@ -34,10 +34,10 @@ make all              # полный прогон: check-smallint, fmt, vet, tes
 ```sh
 make run FILE=examples/hello.brig
 # или
-./bin/brig run examples/hello.brig
-./bin/brig run --dump-bytecode examples/trap.brig
+./bin/brig examples/hello.brig
+./bin/brig --dump-bytecode examples/trap.brig
 ./bin/brig check examples/actors.brig
-./bin/brig repl
+./bin/brig                      # REPL
 ```
 
 Все цели Makefile — в `Makefile`. Кратко о ключевых:
