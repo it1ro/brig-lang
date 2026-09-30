@@ -34,6 +34,12 @@ description: >
    стандартный цикл; гонять точечно после правок в `lexer`/`parser`/
    `ast`-форматтере, особенно если менялась offside-логика или граничные
    случаи escape-последовательностей.
+6. **`make bench`** — микро-бенчмарки VM (`internal/vm/vm_bench_test.go`
+   и `BenchmarkMapLambda`) с `-benchmem`, `BENCH_COUNT=10` повторов (T-152).
+   Не входит в `all`. На PR в `main` их гоняет `.github/workflows/bench.yml`
+   (base и PR вперемежку) и сравнивает `benchstat`: значимая регрессия
+   больше `BENCH_THRESHOLD_PCT` (5 %) по времени или аллокациям — красный
+   статус. Гонять локально после правок горячих путей VM/компилятора.
 
 ## Golden-тесты (`testdata/golden/`)
 
