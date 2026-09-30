@@ -223,7 +223,7 @@ func checkBlock(b block, tasks map[string]bool) Result {
 	src := wrapForMode(mode, b.raw)
 
 	if mode == "repl" {
-		return replResult(b, runRepl(src, vm.New()))
+		return replResult(b, runRepl(src, vm.New(), vm.New(), nil))
 	}
 
 	indent := 0
@@ -381,16 +381,23 @@ func (e *replError) Error() string { return e.msg }
 
 // runRepl исполняет REPL-блок (§G.5, T-117): строки `> ввод` — в одной
 // REPL-сессии; строка после ввода без `>` — ответ: выражение, которое
-// вычисляется в отдельной чистой сессии и сравнивается с результатом
-// через `==` (runtime.Equal), или `raise <терм>` — ожидаемый непойманный
-// raise. Ввод без ответа исполняется, но не сравнивается; неожиданный
-// raise — провал. Ввод исполняется на ВМ m (доктесты — с загруженным
-// модулем, T-147), ответ — на чистой. Ошибка — *replError.
-func runRepl(src string, m *vm.VM) error {
+// вычисляется в отдельной сессии без привязок ввода и сравнивается с
+// результатом через `==` (runtime.Equal), или `raise <терм>` — ожидаемый
+// непойманный raise. Ввод без ответа исполняется, но не сравнивается;
+// неожиданный raise — провал. Ввод исполняется на ВМ m, ответ — на ВМ
+// om; в обеих сессиях стоит программа entry (доктесты — модуль файла,
+// T-147, T-245); у блоков спеки entry == nil и om чистая. Ошибка —
+// *replError.
+func runRepl(src string, m, om *vm.VM, entry *repl.Entry) error {
 	session := repl.New(m, io.Discard)
 	defer session.Close()
-	oracle := repl.New(vm.New(), io.Discard)
+	oracle := repl.New(om, io.Discard)
 	defer oracle.Close()
+	for _, s := range []*repl.Session{session, oracle} {
+		if err := s.UseEntry(entry); err != nil {
+			return &replError{1, err.Error()}
+		}
+	}
 
 	var (
 		input     string // последний ввод, ещё без ответа
@@ -485,7 +492,7 @@ func compareAnswer(oracle *repl.Session, input, answer string, res runtime.Value
 }
 
 // evalAnswer: ответ — одно выражение (не связывание), вычисляется в
-// чистой сессии, чтобы ответ не видел имён блока.
+// отдельной сессии, чтобы ответ не видел имён блока.
 func evalAnswer(oracle *repl.Session, src string) (runtime.Value, error) {
 	prog, err := parser.ParseProgram(parser.ModeRepl, src+"\n")
 	if err != nil {

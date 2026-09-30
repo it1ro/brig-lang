@@ -93,7 +93,7 @@ func TestStdlibDoctests(t *testing.T) {
 		return m
 	}
 	for _, m := range stdlib.MustModules() {
-		rs := examples.Doctests(m.Path, m.Src, newVM)
+		rs := examples.Doctests(m.Path, m.Src, newVM, nil)
 		if len(rs) == 0 {
 			t.Errorf("%s: нет доктестов", m.Path)
 		}

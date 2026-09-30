@@ -1,32 +1,37 @@
 package examples
 
 import (
+	"os"
 	"strings"
 	"testing"
 
 	"github.com/it1ro/brig-lang/internal/compiler"
 	"github.com/it1ro/brig-lang/internal/parser"
+	"github.com/it1ro/brig-lang/internal/repl"
 	"github.com/it1ro/brig-lang/internal/vm"
 )
 
-// moduleVM — фабрика ВМ с загруженными функциями модуля src.
-func moduleVM(t *testing.T, src string) func() *vm.VM {
+// moduleEnv — фабрика ВМ и программа доктестов модуля src (как у
+// brig test: образ CompileProgram и декларации для ввода и ответа).
+func moduleEnv(t *testing.T, src string) (func() *vm.VM, *repl.Entry) {
 	t.Helper()
 	prog, err := parser.ParseProgram(parser.ModeModule, src)
 	if err != nil {
 		t.Fatal(err)
 	}
-	img, err := compiler.New().Compile(prog)
+	mods := []compiler.Module{{Name: prog.Module, Path: "m.brig", Prog: prog}}
+	img, err := compiler.New().CompileProgram(mods)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return func() *vm.VM {
-		m := vm.New()
-		for name, fn := range img.Functions {
-			m.DefineGlobal(name, vm.FuncValue(fn))
-		}
-		return m
-	}
+	return vm.New, &repl.Entry{Mods: mods, Image: img}
+}
+
+// doctests прогоняет доктесты модуля src.
+func doctests(t *testing.T, src string) []Result {
+	t.Helper()
+	newVM, entry := moduleEnv(t, src)
+	return Doctests("m.brig", src, newVM, entry)
 }
 
 const doctestSrc = `## Модуль-пример.
@@ -59,7 +64,7 @@ fn nonzero(n) -> n
 `
 
 func TestDoctestPasses(t *testing.T) {
-	res := Doctests("m.brig", doctestSrc, moduleVM(t, doctestSrc))
+	res := doctests(t, doctestSrc)
 	if len(res) != 2 {
 		t.Fatalf("want 2 doctests, got %d: %v", len(res), res)
 	}
@@ -92,7 +97,7 @@ func TestDoctestMismatch(t *testing.T) {
 		"## > missing(1)",
 		"## ```",
 	}, "\n")
-	res := Doctests("m.brig", src, moduleVM(t, src))
+	res := doctests(t, src)
 	if len(res) != 3 {
 		t.Fatalf("want 3 doctests, got %d: %v", len(res), res)
 	}
@@ -114,7 +119,81 @@ func TestDoctestMismatch(t *testing.T) {
 
 func TestDoctestBlocksOnlyRepl(t *testing.T) {
 	src := "## ```brig\n## raise(:not_run)\n## ```\n##\n## ```brig norun\n## > raise(:not_run)\n## 1\n## ```\nfn f() -> 1\n"
-	if res := Doctests("m.brig", src, moduleVM(t, src)); len(res) != 0 {
+	if res := doctests(t, src); len(res) != 0 {
 		t.Fatalf("want no doctests, got %v", res)
+	}
+}
+
+// Ответ доктеста видит декларации модуля файла (T-245, G-19): запись и
+// варианты модуля в ответе, как в файле; привязки ввода ответу не видны.
+func TestDoctestUserTypeAnswer(t *testing.T) {
+	src, err := os.ReadFile("testdata/semver.brig")
+	if err != nil {
+		t.Fatal(err)
+	}
+	res := doctests(t, string(src))
+	if len(res) != 5 {
+		t.Fatalf("semver.brig: want 5 doctests, got %d: %v", len(res), res)
+	}
+	for _, r := range res {
+		if !r.OK {
+			t.Errorf("%v", r)
+		}
+	}
+
+	inline := strings.Join([]string{
+		"module Shapes",
+		"type Pt { x: Int, y: Int }",
+		"type Shape { Dot(Pt), Empty }",
+		"## ```brig repl",
+		"## > p = Pt{ x: 1, y: 2 }",
+		"## > Dot(p)",
+		"## Dot(Pt{ x: 1, y: 2 })",
+		"## > origin()",
+		"## Pt{ x: 0, y: 0 }",
+		"## > Empty",
+		"## Empty",
+		"## > origin()",
+		"## p",
+		"## ```",
+		"fn origin() -> Pt{ x: 0, y: 0 }",
+	}, "\n")
+	res = doctests(t, inline)
+	if len(res) != 1 || res[0].OK || res[0].Line != 13 {
+		t.Fatalf("want FAIL at line 13 (answer must not see input binding p), got %v", res)
+	}
+	passing := strings.Replace(inline, "## > origin()\n## p\n", "", 1)
+	for _, r := range doctests(t, passing) {
+		if !r.OK {
+			t.Errorf("%v", r)
+		}
+	}
+}
+
+// Функция модуля с именем хелпера Repl затеняет хелпер во вводе
+// доктеста (T-245, G-19, §11.4 «Затенение»); хелпер — как Repl.v.
+func TestDoctestModuleFnShadowsHelper(t *testing.T) {
+	src := strings.Join([]string{
+		"module Short",
+		"## ```brig repl",
+		"## > v(1)",
+		"## 101",
+		"## > Repl.v(1)",
+		"## 101",
+		"## > time(2)",
+		"## (:time, 2)",
+		"## > h(3)",
+		"## 3",
+		"## ```",
+		"pub fn v(x) -> x + 100",
+		"pub fn time(x) -> (:time, x)",
+		"fn h(x) -> x",
+	}, "\n")
+	res := doctests(t, src)
+	if len(res) != 1 {
+		t.Fatalf("want 1 doctest, got %v", res)
+	}
+	if !res[0].OK {
+		t.Errorf("%v", res[0])
 	}
 }

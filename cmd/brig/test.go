@@ -13,6 +13,7 @@ import (
 	"github.com/it1ro/brig-lang/internal/compiler"
 	"github.com/it1ro/brig-lang/internal/examples"
 	"github.com/it1ro/brig-lang/internal/loader"
+	"github.com/it1ro/brig-lang/internal/repl"
 	"github.com/it1ro/brig-lang/internal/vm"
 )
 
@@ -100,7 +101,7 @@ func testFile(path string, t *testTally) {
 		return
 	}
 
-	prog, img, ok := loadTestModule(path)
+	prog, mods, img, ok := loadTestModule(path)
 	if !ok {
 		t.fail(path, fmt.Errorf("файл не скомпилирован"))
 		return
@@ -131,7 +132,8 @@ func testFile(path string, t *testTally) {
 		}
 	}
 
-	for _, r := range examples.Doctests(path, src, newVM) {
+	entry := &repl.Entry{Mods: mods, Image: img}
+	for _, r := range examples.Doctests(path, src, newVM, entry) {
 		name := fmt.Sprintf("%s:%d: doctest", r.File, r.Line)
 		if r.OK {
 			t.ok(name)
@@ -143,8 +145,9 @@ func testFile(path string, t *testTally) {
 
 // loadTestModule: программа от файла path — загрузчик модулей
 // (корень — как у brig check, loader.ModuleRoot), sema по всем модулям
-// графа и compiler.CompileProgram. Диагностики — в stderr.
-func loadTestModule(path string) (*ast.Program, *compiler.ProgramImage, bool) {
+// графа и compiler.CompileProgram. Возвращает AST файла, модули
+// программы (входной — первый) и образ. Диагностики — в stderr.
+func loadTestModule(path string) (*ast.Program, []compiler.Module, *compiler.ProgramImage, bool) {
 	g, err := loader.LoadFrom(loader.ModuleRoot(path), path)
 	if err != nil {
 		var le *loader.Error
@@ -153,17 +156,18 @@ func loadTestModule(path string) (*ast.Program, *compiler.ProgramImage, bool) {
 		} else {
 			reportCompileError(path, err)
 		}
-		return nil, nil, false
+		return nil, nil, nil, false
 	}
 	if !checkGraph(g) {
-		return nil, nil, false
+		return nil, nil, nil, false
 	}
-	img, err := compiler.New().CompileProgram(compileModules(g))
+	mods := compileModules(g)
+	img, err := compiler.New().CompileProgram(mods)
 	if err != nil {
 		reportCompileError(path, err)
-		return nil, nil, false
+		return nil, nil, nil, false
 	}
-	return g.Entry.Prog, img, true
+	return g.Entry.Prog, mods, img, true
 }
 
 // testFuncs — имена top-level `fn test_*()` без параметров в порядке

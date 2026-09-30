@@ -123,6 +123,16 @@ func TestBrigTestDoctests(t *testing.T) {
 	}
 }
 
+// T-245: semver.brig из приложения A третьего аудита — ответы доктестов
+// со значениями типов модуля, fn модуля `v`/`c` затеняют хелпер `v`.
+func TestBrigTestSemverDoctests(t *testing.T) {
+	bin := buildBrig(t)
+	got, out := runBrigTest(t, bin, filepath.Join("..", "..", "internal", "examples", "testdata", "semver.brig"))
+	if got != exitOK || !strings.Contains(out, "5 passed, 0 failed") {
+		t.Fatalf("exit %d\n%s", got, out)
+	}
+}
+
 // T-244: тестовый файл и файл с `##` — программа через загрузчик модулей:
 // import модуля проекта работает в тестах и доктестах.
 func TestBrigTestImportsProjectModule(t *testing.T) {

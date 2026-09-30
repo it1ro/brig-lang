@@ -163,12 +163,12 @@ func TestRunRepl(t *testing.T) {
 		"> y = x * 2",
 		"",
 	}, "\n")
-	if err := runRepl(src, vm.New()); err != nil {
+	if err := runRepl(src, vm.New(), vm.New(), nil); err != nil {
 		t.Fatalf("runRepl: %v", err)
 	}
 
 	bad := "> x %"
-	if err := runRepl(bad, vm.New()); err == nil {
+	if err := runRepl(bad, vm.New(), vm.New(), nil); err == nil {
 		t.Fatal("runRepl: want error for '> x %'")
 	}
 }
