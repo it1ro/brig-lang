@@ -4,7 +4,7 @@ GO      ?= go
 BIN     ?= bin
 VERSION ?= $(shell git describe --tags --always 2>/dev/null || echo dev)
 
-.PHONY: all build test test-race lint fmt vet check-examples ebnf-check \
+.PHONY: all build test test-race lint fmt vet check-examples spec-tables \
 	git-hooks changelog fuzz update-golden update-bytecode update-examples run-examples clean \
 	corpus update-corpus \
 	test-roundtrip test-ast test-parser test-lexer test-one \
@@ -130,9 +130,10 @@ ci-quick: fmt-check vet test-lexer test-parser test-roundtrip test-vm test-compi
 check-examples:
 	$(GO) run ./cmd/check-examples -- docs/01-language-design.md
 
-ebnf-check:
-	@test -f brig.ebnf || (echo "brig.ebnf missing (extract from docs, A1)" && exit 1)
-	@echo "brig.ebnf present (synced with docs/01-language-design.md §A)"
+# Таблицы спеки против кода: ключевые слова (§1.3, §B.1, brig.ebnf, лексер),
+# прелюдия (§11.5, §12.6), авто-raise (§10.4), pipe-запрет (§7.5). Входит в make test.
+spec-tables:
+	$(GO) test ./internal/examples -run '^TestSpec'
 
 ## ---- Git ----
 git-hooks:
