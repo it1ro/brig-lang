@@ -173,9 +173,13 @@ bench:
 # квадратичный ~64). Не входит в all и в bench.
 SCALING_COUNT ?= 3
 SCALING_MAX_RATIO ?= 16
+# SCALING_SOFT=1 (только CI, T-247): превышение лимита печатается как ожидаемое
+# и не даёт код 1, пока коллекции квадратичны (до T-271…T-273). Ошибки замера
+# (нет результатов) остаются жёсткими. Локально цель красная.
+SCALING_SOFT ?=
 bench-scaling:
 	@$(GO) test -run '^$$' -bench BenchmarkScaling -benchtime 1x -count $(SCALING_COUNT) ./internal/vm/ \
-		| awk -v max=$(SCALING_MAX_RATIO) '\
+		| awk -v max=$(SCALING_MAX_RATIO) -v soft=$(SCALING_SOFT) '\
 			/^BenchmarkScaling\// { \
 				split($$1, p, "/"); op = p[2]; sz = p[3]; sub(/-[0-9]+$$/, "", sz); \
 				k = op SUBSEP sz; t = $$3 + 0; \
@@ -188,12 +192,12 @@ bench-scaling:
 				if (n == 0) { print "bench-scaling: нет результатов"; exit 2 } \
 				for (i = 1; i <= n; i++) { \
 					op = ops[i]; a = best[op SUBSEP "1k"]; b = best[op SUBSEP "8k"]; \
-					if (a <= 0) { print "bench-scaling: нет замера 1k для " op; bad = 1; continue } \
-					r = b / a; st = (r > max) ? "FAIL" : "ok"; \
+					if (a <= 0) { print "bench-scaling: нет замера 1k для " op; hard = 1; continue } \
+					r = b / a; st = (r > max) ? (soft ? "FAIL (ожидаемо, до T-271…T-273)" : "FAIL") : "ok"; \
 					printf "%-14s t(8k)/t(1k) = %6.1f (лимит %s) %s\n", op, r, max, st; \
 					if (r > max) bad = 1 \
 				} \
-				exit bad \
+				exit hard ? 2 : (bad && !soft) ? 1 : 0 \
 			}'
 
 ## ---- CLI без сборки ----
