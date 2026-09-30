@@ -231,9 +231,8 @@ func checkBlock(b block, tasks map[string]bool) Result {
 	}
 	if pending != "" {
 		// Pending ждёт нереализованную фичу — чаще всего новую функцию
-		// прелюдии. Её ловит только разрешение имён (§F.3), поэтому pending
-		// проверяется строже обычного блока, как в `brig check`.
-		if compileNames(src) == nil {
+		// прелюдии; её ловит разрешение имён (§F.3) в compile.
+		if compile(src) == nil {
 			return fail(b, mode, fmt.Sprintf("блок компилируется — снять pending(%s)", pending))
 		}
 		return Result{File: b.file, Line: b.line, Col: 1, Mode: mode, OK: true, Pending: pending}
@@ -247,32 +246,19 @@ func checkBlock(b block, tasks map[string]bool) Result {
 	return Result{File: b.file, Line: b.line, Col: 1, Mode: mode, OK: true}
 }
 
-// compile: парсинг (module), sema (§F.3) и компиляция в байткод. Ошибка —
-// *lexer.Error, *parser.Error, *compiler.Error или *semaError.
+// compile: парсинг (module), sema с разрешением имён (§F.3, T-179) и
+// компиляция в байткод — как `brig check`: неизвестная функция и неверная
+// арность тоже ошибка. Ошибка — *lexer.Error, *parser.Error,
+// *compiler.Error или *semaError.
 func compile(src string) error {
 	prog, err := parser.ParseProgram(parser.ModeModule, src)
 	if err != nil {
 		return err
 	}
-	for _, d := range sema.Check(prog).Diagnostics {
+	for _, d := range sema.CheckNames(prog, nil).Diagnostics {
 		if d.Severity == sema.SeverityError {
 			return &semaError{d}
 		}
-	}
-	_, err = compiler.New().Compile(prog)
-	return err
-}
-
-// compileNames: compile плюс разрешение имён sema.CheckNames — неизвестная
-// функция и неверная арность тоже ошибка. Обычные блоки его не проходят:
-// примеры ссылаются на неопределённые хелперы (`open`, `start`).
-func compileNames(src string) error {
-	prog, err := parser.ParseProgram(parser.ModeModule, src)
-	if err != nil {
-		return err
-	}
-	if sema.CheckNames(prog, nil).HasErrors() {
-		return errors.New("sema: unresolved names")
 	}
 	_, err = compiler.New().Compile(prog)
 	return err
