@@ -231,7 +231,14 @@ func checkBlock(b block, tasks map[string]bool) Result {
 	}
 	if pending != "" {
 		// Pending ждёт нереализованную фичу — чаще всего новую функцию
-		// прелюдии; её ловит разрешение имён (§F.3) в compile.
+		// прелюдии; её ловит разрешение имён (§F.3) в compile. Парсер и
+		// round-trip блок обязан пройти: иначе pending скрыл бы регрессию
+		// синтаксиса (T-151).
+		if err := roundTrip(src); err != nil {
+			r := failAt(b, mode, indent, err)
+			r.ErrMsg = fmt.Sprintf("pending(%s): парсер и round-trip обязаны пройти: %s", pending, r.ErrMsg)
+			return r
+		}
 		if compile(src) == nil {
 			return fail(b, mode, fmt.Sprintf("блок компилируется — снять pending(%s)", pending))
 		}
