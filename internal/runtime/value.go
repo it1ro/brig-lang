@@ -4,6 +4,7 @@ package runtime
 import (
 	"bytes"
 	"fmt"
+	"iter"
 	"math"
 	"math/big"
 	"sort"
@@ -205,7 +206,7 @@ type Value struct {
 	Tuple    []Value
 	// Представление коллекций скрыто (T-283, шаг 0 T-250): доступ только
 	// через методы Len/At/Elems/Entries и конструкторы List/Vector/Set/Map.
-	list       []Value
+	list       *listCell // nil — пустой список
 	vector     []Value
 	entries    []MapEntry
 	set        []Value
@@ -229,7 +230,7 @@ type Value struct {
 func (v Value) Len() int {
 	switch v.Kind {
 	case KindList:
-		return len(v.list)
+		return v.list.len()
 	case KindVector:
 		return len(v.vector)
 	case KindSet:
@@ -241,17 +242,21 @@ func (v Value) Len() int {
 }
 
 // At — i-й элемент List, Vector или Set (порядок хранения). Границы
-// проверяет вызывающий: 0 <= i < Len().
+// проверяет вызывающий: 0 <= i < Len(). Для List — O(i) (§4.2).
 func (v Value) At(i int) Value {
+	if v.Kind == KindList {
+		return v.list.drop(i).head
+	}
 	return v.Elems()[i]
 }
 
 // Elems — элементы List, Vector или Set в порядке хранения; для прочих
-// видов nil. Срез нельзя изменять (значения неизменяемы, §0.13).
+// видов nil. Срез нельзя изменять (значения неизменяемы, §0.13). Для List
+// срез собирается заново за O(n); обход без копии — Items, Cursor.
 func (v Value) Elems() []Value {
 	switch v.Kind {
 	case KindList:
-		return v.list
+		return v.list.slice()
 	case KindVector:
 		return v.vector
 	case KindSet:
@@ -313,8 +318,146 @@ func Atom(a string) Value { return Value{Kind: KindAtom, Atom: a} }
 // Tuple создаёт кортеж.
 func Tuple(vs ...Value) Value { return Value{Kind: KindTuple, Tuple: vs} }
 
-// List создаёт список.
-func List(vs ...Value) Value { return Value{Kind: KindList, list: vs} }
+// List создаёт список из элементов vs (vs не удерживается).
+func List(vs ...Value) Value { return Value{Kind: KindList, list: prepend(vs, nil)} }
+
+// ListPrepend — список из элементов vs, за которыми идёт список tail:
+// `[..vs, ..tail]` за O(len(vs)), tail разделяется без копирования (§4.2).
+// tail должен быть List.
+func ListPrepend(vs []Value, tail Value) Value {
+	return Value{Kind: KindList, list: prepend(vs, tail.list)}
+}
+
+// Uncons разбирает List на голову и хвост за O(1); ok == false для
+// пустого списка и прочих видов. Хвост разделяется с v.
+func (v Value) Uncons() (head, tail Value, ok bool) {
+	if v.Kind != KindList || v.list == nil {
+		return Unit, Unit, false
+	}
+	return v.list.head, Value{Kind: KindList, list: v.list.tail}, true
+}
+
+// Drop — хвост List без первых k элементов за O(k), разделяемый с v.
+// Границы проверяет вызывающий: 0 <= k <= Len().
+func (v Value) Drop(k int) Value {
+	return Value{Kind: KindList, list: v.list.drop(k)}
+}
+
+// Items обходит элементы List по порядку без копии; для прочих видов
+// ничего не отдаёт.
+func (v Value) Items() iter.Seq[Value] {
+	return func(yield func(Value) bool) {
+		if v.Kind != KindList {
+			return
+		}
+		for c := v.list; c != nil; c = c.tail {
+			if !yield(c.head) {
+				return
+			}
+		}
+	}
+}
+
+// ListCursor — позиция обхода List, которую можно хранить между шагами
+// (возобновляемые нативы): Next отдаёт элемент за O(1) без копии хвоста.
+type ListCursor struct{ c *listCell }
+
+// Cursor — курсор на начало v; для прочих видов — пустой.
+func (v Value) Cursor() ListCursor {
+	if v.Kind != KindList {
+		return ListCursor{}
+	}
+	return ListCursor{v.list}
+}
+
+// Next — очередной элемент; ok == false, когда элементы кончились.
+func (it *ListCursor) Next() (e Value, ok bool) {
+	if it.c == nil {
+		return Unit, false
+	}
+	e, it.c = it.c.head, it.c.tail
+	return e, true
+}
+
+// ListBuilder собирает List поэлементно, без промежуточного среза Value.
+// Нулевое значение готово к работе.
+type ListBuilder struct{ cells []listCell }
+
+// NewListBuilder — построитель с местом под n элементов.
+func NewListBuilder(n int) ListBuilder {
+	return ListBuilder{cells: make([]listCell, 0, n)}
+}
+
+// Add дописывает элемент в конец.
+func (b *ListBuilder) Add(v Value) { b.cells = append(b.cells, listCell{head: v}) }
+
+// List связывает ячейки в список; построитель после этого не используется.
+// Запас ёмкости больше половины отбрасывается копией, чтобы короткий
+// результат (filter) не удерживал блок под весь вход.
+func (b *ListBuilder) List() Value {
+	cells := b.cells
+	b.cells = nil
+	if len(cells) == 0 {
+		return List()
+	}
+	if len(cells) < cap(cells)/2 {
+		cells = append([]listCell(nil), cells...)
+	}
+	var next *listCell
+	for i := len(cells) - 1; i >= 0; i-- {
+		cells[i].tail, cells[i].n = next, len(cells)-i
+		next = &cells[i]
+	}
+	return Value{Kind: KindList, list: next}
+}
+
+// listCell — ячейка неизменяемого односвязного списка (DD #397): длина
+// хранится в ячейке, хвост разделяется между значениями.
+type listCell struct {
+	head Value
+	tail *listCell
+	n    int // длина списка от этой ячейки
+}
+
+// prepend ставит vs перед tail. Ячейки vs выделяются одним блоком.
+func prepend(vs []Value, tail *listCell) *listCell {
+	if len(vs) == 0 {
+		return tail
+	}
+	cells := make([]listCell, len(vs))
+	next, n := tail, tail.len()
+	for i := len(vs) - 1; i >= 0; i-- {
+		n++
+		cells[i] = listCell{head: vs[i], tail: next, n: n}
+		next = &cells[i]
+	}
+	return next
+}
+
+func (c *listCell) len() int {
+	if c == nil {
+		return 0
+	}
+	return c.n
+}
+
+func (c *listCell) drop(k int) *listCell {
+	for ; k > 0; k-- {
+		c = c.tail
+	}
+	return c
+}
+
+func (c *listCell) slice() []Value {
+	if c == nil {
+		return nil
+	}
+	out := make([]Value, 0, c.n)
+	for ; c != nil; c = c.tail {
+		out = append(out, c.head)
+	}
+	return out
+}
 
 // Vector создаёт вектор.
 func Vector(vs ...Value) Value { return Value{Kind: KindVector, vector: vs} }
@@ -398,7 +541,7 @@ func (v Value) Inspect() string {
 		}
 		return "(" + strings.Join(parts, ", ") + ")"
 	case KindList:
-		return "[" + inspectJoin(v.list) + "]"
+		return "[" + inspectJoin(v.list.slice()) + "]"
 	case KindVector:
 		return "%[" + inspectJoin(v.vector) + "]"
 	case KindMap:
@@ -513,7 +656,15 @@ func MatchEqual(a, b Value) bool {
 	case KindTuple:
 		return matchEqualSlice(a.Tuple, b.Tuple)
 	case KindList:
-		return matchEqualSlice(a.list, b.list)
+		if a.list.len() != b.list.len() {
+			return false
+		}
+		for x, y := a.list, b.list; x != nil; x, y = x.tail, y.tail {
+			if !MatchEqual(x.head, y.head) {
+				return false
+			}
+		}
+		return true
 	case KindVector:
 		return matchEqualSlice(a.vector, b.vector)
 	}
@@ -599,7 +750,15 @@ func equal(a, b Value, strict bool) bool {
 		}
 		return true
 	case KindList:
-		return equalSlice(a.list, b.list, strict)
+		if a.list.len() != b.list.len() {
+			return false
+		}
+		for x, y := a.list, b.list; x != nil; x, y = x.tail, y.tail {
+			if !equal(x.head, y.head, strict) {
+				return false
+			}
+		}
+		return true
 	case KindVector:
 		return equalSlice(a.vector, b.vector, strict)
 	case KindMap:
@@ -761,7 +920,7 @@ func Compare(a, b Value) (int, error) {
 	case rankVector:
 		return compareSlices(a.vector, b.vector)
 	case rankList:
-		return compareSlices(a.list, b.list)
+		return compareLists(a.list, b.list)
 	case rankMap:
 		return compareMaps(a.entries, b.entries)
 	case rankSet:
@@ -951,6 +1110,20 @@ func compareSlices(a, b []Value) (int, error) {
 	}
 	for i := range a {
 		c, err := Compare(a[i], b[i])
+		if err != nil || c != 0 {
+			return c, err
+		}
+	}
+	return 0, nil
+}
+
+// compareLists — как compareSlices, обходом ячеек.
+func compareLists(a, b *listCell) (int, error) {
+	if a.len() != b.len() {
+		return cmpInt(a.len(), b.len()), nil
+	}
+	for ; a != nil; a, b = a.tail, b.tail {
+		c, err := Compare(a.head, b.head)
 		if err != nil || c != 0 {
 			return c, err
 		}
