@@ -265,6 +265,151 @@ func TestScriptMode(t *testing.T) {
 	}
 }
 
+// T-243 (§11.3): brig check выбирает режим так же, как brig <file>:
+// файл без module — script.
+func TestCheckScriptMode(t *testing.T) {
+	bin := buildBrig(t)
+	dir := t.TempDir()
+	write := func(name, src string) string {
+		t.Helper()
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, []byte(src), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+
+	p := write("ok.brig", "#!/usr/bin/env brig\nx = 1\nf = () -> x\nx = 2\nprint(f())\nprint(x)\n")
+	stdout, stderr, code := runCLI(t, bin, "", "check", p)
+	if code != exitOK || stdout != p+": ok\n" || stderr != "" {
+		t.Fatalf("script: exit %d stdout %q stderr %s", code, stdout, stderr)
+	}
+	// check не исполняет script.
+	p = write("boom.brig", "print(\"ran\")\nraise(:boom)\n")
+	stdout, stderr, code = runCLI(t, bin, "", "check", p)
+	if code != exitOK || stdout != p+": ok\n" {
+		t.Fatalf("check must not run the script: exit %d stdout %q stderr %s", code, stdout, stderr)
+	}
+
+	p = write("rebind.brig", "print(1)\nfn f() ->\n    y = 1\n    y = 2\n    y\n")
+	_, stderr, code = runCLI(t, bin, "", "check", p)
+	if code != exitParse || !strings.Contains(stderr, "error: "+p+":4:5: rebinding") {
+		t.Fatalf("sema error in script: exit %d stderr %s", code, stderr)
+	}
+	p = write("ty.brig", "type User { id: Int }\n")
+	_, stderr, code = runCLI(t, bin, "", "check", p)
+	if code != exitParse || !strings.Contains(stderr, "error: "+p+":1:1:") {
+		t.Fatalf("type in script: exit %d stderr %s", code, stderr)
+	}
+
+	// Модуль по-прежнему проверяется как модуль: top-level выражение — ошибка.
+	p = write("mod.brig", "module Main\nfn main() -> 1\nprint(1)\n")
+	_, stderr, code = runCLI(t, bin, "", "check", p)
+	if code != exitParse || !strings.Contains(stderr, "module top-level") {
+		t.Fatalf("module: exit %d stderr %s", code, stderr)
+	}
+}
+
+// T-243 (§11.3, §E.3): script с fn main() без вызова — info, exit 0.
+func TestScriptMainNotCalledInfo(t *testing.T) {
+	bin := buildBrig(t)
+	dir := t.TempDir()
+	write := func(name, src string) string {
+		t.Helper()
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, []byte(src), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	const info = "script defines fn main() but never calls it; add module Main to run it"
+
+	p := write("app.brig", "x = 1\nfn main() ->\n    print(x)\n")
+	stdout, stderr, code := runCLI(t, bin, "", "check", p)
+	if code != exitOK || stdout != p+": ok\n" || stderr != "info: "+p+":2:1: "+info+"\n" {
+		t.Fatalf("info: exit %d stdout %q stderr %q", code, stdout, stderr)
+	}
+
+	for name, src := range map[string]string{
+		"called.brig": "fn main() ->\n    print(1)\nmain()\n",
+		"nested.brig": "fn main() -> print(1)\nfn run() -> main()\nrun()\n",
+		"value.brig":  "fn main() -> print(1)\npid = spawn(main)\n",
+		"nomain.brig": "fn run() -> print(1)\n",
+		"module.brig": "module Main\nfn main() -> print(1)\n",
+	} {
+		p := write(name, src)
+		_, stderr, code := runCLI(t, bin, "", "check", p)
+		if code != exitOK || strings.Contains(stderr, info) {
+			t.Fatalf("%s: exit %d stderr %q", name, code, stderr)
+		}
+	}
+
+	// brig <file> не меняется: main не вызывается, info не печатается.
+	stdout, stderr, code = runCLI(t, bin, "", p)
+	if code != exitOK || stdout != "" || stderr != "" {
+		t.Fatalf("run: exit %d stdout %q stderr %q", code, stdout, stderr)
+	}
+}
+
+// T-243 (§11.1): brig check берёт корень по project.brig вверх от файла,
+// как brig -i; без project.brig — каталог файла.
+func TestCheckProjectRoot(t *testing.T) {
+	bin := buildBrig(t)
+
+	monitors := filepath.Join(findModuleRoot(t), "corpus", "lookout", "lib", "lookout", "monitors.brig")
+	_, stderr, code := runCLI(t, bin, "", "check", monitors)
+	if strings.Contains(stderr, "module Lookout.Repo not found") {
+		t.Fatalf("lookout: exit %d stderr %s", code, stderr)
+	}
+	// Lookout.Repo найден от lib/ и загружен: ошибка — уже в repo.brig
+	// (его импорт Sql — horizon корпуса).
+	if code != exitParse || !strings.Contains(stderr, filepath.Join("lookout", "repo.brig")+":") {
+		t.Fatalf("lookout: exit %d stderr %s", code, stderr)
+	}
+
+	dir := t.TempDir()
+	write := func(rel, src string) string {
+		t.Helper()
+		p := filepath.Join(dir, rel)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(src), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	write("proj/project.brig", "module Project\npub fn project() -> {name: \"p\"}\n")
+	write("proj/lib/shop/cart.brig", "module Shop.Cart\npub fn total() -> 1\n")
+	app := write("proj/lib/shop/app.brig", "module Shop.App\nimport Shop.Cart\npub fn run() -> Cart.total()\n")
+	test := write("proj/test/cart_test.brig", "import Shop.Cart\nprint(Shop.Cart.total())\n")
+	for _, p := range []string{app, test} {
+		stdout, stderr, code := runCLI(t, bin, "", "check", p)
+		if code != exitOK || stdout != p+": ok\n" {
+			t.Fatalf("project %s: exit %d stdout %q stderr %s", p, code, stdout, stderr)
+		}
+	}
+	// Относительный путь из подкаталога проекта.
+	cmd := exec.Command(bin, "check", filepath.Join("lib", "shop", "app.brig"))
+	cmd.Dir = filepath.Join(dir, "proj")
+	if out, err := cmd.CombinedOutput(); err != nil || string(out) != "lib/shop/app.brig: ok\n" {
+		t.Fatalf("relative: %v\n%s", err, out)
+	}
+
+	// Без project.brig корень — каталог файла.
+	write("loose/util.brig", "module Util\npub fn n() -> 1\n")
+	loose := write("loose/main.brig", "module Main\nimport Util\nfn main() -> print(Util.n())\n")
+	stdout, stderr, code := runCLI(t, bin, "", "check", loose)
+	if code != exitOK || stdout != loose+": ok\n" {
+		t.Fatalf("loose: exit %d stdout %q stderr %s", code, stdout, stderr)
+	}
+	nested := write("loose/sub/m.brig", "module Main\nimport Util\nfn main() -> print(Util.n())\n")
+	_, stderr, code = runCLI(t, bin, "", "check", nested)
+	if code != exitParse || !strings.Contains(stderr, "error: "+nested+":2:1: module Util not found") {
+		t.Fatalf("nested without project: exit %d stderr %s", code, stderr)
+	}
+}
+
 func runCLI(t *testing.T, bin, stdin string, args ...string) (stdout, stderr string, code int) {
 	t.Helper()
 	return runCLIEnv(t, bin, stdin, nil, args...)

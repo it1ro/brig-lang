@@ -175,3 +175,37 @@ func TestLoadFromNestedEntry(t *testing.T) {
 		t.Fatal("Load from the nested directory should not find Util")
 	}
 }
+
+// T-243: корень импортов — корень модулей проекта (lib/ под project.brig),
+// без манифеста — каталог файла.
+func TestModuleRoot(t *testing.T) {
+	dir := t.TempDir()
+	write := func(rel string) string {
+		t.Helper()
+		p := filepath.Join(dir, rel)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte("module X\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	write("lib_proj/project.brig")
+	inLib := write("lib_proj/lib/a/b.brig")
+	inTest := write("lib_proj/test/b_test.brig")
+	write("flat/project.brig")
+	flat := write("flat/a/b.brig")
+	loose := write("loose/a/b.brig")
+
+	for _, c := range []struct{ entry, want string }{
+		{inLib, filepath.Join(dir, "lib_proj", "lib")},
+		{inTest, filepath.Join(dir, "lib_proj", "lib")},
+		{flat, filepath.Join(dir, "flat")},
+		{loose, filepath.Join(dir, "loose", "a")},
+	} {
+		if got := ModuleRoot(c.entry); got != c.want {
+			t.Fatalf("ModuleRoot(%s) = %s, want %s", c.entry, got, c.want)
+		}
+	}
+}

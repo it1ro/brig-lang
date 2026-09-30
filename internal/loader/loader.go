@@ -266,6 +266,33 @@ func ProjectRoot(start string) (string, error) {
 	}
 }
 
+// ModuleRoot — корень импортов для входного файла entry. Есть
+// `project.brig` выше entry — корень модулей проекта, как у `brig -i`:
+// `lib/`, если такой каталог есть, иначе каталог манифеста. Нет — каталог
+// entry (§11.1). У относительного entry корень тоже относительный (от
+// рабочего каталога), чтобы пути в диагностике оставались короткими.
+func ModuleRoot(entry string) string {
+	dir := filepath.Dir(entry)
+	root, err := ProjectRoot(entry)
+	if err != nil {
+		return dir
+	}
+	if fi, err := os.Stat(filepath.Join(root, "lib")); err == nil && fi.IsDir() {
+		root = filepath.Join(root, "lib")
+	}
+	if filepath.IsAbs(entry) {
+		return root
+	}
+	wd, err := os.Getwd()
+	if err != nil {
+		return root
+	}
+	if rel, err := filepath.Rel(wd, root); err == nil {
+		return rel
+	}
+	return root
+}
+
 // FileFor — файл модуля name под корнем root (§11.1), если он есть
 // и путь обратно даёт то же имя. Нет файла — ("", false).
 func FileFor(root, name string) (string, bool) {
