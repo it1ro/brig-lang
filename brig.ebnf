@@ -1,4 +1,4 @@
-(* Brig v0.4.7 — исполнительная грамматика *)
+(* Brig — исполнительная грамматика *)
 (* Терминалы:
    NEWLINE, INDENT, DEDENT, EOF — эмитируются лексером по правилам D.
    NEWLINE внутри скобок может быть разделителем элементов (sep).
@@ -88,13 +88,14 @@ and_expr ::= cmp_expr { "and" cmp_expr }
 cmp_expr ::= pipe_expr [ cmp_op pipe_expr ]
 cmp_op ::= "==" | "!=" | "<" | ">" | "<=" | ">="
 
-pipe_expr ::= range_expr { "|>" pipe_rhs }
+pipe_expr ::= concat_expr { "|>" pipe_rhs }
 pipe_rhs ::=
     pipe_name [ "(" [ args ] ")" ]
 pipe_name ::=
     ( LOWER_IDENT | UPPER_IDENT )
     { "." ( LOWER_IDENT | UPPER_IDENT ) }
 
+concat_expr ::= range_expr [ "<>" concat_expr ]   (* право-ассоциативный, §7.3a *)
 range_expr ::= add_expr [ "to" add_expr ]
 add_expr ::= mul_expr { ( "+" | "-" ) mul_expr }
 mul_expr ::=
@@ -181,6 +182,7 @@ pattern ::= pattern_atom [ "as" LOWER_IDENT ]
 pattern_atom ::=
       WILDCARD
     | LOWER_IDENT
+    | string_lit "<>" pattern_atom   (* префикс строки, §7.3a *)
     | literal
     | constructor_pattern
     | tuple_pattern
