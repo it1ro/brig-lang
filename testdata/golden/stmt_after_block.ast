@@ -1,0 +1,1 @@
+(program (module Main) (fn main (clause (params) (block (let x (match (lit 1) (case a (var a)))) (let (p q) (call (var ()) (var x) (lit 2))) (let [r s] (call (var []) (var p) (var q))) (call (var print) (+ (var r) (var s)))))))
