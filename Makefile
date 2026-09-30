@@ -5,7 +5,7 @@ BIN     ?= bin
 VERSION ?= $(shell git describe --tags --always 2>/dev/null || echo dev)
 
 .PHONY: all build test test-race lint fmt vet check-examples spec-tables \
-	git-hooks changelog fuzz update-golden update-bytecode update-examples run-examples clean \
+	git-hooks fuzz update-golden update-bytecode update-examples run-examples clean \
 	corpus update-corpus plan-check bench \
 	test-roundtrip test-ast test-parser test-lexer test-one \
 	test-vm test-compiler test-stdlib run run-hello \
@@ -149,11 +149,6 @@ git-hooks:
 		[ -f "$$h" ] && cp "$$h" "$$d/$$(basename "$$h")" && chmod +x "$$d/$$(basename "$$h")"; \
 	done
 	@echo "hooks installed: $$(ls .githooks | paste -sd ' ' -)"
-
-## ---- Релизы ----
-changelog:
-	@command -v git-cliff >/dev/null 2>&1 || (echo "install git-cliff"; exit 1)
-	git-cliff -o CHANGELOG.md
 
 ## ---- Тест-инфраструктура ----
 update-golden:

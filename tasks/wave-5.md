@@ -2,7 +2,7 @@
 
 [← карта плана](README.md)
 
-Вход: T-12; для T-61 — все волны 0–4. Выход: §8 и §5 аудита закрыты, `TASKS.md` и `AUDIT_REPORT.md` связаны с issues. T-60 переоткрыт 2026-09-26: его PR #52 закрыт без merge. T-62 ждёт design decisions, T-63 синхронизирует план с доской.
+Вход: T-12; для T-61 — все волны 0–4. Выход: §8 и §5 аудита закрыты, `TASKS.md` и [`AUDIT_REPORT.md`](https://github.com/it1ro/brig-lang/blob/28003da/AUDIT_REPORT.md) связаны с issues. T-60 переоткрыт 2026-09-26: его PR #52 закрыт без merge. T-62 ждёт design decisions, T-63 синхронизирует план с доской.
 
 T-65 (этот каталог) заменил корневой `TASKS.md`.
 

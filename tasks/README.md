@@ -2,8 +2,8 @@
 
 Карта плана работ: milestones, волны (архив), зависимости, ссылки на issues. Статусы — только на [доске](https://github.com/users/it1ro/projects/5) «Brig — разработка» (GitHub Projects v2, проект 5). Конвенции и команды для доски — `WORKFLOW.md`.
 
-Волны 7–13 спланированы по второму аудиту: [AUDIT_REPORT-2.md](../AUDIT_REPORT-2.md), промпт — [AUDIT_PROMPT-2.md](../AUDIT_PROMPT-2.md).
-Третий аудит ([AUDIT_REPORT-3.md](../AUDIT_REPORT-3.md), промпт — [AUDIT_PROMPT-3.md](../AUDIT_PROMPT-3.md)) спланирован уже не волнами, а milestones M1…M5 (раздел «Milestones» ниже); задачи — sub-issues эпика [#276](https://github.com/it1ro/brig-lang/issues/276). Номера волн 16–19 в отчёте — исторические.
+Волны 7–13 спланированы по второму аудиту: [AUDIT_REPORT-2.md](https://github.com/it1ro/brig-lang/blob/28003da/AUDIT_REPORT-2.md), промпт — [AUDIT_PROMPT-2.md](https://github.com/it1ro/brig-lang/blob/28003da/AUDIT_PROMPT-2.md).
+Третий аудит ([AUDIT_REPORT-3.md](https://github.com/it1ro/brig-lang/blob/28003da/AUDIT_REPORT-3.md), промпт — [AUDIT_PROMPT-3.md](https://github.com/it1ro/brig-lang/blob/28003da/AUDIT_PROMPT-3.md)) спланирован уже не волнами, а milestones M1…M5 (раздел «Milestones» ниже); задачи — sub-issues эпика [#276](https://github.com/it1ro/brig-lang/issues/276). Номера волн 16–19 в отчёте — исторические.
 
 ## Правила
 
@@ -17,7 +17,7 @@
 У задачи с issue в файле остаётся строка таблицы со ссылкой: источник DoD, файлов, тест-якоря и «НЕ делать» — тело issue. У задачи без issue — полный блок (meta, «Файлы», «Тест-якорь», «DoD», «НЕ делать»), из которого issue и заводится. Блок без заголовка `###` — это body issue; к нему добавляются строки `Blocked by #M` для задач из `depends_on`, у которых уже есть issue. После заведения блок в файле волны заменяется строкой таблицы со ссылкой.
 
 **Label источника.**
-- `audit` — finding первого (`AUDIT_REPORT.md`) или второго (`AUDIT_REPORT-2.md`) аудита.
+- `audit` — finding первого ([`AUDIT_REPORT.md`](https://github.com/it1ro/brig-lang/blob/28003da/AUDIT_REPORT.md)) или второго ([`AUDIT_REPORT-2.md`](https://github.com/it1ro/brig-lang/blob/28003da/AUDIT_REPORT-2.md)) аудита.
 - `spec-gap` — пробел реализации относительно спеки §16.
 - `edit-spec` — перенос утверждённого решения research в спеку (research, D4).
 

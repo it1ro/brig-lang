@@ -61,7 +61,7 @@ DD, которые блокируют конкретную волну, лежа�
 
 ## DD третьего аудита (T-250…T-259)
 
-Заведены по [AUDIT_REPORT-3.md](../AUDIT_REPORT-3.md) (раздел 5), решены
+Заведены по [AUDIT_REPORT-3.md](https://github.com/it1ro/brig-lang/blob/28003da/AUDIT_REPORT-3.md) (раздел 5), решены
 2026-09-30. Решение и реализация — в одном issue (раздел «Решение» в
 body), issues — sub-issues эпика [#276](https://github.com/it1ro/brig-lang/issues/276).
 Бывшие задачи реализации T-262…T-264, T-266…T-268, T-270, T-274, T-275

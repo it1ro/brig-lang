@@ -8,7 +8,7 @@ import (
 )
 
 // S-F4: guard из одного идентификатора не должен уходить в tryLambda
-// (AUDIT_REPORT.md:73-77). Пробы fn_guard_ident / recv_guard_ident.
+// (28003da:AUDIT_REPORT.md:73-77). Пробы fn_guard_ident / recv_guard_ident.
 func TestParseGuardSingleIdent(t *testing.T) {
 	cases := []struct {
 		name string
@@ -48,7 +48,7 @@ func TestRoundTripGuardParenString(t *testing.T) {
 	}
 }
 
-// S-F3: guard в ветках recv разбирается и выбрасывается (AUDIT_REPORT.md:67-71).
+// S-F3: guard в ветках recv разбирается и выбрасывается (28003da:AUDIT_REPORT.md:67-71).
 // RecvBranchArg должен сохранять Guard, Format должен его печатать, а
 // повторный парсинг форматированного вывода должен давать эквивалентный AST.
 func TestAuditRecvGuardSurvivesRoundTrip(t *testing.T) {
@@ -95,7 +95,7 @@ fn worker_loop(state) ->
 	}
 }
 
-// S-F6: stmt_list requires NEWLINE between statements (AUDIT_REPORT.md:88-92).
+// S-F6: stmt_list requires NEWLINE between statements (28003da:AUDIT_REPORT.md:88-92).
 // Probes two_stmts_one_line / p/u4_two_stmt_line.brig / p/z1.brig.
 func TestParseRequiresNewlineBetweenStmts(t *testing.T) {
 	cases := []struct {

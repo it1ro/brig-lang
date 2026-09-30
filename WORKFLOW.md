@@ -40,7 +40,7 @@ flowchart LR
 | Доска | [github.com/users/it1ro/projects/5](https://github.com/users/it1ro/projects/5), `gh project view 5 --owner it1ro --web` | Единственный список задач и их статусов |
 | Задачи с DoD | issues `it1ro/brig-lang` с label `audit` (findings аудита) или `spec-gap` (пробелы относительно спеки §16; уровень §16 — label `must`) | Body issue — источник DoD (файлы, тест-якорь, DoD, «НЕ делать») |
 | План целиком | milestones `it1ro/brig-lang` (M1…); `tasks/` (`README.md` — индекс, `decisions.md`, архив `wave-N.md` 0–15) | Milestone — проверяемая цель, описание — критерий выхода; `tasks/` — карта без статусов: milestones, design decisions, архив волн |
-| Находки | `AUDIT_REPORT.md`, `AUDIT_REPORT-2.md` | Описание каждого finding (первый аудит — S-F*, A-F*, I-F*, O-F*; второй — P-*, S-*, G-*, R-*, F-*) и пробных программ |
+| Находки | [`AUDIT_REPORT.md`](https://github.com/it1ro/brig-lang/blob/28003da/AUDIT_REPORT.md), [`AUDIT_REPORT-2.md`](https://github.com/it1ro/brig-lang/blob/28003da/AUDIT_REPORT-2.md) | Описание каждого finding (первый аудит — S-F*, A-F*, I-F*, O-F*; второй — P-*, S-*, G-*, R-*, F-*) и пробных программ |
 | Контекст для агентов | `.claude/skills/*/SKILL.md` | Инварианты подсистем и протокол сессии (`brig-workflow`) |
 
 - Следующая задача — из Todo: сначала меньший milestone (M1 раньше M2),
@@ -53,8 +53,8 @@ flowchart LR
   issue. Поле **Wave** и label `wave-N` — только для задач волн 0–15.
 - Задачи по итогам аудита или сессии планирования — sub-issues эпика
   (для третьего аудита — #276).
-- Label происхождения: `audit` — finding из `AUDIT_REPORT.md` или
-  `AUDIT_REPORT-2.md`, `spec-gap` — пробел реализации относительно спеки
+- Label происхождения: `audit` — finding из [`AUDIT_REPORT.md`](https://github.com/it1ro/brig-lang/blob/28003da/AUDIT_REPORT.md) или
+  [`AUDIT_REPORT-2.md`](https://github.com/it1ro/brig-lang/blob/28003da/AUDIT_REPORT-2.md), `spec-gap` — пробел реализации относительно спеки
   (§16). Задача без одного из них не берётся. Дополнительно `edit-spec` —
   перенос утверждённого решения research в спеку.
 - Статус задачи — только на доске. `tasks/` хранит карту плана без статусов;
@@ -256,7 +256,6 @@ Closes #<issue>
   - изменён публичный синтаксис или API — раздел в `docs/` обновлён в том же PR:
     feature-задача правит разделы, перечисленные в её «Файлах» (§8); новую семантику
     вносит docs-задача до реализации.
-- `CHANGELOG.md` в DoD не входит: генерируется через `make changelog` (git-cliff), в PR не правится.
 
 ## 7. Как работают: вручную, агентом, в связке
 
@@ -387,7 +386,7 @@ git branch -D iter/regvm && git push origin --delete iter/regvm
 
 **Пробные программы `p/*.brig` в репозитории нет.** Аудит гонял их во
 временной копии. Если DoD ссылается на `p/…`, программа восстанавливается
-по описанию finding в `AUDIT_REPORT.md` и становится тестом, а не файлом в
+по описанию finding в [`AUDIT_REPORT.md`](https://github.com/it1ro/brig-lang/blob/28003da/AUDIT_REPORT.md) и становится тестом, а не файлом в
 `p/`.
 
 **Verification (T-13…T-15).** Результат — комментарий с выводом команд.

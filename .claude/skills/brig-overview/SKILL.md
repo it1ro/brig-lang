@@ -3,7 +3,7 @@ name: brig-overview
 description: >
   Общий контекст проекта Brig (референсный интерпретатор языка на Go):
   принципы дизайна (§0), иерархия источников истины, структура репозитория,
-  как организована работа (доска, tasks/, AUDIT_REPORT.md), exit-коды.
+  как организована работа (доска, milestones, tasks/), exit-коды.
   Читать первым в любой задаче по этому репозиторию, до погружения в
   конкретную подсистему.
 ---
@@ -20,10 +20,12 @@ compiler → vm`, без циклов зависимостей (`parser` не в
 - Задачи — только issues на доске GitHub Projects v2 (`it1ro/brig-lang`,
   проект 5). Протокол сессии — skill `brig-workflow`; правила и команды —
   `WORKFLOW.md`.
-- `AUDIT_REPORT.md` — первый аудит (`iter/regvm` @ `8ab58cf`, ID вида
-  S-F2, A-F3, I-F9, O-F1); `AUDIT_REPORT-2.md` — второй (`main` @ `fefb355`,
+- [`AUDIT_REPORT.md`](https://github.com/it1ro/brig-lang/blob/28003da/AUDIT_REPORT.md) — первый аудит (`iter/regvm` @ `8ab58cf`, ID вида
+  S-F2, A-F3, I-F9, O-F1); [`AUDIT_REPORT-2.md`](https://github.com/it1ro/brig-lang/blob/28003da/AUDIT_REPORT-2.md) — второй (`main` @ `fefb355`,
   ID вида P-1, S-1, G-1, R-1, F-1). Перед тем как считать что-то новой
-  находкой — искать в обоих.
+  находкой — искать в обоих. Отчёты аудитов удалены из репозитория
+  2026-09-30 (все задачи — на доске, эпик третьего аудита — #276); читать
+  по permalink или `git show 28003da:AUDIT_REPORT.md`.
 - План — milestones GitHub (M1…M5 по третьему аудиту, эпик #276;
   критерий выхода — в описании milestone). `tasks/` — карта плана
   (`tasks/README.md` — индекс) и архив волн 0–15: волны 0–6 закрыты; волны 7–13 спланированы вторым аудитом (контуры
@@ -40,8 +42,8 @@ compiler → vm`, без циклов зависимостей (`parser` не в
    документ языка, включая §16 (Must/Should/Nice/Не надо). Part I —
    дизайн, Part II — формальная спецификация, Part III — changelog.
 2. `brig.ebnf` — исполнительная грамматика, должна совпадать с §A.
-3. `docs/architecture.md` и `docs/02-register-based-virtual-machine.md` —
-   дизайн слоёв и VM (опкоды, кадры, TCO, trap/ensure, соглашения K-1…K-8).
+3. `docs/02-register-based-virtual-machine.md` —
+   дизайн VM (опкоды, кадры, TCO, trap/ensure, соглашения K-1…K-8).
    Если они противоречат п.1–2 — ошибка в них, а не в спеке (пример:
    K-2 truthiness против строгого Bool §7.2/§16 — design decision #41
    решён в пользу строгого Bool, K-2 переписывается в T-62).
@@ -49,11 +51,11 @@ compiler → vm`, без циклов зависимостей (`parser` не в
    и обзоры, не нормативны.
 
 Код не является источником истины: если код расходится со спекой — это
-finding (см. `AUDIT_REPORT.md`), а не «фактическое поведение, под которое
+finding (см. [`AUDIT_REPORT.md`](https://github.com/it1ro/brig-lang/blob/28003da/AUDIT_REPORT.md)), а не «фактическое поведение, под которое
 надо подстроить доку». Известное противоречие внутри тира 1–2: проза §12.4
 («else/after — только блочная форма») против `after_clause` с инлайн-формой
 в `brig.ebnf` — решается в T-60 (#38). Иерархия восстановлена по
-`AUDIT_REPORT.md` §8: исходного `AUDIT_PROMPT.md` в репозитории нет.
+[`AUDIT_REPORT.md`](https://github.com/it1ro/brig-lang/blob/28003da/AUDIT_REPORT.md) §8: исходного `AUDIT_PROMPT.md` в репозитории нет.
 
 ## Принципы §0 (нарушать нельзя без явного решения по дизайну)
 
@@ -95,7 +97,6 @@ testdata/               # golden, bytecode, negative, positive
 .claude/skills/         # skills для агентов (этот файл и соседи)
 WORKFLOW.md             # правила и команды работы с доской, ветками, PR
 tasks/                  # карта плана: milestones, decisions, архив волн 0–15
-AUDIT_REPORT.md, AUDIT_REPORT-2.md
 ```
 
 ## Exit-коды CLI (`cmd/brig`)
@@ -123,7 +124,7 @@ AUDIT_REPORT.md, AUDIT_REPORT-2.md
 - Не путать `Pos()/End()` в `ast.Node`: по факту это `(Line, Col)`, а не
   байтовые смещения (см. `sema.posOf`) — это исторический артефакт
   именования, не баг для исправления походя.
-- Не чинить findings из `AUDIT_REPORT.md` вне их issue — даже если
+- Не чинить findings из [`AUDIT_REPORT.md`](https://github.com/it1ro/brig-lang/blob/28003da/AUDIT_REPORT.md) вне их issue — даже если
   «рядом и просто».
 
 ## Прежде чем предлагать план

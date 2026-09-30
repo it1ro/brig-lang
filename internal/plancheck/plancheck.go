@@ -76,7 +76,7 @@ var requiredParts = []struct{ name, marker string }{
 }
 
 // Load читает все dir/*.md из fsys (корень репозитория: ссылки из tasks/
-// могут вести в него, например ../AUDIT_REPORT-2.md).
+// могут вести в него, например ../WORKFLOW.md).
 func Load(fsys fs.FS, dir string) (*Plan, error) {
 	files, err := fs.Glob(fsys, path.Join(dir, "*.md"))
 	if err != nil {
