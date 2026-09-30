@@ -28,3 +28,18 @@ jobs:
             - name: make all
               run: make all
 
+    # -race на PR (T-114): параллельно all, отдельной job, чтобы не
+    # увеличивать время make all.
+    race:
+        if: github.event_name == 'pull_request'
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+
+            - uses: actions/setup-go@v5
+              with:
+                  go-version-file: go.mod
+                  cache: true
+
+            - name: make test-race
+              run: make test-race
