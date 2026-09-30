@@ -368,6 +368,12 @@ func (p *parser) parsePostfix() (ast.Expr, error) {
 		return nil, err
 	}
 	for {
+		// После DEDENT блочного выражения (match, recv, if, …) `(` и `[`
+		// начинают следующий стейтмент, а не вызов/индекс результата
+		// блока: лексер не вставляет NEWLINE после DEDENT (см. parseStmtList).
+		if p.afterDedent() && (p.at(lexer.LPAREN) || p.at(lexer.LBRACKET)) {
+			return left, nil
+		}
 		switch p.cur().Type {
 		case lexer.OP_DOT:
 			dot := p.advance()

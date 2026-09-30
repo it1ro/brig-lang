@@ -1,0 +1,7 @@
+module Main
+fn main() ->
+    x = match 1
+        a -> a
+    (p, q) = (x, 2)
+    [r, s] = [p, q]
+    print(r + s)

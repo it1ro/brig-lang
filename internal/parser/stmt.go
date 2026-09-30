@@ -30,7 +30,7 @@ func (p *parser) parseStmtList(until lexer.TokenType) ([]ast.Stmt, error) {
 		if p.at(lexer.NEWLINE) || p.at(lexer.DEDENT) || p.at(lexer.EOF) || p.at(until) {
 			continue
 		}
-		if p.pos > 0 && p.toks[p.pos-1].Type == lexer.DEDENT {
+		if p.afterDedent() {
 			continue
 		}
 		return nil, p.errf("expected NEWLINE between statements, got %s", p.cur().Type)
@@ -280,4 +280,10 @@ func (p *parser) skipPub() bool {
 		return true
 	}
 	return false
+}
+
+// afterDedent сообщает, что предыдущий токен — DEDENT, то есть cur стоит
+// на первом токене строки после закрытого вложенного блока.
+func (p *parser) afterDedent() bool {
+	return p.pos > 0 && p.toks[p.pos-1].Type == lexer.DEDENT
 }
