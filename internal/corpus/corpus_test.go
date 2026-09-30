@@ -109,9 +109,8 @@ func TestCorpusOK(t *testing.T) {
 	}
 	got := sb.String()
 	for _, want := range []string{
-		"corpus: 5 files — run 1, check 0, parse 2, none 2",
-		"  T-1      2\n  T-2      1\n  horizon  1\n",
-		"corpus: ok",
+		"corpus: 4 files — run 1, check 0, parse 2, none 1\nhorizon: 1\n",
+		"top needs (blocked files):\n  T-1      2\n  T-2      1\ncorpus: ok",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("summary lacks %q:\n%s", want, got)
@@ -304,5 +303,29 @@ func TestClosedTaskInNeeds(t *testing.T) {
 	}
 	if problems, _ = CheckClosed(cfg, nil); len(problems) != 0 {
 		t.Fatalf("без закрытых задач проблем быть не должно: %q", problems)
+	}
+}
+
+// T-249: уровень check — граф модулей от корня проекта, как у brig check
+// (T-243): модуль из lib/ находит соседа по project.brig, а не по своему
+// каталогу; импорт несуществующего модуля — провал check.
+func TestCorpusProjectRoot(t *testing.T) {
+	cfg := fixture(t, strings.Join([]string{
+		"corpus/proj/project.brig\tcheck\tpass\t-",
+		"corpus/proj/lib/util.brig\tcheck\tpass\t-",
+		"corpus/proj/lib/app/main.brig\tcheck\tpass\t-",
+		"corpus/proj/lib/app/lost.brig\tcheck\tfail\thorizon",
+	}, "\n"), map[string]string{
+		"corpus/proj/project.brig":      "module Project\n\npub fn project() -> { name: \"p\" }\n",
+		"corpus/proj/lib/util.brig":     "module Util\n\npub fn two() -> 2\n",
+		"corpus/proj/lib/app/main.brig": "module App.Main\n\nimport Util\n\nfn main() -> print(Util.two())\n",
+		"corpus/proj/lib/app/lost.brig": "# needs: horizon\nmodule App.Lost\n\nimport Calmar.Endpoint\n\nfn main() -> 1\n",
+	})
+	rep := verify(t, cfg)
+	wantProblems(t, rep, nil)
+	for _, r := range rep.Results {
+		if r.Path == "corpus/proj/lib/app/lost.brig" && !strings.Contains(r.Err, "module Calmar.Endpoint not found") {
+			t.Errorf("lost.brig: err %q, want module not found", r.Err)
+		}
 	}
 }

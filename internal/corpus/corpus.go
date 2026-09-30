@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/it1ro/brig-lang/internal/compiler"
+	"github.com/it1ro/brig-lang/internal/loader"
 	"github.com/it1ro/brig-lang/internal/parser"
 	"github.com/it1ro/brig-lang/internal/sema"
 )
@@ -159,6 +160,16 @@ func formatNeeds(needs []string) string {
 		return "-"
 	}
 	return strings.Join(needs, ", ")
+}
+
+// horizon — файл ждёт фичу за горизонтом плана (needs содержит horizon).
+func (e Entry) horizon() bool {
+	for _, n := range e.Needs {
+		if n == Horizon {
+			return true
+		}
+	}
+	return false
 }
 
 func (e Entry) expect() string {
@@ -312,20 +323,14 @@ func evaluate(cfg Config, e Entry, upTo Level) Result {
 	if err != nil {
 		return stop(None, err.Error())
 	}
-	prog, err := parser.ParseProgram(parser.ModeModule, string(src))
-	if err != nil {
+	if _, err := parser.ParseProgram(parser.ModeModule, string(src)); err != nil {
 		return stop(None, err.Error())
 	}
 	if upTo < Check {
 		return stop(Parse, "")
 	}
-	for _, d := range sema.CheckNames(prog, nil).Diagnostics {
-		if d.Severity == sema.SeverityError {
-			return stop(Parse, fmt.Sprintf("sema %d:%d: %s", d.Line, d.Col, d.Message))
-		}
-	}
-	if _, err := compiler.New().Compile(prog); err != nil {
-		return stop(Parse, err.Error())
+	if msg := checkProgram(path); msg != "" {
+		return stop(Parse, msg)
 	}
 	if upTo < Run {
 		return stop(Check, "")
@@ -343,6 +348,40 @@ func evaluate(cfg Config, e Entry, upTo Level) Result {
 		return stop(Check, fmt.Sprintf("stdout не совпадает с %s", filepath.Base(outPath(path))))
 	}
 	return stop(Run, "")
+}
+
+// checkProgram — уровень check файла path как у `brig check` (T-243,
+// T-249): граф модулей от корня проекта (loader.ModuleRoot: project.brig
+// вверх от файла, lib/, если есть), sema с разрешением имён по каждому
+// модулю графа и компиляция программы. "" — уровень пройден, иначе
+// ошибка первого провала.
+func checkProgram(path string) string {
+	g, err := loader.LoadFrom(loader.ModuleRoot(path), path)
+	if err != nil {
+		return err.Error()
+	}
+	world := make([]sema.Module, len(g.Modules))
+	mods := make([]compiler.Module, len(g.Modules))
+	for i, m := range g.Modules {
+		world[i] = sema.Module{Name: m.Name, Prog: m.Prog}
+		mods[i] = compiler.Module{Name: m.Name, Path: m.Path, Prog: m.Prog}
+	}
+	w := sema.NewWorld(world)
+	for _, m := range g.Modules {
+		for _, d := range sema.CheckNames(m.Prog, w).Diagnostics {
+			if d.Severity == sema.SeverityError {
+				at := ""
+				if m.Path != path {
+					at = m.Path + ":"
+				}
+				return fmt.Sprintf("sema %s%d:%d: %s", at, d.Line, d.Col, d.Message)
+			}
+		}
+	}
+	if _, err := compiler.New().CompileProgram(mods); err != nil {
+		return err.Error()
+	}
+	return ""
 }
 
 func outPath(path string) string { return strings.TrimSuffix(path, ".brig") + ".out" }
@@ -384,12 +423,21 @@ func (r *Report) Details(w io.Writer) error {
 }
 
 // Summary печатает сводку: файлы по достигнутому уровню и задачи по числу
-// файлов, которые их ждут (вход для приоритизации волн), затем расхождения.
+// файлов, которые их ждут (вход для приоритизации), затем расхождения.
+// Файлы с horizon в needs в метрику уровней не входят (T-249): их уровень
+// не поднимет ни одна задача языка, пока нет модулей горизонта. Они —
+// отдельной строкой `horizon: N`.
 func (r *Report) Summary(w io.Writer, top int) error {
 	var sb strings.Builder
 	byLevel := map[Level]int{}
 	blocked := map[string]int{}
+	files, horizon := 0, 0
 	for _, res := range r.Results {
+		if res.horizon() {
+			horizon++
+			continue
+		}
+		files++
 		byLevel[res.Reached]++
 		if !res.Pass {
 			for _, n := range res.Needs {
@@ -397,12 +445,13 @@ func (r *Report) Summary(w io.Writer, top int) error {
 			}
 		}
 	}
-	fmt.Fprintf(&sb, "corpus: %d files — ", len(r.Results))
+	fmt.Fprintf(&sb, "corpus: %d files — ", files)
 	var parts []string
 	for l := Run; l >= None; l-- {
 		parts = append(parts, fmt.Sprintf("%s %d", l, byLevel[l]))
 	}
 	fmt.Fprintln(&sb, strings.Join(parts, ", "))
+	fmt.Fprintf(&sb, "horizon: %d\n", horizon)
 
 	needs := make([]string, 0, len(blocked))
 	for n := range blocked {
@@ -497,14 +546,26 @@ func dropNeedsHeader(path string) error {
 }
 
 // ExecRunner — Runner через бинарник brig: `brig <file>` с таймаутом.
+// Рабочий каталог — каталог файла (T-249): программа читает свои данные
+// по относительному пути (`corpus/apps/csv/sales.csv`), как при запуске
+// из своего каталога.
 func ExecRunner(brig string, timeout time.Duration) Runner {
 	return func(path string) (string, error) {
+		bin, err := filepath.Abs(brig)
+		if err != nil {
+			return "", err
+		}
+		file, err := filepath.Abs(path)
+		if err != nil {
+			return "", err
+		}
 		ctx, cancel := context.WithTimeout(context.Background(), timeout)
 		defer cancel()
 		var stdout, stderr bytes.Buffer
-		cmd := exec.CommandContext(ctx, brig, path)
+		cmd := exec.CommandContext(ctx, bin, filepath.Base(file))
+		cmd.Dir = filepath.Dir(file)
 		cmd.Stdout, cmd.Stderr = &stdout, &stderr
-		err := cmd.Run()
+		err = cmd.Run()
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			return stdout.String(), fmt.Errorf("brig: таймаут %s", timeout)
 		}
