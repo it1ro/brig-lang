@@ -61,7 +61,7 @@ func InstallJSONPrelude(vm *VM) {
 			return runtime.Unit, modTypeErr("json", "at", args[1])
 		}
 		cur := args[0]
-		for _, step := range args[1].List {
+		for _, step := range args[1].Elems() {
 			next, ok := jsonStep(cur, step)
 			if !ok {
 				return runtime.Variant("None"), nil
@@ -92,14 +92,14 @@ func jsonEncodeOpts(v runtime.Value) (runtime.JSONOptions, bool) {
 func jsonStep(v, step runtime.Value) (runtime.Value, bool) {
 	switch {
 	case v.Kind == runtime.KindMap && step.Kind == runtime.KindStr:
-		for _, e := range v.Map {
+		for _, e := range v.Entries() {
 			if e.Key.Kind == runtime.KindStr && e.Key.Str == step.Str {
 				return e.Val, true
 			}
 		}
 	case v.Kind == runtime.KindList && step.Kind == runtime.KindInt && step.IsSmall:
-		if i := step.SmallInt; i >= 0 && i < int64(len(v.List)) {
-			return v.List[i], true
+		if i := step.SmallInt; i >= 0 && i < int64(v.Len()) {
+			return v.At(int(i)), true
 		}
 	}
 	return runtime.Unit, false

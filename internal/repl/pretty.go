@@ -165,15 +165,15 @@ type item struct {
 func shape(v runtime.Value, lim Limits) (open, end string, items []item, spaced bool) {
 	switch v.Kind {
 	case runtime.KindList:
-		return "[", "]", valueItems(v.List, lim), false
+		return "[", "]", valueItems(v.Elems(), lim), false
 	case runtime.KindVector:
-		return "%[", "]", valueItems(v.Vector, lim), false
+		return "%[", "]", valueItems(v.Elems(), lim), false
 	case runtime.KindSet:
-		return "set(", ")", valueItems(v.Set, lim), false
+		return "set(", ")", valueItems(v.Elems(), lim), false
 	case runtime.KindTuple:
 		return "(", ")", valueItems(v.Tuple, lim), false
 	case runtime.KindMap:
-		entries := sortedMap(v.Map)
+		entries := sortedMap(v.Entries())
 		shown, hidden := clip(len(entries), lim.elems())
 		items = make([]item, 0, shown+1)
 		for i := 0; i < shown; i++ {

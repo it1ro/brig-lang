@@ -81,13 +81,13 @@ func InstallPrelude(vm *VM) {
 	def("len", 1, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		switch a := args[0]; a.Kind {
 		case runtime.KindList:
-			return runtime.Int(int64(len(a.List))), nil
+			return runtime.Int(int64(a.Len())), nil
 		case runtime.KindVector:
-			return runtime.Int(int64(len(a.Vector))), nil
+			return runtime.Int(int64(a.Len())), nil
 		case runtime.KindMap:
-			return runtime.Int(int64(len(a.Map))), nil
+			return runtime.Int(int64(a.Len())), nil
 		case runtime.KindSet:
-			return runtime.Int(int64(len(a.Set))), nil
+			return runtime.Int(int64(a.Len())), nil
 		case runtime.KindStr:
 			// §4.8: Str — по кодпоинтам.
 			return runtime.Int(int64(utf8.RuneCountInString(a.Str))), nil
@@ -136,9 +136,9 @@ func InstallPrelude(vm *VM) {
 		if xs.Kind != runtime.KindList {
 			return nil, typeErr("map", xs)
 		}
-		out := make([]runtime.Value, 0, len(xs.List))
+		out := make([]runtime.Value, 0, xs.Len())
 		return &listCont{
-			f: f, xs: xs.List,
+			f: f, xs: xs.Elems(),
 			visit: func(_, r runtime.Value) (bool, runtime.Value, error) {
 				out = append(out, r)
 				return false, runtime.Unit, nil
@@ -152,9 +152,9 @@ func InstallPrelude(vm *VM) {
 		if xs.Kind != runtime.KindList {
 			return nil, typeErr("filter", xs)
 		}
-		out := make([]runtime.Value, 0, len(xs.List))
+		out := make([]runtime.Value, 0, xs.Len())
 		return &listCont{
-			f: f, xs: xs.List,
+			f: f, xs: xs.Elems(),
 			visit: func(e, r runtime.Value) (bool, runtime.Value, error) {
 				if r.Kind != runtime.KindBool {
 					return false, runtime.Unit, typeErr("filter_predicate", r)
@@ -174,7 +174,7 @@ func InstallPrelude(vm *VM) {
 			return nil, typeErr("find", xs)
 		}
 		return &listCont{
-			f: f, xs: xs.List,
+			f: f, xs: xs.Elems(),
 			visit: func(e, r runtime.Value) (bool, runtime.Value, error) {
 				if r.Kind != runtime.KindBool {
 					return false, runtime.Unit, typeErr("find_predicate", r)
@@ -191,7 +191,7 @@ func InstallPrelude(vm *VM) {
 			return nil, typeErr("all", xs)
 		}
 		return &listCont{
-			f: f, xs: xs.List,
+			f: f, xs: xs.Elems(),
 			visit: func(_, r runtime.Value) (bool, runtime.Value, error) {
 				if r.Kind != runtime.KindBool {
 					return false, runtime.Unit, typeErr("all_predicate", r)
@@ -208,7 +208,7 @@ func InstallPrelude(vm *VM) {
 			return nil, typeErr("any", xs)
 		}
 		return &listCont{
-			f: f, xs: xs.List,
+			f: f, xs: xs.Elems(),
 			visit: func(_, r runtime.Value) (bool, runtime.Value, error) {
 				if r.Kind != runtime.KindBool {
 					return false, runtime.Unit, typeErr("any_predicate", r)
@@ -226,7 +226,7 @@ func InstallPrelude(vm *VM) {
 		}
 		buf := make([]runtime.Value, 2)
 		return &listCont{
-			f: f, xs: xs.List,
+			f: f, xs: xs.Elems(),
 			args: func(e runtime.Value) []runtime.Value {
 				buf[0], buf[1] = acc, e
 				return buf
@@ -245,8 +245,8 @@ func InstallPrelude(vm *VM) {
 		if args[0].Kind != runtime.KindVector {
 			return runtime.Unit, typeErr("Vec.push", args[0])
 		}
-		out := make([]runtime.Value, 0, len(args[0].Vector)+1)
-		out = append(out, args[0].Vector...)
+		out := make([]runtime.Value, 0, args[0].Len()+1)
+		out = append(out, args[0].Elems()...)
 		out = append(out, args[1])
 		return runtime.Vector(out...), nil
 	})
@@ -256,13 +256,13 @@ func InstallPrelude(vm *VM) {
 			return runtime.Unit, typeErr("Vec.set", args[0])
 		}
 		i, ok := smallIdx(args[1])
-		if !ok || i < 0 || i >= int64(len(args[0].Vector)) {
+		if !ok || i < 0 || i >= int64(args[0].Len()) {
 			return runtime.Unit, &ErrRaise{Val: runtime.Tuple(
 				runtime.Atom("index_out_of_bounds"),
-				runtime.Tuple(args[1], runtime.Int(int64(len(args[0].Vector)))))}
+				runtime.Tuple(args[1], runtime.Int(int64(args[0].Len()))))}
 		}
-		out := make([]runtime.Value, len(args[0].Vector))
-		copy(out, args[0].Vector)
+		out := make([]runtime.Value, args[0].Len())
+		copy(out, args[0].Elems())
 		out[i] = args[2]
 		return runtime.Vector(out...), nil
 	})
@@ -272,17 +272,17 @@ func InstallPrelude(vm *VM) {
 			return runtime.Unit, typeErr("Vec.get", args[0])
 		}
 		i, ok := smallIdx(args[1])
-		if !ok || i < 0 || i >= int64(len(args[0].Vector)) {
+		if !ok || i < 0 || i >= int64(args[0].Len()) {
 			return runtime.Variant("None"), nil
 		}
-		return runtime.Variant("Some", args[0].Vector[i]), nil
+		return runtime.Variant("Some", args[0].At(int(i))), nil
 	})
 
 	def("Vec.len", 1, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		if args[0].Kind != runtime.KindVector {
 			return runtime.Unit, typeErr("Vec.len", args[0])
 		}
-		return runtime.Int(int64(len(args[0].Vector))), nil
+		return runtime.Int(int64(args[0].Len())), nil
 	})
 
 	// ---- Record module (§4.7) ----
@@ -304,9 +304,9 @@ func InstallPrelude(vm *VM) {
 		if args[0].Kind != runtime.KindMap {
 			return runtime.Unit, typeErr("Map.put", args[0])
 		}
-		out := make([]runtime.MapEntry, 0, len(args[0].Map)+1)
+		out := make([]runtime.MapEntry, 0, args[0].Len()+1)
 		found := false
-		for _, e := range args[0].Map {
+		for _, e := range args[0].Entries() {
 			if runtime.KeyEqual(e.Key, args[1]) {
 				out = append(out, runtime.MapEntry{Key: args[1], Val: args[2]})
 				found = true
@@ -324,7 +324,7 @@ func InstallPrelude(vm *VM) {
 		if args[0].Kind != runtime.KindMap {
 			return runtime.Unit, typeErr("Map.get", args[0])
 		}
-		for _, e := range args[0].Map {
+		for _, e := range args[0].Entries() {
 			if runtime.KeyEqual(e.Key, args[1]) {
 				return runtime.Variant("Some", e.Val), nil
 			}
@@ -337,7 +337,7 @@ func InstallPrelude(vm *VM) {
 		if args[0].Kind != runtime.KindMap {
 			return runtime.Unit, modTypeErr("map", "get_or", args[0])
 		}
-		for _, e := range args[0].Map {
+		for _, e := range args[0].Entries() {
 			if runtime.KeyEqual(e.Key, args[1]) {
 				return e.Val, nil
 			}
@@ -349,8 +349,8 @@ func InstallPrelude(vm *VM) {
 		if args[0].Kind != runtime.KindMap {
 			return runtime.Unit, typeErr("Map.remove", args[0])
 		}
-		out := make([]runtime.MapEntry, 0, len(args[0].Map))
-		for _, e := range args[0].Map {
+		out := make([]runtime.MapEntry, 0, args[0].Len())
+		for _, e := range args[0].Entries() {
 			if !runtime.KeyEqual(e.Key, args[1]) {
 				out = append(out, e)
 			}
@@ -362,8 +362,8 @@ func InstallPrelude(vm *VM) {
 		if args[0].Kind != runtime.KindMap {
 			return runtime.Unit, typeErr("Map.keys", args[0])
 		}
-		out := make([]runtime.Value, 0, len(args[0].Map))
-		for _, e := range args[0].Map {
+		out := make([]runtime.Value, 0, args[0].Len())
+		for _, e := range args[0].Entries() {
 			out = append(out, e.Key)
 		}
 		return runtime.List(out...), nil
@@ -502,8 +502,8 @@ func InstallPrelude(vm *VM) {
 		if args[1].Kind != runtime.KindStr {
 			return runtime.Unit, typeErr("Str.join", args[1])
 		}
-		parts := make([]string, len(args[0].List))
-		for i, v := range args[0].List {
+		parts := make([]string, args[0].Len())
+		for i, v := range args[0].Elems() {
 			if v.Kind != runtime.KindStr {
 				return runtime.Unit, typeErr("Str.join", v)
 			}

@@ -303,11 +303,11 @@ func installPorts(def func(name string, arity int, fn runtime.NativeFunc)) {
 
 // subscribeNames — непустой список атомов из signalNames, без повторов.
 func subscribeNames(v runtime.Value) ([]string, bool) {
-	if v.Kind != runtime.KindList || len(v.List) == 0 {
+	if v.Kind != runtime.KindList || v.Len() == 0 {
 		return nil, false
 	}
 	var names []string
-	for _, e := range v.List {
+	for _, e := range v.Elems() {
 		if e.Kind != runtime.KindAtom || !slices.Contains(signalNames, e.Atom) {
 			return nil, false
 		}

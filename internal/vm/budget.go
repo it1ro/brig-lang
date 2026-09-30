@@ -86,13 +86,13 @@ func sizeEstimate(v *runtime.Value) int64 {
 	case runtime.KindTuple:
 		return int64(len(v.Tuple)) * valueSize
 	case runtime.KindList:
-		return int64(len(v.List)) * valueSize
+		return int64(v.Len()) * valueSize
 	case runtime.KindVector:
-		return int64(len(v.Vector)) * valueSize
+		return int64(v.Len()) * valueSize
 	case runtime.KindSet:
-		return int64(len(v.Set)) * valueSize
+		return int64(v.Len()) * valueSize
 	case runtime.KindMap:
-		return int64(len(v.Map)) * entrySize
+		return int64(v.Len()) * entrySize
 	case runtime.KindVariant:
 		return boxSize + int64(len(v.Variant.Args))*valueSize
 	case runtime.KindRecord:

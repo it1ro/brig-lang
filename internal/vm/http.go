@@ -253,8 +253,8 @@ func responseHeaders(v runtime.Value) ([][2]string, bool) {
 	if v.Kind != runtime.KindList {
 		return nil, false
 	}
-	out := make([][2]string, 0, len(v.List))
-	for _, e := range v.List {
+	out := make([][2]string, 0, v.Len())
+	for _, e := range v.Elems() {
 		if e.Kind != runtime.KindTuple || len(e.Tuple) != 2 {
 			return nil, false
 		}

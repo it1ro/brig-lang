@@ -180,10 +180,10 @@ func (s *Session) callNative(name string, args []runtime.Value) (runtime.Value, 
 }
 
 func crashFrom(args []runtime.Value) (observe.Crash, bool) {
-	if len(args) < 3 || args[0].Kind != runtime.KindList || len(args[0].List) < 3 {
+	if len(args) < 3 || args[0].Kind != runtime.KindList || args[0].Len() < 3 {
 		return observe.Crash{}, false
 	}
-	ev := args[0].List
+	ev := args[0].Elems()
 	if ev[0].Kind != runtime.KindAtom || ev[1].Kind != runtime.KindAtom || ev[2].Kind != runtime.KindAtom {
 		return observe.Crash{}, false
 	}
