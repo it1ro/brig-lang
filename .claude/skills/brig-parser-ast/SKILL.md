@@ -53,7 +53,7 @@ description: >
 |---|---|---|
 | Параметры и guard `fn` | `Params []ast.Pattern`, `Guard ast.Expr` (T-50 #33). Variadic — `SpreadPattern` (`..name`). Мультиклозы, guard и паттерны параметров компилирует `compileClauses` (T-51) | ✓ T-51 (#34) |
 | `ensure` | Только `ensure expr`; блочная форма и гибрид `ensure expr`+блок — ошибка парсинга (S-F5 закрыт T-03 #3). Реализация блочной формы — out of scope | — |
-| `stmt_list` | NEWLINE между стейтментами обязателен (S-F6 закрыт T-21 #15): после `parseStmt` — NEWLINE/DEDENT/EOF/`until` | — |
+| `stmt_list` | NEWLINE между стейтментами обязателен (S-F6 закрыт T-21 #15): после `parseStmt` — NEWLINE/DEDENT/EOF/`until`; после DEDENT блочного выражения NEWLINE нет, поэтому `parsePostfix` не продолжает `(`/`[` за DEDENT (`afterDedent`, T-230) | — |
 
 S-F1 (интерполяция): `SplitInterp` + `InterpExpr(parts, exprs)` — закрыт
 T-53 (#36). Plain-строка без `\(...` остаётся `LiteralExpr`. Компиляция
