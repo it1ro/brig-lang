@@ -1,0 +1,40 @@
+name: Fuzz
+
+# Ночной fuzz (T-114): make fuzz на main. Найденный вход go test пишет в
+# internal/<pkg>/testdata/fuzz/<Target>/; новые файлы оттуда уходят в
+# артефакт. Починка — отдельным issue, вход — в seed-корпус его теста.
+on:
+    schedule:
+        - cron: "17 3 * * *"
+    workflow_dispatch:
+
+jobs:
+    fuzz:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+
+            - uses: actions/setup-go@v5
+              with:
+                  go-version-file: go.mod
+                  cache: true
+
+            - name: make fuzz
+              run: make fuzz
+
+            - name: Collect failing inputs
+              if: failure()
+              run: |
+                  mkdir -p fuzz-failures
+                  git ls-files --others --exclude-standard -- 'internal/*/testdata/fuzz/*' |
+                    while read -r f; do
+                      mkdir -p "fuzz-failures/$(dirname "$f")"
+                      cp "$f" "fuzz-failures/$f"
+                    done
+
+            - uses: actions/upload-artifact@v4
+              if: failure()
+              with:
+                  name: fuzz-failures
+                  path: fuzz-failures/
+                  if-no-files-found: warn
