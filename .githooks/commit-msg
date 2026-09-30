@@ -10,7 +10,9 @@ case "$SUBJECT" in
   Merge* | merge*) exit 0 ;;
 esac
 
-if ! printf '%s' "$SUBJECT" | grep -qE '^(feat|fix|refactor|docs|test|chore|ci|perf)(\([a-z][a-z-]+\))?: [a-z].*'; then
+# Типы и scope — CONTRIBUTING.md §4; тест — scripts/test-commit-msg.sh.
+# Scope — пакет или путь: vm, cmd/brig, e2e.
+if ! printf '%s' "$SUBJECT" | grep -qE '^(feat|fix|refactor|test|docs|chore|perf|build|ci)(\([a-z][a-z0-9/-]*\))?: [a-z].*'; then
   echo "commit-msg: не Conventional Commit:"
   echo "  $SUBJECT"
   echo "  формат: <type>(<scope>): <subject>  (английский, императив, строчными)"
