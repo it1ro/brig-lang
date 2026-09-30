@@ -40,7 +40,11 @@ func (s *Scheduler) reduce(a *Actor) {
 
 // charge считает выделение значения v.
 func (s *Scheduler) charge(a *Actor, v *runtime.Value) {
-	n := sizeEstimate(v)
+	s.chargeBytes(a, sizeEstimate(v))
+}
+
+// chargeBytes списывает n байт с бюджета хода актора a.
+func (s *Scheduler) chargeBytes(a *Actor, n int64) {
 	if n == 0 {
 		return
 	}

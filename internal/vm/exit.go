@@ -86,7 +86,9 @@ func (a *Actor) exitPending() bool {
 
 // unwindExit снимает кадры актора до ближайшего ensure-блока, пропуская
 // кадры trap (§12.7). true — вошли в ensure-блок, исполнение продолжается;
-// false — ensure не осталось (или :kill), актора пора завершать.
+// false — ensure не осталось (или :kill), актора пора завершать. После
+// handlers кадра исполняются его cleanups (drain в режиме exit, doc 02
+// §5.1): они принадлежат внешним уровням.
 func (s *Scheduler) unwindExit(a *Actor) bool {
 	sig := a.exit
 	sig.unwinding = true
@@ -104,6 +106,17 @@ func (s *Scheduler) unwindExit(a *Actor) bool {
 			sig.ensHandlers = len(f.handlers)
 			a.err = nil
 			return true
+		}
+		if !sig.kill {
+			d, _ := f.cont.(*drainRun)
+			if d == nil && len(f.cleanups) > 0 {
+				d = s.startDrain(a, f, runtime.Unit, false)
+			}
+			if d != nil && !d.done {
+				d.enterExit()
+				a.err = nil
+				return true
+			}
 		}
 		a.popFrame()
 	}

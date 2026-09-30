@@ -791,6 +791,9 @@ type nativeStep struct {
 	res  runtime.Value
 	// block — кадр ждёт (служебный актор Telemetry: очередь пуста).
 	block bool
+	// exit — drain в режиме exit закончил ensure: unwind от exit
+	// продолжается (doc 02 §5.1).
+	exit bool
 }
 
 // nativeCont — состояние нативной функции высшего порядка между вызовами

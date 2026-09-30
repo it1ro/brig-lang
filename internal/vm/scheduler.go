@@ -62,6 +62,10 @@ type Frame struct {
 	// dropResult — кадр доставки Telemetry, вставленный опкодом (spawn,
 	// send): завершение не пишет callDst вызывающего (§12.14).
 	dropResult bool
+	// cleanups — уровни trap с ensure, чьи кадры заменены TAILCALLENS
+	// (doc 02 §5.1); LIFO, переживают TAILCALL. Непустой — завершение
+	// кадра (RETURN, raise без handlers, exit) идёт через drain.
+	cleanups []cleanupRec
 }
 
 // catch пытается поймать *ErrRaise активным trap-регионом. При успехе
@@ -976,7 +980,28 @@ func (s *Scheduler) runSlice(a *Actor) {
 
 // ---- stepFrame ----
 
+// stepFrame исполняет верхний кадр актора. Кадр с cleanups (§5.1) не
+// завершается сразу: RETURN и непойманный raise превращают его в drain.
 func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
+	out := s.execFrame(a, f)
+	if len(f.cleanups) == 0 {
+		return out
+	}
+	switch out {
+	case stepDone:
+		s.startDrain(a, f, a.result, false)
+		return stepContinue
+	case stepFailed:
+		var rerr *ErrRaise
+		if a.exit == nil && errors.As(a.err, &rerr) {
+			s.startDrain(a, f, rerr.Val, true)
+			return stepContinue
+		}
+	}
+	return out
+}
+
+func (s *Scheduler) execFrame(a *Actor, f *Frame) stepOutcome {
 	if f.cont != nil {
 		return s.stepNative(a, f)
 	}
@@ -1258,10 +1283,17 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 			f.ip++
 			return stepContinue
 
-		case TAILCALL, TAILCALLSPREAD:
+		case TAILCALL, TAILCALLSPREAD, TAILCALLENS:
 			base, argc := in.A(), in.B()
 			cv := regs[base]
 			args := regs[base+1 : base+1+argc]
+			if op == TAILCALLENS {
+				// Запись — до разбора callee: его ошибку ловит этот уровень.
+				ens := regs[base+1+argc : base+1+argc+in.C()]
+				if err := s.pushCleanup(a, f, ens); err != nil {
+					return fail(err)
+				}
+			}
 			if op == TAILCALLSPREAD {
 				var serr error
 				if args, serr = spreadArgs(args); serr != nil {
@@ -1807,6 +1839,11 @@ func (s *Scheduler) stepNative(a *Actor, f *Frame) stepOutcome {
 		if st.block {
 			return stepBlock
 		}
+		if st.exit {
+			// drain в режиме exit исполнил все ensure: unwind продолжается.
+			a.exit.unwinding = false
+			return stepExit
+		}
 		if st.done {
 			s.charge(a, &st.res)
 			a.result = st.res
@@ -1814,6 +1851,13 @@ func (s *Scheduler) stepNative(a *Actor, f *Frame) stepOutcome {
 		}
 		nf, r, err := s.enterCall(a, st.fn, st.args)
 		if err != nil {
+			if d, ok := f.cont.(*drainRun); ok {
+				var rerr *ErrRaise
+				if errors.As(err, &rerr) {
+					d.catch(rerr.Val)
+					continue
+				}
+			}
 			if run, ok := f.cont.(*teleRun); ok {
 				var rerr *ErrRaise
 				if errors.As(err, &rerr) {
@@ -2211,6 +2255,10 @@ func (s *Scheduler) raiseCatchable(a *Actor) bool {
 		if _, ok := a.frames[i].cont.(*teleRun); ok {
 			return true
 		}
+		// Записи cleanups и drain ловят raise как trap уровня (§5.1).
+		if _, ok := a.frames[i].cont.(*drainRun); ok || len(a.frames[i].cleanups) > 0 {
+			return true
+		}
 	}
 	return false
 }
@@ -2267,6 +2315,9 @@ func (s *Scheduler) tryUnwindRaise(a *Actor) bool {
 		}
 		if run, ok := parent.cont.(*teleRun); ok {
 			s.catchTele(a, run, rerr.Val)
+			return true
+		}
+		if s.catchCleanups(a, parent, rerr.Val) {
 			return true
 		}
 		a.popFrame()
