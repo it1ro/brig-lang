@@ -728,10 +728,11 @@ fn main() ->
 `<>` также работает как паттерн для деструктуризации префикса строки (Elixir-style), и в связывании `pattern = expr`, и в параметрах функции:
 
 ```brig
-"Hello, " <> name = "Hello, World"   # name = "World"
-
 fn greet("Hello, " <> name) -> name
 fn greet(_) -> "?"
+
+"Hello, " <> name = "Hello, World"   # name = "World"
+greet("Hello, World")                # "World"
 ```
 
 **Ограничение (как в Elixir):** слева от `<>` в паттерне обязан быть строковый литерал — `x <> rest` не парсится (`'<>' пattern requires a string literal on its left-hand side`). Последовательные литералы складываются: `"a" <> "b" <> rest` эквивалентно `"ab" <> rest`. Несовпадение префикса в связывании — обычный `(:badmatch, v)` (§5.1); в мультиклозной функции — просто следующая клоза (первое совпадение побеждает, порядок клоз важен, как в Elixir).

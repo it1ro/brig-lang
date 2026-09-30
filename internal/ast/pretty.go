@@ -308,6 +308,10 @@ func prettyPattern(buf *bytes.Buffer, p Pattern, indent int) {
 		buf.WriteString(n.name)
 	case *literalPat:
 		buf.WriteString(n.value)
+	case *strConcatPat:
+		buf.WriteString("(<> " + n.prefix + " ")
+		prettyNode(buf, n.rest, indent)
+		buf.WriteString(")")
 	case *constructorPat:
 		buf.WriteString("(" + n.name)
 		for i := range n.fields {

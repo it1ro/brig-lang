@@ -333,6 +333,9 @@ func walkPattern(v Visitor, p Pattern) error {
 	case *asPat:
 		return walkNode(v, n.pattern)
 
+	case *strConcatPat:
+		return walkNode(v, n.rest)
+
 		// wildcardPat, identPat, literalPat, spreadPat — листья.
 	}
 	return nil
