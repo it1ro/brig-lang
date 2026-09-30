@@ -136,14 +136,14 @@ func InstallPrelude(vm *VM) {
 		if xs.Kind != runtime.KindList {
 			return nil, typeErr("map", xs)
 		}
-		out := make([]runtime.Value, 0, xs.Len())
+		out := runtime.NewListBuilder(xs.Len())
 		return &listCont{
-			f: f, xs: xs.Elems(),
+			f: f, xs: xs.Cursor(),
 			visit: func(_, r runtime.Value) (bool, runtime.Value, error) {
-				out = append(out, r)
+				out.Add(r)
 				return false, runtime.Unit, nil
 			},
-			final: func() runtime.Value { return runtime.List(out...) },
+			final: out.List,
 		}, nil
 	})
 
@@ -152,19 +152,19 @@ func InstallPrelude(vm *VM) {
 		if xs.Kind != runtime.KindList {
 			return nil, typeErr("filter", xs)
 		}
-		out := make([]runtime.Value, 0, xs.Len())
+		out := runtime.NewListBuilder(xs.Len())
 		return &listCont{
-			f: f, xs: xs.Elems(),
+			f: f, xs: xs.Cursor(),
 			visit: func(e, r runtime.Value) (bool, runtime.Value, error) {
 				if r.Kind != runtime.KindBool {
 					return false, runtime.Unit, typeErr("filter_predicate", r)
 				}
 				if r.Bool {
-					out = append(out, e)
+					out.Add(e)
 				}
 				return false, runtime.Unit, nil
 			},
-			final: func() runtime.Value { return runtime.List(out...) },
+			final: out.List,
 		}, nil
 	})
 
@@ -174,7 +174,7 @@ func InstallPrelude(vm *VM) {
 			return nil, typeErr("find", xs)
 		}
 		return &listCont{
-			f: f, xs: xs.Elems(),
+			f: f, xs: xs.Cursor(),
 			visit: func(e, r runtime.Value) (bool, runtime.Value, error) {
 				if r.Kind != runtime.KindBool {
 					return false, runtime.Unit, typeErr("find_predicate", r)
@@ -191,7 +191,7 @@ func InstallPrelude(vm *VM) {
 			return nil, typeErr("all", xs)
 		}
 		return &listCont{
-			f: f, xs: xs.Elems(),
+			f: f, xs: xs.Cursor(),
 			visit: func(_, r runtime.Value) (bool, runtime.Value, error) {
 				if r.Kind != runtime.KindBool {
 					return false, runtime.Unit, typeErr("all_predicate", r)
@@ -208,7 +208,7 @@ func InstallPrelude(vm *VM) {
 			return nil, typeErr("any", xs)
 		}
 		return &listCont{
-			f: f, xs: xs.Elems(),
+			f: f, xs: xs.Cursor(),
 			visit: func(_, r runtime.Value) (bool, runtime.Value, error) {
 				if r.Kind != runtime.KindBool {
 					return false, runtime.Unit, typeErr("any_predicate", r)
@@ -226,7 +226,7 @@ func InstallPrelude(vm *VM) {
 		}
 		buf := make([]runtime.Value, 2)
 		return &listCont{
-			f: f, xs: xs.Elems(),
+			f: f, xs: xs.Cursor(),
 			args: func(e runtime.Value) []runtime.Value {
 				buf[0], buf[1] = acc, e
 				return buf
@@ -833,8 +833,9 @@ func runSync(c runtime.Caller, k nativeCont) (runtime.Value, error) {
 // enterCall копирует его в регистры кадра или в свежий срез натива.
 type listCont struct {
 	f     runtime.Value
-	xs    []runtime.Value
-	i     int
+	xs    runtime.ListCursor
+	cur   runtime.Value // элемент, чей колбэк исполняется
+	begun bool
 	arg   [1]runtime.Value
 	args  func(e runtime.Value) []runtime.Value
 	visit func(e, r runtime.Value) (stop bool, res runtime.Value, err error)
@@ -842,8 +843,8 @@ type listCont struct {
 }
 
 func (c *listCont) resume(ret runtime.Value) (nativeStep, error) {
-	if c.i > 0 {
-		stop, res, err := c.visit(c.xs[c.i-1], ret)
+	if c.begun {
+		stop, res, err := c.visit(c.cur, ret)
 		if err != nil {
 			return nativeStep{}, err
 		}
@@ -851,11 +852,11 @@ func (c *listCont) resume(ret runtime.Value) (nativeStep, error) {
 			return nativeStep{done: true, res: res}, nil
 		}
 	}
-	if c.i == len(c.xs) {
+	e, ok := c.xs.Next()
+	if !ok {
 		return nativeStep{done: true, res: c.final()}, nil
 	}
-	e := c.xs[c.i]
-	c.i++
+	c.cur, c.begun = e, true
 	var args []runtime.Value
 	if c.args != nil {
 		args = c.args(e)

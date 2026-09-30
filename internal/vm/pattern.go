@@ -191,14 +191,16 @@ func MatchPattern(v runtime.Value, p *CompiledPattern, locals []runtime.Value) b
 		} else if v.Len() != len(p.Subs) {
 			return false
 		}
-		for i, sub := range p.Subs {
-			if !MatchPattern(v.At(i), sub, locals) {
+		rest := v
+		for _, sub := range p.Subs {
+			h, t, _ := rest.Uncons()
+			if !MatchPattern(h, sub, locals) {
 				return false
 			}
+			rest = t
 		}
 		if p.HasRest && p.RestSlot >= 0 && p.RestSlot < len(locals) {
-			rest := v.Elems()[len(p.Subs):]
-			locals[p.RestSlot] = runtime.List(rest...)
+			locals[p.RestSlot] = rest
 		}
 		return true
 
