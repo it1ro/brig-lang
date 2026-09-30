@@ -29,7 +29,7 @@ description: >
 4. **`make all`** — `check-smallint` + `fmt` + `vet` + `test` + `lint` +
    `build` + `check-examples` + `run-examples` + `corpus`; его же запускает CI (`.github/workflows/ci.yml`) на push и PR
    в `main`. Вместе с `BRIG_VERIFY=1 go test ./...` — обязательный гейт
-   перед PR (`CONTRIBUTING.md` §5).
+   перед PR (`WORKFLOW.md` §5).
 5. **`make fuzz`** — 3×60s (лексер, парсер, round-trip). Не входит в
    стандартный цикл; гонять точечно после правок в `lexer`/`parser`/
    `ast`-форматтере, особенно если менялась offside-логика или граничные
@@ -160,7 +160,7 @@ print-only тесты O-F2 переписаны в T-30 (#19); новые — т
 
 ## Что сообщать пользователю по завершении задачи
 
-Это же — содержимое раздела «Как проверялось» в body PR (`CONTRIBUTING.md`
+Это же — содержимое раздела «Как проверялось» в body PR (`WORKFLOW.md`
 §5). Явно указать:
 1. Какие `make`-цели были прогнаны и с каким результатом.
 2. Обновлялись ли golden/bytecode файлы, и если да — что именно изменилось

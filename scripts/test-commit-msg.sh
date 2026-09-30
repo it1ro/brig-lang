@@ -1,6 +1,6 @@
 #!/bin/sh
 # Тест хука .githooks/commit-msg (T-112): subject'ы, которые хук обязан
-# принять и отвергнуть. Правила — CONTRIBUTING.md §4.
+# принять и отвергнуть. Правила — WORKFLOW.md §4.
 set -eu
 
 HOOK="$(dirname "$0")/../.githooks/commit-msg"

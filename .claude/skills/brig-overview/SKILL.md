@@ -18,8 +18,8 @@ compiler → vm`, без циклов зависимостей (`parser` не в
 ## Как организована работа
 
 - Задачи — только issues на доске GitHub Projects v2 (`it1ro/brig-lang`,
-  проект 5). Протокол сессии — skill `brig-workflow`; правила —
-  `CONTRIBUTING.md`; команды для людей — `MAINTAINING.md`.
+  проект 5). Протокол сессии — skill `brig-workflow`; правила и команды —
+  `WORKFLOW.md`.
 - `AUDIT_REPORT.md` — первый аудит (`iter/regvm` @ `8ab58cf`, ID вида
   S-F2, A-F3, I-F9, O-F1); `AUDIT_REPORT-2.md` — второй (`main` @ `fefb355`,
   ID вида P-1, S-1, G-1, R-1, F-1). Перед тем как считать что-то новой
@@ -92,8 +92,7 @@ examples/               # .brig-программы (make run-examples)
 corpus/                 # код библиотек + manifest.tsv (make corpus, T-115)
 testdata/               # golden, bytecode, negative, positive
 .claude/skills/         # skills для агентов (этот файл и соседи)
-CONTRIBUTING.md         # правила работы
-MAINTAINING.md          # как работать с доской вручную/агентами
+WORKFLOW.md             # правила и команды работы с доской, ветками, PR
 tasks/                  # карта плана, файл на волну (README.md — индекс)
 AUDIT_REPORT.md, AUDIT_REPORT-2.md
 ```
@@ -136,5 +135,5 @@ AUDIT_REPORT.md, AUDIT_REPORT-2.md
    статус, а не реализовывать произвольно.
 4. Если задача меняет семантику языка или публичный синтаксис —
    `docs/01-language-design.md` должен измениться синхронно
-   (`CONTRIBUTING.md` §6), но агент doc-файлы вне docs-задач не правит
+   (`WORKFLOW.md` §6), но агент doc-файлы вне docs-задач не правит
    (§7): остановиться и описать нужную правку спеки в issue.
