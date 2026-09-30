@@ -40,6 +40,16 @@ description: >
    (base и PR вперемежку) и сравнивает `benchstat`: значимая регрессия
    больше `BENCH_THRESHOLD_PCT` (5 %) по времени или аллокациям — красный
    статус. Гонять локально после правок горячих путей VM/компилятора.
+   `make bench` пропускает `BenchmarkScaling` (`-skip Scaling`).
+7. **`make bench-scaling`** — асимптотика коллекций (T-247):
+   `BenchmarkScaling/{list_prepend,map_put,vec_push}/{1k,8k}` в
+   `internal/vm/bench_test.go`; цель печатает t(8k)/t(1k) по операциям
+   и падает, если отношение > `SCALING_MAX_RATIO` (16; линейный рост ~8,
+   квадратичный ~64). Не входит в `all`. На `main` красная (квадратичный
+   рост, F-11/X-1), job `scaling` в `bench.yml` с `continue-on-error: true`
+   до T-271…T-273; после них `continue-on-error` убрать. Гонять после
+   правок персистентных коллекций (`List`/`Map`/`Vec` в `internal/runtime`,
+   прелюдия).
 
 ## Golden-тесты (`testdata/golden/`)
 

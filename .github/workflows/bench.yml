@@ -54,3 +54,22 @@ jobs:
                       }
                       END { exit bad }
                   ' cmp.csv
+
+    # Асимптотика коллекций (T-247): t(8k)/t(1k) > 16 — красный. На main цель
+    # пока красная (квадратичный рост), поэтому в CI она мягкая.
+    # До T-271…T-273: continue-on-error и SCALING_SOFT=1 — убрать оба после
+    # T-273 (тогда job станет обычным жёстким).
+    scaling:
+        runs-on: ubuntu-latest
+        continue-on-error: true
+        steps:
+            - uses: actions/checkout@v4
+
+            - uses: actions/setup-go@v5
+              with:
+                  go-version-file: go.mod
+                  cache: true
+
+            - name: Bench scaling
+              shell: bash
+              run: make bench-scaling SCALING_SOFT=1 | tee -a "$GITHUB_STEP_SUMMARY"
