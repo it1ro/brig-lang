@@ -1981,8 +1981,10 @@ func (fc *funcCompiler) compileCall(call ast.CallExpr, d dest) error {
 		case "%{}":
 			return fc.compileMap(call.Args(), d)
 		}
-		// fn модуля с именем акторного примитива его затеняет (§11.5).
-		if !fc.compiler.cur.fns[name] {
+		// fn модуля и лексическая привязка (локаль, параметр, имя из
+		// паттерна, локальная fn, захват) с именем акторного примитива
+		// его затеняют (§11.5); примитив тогда — `Prelude.<name>(…)`.
+		if !fc.compiler.cur.fns[name] && !fc.boundLexically(name) {
 			if ok, err := fc.compileActorCall(name, call.Args(), d); ok {
 				return err
 			}
@@ -1999,6 +2001,26 @@ func (fc *funcCompiler) compileCall(call ast.CallExpr, d dest) error {
 	}
 
 	return fc.compileGenericCall(call, d)
+}
+
+// boundLexically — связано ли name лексически в fc или в охватывающих
+// fn: локаль, локальная fn или имя, которое станет upvalue. Без побочных
+// эффектов (resolveUpvalue регистрирует захват).
+func (fc *funcCompiler) boundLexically(name string) bool {
+	for p := fc; p != nil; p = p.parent {
+		if _, ok := p.resolveLocal(name); ok {
+			return true
+		}
+		if _, ok := p.localFns[name]; ok {
+			return true
+		}
+		for _, uv := range p.upvalues {
+			if uv.name == name {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // bareStdlibFn — голые имена, которые компилируются в вызов функции
