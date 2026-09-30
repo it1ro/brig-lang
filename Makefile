@@ -6,14 +6,14 @@ VERSION ?= $(shell git describe --tags --always 2>/dev/null || echo dev)
 
 .PHONY: all build test test-race lint fmt vet check-examples spec-tables \
 	git-hooks changelog fuzz update-golden update-bytecode update-examples run-examples clean \
-	corpus update-corpus \
+	corpus update-corpus plan-check \
 	test-roundtrip test-ast test-parser test-lexer test-one \
 	test-vm test-compiler test-stdlib run run-hello \
 	fmt-check cover cover-html ci-quick check repl
 
 # `make` без цели: полный локальный прогон всего, что должно быть зелёным.
 # Добавлены цели Трека C: test-vm и test-compiler.
-all: check-smallint fmt vet test lint build check-examples run-examples corpus
+all: check-smallint fmt vet test lint build check-examples run-examples corpus plan-check
 
 ## ---- Сборка ----
 build:
@@ -111,6 +111,12 @@ update-examples:
 # и needs с несуществующей задачей; печатает сводку по уровням и needs.
 corpus: build
 	$(GO) run ./cmd/corpus -brig $(BIN)/brig
+
+# Согласованность плана tasks/ (T-111): уникальность блоков, depends_on,
+# ссылки, обязательные части блока. Без сети; `make plan-check ONLINE=1`
+# дополнительно сверяет номера с titles issues через gh (в all не входит).
+plan-check:
+	$(GO) run ./cmd/plan-check $(if $(ONLINE),-online)
 
 # Поднять уровни неожиданно прошедших файлов и перезаписать X.out
 # (diff манифеста смотреть глазами, выполненные задачи из needs снять вручную).
