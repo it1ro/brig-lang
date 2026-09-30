@@ -362,6 +362,8 @@ func TestCheckBlockUnknownFunctionFails(t *testing.T) {
 // TestCheckBlockPendingNeedsTask: `brig pending(T-NNN)` обязан не
 // компилироваться и ссылаться на существующую задачу (T-116). Неизвестная
 // функция — тоже «не компилируется», как в `brig check` (§F.3, T-160).
+// Парсер и round-trip pending-блок проходит как обычный: ждать задачу
+// может только sema или компилятор (T-151).
 func TestCheckBlockPendingNeedsTask(t *testing.T) {
 	tasks := map[string]bool{"T-500": true}
 	notCompiling := "t = (1, 2, 3)\nFoo{a: t}"
@@ -378,6 +380,7 @@ func TestCheckBlockPendingNeedsTask(t *testing.T) {
 		{"pending неизвестной задачи", "brig pending(T-999)", notCompiling, false, "T-999"},
 		{"pending без номера", "brig pending", notCompiling, false, "pending"},
 		{"pending(T-NNN) в invalid", "brig invalid pending(T-500)", "x %", false, "pending"},
+		{"pending, ошибка парсера", "brig pending(T-500)", "x %", false, "pending(T-500)"},
 	}
 	for _, c := range cases {
 		r := checkBlock(block{file: "t.md", line: 1, lang: c.lang, raw: c.raw}, tasks)
