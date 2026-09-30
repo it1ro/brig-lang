@@ -199,7 +199,7 @@ base_indent = stmt_indent — отступ первой строки логич�
 
 Пример:
 
-```brig
+```brig module
 fn main() ->
     result = trap
         f1 = open("a.txt")
@@ -208,6 +208,11 @@ fn main() ->
         ensure close(f2)
         process(f1, f2)
     result
+
+# хелперы примера
+fn open(path) -> path
+fn close(_f) -> ()
+fn process(a, b) -> (a, b)
 ```
 
 Здесь `base_indent` — 4 (отступ строки `result = trap`), тело и ensure-клаузы — на отступе 8 > 4. То, что `trap` стоит в колонке 14, не важно.
@@ -527,7 +532,7 @@ fn swap(pair) ->
 - В любом количестве, в любой позиции.
 - В позиции **аргумента вызова** форма `..` требует выражения: `f(..xs)` корректен, `f(..)` — ошибка парсинга.
 
-```brig
+```text
 [0, ..xs, 99]
 { ..user, name: "Bob" }
 { ..a, ..b, x: 1 }
@@ -617,7 +622,7 @@ fold(xs, 0, (acc, x) -> acc + x)
 
 **Пустая (канон):**
 
-```brig
+```text
 thunk = () -> spawn_linked(() -> counter_loop(0))
 ```
 
@@ -631,7 +636,7 @@ fn (x) ->
 
 При нуле параметров скобки в полной форме не нужны — канон `fn ->`:
 
-```brig
+```text
 fn ->
     y = compute()
     y + 1
@@ -859,7 +864,7 @@ fn main() ->
 
 ### 8.1 `if` — синтаксический сахар над `match`
 
-```brig
+```text
 if ready
     start()
 else
@@ -868,7 +873,7 @@ else
 
 ≡
 
-```brig
+```text
 match ready
     true  -> start()
     false -> wait()
@@ -876,7 +881,7 @@ match ready
 
 Без `else` — `()`:
 
-```brig
+```text
 if ready
     start()
 # ≡ match ready
@@ -886,7 +891,7 @@ if ready
 
 Однострочная форма — только целиком, с обеими ветками:
 
-```brig
+```text
 x = if ready then start() else wait()
 ```
 
@@ -894,7 +899,7 @@ x = if ready then start() else wait()
 
 ### 8.2 `with`/`else`
 
-```brig
+```brig module
 fn process(input) ->
     with
         Ok(a) <- validate(input)
@@ -903,6 +908,11 @@ fn process(input) ->
         Ok(c)
     else
         Error(e) -> Error(e)
+
+# хелперы примера
+fn validate(x) -> Ok(x)
+fn transform(x) -> Ok(x)
+fn save(x) -> Ok(x)
 ```
 
 Binds только в начале; тело — с первого statement без `<-`.
@@ -918,6 +928,10 @@ fn process(x) ->
         Ok(y)
     else
         Error(e) -> Error(e)
+
+# хелперы примера
+fn validate(x) -> Ok(x)
+fn transform(x) -> x
 ```
 
 `else` — на уровне отступа `with`. Ветки `else` проверяются по порядку; первая совпавшая выигрывает.
@@ -1044,11 +1058,14 @@ User{ id: id }   # частичный
 
 ### 10.2 `raise`/`trap`
 
-```brig
+```brig module
 fn get_user(id) ->
     match find_user(id)
         Some(u) -> u
         None    -> raise((:not_found, id))
+
+# хелперы примера
+fn find_user(_id) -> None
 ```
 
 **Двойные скобки:** `raise` принимает ровно один аргумент; кортеж `(:not_found, id)` передаётся как один аргумент.
@@ -1074,7 +1091,7 @@ fn get_user(id) ->
 
 Пример с двумя `ensure`, перемежающимися с кодом:
 
-```brig
+```brig module
 fn main() ->
     result = trap
         f1 = open("a.txt")
@@ -1083,6 +1100,11 @@ fn main() ->
         ensure close(f2)
         process(f1, f2)
     result
+
+# хелперы примера
+fn open(path) -> path
+fn close(_f) -> ()
+fn process(a, b) -> (a, b)
 ```
 
 Порядок выполнения при выходе: `close(f2)`, затем `close(f1)`.
@@ -1488,7 +1510,7 @@ pub fn to_fahrenheit(c) -> c * 9 / 5 + 32
 
 ### 12.2 Создание и связывание
 
-```brig
+```brig module
 fn main() ->
     pid1 = spawn(() -> counter_loop(0))
     link(pid1)
@@ -1496,6 +1518,9 @@ fn main() ->
     ref = watch(pid2)
     unwatch(ref)
     (pid1, pid2)
+
+# хелперы примера
+fn counter_loop(n) -> n
 ```
 
 `watch(pid)` присылает `(:down, ref, reason)` в `recv`.
@@ -1563,7 +1588,7 @@ x = recv (:value, v) -> v
 
 **Плата за отказ от selective receive.** Прикладная идиома — актор складывает «неожиданные» сообщения в стейт:
 
-```brig
+```brig module
 fn worker_loop(state) ->
     recv
         (:reply, id, v) when has_pending(state, id) ->
@@ -1574,6 +1599,11 @@ fn worker_loop(state) ->
     else msg
         log("unknown: \(msg)")
         worker_loop(state)
+
+# хелперы примера
+fn has_pending(_state, _id) -> false
+fn resolve_pending(state, _id, _v) -> state
+fn stash(state, _id, _v) -> state
 ```
 
 ### 12.5 `recv` vs `match`
@@ -2006,7 +2036,11 @@ fn main() ->
 
 ### 13.1 Супервизоры
 
-```brig
+```brig stmt
+# хелперы примера
+fn counter_loop(n) -> n
+fn worker_loop(n) -> n
+
 sup = Supervisor.start({
     strategy: :one_for_one,
     max_restarts: 3,
@@ -2765,13 +2799,18 @@ base_indent = stmt_indent   # отступ первой строки логич�
 
 **Пример (корректный):**
 
-```brig
+```brig module
 fn main() ->
     result = trap
         f1()
         ensure cleanup()
         f2()
     result
+
+# хелперы примера
+fn f1() -> 1
+fn cleanup() -> ()
+fn f2() -> 2
 ```
 
 Здесь:
@@ -2867,7 +2906,7 @@ LOWER_IDENT(x) NEWLINE DEDENT EOF
 
 #### `if` с `else`
 
-```brig
+```text
 fn main() ->
     if ready
         start()
@@ -2886,7 +2925,7 @@ NEWLINE DEDENT EOF
 
 #### `trap` с `ensure` (v0.4.7)
 
-```brig
+```text
 fn main() ->
     result = trap
         f1()
