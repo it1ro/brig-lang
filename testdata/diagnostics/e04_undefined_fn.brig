@@ -1,0 +1,4 @@
+# expect: check 1 4:5 undefined function f/2
+module Main
+fn main() ->
+    f(1, 2)

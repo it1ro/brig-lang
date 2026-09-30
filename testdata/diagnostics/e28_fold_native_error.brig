@@ -1,0 +1,5 @@
+# expect: run 2 5:5 fold
+# pending: T-265
+module Main
+fn main() ->
+    fold([1, 2], (acc, x) -> acc + x, 0)

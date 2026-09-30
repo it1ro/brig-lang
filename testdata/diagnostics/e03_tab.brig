@@ -1,0 +1,4 @@
+# expect: check 1 4:1 tab
+module Main
+fn main() ->
+	1

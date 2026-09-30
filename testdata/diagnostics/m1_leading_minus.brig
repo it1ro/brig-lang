@@ -1,0 +1,6 @@
+# expect: check 1 6:5 унарный минус
+# pending: T-265
+module Main
+fn main() ->
+    x = 1
+    -x

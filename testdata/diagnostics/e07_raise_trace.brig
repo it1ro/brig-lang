@@ -1,0 +1,4 @@
+# expect: run 2 4:5 boom
+module Main
+fn main() ->
+    raise((:boom, 1))

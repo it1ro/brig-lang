@@ -1,0 +1,5 @@
+# expect: check 1 4:16 variadic parameter
+module Main
+fn main() ->
+    f = fn (a, ..b, c) -> 1
+    f(1)

@@ -1,0 +1,6 @@
+# expect: check 1 6:1 INDENT
+module Main
+fn main() ->
+    x = 1
+      y = 2
+    x

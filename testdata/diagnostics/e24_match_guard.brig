@@ -1,0 +1,7 @@
+# expect: check 1 6:11 guard в match запрещён
+# pending: T-265
+module Main
+fn main() ->
+    match 1
+        x when x > 0 -> x
+        _ -> 0

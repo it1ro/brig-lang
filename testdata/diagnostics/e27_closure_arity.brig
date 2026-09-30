@@ -1,0 +1,5 @@
+# expect: run 2 5:5 function_clause
+module Main
+fn main() ->
+    f = (a) -> a
+    f(1, 2)

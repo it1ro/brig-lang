@@ -1,0 +1,2 @@
+# expect: check 0 - ok
+print(1)

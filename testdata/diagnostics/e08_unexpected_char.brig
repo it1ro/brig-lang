@@ -1,0 +1,5 @@
+# expect: check 1 4:11 unexpected character
+module Main
+fn main() ->
+    x = 1 $
+    x

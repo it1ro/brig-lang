@@ -1,0 +1,4 @@
+# expect: run 1 4:11 undefined
+module Main
+fn main() ->
+    print(y)

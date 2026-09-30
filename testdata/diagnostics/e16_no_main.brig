@@ -1,0 +1,3 @@
+# expect: run 1 1:1 нет функции main()
+module Main
+fn f() -> 1
