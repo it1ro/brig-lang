@@ -62,9 +62,13 @@ VM — в `docs/02-register-based-virtual-machine.md`. Задачи ведутс
 | `chore`    | служебное: конфиги, зависимости, чистка    |
 | `perf`     | ускорение без изменения поведения          |
 | `build`    | `Makefile`, `go.mod`, сборка               |
+| `ci`       | `.github/workflows/`, настройки CI         |
 
 - `scope` — пакет или файл: `compiler`, `parser`, `vm`, `lexer`, `ast`, `sema`,
-  `repl`, `cmd/brig`, `docs`.
+  `repl`, `cmd/brig`, `docs`. Строчные латинские буквы, цифры, `-` и `/`; scope
+  необязателен (`ci: …`).
+- Hook `commit-msg` (`make git-hooks`) проверяет тип из таблицы, scope, subject
+  строчными, без кириллицы, ≤ 72 символов; тест хука — `scripts/test-commit-msg.sh`.
 - `[T-NN]` в конце subject обязателен, но не enforced hook-ом: проверяется глазами
   при ревью PR и в squash-сообщении merge-коммита.
 - Черновые коммиты внутри integration-ветки — без `[T-NN]`. Требование действует
