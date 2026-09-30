@@ -72,10 +72,10 @@ description: >
 
 - Разумный объём: не заводить issue/PR на пару строк диффа. Если находка или доработка тянет меньше чем на отдельный тест-якорь + DoD-пункт — либо чинить на месте (см. «Работа»), либо объединять с ближайшей по смыслу нерешённой задачей той же подсистемы/секции спеки, а не плодить тикет-мелочь.
 - Группировка приветствуется: несколько мелких, семантически близких находок (один файл/секция спеки, одна подсистема, один DD) — один issue с несколькими пунктами DoD и одним тест-якорем на группу, а не N отдельных issue.
-- Title `T-NN · <имя>`; T-NN — следующий свободный номер в десятке волны (`max(номера T-NN в titles issues, номера в tasks/) + 1` внутри десятка; проверка — `make plan-check ONLINE=1`). Если в `tasks/wave-N.md` уже есть полный блок задачи — body берётся из него (без заголовка); после создания issue блок заменяется строкой таблицы со ссылкой на issue.
-- Body по образцу любого существующего issue того же типа: meta-комментарий (priority, type, effort, model, wave, depends_on, findings), **Файлы**, **Тест-якорь** (существующий или «создать»), бинарный **DoD** (команда → результат, без «улучшить»), **НЕ делать** (≥3 пункта). Зависимости — первыми строками `> Blocked by #M`.
-- Labels: `<audit|spec-gap>,<task type>,<P>,wave-<N>,<model>`, плюс `blocker` для P0 и `must` для Must-пробела §16. Task type `feature` — реализация фичи из спеки (label `feature`, ветка `feat/`).
-- Добавить на доску (`gh project item-add 5 --owner it1ro --url <url>`) и заполнить Priority, Task type, Effort, Model, Wave, Status. Sprint не ставить.
+- Title `T-NN · <имя>`; T-NN — следующий свободный номер (`max(номера T-NN в titles issues, номера в tasks/) + 1`, с T-240 без десятков; проверка — `make plan-check ONLINE=1`). План ведётся milestones, а не волнами: блоков в `tasks/wave-N.md` для новых задач нет (файлы волн 0–15 — архив).
+- Body по образцу любого существующего issue того же типа: meta-комментарий (priority, type, effort, model, milestone, depends_on, findings, parent), **Файлы**, **Тест-якорь** (существующий или «создать»), бинарный **DoD** (команда → результат, без «улучшить»), **НЕ делать** (≥3 пункта). Зависимости — первыми строками `> Blocked by #M`.
+- Labels: `<audit|spec-gap>,<task type>,<P>,<model>`, плюс `blocker` для P0 и `must` для Must-пробела §16; label `wave-N` не ставится. Milestone — обязателен (`--milestone "M… · …"`). Задача из аудита или его сессии планирования — sub-issue эпика аудита (третий — #276): `gh api -X POST repos/it1ro/brig-lang/issues/<эпик>/sub_issues -F sub_issue_id=<id issue>`. Task type `feature` — реализация фичи из спеки (label `feature`, ветка `feat/`).
+- Добавить на доску (`gh project item-add 5 --owner it1ro --url <url>`) и заполнить Priority, Task type, Effort, Model, Status (Todo; Backlog — если есть открытый `Blocked by`). Wave и Sprint не ставить.
 
 ## Что уже известно (не переоткрывать)
 

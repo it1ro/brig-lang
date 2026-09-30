@@ -10,7 +10,7 @@ Brig: доска, ветки, коммиты, PR, DoR/DoD, режимы рабо
 LLM-агента (Старт → Работа → Финиш, стек PR) — в skill
 `.claude/skills/brig-workflow/SKILL.md`; здесь — только политика (что агенту
 можно/нельзя, какой режим когда). Задачи ведутся и ищутся только на
-Kanban-доске (GitHub Projects v2); `tasks/` — карта плана (файл на волну:
+Kanban-доске (GitHub Projects v2); `tasks/` — карта плана (milestones, архив волн 0–15,
 зависимости, ссылки на issues; без статусов), при расхождении права доска.
 
 ## 1. TL;DR
@@ -39,23 +39,27 @@ flowchart LR
 |---|---|---|
 | Доска | [github.com/users/it1ro/projects/5](https://github.com/users/it1ro/projects/5), `gh project view 5 --owner it1ro --web` | Единственный список задач и их статусов |
 | Задачи с DoD | issues `it1ro/brig-lang` с label `audit` (findings аудита) или `spec-gap` (пробелы относительно спеки §16; уровень §16 — label `must`) | Body issue — источник DoD (файлы, тест-якорь, DoD, «НЕ делать») |
-| План целиком | `tasks/` (`README.md` — индекс, `wave-N.md`, `decisions.md`) | Карта плана без статусов: волны, зависимости, ссылки на issues, design decisions; для задач без issue — полные блоки |
+| План целиком | milestones `it1ro/brig-lang` (M1…); `tasks/` (`README.md` — индекс, `decisions.md`, архив `wave-N.md` 0–15) | Milestone — проверяемая цель, описание — критерий выхода; `tasks/` — карта без статусов: milestones, design decisions, архив волн |
 | Находки | `AUDIT_REPORT.md`, `AUDIT_REPORT-2.md` | Описание каждого finding (первый аудит — S-F*, A-F*, I-F*, O-F*; второй — P-*, S-*, G-*, R-*, F-*) и пробных программ |
 | Контекст для агентов | `.claude/skills/*/SKILL.md` | Инварианты подсистем и протокол сессии (`brig-workflow`) |
 
-- Следующая задача — из Todo: сначала меньший Wave, внутри него — выше
-  Priority (P0 первым). Задачи, которых нет на доске, не берутся в работу.
+- Следующая задача — из Todo: сначала меньший milestone (M1 раньше M2),
+  внутри него — выше Priority (P0 первым). Задачи волн 0–15 без milestone
+  — по старому правилу: меньший Wave. Задачи, которых нет на доске, не берутся в работу.
 - Новый issue сразу добавляется на доску: `gh project item-add 5 --owner it1ro --url <issue-url>`.
 - Один issue = одна сессия. Не помещается в Effort large — дели на
   несколько issue.
-- Обязательные поля: **Task type**, Effort, Model, Wave, Priority.
+- Обязательные поля: **Task type**, Effort, Model, Priority и milestone
+  issue. Поле **Wave** и label `wave-N` — только для задач волн 0–15.
+- Задачи по итогам аудита или сессии планирования — sub-issues эпика
+  (для третьего аудита — #276).
 - Label происхождения: `audit` — finding из `AUDIT_REPORT.md` или
   `AUDIT_REPORT-2.md`, `spec-gap` — пробел реализации относительно спеки
   (§16). Задача без одного из них не берётся. Дополнительно `edit-spec` —
   перенос утверждённого решения research в спеку.
-- Статус задачи — только на доске. `tasks/` хранит карту плана (волны,
-  зависимости) без статусов; DoD — в теле issue. Полный блок задачи (с DoD)
-  лежит в `tasks/wave-N.md` своей волны, только пока issue не заведён.
+- Статус задачи — только на доске. `tasks/` хранит карту плана без статусов;
+  DoD — в теле issue. Новые задачи сразу заводятся issues, блоков в
+  `tasks/` для них нет (архив волн 0–15 — см. `tasks/README.md`).
 - Зависимость — строкой в body, не label: `Blocked by #42`.
 - Issue остаётся в Blocked, пока все issue из `Blocked by` не закрыты.
 
@@ -64,7 +68,7 @@ flowchart LR
 Поля: **Priority** (P0…P3), **Task type** (fail-fast, full-fix, test-infra,
 docs, merge, feature), **Effort** — размер задачи (low / medium / large),
 **Model** — исполнитель (`sonnet · рутина`, `opus · сложное`, `human ·
-вручную`), **Wave** (0…20; тема волны — в `tasks/wave-N.md` и label `wave-N`),
+вручную`), **Wave** (0…15, архив; тема волны — в `tasks/wave-N.md` и label `wave-N`; новые задачи не заполняют),
 **Sprint** (итерации по 2 недели с понедельника 2026-09-28).
 
 Поле называется **`Task type`**, а не `Type`: имя `Type` GitHub зарезервировал
@@ -80,7 +84,7 @@ docs, merge, feature), **Effort** — размер задачи (low / medium / 
 | Task type | `feature`, `full-fix`, `fail-fast`, `test-infra`, `docs`, `merge` | пастель, у каждого типа свой тон |
 | Источник | `audit`, `spec-gap`, `must`, `edit-spec` | фиолетовые, от светлого к тёмному |
 | Модель | `sonnet`, `opus`; `human` | синие, от светлого к тёмному; `human` — коричневый |
-| Волна | `wave-0` … `wave-15` | серые, от светлого к тёмному |
+| Волна (архив) | `wave-0` … `wave-15` | серые, от светлого к тёмному |
 | Процесс | `design-decision`, `verification`, `epic` | маджента, зелёный, чёрный |
 | Закрыто без работы | `false-positive`, `duplicate`, `invalid`, `wontfix` | белый |
 
@@ -90,7 +94,7 @@ docs, merge, feature), **Effort** — размер задачи (low / medium / 
 stateDiagram-v2
   [*] --> Backlog
   [*] --> Todo
-  Backlog --> Todo: задача готова к работе (DD решён, волна подошла)
+  Backlog --> Todo: задача готова к работе (DD решён, блокеры закрыты)
   Backlog --> Rejected: отклонено без работы
   Todo --> InProgress: исполнитель берёт issue
   InProgress --> InReview: PR открыт
@@ -101,10 +105,10 @@ stateDiagram-v2
   InProgress: In Progress — ровно одна сессия на issue
   InReview: In Review — ждёт CI и/или ревью человека
   Done: Done — автоматически при закрытии issue (workflow проекта)
-  Backlog: Backlog — заведено, но не готово (дальние волны, DD ждут человека)
+  Backlog: Backlog — заведено, но не готово (открытые Blocked by, DD ждут человека)
 ```
 
-Порядок выбора: сначала меньшая Wave, внутри — выше Priority. Из Backlog
+Порядок выбора: сначала меньший milestone, внутри — выше Priority. Из Backlog
 агент задачи не берёт. Эпики (#44–#49, #124) и первые DD (#40–#43) на доске
 не стоят; новые DD стоят в Backlog до решения.
 
@@ -112,7 +116,7 @@ stateDiagram-v2
 
 **В веб-интерфейсе доски** (через API это не делается):
 
-1. New view → Board, Group by: Status, Sort: Wave, затем Priority. Отдельный
+1. New view → Board, Group by: Status, Sort: Milestone, затем Priority. Отдельный
    вид с фильтром `status:Todo` удобен как «что брать дальше».
 2. Settings → Workflows: включены «Item closed → Done» и «Pull request
    merged → Done».
@@ -243,7 +247,7 @@ Closes #<issue>
 ## 6. Definition of Ready / Definition of Done
 
 - **DoR:**
-  - заполнены Task type, Effort, Model, Wave, Priority;
+  - заполнены Task type, Effort, Model, Priority, milestone;
   - указан тест-якорь: существующий (`internal/parser/parser_test.go`) или «создать»;
   - DoD в issue проверяемый: «`make test-parser` возвращает 0», а не «парсер работает лучше».
 - **DoD:**
@@ -400,17 +404,19 @@ Todo.
 
 ```bash
 gh issue create --repo it1ro/brig-lang --title "T-NN · <имя>" --body-file body.md \
-  --label "<audit|spec-gap>,<task type>,<P>,wave-<N>,<model>[,must]"
+  --label "<audit|spec-gap>,<task type>,<P>,<model>[,must]" --milestone "<M…>"
+gh api -X POST repos/it1ro/brig-lang/issues/<эпик>/sub_issues \
+  -F sub_issue_id=$(gh api repos/it1ro/brig-lang/issues/<N> --jq .id)   # если задача из аудита
 gh project item-add 5 --owner it1ro --url <url>
 board_set <N> Priority <P>; board_set <N> "Task type" <type>; board_set <N> Effort <low|medium|large>
-board_set <N> Model <model>; board_set <N> Wave <wave>; board_set <N> Status Todo
+board_set <N> Model <model>; board_set <N> Status Todo   # Backlog, если есть открытый Blocked by
 ```
 
-Номер T-NN — следующий свободный в десятке волны: `max(номера T-NN в
-titles issues, номера в tasks/) + 1` внутри десятка. Проверка —
+Номер T-NN — следующий свободный: `max(номера T-NN в titles issues,
+номера в tasks/) + 1` (с T-240 — сквозная нумерация, без десятков по волнам). Проверка —
 `make plan-check ONLINE=1`.
 
-**Перенос запланированной волны на доску.** Задачи идут в порядке таблицы
+**Перенос запланированной волны на доску (архив волн 0–15).** Задачи идут в порядке таблицы
 «Порядок и параллельность» из `tasks/wave-N.md`. Для каждого блока: body
 issue = блок без заголовка, плюс `> Blocked by #M` для каждой задачи из
 `depends_on`, у которой уже есть issue; дальше — команды выше. После
