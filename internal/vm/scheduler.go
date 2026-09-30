@@ -1037,10 +1037,15 @@ func (s *Scheduler) stepFrame(a *Actor, f *Frame) stepOutcome {
 			f.ip++
 
 		case CONCAT:
-			// компилятор кладёт сюда только Str (to_str и литеральные части)
+			// компилятор кладёт сюда интерполяцию (всегда Str) и исходный
+			// оператор `<>` — операнды последнего произвольны, поэтому
+			// несоответствие типа — ловимый (:type_error, (:concat, (a, b))).
 			if regs[in.B()].Kind != runtime.KindStr || regs[in.C()].Kind != runtime.KindStr {
-				return fail(fmt.Errorf("internal: CONCAT: operands %s, %s",
-					regs[in.B()].Inspect(), regs[in.C()].Inspect()))
+				err := arithErr(regs[in.B()], regs[in.C()], "concat")
+				if f.catch(err) {
+					continue
+				}
+				return fail(err)
 			}
 			regs[in.A()] = runtime.Str(regs[in.B()].Str + regs[in.C()].Str)
 			s.charge(a, &regs[in.A()])

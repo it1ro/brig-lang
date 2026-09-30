@@ -168,7 +168,7 @@ func cmpOp(t lexer.TokenType) (string, bool) {
 
 // pipe_expr ::= range_expr { "|>" pipe_rhs }
 func (p *parser) parsePipe() (ast.Expr, error) {
-	left, err := p.parseRange()
+	left, err := p.parseConcat()
 	if err != nil {
 		return nil, err
 	}
@@ -206,6 +206,23 @@ func (p *parser) parsePipeRHS() (ast.Expr, []ast.Expr, error) {
 		return callee, args, nil
 	}
 	return callee, nil, nil
+}
+
+// concat_expr ::= range_expr [ "<>" concat_expr ]  (right-assoc)
+func (p *parser) parseConcat() (ast.Expr, error) {
+	left, err := p.parseRange()
+	if err != nil {
+		return nil, err
+	}
+	if p.at(lexer.OP_CONCAT) {
+		op := p.advance()
+		right, err := p.parseConcat()
+		if err != nil {
+			return nil, err
+		}
+		return ast.NewBinaryExpr("<>", left, right, op.Line, op.Col), nil
+	}
+	return left, nil
 }
 
 // range_expr ::= add_expr [ "to" add_expr ]  (non-assoc)

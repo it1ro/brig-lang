@@ -307,6 +307,16 @@ func (p *constructorPat) CtorArgs() []Pattern {
 	return out
 }
 
+// PatternStrConcat — доступ к паттерну "prefix" <> rest.
+type PatternStrConcat interface {
+	Pattern
+	ConcatPrefix() string // raw quoted literal form, decode via parseLiteralValue
+	ConcatRest() Pattern
+}
+
+func (p *strConcatPat) ConcatPrefix() string { return p.prefix }
+func (p *strConcatPat) ConcatRest() Pattern  { return p.rest }
+
 // PatternTuple — доступ к кортежному паттерну.
 type PatternTuple interface {
 	Pattern

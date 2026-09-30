@@ -75,6 +75,10 @@ func TestLexBasics(t *testing.T) {
 		{`"Привет, \(name)!"`, []TokenType{STRING, NEWLINE, EOF}},
 		{`1 to 10`, []TokenType{INT, KW_TO, INT, NEWLINE, EOF}},
 		{`-x**2`, []TokenType{OP_MINUS, LOWER_IDENT, OP_POW, INT, NEWLINE, EOF}},
+		{
+			`"a" <> name`,
+			[]TokenType{STRING, OP_CONCAT, LOWER_IDENT, NEWLINE, EOF},
+		},
 	}
 	for _, c := range cases {
 		eqTypes(t, c.src, c.want...)
@@ -122,6 +126,27 @@ func TestLexContinuation(t *testing.T) {
 	}
 	if strings.Join(got, " ") != strings.Join(want, " ") {
 		t.Fatalf("continuation (A5.6)\n got: %v\nwant: %v", got, want)
+	}
+}
+
+func TestLexContinuationConcat(t *testing.T) {
+	// A5.6: '<>' на строке-продолжении не порождает NEWLINE/INDENT/DEDENT.
+	src := "fn main() ->\n    x = \"a\"\n        <> \"b\"\n    x\n"
+	toks, err := Lex(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, tk := range toks {
+		got = append(got, tk.Type.String())
+	}
+	want := []string{
+		"fn", "LOWER_IDENT", "(", ")", "->", "NEWLINE", "INDENT",
+		"LOWER_IDENT", "=", "STRING", "<>", "STRING", "NEWLINE",
+		"LOWER_IDENT", "NEWLINE", "DEDENT", "EOF",
+	}
+	if strings.Join(got, " ") != strings.Join(want, " ") {
+		t.Fatalf("continuation <> \n got: %v\nwant: %v", got, want)
 	}
 }
 

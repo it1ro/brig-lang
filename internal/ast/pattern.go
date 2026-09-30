@@ -39,6 +39,18 @@ func (l *literalPat) IsStatement() bool  { return false }
 func (l *literalPat) String() string     { return l.value }
 func (l *literalPat) AsIdent() string    { return "" }
 
+// strConcatPat — "prefix" <> rest (Elixir-style string destructuring).
+type strConcatPat struct {
+	posEnd
+	prefix string // raw quoted form, same convention as literalPat.value
+	rest   Pattern
+}
+
+func (s *strConcatPat) IsExpression() bool { return false }
+func (s *strConcatPat) IsStatement() bool  { return false }
+func (s *strConcatPat) AsIdent() string    { return "" }
+func (s *strConcatPat) String() string     { return s.prefix + " <> " + s.rest.String() }
+
 // constructorPat — Some(x), Ok(v), Error(e), None, Red, Green.
 type constructorPat struct {
 	posEnd
