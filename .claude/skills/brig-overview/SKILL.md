@@ -85,7 +85,7 @@ internal/
   sema/                 # контекстный анализ (§F.3)
   compiler/             # AST → регистровый байткод
   vm/                   # регистровая ВМ + scheduler + прелюдия + Verify
-  runtime/              # Value, Kind, Equal, Json, Serialize
+  runtime/              # Value, Kind, Equal, Json
   repl/                 # persistent REPL
   examples/             # A2-инструмент (check-examples)
   corpus/               # раннер корпуса (make corpus)
