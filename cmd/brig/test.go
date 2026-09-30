@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -11,8 +12,7 @@ import (
 	"github.com/it1ro/brig-lang/internal/ast"
 	"github.com/it1ro/brig-lang/internal/compiler"
 	"github.com/it1ro/brig-lang/internal/examples"
-	"github.com/it1ro/brig-lang/internal/parser"
-	"github.com/it1ro/brig-lang/internal/sema"
+	"github.com/it1ro/brig-lang/internal/loader"
 	"github.com/it1ro/brig-lang/internal/vm"
 )
 
@@ -100,7 +100,7 @@ func testFile(path string, t *testTally) {
 		return
 	}
 
-	prog, img, ok := loadTestModule(path, src)
+	prog, img, ok := loadTestModule(path)
 	if !ok {
 		t.fail(path, fmt.Errorf("файл не скомпилирован"))
 		return
@@ -141,24 +141,29 @@ func testFile(path string, t *testTally) {
 	}
 }
 
-// loadTestModule: парсер, sema и компилятор; диагностики — в stderr.
-func loadTestModule(path, src string) (*ast.Program, *compiler.ProgramImage, bool) {
-	prog, err := parser.ParseProgram(parser.ModeModule, src)
+// loadTestModule: программа от файла path — загрузчик модулей
+// (корень — как у brig check, loader.ModuleRoot), sema по всем модулям
+// графа и compiler.CompileProgram. Диагностики — в stderr.
+func loadTestModule(path string) (*ast.Program, *compiler.ProgramImage, bool) {
+	g, err := loader.LoadFrom(loader.ModuleRoot(path), path)
+	if err != nil {
+		var le *loader.Error
+		if errors.As(err, &le) {
+			fmt.Fprintf(os.Stderr, "error: %v\n", le)
+		} else {
+			reportCompileError(path, err)
+		}
+		return nil, nil, false
+	}
+	if !checkGraph(g) {
+		return nil, nil, false
+	}
+	img, err := compiler.New().CompileProgram(compileModules(g))
 	if err != nil {
 		reportCompileError(path, err)
 		return nil, nil, false
 	}
-	semaRes := sema.CheckNames(prog, nil)
-	reportDiagnostics(path, semaRes)
-	if semaRes.HasErrors() {
-		return nil, nil, false
-	}
-	img, err := compiler.New().Compile(prog)
-	if err != nil {
-		reportCompileError(path, err)
-		return nil, nil, false
-	}
-	return prog, img, true
+	return g.Entry.Prog, img, true
 }
 
 // testFuncs — имена top-level `fn test_*()` без параметров в порядке

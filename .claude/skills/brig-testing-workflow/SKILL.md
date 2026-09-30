@@ -19,7 +19,11 @@ description: >
    - `go test ./internal/sema/...`
    - `make test-one PKG=./internal/xxx TEST=TestYyy` — для одного теста
    - `make test-stdlib` — доктесты `##` модулей `stdlib/*.brig` через
-     `brig test` (они же — `go test ./stdlib/ ./cmd/brig/`)
+     `brig test` (они же — `go test ./stdlib/ ./cmd/brig/`). `brig test`
+     собирает каждый `*_test.brig` и файл с `##` как программу:
+     загрузчик (`loader.ModuleRoot` — корень по `project.brig`, как у
+     `brig check`) + `compiler.CompileProgram`, поэтому `import` модуля
+     проекта в тестах и доктестах работает (T-244)
 2. **`make ci-quick`** — `fmt-check` + `vet` + focused tests
    (`test-lexer test-parser test-roundtrip test-vm test-compiler`) +
    `run-examples`. Не требует `golangci-lint`, быстрый — гонять перед
