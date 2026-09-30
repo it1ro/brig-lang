@@ -52,6 +52,24 @@ func InstallJSONPrelude(vm *VM) {
 		}
 		return runtime.Variant("Ok", v), nil
 	})
+
+	// Json.at(v, path) — спуск по разобранному JSON (L16): `Str` — ключ
+	// `Map`, `Int` — индекс `List` с нуля. Нет ключа, индекс вне списка,
+	// шаг другого вида или спуск в скаляр — `None`.
+	def("Json.at", 2, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+		if args[1].Kind != runtime.KindList {
+			return runtime.Unit, typeErr("Json.at", args[1])
+		}
+		cur := args[0]
+		for _, step := range args[1].List {
+			next, ok := jsonStep(cur, step)
+			if !ok {
+				return runtime.Variant("None"), nil
+			}
+			cur = next
+		}
+		return runtime.Variant("Some", cur), nil
+	})
 }
 
 // jsonEncodeOpts разбирает анонимную запись опций Json.encode; известно
@@ -68,4 +86,21 @@ func jsonEncodeOpts(v runtime.Value) (runtime.JSONOptions, bool) {
 		o.TypeTag = f.Val.Bool
 	}
 	return o, true
+}
+
+// jsonStep — один шаг пути Json.at.
+func jsonStep(v, step runtime.Value) (runtime.Value, bool) {
+	switch {
+	case v.Kind == runtime.KindMap && step.Kind == runtime.KindStr:
+		for _, e := range v.Map {
+			if e.Key.Kind == runtime.KindStr && e.Key.Str == step.Str {
+				return e.Val, true
+			}
+		}
+	case v.Kind == runtime.KindList && step.Kind == runtime.KindInt && step.IsSmall:
+		if i := step.SmallInt; i >= 0 && i < int64(len(v.List)) {
+			return v.List[i], true
+		}
+	}
+	return runtime.Unit, false
 }

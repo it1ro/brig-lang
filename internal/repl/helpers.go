@@ -872,7 +872,7 @@ var builtinParams = map[string]string{
 	"Some/1": "v", "Ok/1": "v", "Error/1": "e",
 
 	"Vec.push/2": "v, x", "Vec.set/3": "v, i, x", "Vec.get/2": "v, i", "Vec.len/1": "v",
-	"Map.put/3": "m, k, v", "Map.get/2": "m, k", "Map.remove/2": "m, k", "Map.keys/1": "m",
+	"Map.put/3": "m, k, v", "Map.get/2": "m, k", "Map.get_or/3": "m, k, default", "Map.remove/2": "m, k", "Map.keys/1": "m",
 	"Record.to_anon/1": "r",
 	"Str.to_bytes/1":   "s", "Bytes.to_str/1": "b",
 	"Str.split/2": "s, sep", "Str.join/2": "xs, sep", "Str.trim/1": "s",
@@ -882,7 +882,7 @@ var builtinParams = map[string]string{
 	"Str.to_int/1":  "s",
 	"Bytes.slice/3": "b, start, end", "Bytes.find/2": "b, sub", "Bytes.split/2": "b, sep",
 	"Bytes.concat/2": "a, b", "Bytes.at/2": "b, i",
-	"Json.encode/1": "v", "Json.encode/2": "v, opts", "Json.decode/1": "s",
+	"Json.encode/1": "v", "Json.encode/2": "v, opts", "Json.decode/1": "s", "Json.at/2": "v, path",
 	"Test.describe/1": "name", "Test.it/2": "name, thunk", "Test.run/0": "",
 	"Test.assert_eq/2": "a, b", "Test.assert_ne/2": "a, b", "Test.assert/1": "x", "Test.fail/1": "msg",
 	"Sys.args/0": "", "Sys.halt/1": "code",

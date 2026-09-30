@@ -187,7 +187,7 @@ var bareBuiltins = map[string]sig{
 // аргумента (§4.7), не открытый вариадик.
 var modBuiltins = map[string]map[string]sig{
 	"Vec":    {"push": exact(2), "set": exact(3), "get": exact(2), "len": exact(1)},
-	"Map":    {"put": exact(3), "get": exact(2), "remove": exact(2), "keys": exact(1)},
+	"Map":    {"put": exact(3), "get": exact(2), "get_or": exact(3), "remove": exact(2), "keys": exact(1)},
 	"Record": {"to_anon": exact(1)},
 	"Str": {
 		"to_bytes": exact(1), "split": exact(2), "join": exact(2), "trim": exact(1),
@@ -198,7 +198,7 @@ var modBuiltins = map[string]map[string]sig{
 		"to_str": exact(1), "slice": exact(3), "find": exact(2), "split": exact(2),
 		"concat": exact(2), "at": exact(2),
 	},
-	"Json": {"encode": exact(1, 2), "decode": exact(1)},
+	"Json": {"encode": exact(1, 2), "decode": exact(1), "at": exact(2)},
 	"Test": {
 		"describe": exact(1), "it": exact(2), "run": exact(0),
 		"assert_eq": exact(2), "assert_ne": exact(2), "assert": exact(1), "fail": exact(1),
