@@ -68,6 +68,8 @@ bound-регистр).
 хвостовая форма — `if`. T-82 (#107) — won't-fix. **НЕ хвостовые:** RHS `let`, аргументы
 вызовов, условие `if`, всё тело `trap` (включая случай без `ensure` — там
 обработчик живёт в текущем кадре, замена кадра потеряла бы его).
+Исключение — хвост тела `trap` с `ensure` в хвосте fn: `TAILCALLENS`
+(doc 02 §5.1, T-173), см. раздел trap / ensure.
 
 **Не восстанавливать удалённую эвристику `isTailCall`** — хвостовость
 определяется только через `dest.tail`, эвристика по паттерну инструкций
@@ -87,11 +89,21 @@ bound-регистр).
   handler.
 - `TAILCALL` **никогда** не эмитируется внутри тела `trap`. Три слоя:
   тело `trap` компилируется с `val(dst)` (не хвостовой dest — структурная
-  гарантия); `compileGenericCall`/`compileGlobalCall` делают
+  гарантия); `emitInvoke` делает
   `if d.tail && fc.trapDepth > 0 { fc.fail(...) }` (T-31 #20); `vm.Verify`
-  проверяет `TAILCALL` вне `TRAPBEGIN..TRAPEND` (линейный счётчик). Если
-  добавляете новую хвостовую позицию внутри тела `trap` — сначала
-  проверьте, что она не входит в область активного `ensure`.
+  проверяет `TAILCALL` вне `TRAPBEGIN..TRAPEND` (стек видов регионов).
+- **TCO сквозь ensure (doc 02 §5.1, T-173).** Если `trap` с `ensure`
+  стоит в хвосте fn (`d.tail`) и `ensureTailEligible` (ни один ensure не
+  стоит текстом после последнего стейтмента), тело получает
+  `val(dst)` с `dest.ens` — `tail` остаётся `false`, листья пишут в
+  `dst`, но не-spread вызов в хвостовой позиции тела идёт в
+  `emitTailCallEns`: замыкания всех ensure trap (LIFO, `compileLambda`,
+  имена — в областях тела, `fc.scopes[:ens.scopes]`) в
+  `R[base+argc+1..]` и `TAILCALLENS base argc C`. `dest.ens`, как и
+  `tail`, передаётся только хвостовыми позициями; новая форма,
+  передающая `d` потомку не в хвостовой позиции, обязана сбросить его
+  (`val(r)`). Spread-вызов, `r = trap …`, вложенный/inline `trap` и
+  `trap` без `ensure` — без TAILCALLENS (`TestTailCallEnsEligibility`).
 - **Ensure scope / registration (I-F5, T-37 #26):** ensure
   компилируются в области тела (до `popScope`); у каждого — свой
   Bool-флаг регистрации (`LOADK false` до тела, `LOADK true` в

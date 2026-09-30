@@ -110,6 +110,12 @@ const (
 	// Ответ по ref мимо ящика (§12.9, T-165).
 	AWAIT // R[A] = await(ref=R[B], timeout=R[C]); Result<V, Atom>; ждёт — исполняется снова
 	REPLY // reply(pid=R[B], ref=R[B+1], value=R[B+2]); R[A] = ()
+
+	// Хвостовой вызов из trap с ensure (doc 02 §5.1, T-173): R[A] — callee,
+	// R[A+1..A+B] — аргументы, R[A+B+1..A+B+C] — замыкания ensure (LIFO).
+	// Снимает handler TRAPENSURE, кладёт запись в Frame.cleanups, дальше —
+	// как TAILCALL.
+	TAILCALLENS
 )
 
 // SpawnLimits — бит операнда C у SPAWN: второй аргумент spawn (лимиты
@@ -187,6 +193,7 @@ var opNames = [...]string{
 	WHEREIS:        "WHEREIS",
 	AWAIT:          "AWAIT",
 	REPLY:          "REPLY",
+	TAILCALLENS:    "TAILCALLENS",
 }
 
 func (op OpCode) String() string {

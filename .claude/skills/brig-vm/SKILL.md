@@ -118,7 +118,22 @@ description: >
   ensure-блока в этой точке отдаёт `stepExit` — unwind продолжается.
   Ensure нет — `exitDone`: `:down` с причиной как есть, `a.err = *ErrExit`.
   Непойманная ошибка во время unwind причину не меняет. `callSync` и
-  `CallNested` ensure не исполняют (ErrExit сразу). `spawn_watched` —
+  `CallNested` ensure не исполняют (ErrExit сразу). После handlers кадра
+  `unwindExit` исполняет его `cleanups` (drain в режиме exit, ниже);
+  `:kill` их пропускает и прерывает начатый drain.
+- **TCO сквозь ensure (doc 02 §5.1, T-173, `drain.go`).** `TAILCALLENS`
+  снимает единственный handler `TRAPENSURE`, кладёт `cleanupRec`
+  (указатели `ClosureVal` ensure, LIFO) в `Frame.cleanups` до разбора
+  callee и дальше работает как `TAILCALL`; `cleanups` переживают
+  `TAILCALL` и превращение кадра в кадр натива/emit. `stepFrame` —
+  обёртка над `execFrame`: у кадра с `cleanups` `stepDone` и непойманный
+  raise (при `a.exit == nil`) превращают его на месте в drain-кадр
+  (`drainRun`, `nativeCont`), который зовёт ensure обычными кадрами и
+  строит `Ok`/`Error` по уровням (схема §5). Raise ensure ловит
+  `catchCleanups` (из `tryUnwindRaise`/`unwindAbove`) и `stepNative`;
+  кадр без `handlers`, но с `cleanups`, ловит raise вызванного кадра.
+  Drain в режиме exit по окончании отдаёт `nativeStep.exit` →
+  `stepExit`. Якоря — `internal/vm/tail_ensure_test.go`. `spawn_watched` —
   `SPAWN` с C=2, `Watch` в том же шаге, результат `(pid, ref)`.
 - **Порты и внешние события (§12.12, §15.2, T-168, `port.go`).** Значение
   `runtime.KindPort` с `*runtime.PortHandle` (ID, Owner, Closed): равенство
@@ -329,8 +344,9 @@ description: >
 
 Линейный верификатор: регистры/окна `< NumRegs`, цели переходов внутри
 кода, за `MATCHLOCAL` обязана идти `JMP`, `TAILCALL` вне активных
-`TRAPBEGIN..TRAPEND` регионов (счётчик глубины), нет падения с конца кода
-(`RETURN`/`JMP`/`TAILCALL`/`RAISE` — единственные легальные терминаторы),
+`TRAPBEGIN..TRAPEND` регионов, `TAILCALLENS` — ровно в одном регионе
+`TRAPENSURE` (стек видов регионов), нет падения с конца кода
+(`RETURN`/`JMP`/`TAILCALL*`/`RAISE` — единственные легальные терминаторы),
 definite assignment (dataflow: регистр определён на всех путях выполнения
 к точке чтения, включая ветку `TRAPBEGIN`-обработчика). Включается
 `compiler.Verify = true` (в тестах — всегда) или `BRIG_VERIFY=1` в CLI.

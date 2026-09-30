@@ -198,6 +198,8 @@ func (c *Chunk) disInstr(sb *strings.Builder, ip int) {
 		fmt.Fprintf(sb, "r%d %d -> r%d", in.A(), in.B(), in.C())
 	case TAILCALL, TAILCALLSPREAD:
 		fmt.Fprintf(sb, "r%d %d", in.A(), in.B())
+	case TAILCALLENS:
+		fmt.Fprintf(sb, "r%d %d %d", in.A(), in.B(), in.C())
 	case RETURN, RAISE, SELF, MAKEREF, RECVTIMER:
 		fmt.Fprintf(sb, "r%d", in.A())
 	case TUPLE, LIST, VECTOR:

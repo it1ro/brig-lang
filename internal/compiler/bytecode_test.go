@@ -59,6 +59,14 @@ fn main() ->
         :ok
     print(result)
 `},
+	{"tail_ensure", `module Main
+fn loop(n) ->
+    trap
+        ensure print(n)
+        if n == 0 then :done else loop(n - 1)
+fn main() ->
+    print(loop(3))
+`},
 	{"fn_multiclause", `module Main
 fn fact(0) -> 1
 fn fact(n) -> n * fact(n - 1)
