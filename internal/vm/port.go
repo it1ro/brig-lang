@@ -44,8 +44,11 @@ var signalNames = []string{"sigterm", "sigint"}
 
 // openPort — открытый порт в таблице планировщика.
 type openPort struct {
-	h      *runtime.PortHandle
-	close  func()      // освобождает ресурс; nil — ресурса нет
+	h     *runtime.PortHandle
+	close func() // освобождает ресурс; nil — ресурса нет
+	// abort — закрытие не через Port.close (смерть владельца, выход
+	// программы); nil — как close. HTTP обрывает ответ (§12.12, T-229).
+	abort  func()
 	stream *streamPort // nil — порт не потоковый (Signal)
 }
 
@@ -56,12 +59,13 @@ func (p *openPort) live() bool {
 }
 
 // injectEvent — событие ресурса для владельца порта: готовое сообщение
-// (msg) или событие потокового ресурса (stream), которое run-loop
-// превращает в сообщение сам.
+// (msg), событие потокового ресурса (stream) или ответ слушателя HTTP
+// (http), которые run-loop превращает в сообщение сам.
 type injectEvent struct {
 	port   *runtime.PortHandle
 	msg    runtime.Value
 	stream *StreamEvent
+	http   *HTTPEvent
 }
 
 // injectQueue — единственный вход для событий, порождённых не акторами.
@@ -93,11 +97,16 @@ func (q *injectQueue) take() []injectEvent {
 
 // drainInject разбирает inject-очередь: событие открытого порта — в конец
 // ящика владельца мимо HWM (§12.12), владелец будится; событие закрытого
-// порта отбрасывается. Владелец берётся в момент разбора: после
+// порта отбрасывается (запрос HTTP, который так и не начали, закрывает
+// ответом 503 сам слушатель). Владелец берётся в момент разбора: после
 // Port.give событие получает новый.
 func (s *Scheduler) drainInject() {
 	for _, ev := range s.inject.take() {
 		if ev.port.Closed {
+			continue
+		}
+		if ev.http != nil {
+			s.httpEvent(s.ports[ev.port.ID], ev.http)
 			continue
 		}
 		if ev.stream != nil {
@@ -179,7 +188,13 @@ func (s *Scheduler) addPort(a *Actor) *openPort {
 
 // closePort закрывает порт: ресурс освобождается, события больше не
 // доставляются. Закрытый порт не трогается.
-func (s *Scheduler) closePort(h *runtime.PortHandle) {
+func (s *Scheduler) closePort(h *runtime.PortHandle) { s.shutPort(h, false) }
+
+// abortPort — закрытие не через Port.close (смерть владельца, выход
+// программы): ресурс, который это различает, получает abort (§12.12).
+func (s *Scheduler) abortPort(h *runtime.PortHandle) { s.shutPort(h, true) }
+
+func (s *Scheduler) shutPort(h *runtime.PortHandle, abort bool) {
 	if h.Closed {
 		return
 	}
@@ -187,7 +202,11 @@ func (s *Scheduler) closePort(h *runtime.PortHandle) {
 	p := s.ports[h.ID]
 	delete(s.ports, h.ID)
 	s.unownPort(h)
-	if p != nil && p.close != nil {
+	switch {
+	case p == nil:
+	case abort && p.abort != nil:
+		p.abort()
+	case p.close != nil:
 		p.close()
 	}
 }
@@ -208,14 +227,14 @@ func (s *Scheduler) unownPort(h *runtime.PortHandle) {
 // :down и снятие имён (§12.12).
 func (s *Scheduler) closeActorPorts(a *Actor) {
 	for len(a.ports) > 0 {
-		s.closePort(a.ports[len(a.ports)-1])
+		s.abortPort(a.ports[len(a.ports)-1])
 	}
 }
 
 // closeAllPorts — выход из программы: ресурсы всех портов освобождаются.
 func (s *Scheduler) closeAllPorts() {
 	for _, p := range s.ports {
-		s.closePort(p.h)
+		s.abortPort(p.h)
 	}
 }
 
@@ -237,11 +256,12 @@ func (s *Scheduler) halting(a *Actor) bool {
 	return true
 }
 
-// installPorts регистрирует Port.*, Signal.subscribe, File.open и
-// Sys.halt. Порт создаёт и закрывает актор, который исполняет натив
+// installPorts регистрирует Port.*, Signal.subscribe, File.open,
+// HttpServer.* и Sys.halt. Порт создаёт и закрывает актор, который исполняет натив
 // (s.active).
 func installPorts(def func(name string, arity int, fn runtime.NativeFunc)) {
 	installStreams(def)
+	installHTTP(def)
 	def("Signal.subscribe", 1, func(c runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		m := c.(*VM)
 		names, ok := subscribeNames(args[0])

@@ -572,7 +572,8 @@ fn main() ->
 // TestVMCoreNoOSPorts — ядро VM не импортирует то, что ждёт ОС: реализации
 // портов живут за интерфейсом (R14, docs/02 §6).
 func TestVMCoreNoOSPorts(t *testing.T) {
-	banned := []string{"os/signal", "os/exec", "net"}
+	// Сеть — тоже за интерфейсом (HTTPHub, T-229): ни net, ни net/http.
+	banned := []string{"os/signal", "os/exec", "net", "net/http"}
 	// Файлы — тоже за интерфейсом (FileHub, T-228): ядро не открывает их само.
 	fileCalls := regexp.MustCompile(`\bos\.(Open|OpenFile|Create|ReadFile|WriteFile|ReadDir|Stat)\b`)
 	for _, dir := range []string{".", "../runtime"} {

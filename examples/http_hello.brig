@@ -1,0 +1,41 @@
+# Минимальный HTTP-сервер (§12.12): на любой запрос — {"status":"ok"}.
+#
+#   brig examples/http_hello.brig [addr]      # по умолчанию localhost:3000
+#   curl -sS -i localhost:3000/
+#
+# Актор на запрос; SIGTERM закрывает listener, начатые запросы
+# дослуживаются, программа выходит с кодом 0. Сервер не завершается сам,
+# поэтому make run-examples его не запускает (проверка —
+# cmd/brig/http_test.go).
+module Main
+
+fn handle() ->
+    recv
+        (:serve, req, _head) ->
+            Ok(()) = HttpServer.respond(req, 200, [("content-type", "application/json")])
+            Ok(()) = Port.write(req, Json.encode({ status: "ok" }))
+            Port.close(req)
+
+fn serve(listener, sig) ->
+    Ok(()) = Port.request(listener)
+    recv
+        (:http_request, _, req, head) ->
+            pid = spawn(handle)
+            Ok(()) = Port.give(req, pid)
+            send(pid, (:serve, req, head))
+            serve(listener, sig)
+        (:signal, _, :sigterm) ->
+            Port.close(listener)
+            Port.close(sig)
+        (:port_error, _, reason) ->
+            Port.close(sig)
+            raise((:listen, reason))
+
+fn main() ->
+    addr = match Sys.args()
+        [a] -> a
+        _ -> "localhost:3000"
+    sig = Signal.subscribe([:sigterm])
+    listener = HttpServer.listen(addr)
+    print("listening on \(addr)")
+    serve(listener, sig)

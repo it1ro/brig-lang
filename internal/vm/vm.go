@@ -56,6 +56,8 @@ type VM struct {
 	signals SignalHub
 	// files — реализация портов File (§12.12); nil — без файловой системы.
 	files FileHub
+	// http — реализация портов HttpServer (§12.12); nil — без сети.
+	http HTTPHub
 }
 
 // New создаёт ВМ с установленной прелюдией.
