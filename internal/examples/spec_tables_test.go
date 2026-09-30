@@ -204,6 +204,12 @@ var preludeCodeOnly = map[string]string{
 	"Error":        "конструктор, §10.1",
 	"Str.to_bytes": "описан в §C.3/§C.6, в таблице §11.5 не дублируется",
 	"Bytes.to_str": "описан в §C.3/§C.6, в таблице §11.5 не дублируется",
+	"Map.put":      "функция модуля Map, §4.5; в §11.5 только Map.get_or",
+	"Map.get":      "функция модуля Map, §4.5; в §11.5 только Map.get_or",
+	"Map.remove":   "функция модуля Map, §4.5; в §11.5 только Map.get_or",
+	"Map.keys":     "функция модуля Map, §4.5; в §11.5 только Map.get_or",
+	"Json.encode":  "функция модуля Json, §4.7; в §11.5 только Json.at",
+	"Json.decode":  "функция модуля Json, §4.7; в §11.5 только Json.at",
 }
 
 // codeActorPrimitives — акторные примитивы в коде: голые имена прелюдии
@@ -255,7 +261,7 @@ func TestSpecPreludeMatchesInstall(t *testing.T) {
 	for _, n := range sema.BuiltinModules()["Prelude"] {
 		code[n] = true
 	}
-	for _, mod := range []string{"Str", "Bytes"} {
+	for _, mod := range []string{"Str", "Bytes", "Map", "Json"} {
 		for _, n := range sema.BuiltinModules()[mod] {
 			code[mod+"."+n] = true
 		}

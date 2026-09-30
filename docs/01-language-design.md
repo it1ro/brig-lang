@@ -1384,6 +1384,13 @@ brig[2]> v(1) + 1
 | `Bytes.concat` | 2 | `(a, b)` | `Bytes` — склейка | `(:type_error, (:Bytes.concat, v))` |
 | `Bytes.at` | 2 | `(b, i)` | `Int` — байт `0..255` | `(:type_error, (:Bytes.at, b))`; `(:index_out_of_bounds, (i, len))` |
 
+**`Map.get_or` и `Json.at` (T-176).** Функции встроенных модулей `Map` (§4.5) и `Json` (§4.7), субъект первым аргументом. Остальные `Map.*` и `Json.encode`/`Json.decode` здесь не дублируются. Путь `Json.at` — `List` шагов: `Str` — ключ `Map`, `Int` — индекс `List` с нуля; пустой путь — `Some(v)`. Нет ключа, индекс вне списка (в том числе отрицательный), шаг другого вида или спуск в скаляр — `None`.
+
+| Имя | Арность | Аргументы | Результат | Авто-raise |
+| --- | --- | --- | --- | --- |
+| `Map.get_or` | 3 | `(m, k, default)` | значение по ключу `k` (равенство ключей §4.8), нет ключа — `default` | `(:type_error, (:Map.get_or, m))` |
+| `Json.at` | 2 | `(v, path)`, `path: List` | `Option` — значение по пути | `(:type_error, (:Json.at, path))` — `path` не `List` |
+
 `Str.to_bytes`/`Bytes.to_str` — уже в §C.3/§C.6, здесь не дублируются.
 
 **Семантика `assert`:**
