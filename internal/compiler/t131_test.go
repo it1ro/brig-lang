@@ -27,6 +27,19 @@ fn main() ->
 `)
 }
 
+// T-178 (T-158 #219, вариант A): List + List — :type_error; склейка — спред.
+func TestListPlusPolicy(t *testing.T) {
+	runModule(t, `module Main
+fn main() ->
+    a = [1, 2]
+    b = [3]
+    r = trap(a + b)
+    assert(r == Error((:type_error, (:add, (a, b)))))
+    c = [..a, ..b]
+    assert(c == [1, 2, 3])
+`)
+}
+
 // T-131 (T-121 п.4): отсутствующее поле — (:no_field, (name, rec)).
 func TestMissingFieldErrorName(t *testing.T) {
 	runModule(t, `module Main

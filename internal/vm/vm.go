@@ -223,12 +223,6 @@ func add(a, b runtime.Value) (runtime.Value, error) {
 		}
 		return runtime.Decimal(new(big.Rat).Add(ar, br)), nil
 	}
-	if a.Kind == runtime.KindList && b.Kind == runtime.KindList {
-		joined := make([]runtime.Value, 0, len(a.List)+len(b.List))
-		joined = append(joined, a.List...)
-		joined = append(joined, b.List...)
-		return runtime.List(joined...), nil
-	}
 	if !bothNum(a, b) {
 		return runtime.Unit, arithErr(a, b, "add")
 	}
