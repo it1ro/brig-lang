@@ -1990,10 +1990,20 @@ func (fc *funcCompiler) compileCall(call ast.CallExpr, d dest) error {
 		if strings.HasSuffix(name, "{}") {
 			return fc.compileRecord(strings.TrimSuffix(name, "{}"), call, d)
 		}
+		// Голое имя, разрешаемое в функцию модуля stdlib (§13.2):
+		// `spawn_behavior(b, state)` — `Behavior.spawn`. fn своего
+		// модуля его затеняет, как и у акторных примитивов (§11.5).
+		if global, ok := bareStdlibFn[name]; ok && !fc.compiler.cur.fns[name] {
+			return fc.compileGlobalCall(global, call.Args(), d, call)
+		}
 	}
 
 	return fc.compileGenericCall(call, d)
 }
+
+// bareStdlibFn — голые имена, которые компилируются в вызов функции
+// модуля stdlib на Brig. Список совпадает с sema.bareStdlib.
+var bareStdlibFn = map[string]string{"spawn_behavior": "Behavior.spawn"}
 
 // compileActorCall компилирует вызов акторного примитива name в его
 // опкод. false — name не акторный примитив.
@@ -2552,6 +2562,14 @@ func (fc *funcCompiler) compileRecord(typ string, call ast.CallExpr, d dest) err
 	return nil
 }
 
+// builtinRecords — записи, объявленные спекой вне модулей программы:
+// их литерал и паттерн доступны в любом модуле без import, а имя типа
+// в рантайме — без префикса (§13.2). Тип с тем же именем в своём
+// модуле встроенный затеняет: recordType спрашивает его последним.
+var builtinRecords = map[string][]string{
+	"Behavior": {"handlers"},
+}
+
 // recordType разрешает имя типа записи в литерале или паттерне (§11.1,
 // T-122 п.3): `T` — тип своего модуля, иначе тип `T` импортированного
 // модуля `….T` (тип = последний сегмент модуля); `Mod.T` — тип модуля
@@ -2588,6 +2606,9 @@ func (fc *funcCompiler) recordType(written string, at vm.SrcPos) (string, []stri
 	}
 	switch len(found) {
 	case 0:
+		if fields, ok := builtinRecords[written]; ok {
+			return written, fields, nil
+		}
 		return "", nil, unknown
 	case 1:
 		m := fc.compiler.mods[found[0]]

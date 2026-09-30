@@ -183,6 +183,12 @@ var bareBuiltins = map[string]sig{
 	"self": exact(0), "make_ref": exact(0), "mailbox_size": exact(0, 1),
 }
 
+// bareStdlib — голые имена, которые разрешаются в функцию модуля
+// stdlib на Brig (§13.2): `spawn_behavior(b, state)` — `Behavior.spawn`.
+// В прелюдию такие имена не входят (не глобалы Prelude и не опкоды),
+// поэтому в bareBuiltins и в таблицах §11.5/§12.6 их нет.
+var bareStdlib = map[string]sig{"spawn_behavior": exact(2)}
+
 // modBuiltins — функции встроенных модулей. Json.encode — 1 или 2
 // аргумента (§4.7), не открытый вариадик.
 var modBuiltins = map[string]map[string]sig{
@@ -579,6 +585,9 @@ func (c *checker) bareSig(name string) (s sig, dynamic, found bool) {
 		return s, false, true
 	}
 	if s, ok := bareBuiltins[name]; ok {
+		return s, false, true
+	}
+	if s, ok := bareStdlib[name]; ok {
 		return s, false, true
 	}
 	return sig{}, false, false
