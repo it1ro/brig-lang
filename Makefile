@@ -136,10 +136,11 @@ spec-tables:
 	$(GO) test ./internal/examples -run '^TestSpec'
 
 ## ---- Git ----
+# Каталог хуков берётся у git: в worktree `.git` — файл, а не каталог.
 git-hooks:
-	@mkdir -p .git/hooks
-	@for h in .githooks/*; do \
-		[ -f "$$h" ] && cp "$$h" ".git/hooks/$$(basename "$$h")" && chmod +x ".git/hooks/$$(basename "$$h")"; \
+	@d=$$(git rev-parse --git-path hooks) && mkdir -p "$$d" && \
+	for h in .githooks/*; do \
+		[ -f "$$h" ] && cp "$$h" "$$d/$$(basename "$$h")" && chmod +x "$$d/$$(basename "$$h")"; \
 	done
 	@echo "hooks installed: $$(ls .githooks | paste -sd ' ' -)"
 
