@@ -2,9 +2,7 @@
 # Calmar.Test гоняет pipeline в памяти (Conn -> Conn — чистая функция),
 # время фейковое, БД — :memory:, внешние HTTP-запросы чекеров подменены.
 #
-# needs: T-133, T-147, horizon
-#   brig test с обнаружением модулей test/ (05) — T-147;
-#   опровержимый паттерн в `=` (03/L21) — T-133;
+# needs: horizon
 #   horizon: Calmar.Test (06), фейковые часы + in-memory транспорт (02/R9), подмена Http.Client (Q-mock).
 module Test.Web.ApiTest
 

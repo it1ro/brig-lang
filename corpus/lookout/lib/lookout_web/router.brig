@@ -3,9 +3,7 @@
 # Ссылка на действие — функция, а не строка "monitors#show": опечатка
 # ловится компилятором, переход к определению работает в редакторе.
 #
-# needs: T-135, T-137, T-144, horizon
-#   стабильная identity функций модуля для Router.path (03/L5) — T-144;
-#   модули проекта — T-135, T-137;
+# needs: horizon
 #   horizon: модули как значения для resources (03/L5), Calmar.Router/Plug/Session/Csrf (06, 17).
 module LookoutWeb.Router
 

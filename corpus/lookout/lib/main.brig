@@ -1,7 +1,6 @@
 # Точка входа — обычный fn main() в Main (§11.2), никакой магии запуска.
 # Graceful shutdown — это просто recv сигнала ОС.
-# needs: T-135, T-137, T-168, horizon
-#   модули проекта (import Lookout.Application) — T-135, T-137; Signal-порт (02/R2) — T-168;
+# needs: horizon
 #   horizon: Config, Log, Sys.exit, Sys.env_name (04), модули как значения (03/L5).
 module Main
 
