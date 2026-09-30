@@ -27,31 +27,31 @@ corpus/lang/with.brig	run	pass	-
 
 # ---- lookout ----
 corpus/lookout/config/config.brig	check	fail	horizon
-corpus/lookout/lib/lookout/application.brig	check	fail	T-135, T-137, T-163, horizon
-corpus/lookout/lib/lookout/monitors.brig	check	fail	T-135, T-137, horizon
-corpus/lookout/lib/lookout/monitors/checker.brig	check	fail	T-133, T-135, T-137, T-164, T-165, T-166, horizon
-corpus/lookout/lib/lookout/monitors/monitor.brig	check	fail	T-147, horizon
-corpus/lookout/lib/lookout/monitors/supervisor.brig	check	fail	T-135, T-137, T-164, T-167, horizon
+corpus/lookout/lib/lookout/application.brig	check	fail	horizon
+corpus/lookout/lib/lookout/monitors.brig	check	fail	horizon
+corpus/lookout/lib/lookout/monitors/checker.brig	check	fail	horizon
+corpus/lookout/lib/lookout/monitors/monitor.brig	check	fail	horizon
+corpus/lookout/lib/lookout/monitors/supervisor.brig	check	fail	horizon
 corpus/lookout/lib/lookout/repo.brig	check	fail	horizon
-corpus/lookout/lib/lookout_web/controllers/api/monitor_controller.brig	check	fail	T-135, T-137, horizon
-corpus/lookout/lib/lookout_web/controllers/monitor_controller.brig	check	fail	T-135, T-137, T-144, horizon
+corpus/lookout/lib/lookout_web/controllers/api/monitor_controller.brig	check	fail	horizon
+corpus/lookout/lib/lookout_web/controllers/monitor_controller.brig	check	fail	horizon
 corpus/lookout/lib/lookout_web/plugs.brig	check	fail	horizon
-corpus/lookout/lib/lookout_web/router.brig	check	fail	T-135, T-137, T-144, horizon
-corpus/lookout/lib/main.brig	check	fail	T-135, T-137, T-168, horizon
+corpus/lookout/lib/lookout_web/router.brig	check	fail	horizon
+corpus/lookout/lib/main.brig	check	fail	horizon
 corpus/lookout/priv/migrations/001_create_monitors.brig	run	fail	horizon
 corpus/lookout/project.brig	run	fail	horizon
-corpus/lookout/scripts/import_monitors.brig	check	fail	T-135, T-137, horizon
-corpus/lookout/tasks/db/seed.brig	check	fail	T-135, T-137, horizon
-corpus/lookout/test/monitors_test.brig	check	fail	T-133, T-135, T-137, T-147, horizon
-corpus/lookout/test/web/api_test.brig	check	fail	T-133, T-147, horizon
+corpus/lookout/scripts/import_monitors.brig	check	fail	horizon
+corpus/lookout/tasks/db/seed.brig	check	fail	horizon
+corpus/lookout/test/monitors_test.brig	check	fail	horizon
+corpus/lookout/test/web/api_test.brig	check	fail	horizon
 
 # ---- whelk ----
-corpus/whelk/hook.brig	check	fail	T-155, T-164, T-165, T-166, horizon
+corpus/whelk/hook.brig	check	fail	horizon
 
 # ---- шаблоны .bt (web-mvp-research/demo) ----
 web-mvp-research/demo/lib/lookout_web/components/field.html.bt	parse	fail	horizon
 web-mvp-research/demo/lib/lookout_web/components/status_badge.html.bt	parse	fail	horizon
 web-mvp-research/demo/lib/lookout_web/templates/layouts/app.html.bt	parse	fail	horizon
 web-mvp-research/demo/lib/lookout_web/templates/monitors/form.html.bt	parse	fail	horizon
-web-mvp-research/demo/lib/lookout_web/templates/monitors/index.html.bt	parse	fail	T-144, horizon
+web-mvp-research/demo/lib/lookout_web/templates/monitors/index.html.bt	parse	fail	horizon
 web-mvp-research/demo/lib/lookout_web/templates/monitors/show.html.bt	parse	fail	horizon

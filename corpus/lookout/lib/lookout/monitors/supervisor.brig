@@ -1,8 +1,6 @@
 # Динамический супервизор чекеров: на старте поднимает по чекеру на каждый
 # монитор из БД, дальше добавляет новые по запросу.
-# needs: T-135, T-137, T-164, T-167, horizon
-#   реестр имён (02/R5) — T-164;
-#   глобальный read-only конфиг (02/R13) — T-167; модули проекта — T-135, T-137;
+# needs: horizon
 #   horizon: Config.get (04), Supervisor.start_dynamic/start_child (вместе с Registry).
 module Lookout.Monitors.Supervisor
 

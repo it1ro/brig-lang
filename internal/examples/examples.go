@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -510,4 +511,57 @@ func runErrVal(err error) runtime.Value {
 		return re.Val
 	}
 	return runtime.Unit
+}
+
+// closedRe — заголовок issue `T-NNN · …`: номер задачи в начале title.
+var closedRe = regexp.MustCompile(`^(T-\d+)\b`)
+
+// taskIDRe — ровно номер задачи.
+var taskIDRe = regexp.MustCompile(`^T-\d+$`)
+
+// ParseClosed разбирает список закрытых задач: номера T-NNN через запятую
+// или пробел (`T-246, T-247`).
+func ParseClosed(list string) (map[string]bool, error) {
+	closed := map[string]bool{}
+	for _, f := range strings.FieldsFunc(list, func(r rune) bool { return r == ',' || r == ' ' || r == '\n' }) {
+		if !taskIDRe.MatchString(f) {
+			return nil, fmt.Errorf("%q: нужен номер задачи T-NNN", f)
+		}
+		closed[f] = true
+	}
+	return closed, nil
+}
+
+// LoadClosedTasks возвращает номера закрытых задач по titles issues
+// (`gh issue list --state closed`). Нужна сеть и авторизованный gh.
+func LoadClosedTasks(repo string) (map[string]bool, error) {
+	out, err := exec.Command("gh", "issue", "list", "--repo", repo, "--state", "closed",
+		"--limit", "5000", "--json", "title", "--jq", ".[].title").Output()
+	if err != nil {
+		return nil, fmt.Errorf("gh issue list: %w", err)
+	}
+	closed := map[string]bool{}
+	for _, title := range strings.Split(string(out), "\n") {
+		if m := closedRe.FindStringSubmatch(title); m != nil {
+			closed[m[1]] = true
+		}
+	}
+	return closed, nil
+}
+
+// ClosedPending сообщает о блоках файла с меткой pending(T-NNN), где T-NNN
+// закрыта (T-246): задача сделана, значит блок должен компилироваться и
+// метку надо снять. tasks — как в CheckFile.
+func ClosedPending(path string, tasks, closed map[string]bool) ([]string, error) {
+	results, err := CheckFile(path, tasks)
+	if err != nil {
+		return nil, err
+	}
+	var problems []string
+	for _, r := range results {
+		if r.Pending != "" && closed[r.Pending] {
+			problems = append(problems, fmt.Sprintf("%s:%d: pending(%s): задача закрыта — снять метку", r.File, r.Line, r.Pending))
+		}
+	}
+	return problems, nil
 }

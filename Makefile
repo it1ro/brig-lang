@@ -118,6 +118,14 @@ corpus: build
 plan-check:
 	$(GO) run ./cmd/plan-check $(if $(ONLINE),-online)
 
+# Гигиена меток (T-246): needs манифеста корпуса и pending(T-NNN) спеки не
+# ссылаются на закрытые задачи. ONLINE=1 — закрытые по titles issues (gh);
+# CLOSED=T-NNN[,T-MMM] — явный список (CI на PR: задача из title). Без них
+# не проверяется. В all не входит.
+.PHONY: markers-check
+markers-check:
+	$(GO) run ./cmd/corpus -markers $(if $(ONLINE),-online) $(if $(CLOSED),-closed '$(CLOSED)')
+
 # Поднять уровни неожиданно прошедших файлов и перезаписать X.out
 # (diff манифеста смотреть глазами, выполненные задачи из needs снять вручную).
 update-corpus: build

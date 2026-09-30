@@ -442,3 +442,34 @@ func TestLoadTasks(t *testing.T) {
 		t.Errorf("T-1 must not match a prefix of T-116")
 	}
 }
+
+// T-246: pending(T-NNN) на закрытую задачу — проблема.
+func TestPendingClosedTask(t *testing.T) {
+	doc := "# Doc\n\n" +
+		"```brig module pending(T-7)\nmodule Main\nfn main() -> not_yet_defined(1)\n```\n\n" +
+		"```brig module pending(T-8)\nmodule Main\nfn main() -> also_missing(1)\n```\n"
+	path := filepath.Join(t.TempDir(), "doc.md")
+	if err := os.WriteFile(path, []byte(doc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	tasks := map[string]bool{"T-7": true, "T-8": true}
+
+	problems, err := ClosedPending(path, tasks, map[string]bool{"T-7": true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(problems) != 1 || !strings.Contains(problems[0], "doc.md:3") || !strings.Contains(problems[0], "pending(T-7)") {
+		t.Fatalf("problems = %q, want одна про pending(T-7) на строке 3", problems)
+	}
+	if problems, _ = ClosedPending(path, tasks, nil); len(problems) != 0 {
+		t.Fatalf("без закрытых задач проблем быть не должно: %q", problems)
+	}
+
+	closed, err := ParseClosed("T-7, T-9")
+	if err != nil || !closed["T-7"] || !closed["T-9"] || len(closed) != 2 {
+		t.Fatalf("ParseClosed = %v, %v", closed, err)
+	}
+	if _, err := ParseClosed("246"); err == nil {
+		t.Fatal("ParseClosed(246): want error")
+	}
+}

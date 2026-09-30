@@ -43,3 +43,25 @@ jobs:
 
             - name: make test-race
               run: make test-race
+
+    # Гигиена меток (T-246): задача из title PR (`[T-NNN]`) не должна остаться в
+    # needs манифеста корпуса и в pending(T-NNN) спеки — PR, закрывающий задачу,
+    # сам снимает метки. Остальные закрытые задачи: make markers-check ONLINE=1.
+    markers:
+        if: github.event_name == 'pull_request'
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+
+            - uses: actions/setup-go@v5
+              with:
+                  go-version-file: go.mod
+                  cache: true
+
+            - name: make markers-check
+              env:
+                  PR_TITLE: ${{ github.event.pull_request.title }}
+              run: |
+                  closed=$(printf '%s' "$PR_TITLE" | grep -oE '\[T-[0-9]+\]' | tr -d '[]' | paste -sd, -) || true
+                  echo "закрываемые задачи: ${closed:-нет}"
+                  make markers-check CLOSED="$closed"
