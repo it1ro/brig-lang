@@ -39,10 +39,10 @@ corpus/lookout/lib/lookout_web/router.brig	check	fail	T-135, T-137, T-144, horiz
 corpus/lookout/lib/main.brig	check	fail	T-135, T-137, T-168, horizon
 corpus/lookout/priv/migrations/001_create_monitors.brig	run	fail	horizon
 corpus/lookout/project.brig	run	fail	horizon
-corpus/lookout/scripts/import_monitors.brig	check	fail	T-135, T-137, T-176, horizon
+corpus/lookout/scripts/import_monitors.brig	check	fail	T-135, T-137, horizon
 corpus/lookout/tasks/db/seed.brig	check	fail	T-135, T-137, horizon
 corpus/lookout/test/monitors_test.brig	check	fail	T-133, T-135, T-137, T-147, horizon
-corpus/lookout/test/web/api_test.brig	check	fail	T-133, T-147, T-176, horizon
+corpus/lookout/test/web/api_test.brig	check	fail	T-133, T-147, horizon
 
 # ---- whelk ----
 corpus/whelk/hook.brig	check	fail	T-155, T-164, T-165, T-166, horizon
