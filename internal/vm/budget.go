@@ -107,28 +107,46 @@ func sizeEstimate(v *runtime.Value) int64 {
 	return 0
 }
 
+// spawnLimits — разобранный второй аргумент spawn (§12.10). Нулевое
+// значение — лимитов хода нет и порог ящика по умолчанию.
+type spawnLimits struct {
+	reds, alloc int64
+	hwm         int // 0 — defaultHWM
+}
+
 // parseLimits разбирает второй аргумент spawn: анонимная запись с
-// необязательными полями turn_reductions и turn_alloc_bytes, Int > 0.
-// Иначе — (:type_error, (:spawn, limits)).
-func parseLimits(v runtime.Value) (reds, alloc int64, err error) {
+// необязательными полями turn_reductions, turn_alloc_bytes и
+// mailbox_hwm, Int > 0. Иначе — (:type_error, (:spawn, limits)).
+func parseLimits(v runtime.Value) (spawnLimits, error) {
+	var lim spawnLimits
 	if v.Kind != runtime.KindRecord || v.Record.Type != "" {
-		return 0, 0, typeErr("spawn", v)
+		return spawnLimits{}, typeErr("spawn", v)
 	}
 	for _, f := range v.Record.Fields {
 		n, ok := positiveInt(f.Val)
 		if !ok {
-			return 0, 0, typeErr("spawn", v)
+			return spawnLimits{}, typeErr("spawn", v)
 		}
 		switch f.Name {
 		case "turn_reductions":
-			reds = n
+			lim.reds = n
 		case "turn_alloc_bytes":
-			alloc = n
+			lim.alloc = n
+		case "mailbox_hwm":
+			lim.hwm = clampToInt(n)
 		default:
-			return 0, 0, typeErr("spawn", v)
+			return spawnLimits{}, typeErr("spawn", v)
 		}
 	}
-	return reds, alloc, nil
+	return lim, nil
+}
+
+// clampToInt — int64 в int без переполнения на 32-битной платформе.
+func clampToInt(n int64) int {
+	if n > int64(math.MaxInt) {
+		return math.MaxInt
+	}
+	return int(n)
 }
 
 // positiveInt — Int > 0; большое — насыщается до MaxInt64 (недостижимо).

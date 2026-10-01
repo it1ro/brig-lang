@@ -193,7 +193,7 @@ fn fill(pid, n) ->
 
 fn main() ->
     me = self()
-    spawn(() -> holder(me))
+    spawn(() -> holder(me), { mailbox_hwm: 64 })
     pid = recv
         p -> p
     fill(pid, 64)
