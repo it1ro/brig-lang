@@ -19,7 +19,7 @@ type Result struct {
 // паникует.
 func Classify(src string, cursor int, env Env) Result {
 	toks := scanSrc(src)
-	ann := resolve(src, toks, env)
+	ann := resolve(src, toks, env, cursor)
 	brackets(src, toks, ann, cursor)
 	var spans []Span
 	for i, t := range toks {

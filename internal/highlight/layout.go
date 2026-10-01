@@ -1,5 +1,7 @@
 package highlight
 
+import "strings"
+
 import "unicode/utf8"
 
 // brackets помечает лишние закрывающие скобки и скобки чужого вида как
@@ -111,6 +113,11 @@ func indents(src string, toks []token) (spans []Span, guides []int) {
 			continue
 		}
 		if depth[i] > 0 || blankOrComment(ln.text) {
+			// Пустая последняя строка закрывает блок: направляющая на ней
+			// осталась бы в scrollback после Enter.
+			if i == len(lines)-1 && i > 0 && strings.TrimSpace(ln.text) == "" {
+				continue
+			}
 			guides = append(guides, guideAt(src, stack, ln, ind)...)
 			continue
 		}

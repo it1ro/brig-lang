@@ -34,7 +34,7 @@ type resolver struct {
 	mod   string
 }
 
-func resolve(src string, toks []token, env Env) []ann {
+func resolve(src string, toks []token, env Env, cursor int) []ann {
 	r := &resolver{
 		src:  src,
 		toks: toks,
@@ -45,7 +45,110 @@ func resolve(src string, toks []token, env Env) []ann {
 	r.modules()
 	r.plain()
 	r.names()
+	r.typing(cursor)
 	return r.ann
+}
+
+// typing снимает unknown с имени, которое ещё набирается: курсор в конце
+// имени, и имя — начало известного (`Str.up` до `Str.upper`).
+func (r *resolver) typing(cursor int) {
+	if cursor < 0 {
+		return
+	}
+	at := runeOffset(r.src, cursor)
+	for i, t := range r.toks {
+		if t.end != at || r.ann[i].class != Unknown {
+			continue
+		}
+		if t.kind != tLower && t.kind != tUpper {
+			continue
+		}
+		if r.knownPrefix(i) {
+			r.ann[i] = ann{set: true}
+			if p := r.prev(i); p >= 0 && r.text(p) == "." {
+				if m := r.prev(p); m >= 0 && r.ann[m].class == Unknown && r.knownModule(r.text(m)) {
+					r.ann[m] = ann{class: Module, set: true}
+				}
+			}
+		}
+	}
+}
+
+// knownPrefix — имя i — начало известного имени: привязки, прелюдии,
+// хелпера, модуля или функции модуля перед точкой.
+func (r *resolver) knownPrefix(i int) bool {
+	name := r.text(i)
+	if p := r.prev(i); p >= 0 && r.text(p) == "." {
+		m := r.prev(p)
+		if m < 0 {
+			return false
+		}
+		return hasPrefixKey(r.env.Modules[r.text(m)], name) || r.userModPrefix(r.text(m), name)
+	}
+	for _, set := range []map[string]bool{r.env.Bindings, r.env.Prelude, r.env.Helpers, r.env.Types} {
+		if hasPrefixKey(set, name) {
+			return true
+		}
+	}
+	for mod := range r.env.Modules {
+		if strings.HasPrefix(mod, name) {
+			return true
+		}
+	}
+	for _, m := range r.mods {
+		if strings.HasPrefix(m.name, name) {
+			return true
+		}
+	}
+	return false
+}
+
+func (r *resolver) knownModule(mod string) bool {
+	known, _ := r.lookupMod(mod, "", len(r.src))
+	return known
+}
+
+func (r *resolver) userModPrefix(mod, name string) bool {
+	for _, m := range r.mods {
+		if m.name != mod {
+			continue
+		}
+		for fn := range m.members {
+			if strings.HasPrefix(fn, name) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func hasPrefixKey(set map[string]bool, prefix string) bool {
+	for k := range set {
+		if strings.HasPrefix(k, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+// prev — индекс предыдущего значимого токена (без комментариев), -1 — нет.
+func (r *resolver) prev(i int) int {
+	i--
+	for i >= 0 && (r.toks[i].kind == tComment || r.toks[i].kind == tDoc) {
+		i--
+	}
+	return i
+}
+
+// runeOffset — байтовое смещение руны n в s; за концом — len(s).
+func runeOffset(s string, n int) int {
+	for i := range s {
+		if n == 0 {
+			return i
+		}
+		n--
+	}
+	return len(s)
 }
 
 func (r *resolver) text(i int) string { return r.toks[i].text(r.src) }

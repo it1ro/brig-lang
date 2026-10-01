@@ -338,26 +338,27 @@ func TestBuiltinNamesMatchSema(t *testing.T) {
 
 func noEnv(string) (string, bool) { return "", false }
 
-// TestDefaultPalette — сдержанная палитра: операторы, пунктуация и
-// привязки цвета терминала, красный только у error.
-func TestDefaultPalette(t *testing.T) {
+// TestPaletteDefaults — сдержанная палитра (T-290, C.1): операторы,
+// пунктуация, привязки и прелюдия цвета терминала, комментарии dim, модуль
+// отличен от типа, regex — от number, красный только у error.
+func TestPaletteDefaults(t *testing.T) {
 	want := map[highlight.Class]string{
 		highlight.Keyword: "35",
 		highlight.Atom:    "36",
 		highlight.String:  "32",
 		highlight.Interp:  "33",
 		highlight.Bytes:   "32",
-		highlight.Regex:   "33",
+		highlight.Regex:   "3;32",
 		highlight.Number:  "33",
-		highlight.Comment: "90",
-		highlight.Doc:     "3;90",
-		highlight.Module:  "34",
+		highlight.Comment: "2",
+		highlight.Doc:     "2;3",
+		highlight.Module:  "1;34",
 		highlight.Type:    "34",
 		highlight.Op:      "",
 		highlight.Punct:   "",
 		highlight.Binding: "",
-		highlight.Prelude: "36",
-		highlight.Helper:  "1;36",
+		highlight.Prelude: "",
+		highlight.Helper:  "1",
 		highlight.Unknown: "4",
 		highlight.Error:   "1;31",
 	}
@@ -382,6 +383,91 @@ func TestDefaultPalette(t *testing.T) {
 					t.Errorf("%s is red", c)
 				}
 			}
+		}
+	}
+}
+
+// TestThemeLight — T-290 (C.2): BRIG_THEME=light меняет жёлтые number и
+// interp; auto берёт фон из OSC 11, без ответа — из COLORFGBG, иначе
+// dark; BRIG_COLORS поверх темы.
+func TestThemeLight(t *testing.T) {
+	paint := func(pal highlight.Palette, c highlight.Class) string {
+		return pal.Paint("x", highlight.Result{Spans: []highlight.Span{{Start: 0, End: 1, Class: c}}})
+	}
+	env := func(kv ...string) func(string) (string, bool) {
+		return func(k string) (string, bool) {
+			for i := 0; i+1 < len(kv); i += 2 {
+				if kv[i] == k {
+					return kv[i+1], true
+				}
+			}
+			return "", false
+		}
+	}
+	light := highlight.PaletteFromEnv(env("BRIG_THEME", "light"))
+	if got := paint(light, highlight.Number); got != "\x1b[34mx\x1b[0m" {
+		t.Errorf("light number = %q", got)
+	}
+	if got := paint(light, highlight.Interp); got != "\x1b[35mx\x1b[0m" {
+		t.Errorf("light interp = %q", got)
+	}
+	if got := paint(highlight.PaletteFromEnv(env("BRIG_THEME", "dark")), highlight.Number); got != "\x1b[33mx\x1b[0m" {
+		t.Errorf("dark number = %q", got)
+	}
+	over := highlight.PaletteFromEnv(env("BRIG_THEME", "light", "BRIG_COLORS", "number=36"))
+	if got := paint(over, highlight.Number); got != "\x1b[36mx\x1b[0m" {
+		t.Errorf("BRIG_COLORS over theme = %q", got)
+	}
+	if got := paint(highlight.PaletteFromEnv(env("COLORFGBG", "0;15")), highlight.Number); got != "\x1b[34mx\x1b[0m" {
+		t.Errorf("COLORFGBG light background = %q", got)
+	}
+	if got := paint(highlight.PaletteFromEnv(env("COLORFGBG", "15;0")), highlight.Number); got != "\x1b[33mx\x1b[0m" {
+		t.Errorf("COLORFGBG dark background = %q", got)
+	}
+	osc := highlight.NewPalette(highlight.PaletteOptions{
+		Getenv: env("COLORFGBG", "15;0"), TTY: true,
+		Background: func() (bool, bool) { return highlight.LightBackground("\x1b]11;rgb:ffff/fefe/f0f0\x1b\\") },
+	})
+	if got := paint(osc, highlight.Number); got != "\x1b[34mx\x1b[0m" {
+		t.Errorf("OSC 11 light background = %q", got)
+	}
+	if light, ok := highlight.LightBackground("\x1b]11;rgb:1e1e/1e1e/2e2e\x07"); !ok || light {
+		t.Errorf("dark OSC 11 reply = %v %v", light, ok)
+	}
+	var warn strings.Builder
+	highlight.NewPalette(highlight.PaletteOptions{Getenv: env("BRIG_THEME", "sepia", "BRIG_COLORS", "atom=red:keyword=999:nope=1"), Warn: &warn})
+	for _, frag := range []string{"BRIG_THEME", `atom: invalid SGR "red"`, `keyword: invalid SGR "999"`, `unknown class "nope"`} {
+		if !strings.Contains(warn.String(), frag) {
+			t.Errorf("warnings lack %q:\n%s", frag, warn.String())
+		}
+	}
+}
+
+// TestNoColorEmpty — T-290 (C.7, C.4): пустой NO_COLOR цвет не выключает
+// (no-color.org); вне TTY цвета нет, FORCE_COLOR и CLICOLOR_FORCE его
+// включают; NO_COLOR сильнее FORCE_COLOR.
+func TestNoColorEmpty(t *testing.T) {
+	env := func(kv map[string]string) func(string) (string, bool) {
+		return func(k string) (string, bool) { v, ok := kv[k]; return v, ok }
+	}
+	cases := []struct {
+		env map[string]string
+		tty bool
+		on  bool
+	}{
+		{map[string]string{"NO_COLOR": ""}, true, true},
+		{map[string]string{"NO_COLOR": "1"}, true, false},
+		{map[string]string{}, false, false},
+		{map[string]string{"FORCE_COLOR": "1"}, false, true},
+		{map[string]string{"CLICOLOR_FORCE": "1"}, false, true},
+		{map[string]string{"FORCE_COLOR": "0"}, false, false},
+		{map[string]string{"FORCE_COLOR": "1", "NO_COLOR": "1"}, false, false},
+		{map[string]string{"TERM": "dumb"}, true, false},
+	}
+	for _, c := range cases {
+		pal := highlight.NewPalette(highlight.PaletteOptions{Getenv: env(c.env), TTY: c.tty})
+		if pal.Enabled() != c.on {
+			t.Errorf("env %v tty %v: color %v, want %v", c.env, c.tty, pal.Enabled(), c.on)
 		}
 	}
 }
@@ -436,5 +522,46 @@ func TestOpenBracketNotError(t *testing.T) {
 	}
 	if got, _ := classAt("(]", 0, -1, env); got == highlight.Error {
 		t.Errorf("open bracket before wrong close is error")
+	}
+}
+
+// TestTypingNotUnknown — T-290 (C.3): имя под курсором, которое ещё
+// набирается и является началом известного, не подчёркнуто как unknown;
+// то же имя без курсора — unknown.
+func TestTypingNotUnknown(t *testing.T) {
+	env := highlight.REPLEnv()
+	classAt := func(src string, cursor, at int) highlight.Class {
+		for _, sp := range highlight.Classify(src, cursor, env).Spans {
+			if sp.Start <= at && at < sp.End {
+				return sp.Class
+			}
+		}
+		return ""
+	}
+	src := "Str.up"
+	if c := classAt(src, len(src), 4); c == highlight.Unknown {
+		t.Errorf("Str.up while typing: %s", c)
+	}
+	if c := classAt(src, -1, 4); c != highlight.Unknown {
+		t.Errorf("Str.up without cursor: %q, want unknown", c)
+	}
+	if c := classAt("pri", 3, 0); c == highlight.Unknown {
+		t.Errorf("pri while typing: %s", c)
+	}
+	if c := classAt("zzz", 3, 0); c != highlight.Unknown {
+		t.Errorf("zzz while typing: %q, want unknown", c)
+	}
+}
+
+// TestClosingBlankLineNoGuide — T-290 (C.7): пустая последняя строка,
+// которая закрывает блок, рисуется без направляющей.
+func TestClosingBlankLineNoGuide(t *testing.T) {
+	src := "fn f(x) ->\n    x\n    "
+	res := highlight.Classify(src, -1, highlight.REPLEnv())
+	last := strings.LastIndex(src, "\n") + 1
+	for _, g := range res.Guides {
+		if g >= last {
+			t.Fatalf("guide at %d on the closing blank line: %v", g, res.Guides)
+		}
 	}
 }
