@@ -295,6 +295,12 @@ description: >
   `attachTrace` кадры натива пропускает. Новый HOF прелюдии с колбэком —
   тоже через `defResumable`, не через `c.Call`, иначе он снова держит
   run-loop. Якорь `TestFairnessPreludeCallback`.
+- **Модуль `Enum` (T-257, `prelude_enum.go`).** Обход пяти видов
+  (`List`, `Vector`, `Range`, `Set`, `Map` — пара `(k, v)`, term order) —
+  `enumIter`; HOF — `enumCont` через `defResumable`, остальное — `def`.
+  Субъект не коллекция — `modTypeErr("enum", f, v)`, предикат не `Bool` —
+  `notBoolErr`, сравнение sort/min/max — `enumCompare` (ошибки как у
+  `<`). Якоря — `internal/vm/enum_test.go`.
 - `callSync` — синхронный вызов вне scheduler-цикла через `runtime.Caller`
   (`vm.Call`: тестовый фреймворк `Test.*`, HOF, вызванный из другого
   натива, — через `runSync`); fairness там нет. Он **не может** заходить в
