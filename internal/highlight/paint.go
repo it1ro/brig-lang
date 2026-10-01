@@ -142,7 +142,7 @@ func LightBackground(reply string) (light, ok bool) {
 
 func warnf(w io.Writer, format string, args ...any) {
 	if w != nil {
-		fmt.Fprintf(w, format, args...)
+		_, _ = fmt.Fprintf(w, format, args...)
 	}
 }
 

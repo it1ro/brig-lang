@@ -189,7 +189,7 @@ func (e *Editor) handle(k termio.Key) (src string, done bool, err error) {
 	src, done, err = e.apply(k)
 	if k.Code != termio.KeyUndo && !done && string(before.r) != string(e.buf.r) {
 		// Набор подряд — один шаг undo.
-		if !(k.Code == termio.KeyRune && e.last == termio.KeyRune && len(e.undo) > 0) {
+		if k.Code != termio.KeyRune || e.last != termio.KeyRune || len(e.undo) == 0 {
 			e.undo = append(e.undo, before)
 		}
 	}

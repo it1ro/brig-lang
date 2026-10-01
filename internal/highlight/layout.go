@@ -1,8 +1,9 @@
 package highlight
 
-import "strings"
-
-import "unicode/utf8"
+import (
+	"strings"
+	"unicode/utf8"
+)
 
 // brackets помечает лишние закрывающие скобки и скобки чужого вида как
 // error и выделяет пару скобки под курсором. Незакрытая открывающая —
