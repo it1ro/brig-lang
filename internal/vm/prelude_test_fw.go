@@ -30,9 +30,9 @@ type testCase struct {
 // с 1, если упал хоть один тест.
 func InstallTestPrelude(vm *VM) {
 	def := func(name string, arity int, fn runtime.NativeFunc) {
-		vm.globals[name] = runtime.Func(&runtime.FuncValue{
+		vm.DefineGlobal(name, runtime.Func(&runtime.FuncValue{
 			Name: name, Arity: arity, IsNative: true, Native: fn,
-		})
+		}))
 	}
 
 	def("Test.describe", 1, func(c runtime.Caller, args []runtime.Value) (runtime.Value, error) {

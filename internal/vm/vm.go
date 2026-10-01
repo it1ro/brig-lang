@@ -41,9 +41,27 @@ type TraceFrame struct {
 
 func (e *ErrRaise) Error() string { return "raise: " + e.Val.Inspect() }
 
+// globalCell — ячейка глобального имени. Адрес ячейки стабилен на всё время
+// жизни VM, поэтому чанк держит её в кэше и не ищет имя в map на каждом
+// GETGLOBAL (T-276): переопределение в REPL (§11.4) пишет в ту же ячейку,
+// снятие имени ставит set = false.
+type globalCell struct {
+	val runtime.Value
+	set bool
+}
+
+// cellBlock — ячейки выделяются блоками по cellBlock штук: прелюдия
+// регистрирует ~100 имён, и отдельная аллокация на каждое выросла бы в
+// allocs/op прогона (BenchmarkCall). Блок не переезжает — адрес ячейки
+// внутри него стабилен. Размер — компромисс: больший блок режет аллокации,
+// но недоиспользованный хвост блока растёт в B/op (ячейка — 280 B).
+const cellBlock = 4
+
 // VM — виртуальная машина.
 type VM struct {
-	globals      map[string]runtime.Value
+	globals map[string]*globalCell
+	// cellFree — неизданный остаток последнего блока ячеек.
+	cellFree     []globalCell
 	scheduler    *Scheduler
 	tests        []testCase
 	currentGroup string
@@ -63,7 +81,7 @@ type VM struct {
 // New создаёт ВМ с установленной прелюдией.
 func New() *VM {
 	vm := &VM{
-		globals:   make(map[string]runtime.Value),
+		globals:   make(map[string]*globalCell),
 		resumable: make(map[*runtime.FuncValue]resumableFunc),
 	}
 	vm.scheduler = NewScheduler(vm)
@@ -77,9 +95,9 @@ func New() *VM {
 // aliasPrelude кладёт функции прелюдии под именами Prelude.<name>: они
 // остаются доступны, когда пользовательская fn затеняет глобал (§11.5).
 func aliasPrelude(vm *VM) {
-	for name, v := range vm.globals {
-		if v.Kind == runtime.KindFunction && !strings.Contains(name, ".") {
-			vm.globals["Prelude."+name] = v
+	for name, c := range vm.globals {
+		if c.set && c.val.Kind == runtime.KindFunction && !strings.Contains(name, ".") {
+			vm.DefineGlobal("Prelude."+name, c.val)
 		}
 	}
 }
@@ -91,10 +109,42 @@ func (vm *VM) SetArgs(args []string) { vm.args = args }
 func (vm *VM) Scheduler() *Scheduler { return vm.scheduler }
 
 // DefineGlobal регистрирует глобальное имя.
-func (vm *VM) DefineGlobal(name string, v runtime.Value) { vm.globals[name] = v }
+func (vm *VM) DefineGlobal(name string, v runtime.Value) {
+	c := vm.cell(name)
+	c.val, c.set = v, true
+}
 
-// Global возвращает глобальное значение.
-func (vm *VM) Global(name string) runtime.Value { return vm.globals[name] }
+// Global возвращает глобальное значение; имя не зарегистрировано — Unit.
+func (vm *VM) Global(name string) runtime.Value {
+	if c := vm.globals[name]; c != nil && c.set {
+		return c.val
+	}
+	return runtime.Value{}
+}
+
+// cell отдаёт ячейку имени, создавая её при первом обращении. Ячейка
+// переживает снятие имени (undefineGlobal): кэш чанка держит её адрес, и
+// повторное определение того же имени должно попасть в ту же ячейку.
+func (vm *VM) cell(name string) *globalCell {
+	if c := vm.globals[name]; c != nil {
+		return c
+	}
+	if len(vm.cellFree) == 0 {
+		vm.cellFree = make([]globalCell, cellBlock)
+	}
+	c := &vm.cellFree[0]
+	vm.cellFree = vm.cellFree[1:]
+	vm.globals[name] = c
+	return c
+}
+
+// undefineGlobal снимает глобальное имя (REPL, §11.4): ячейка остаётся в
+// таблице пустой, и кэши чанков видят снятие без инвалидации.
+func (vm *VM) undefineGlobal(name string) {
+	if c := vm.globals[name]; c != nil {
+		c.val, c.set = runtime.Value{}, false
+	}
+}
 
 // FuncValue оборачивает скомпилированную функцию.
 func FuncValue(fn *Function) runtime.Value {

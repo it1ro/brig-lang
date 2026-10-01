@@ -554,17 +554,17 @@ func installTelemetry(vm *VM) {
 		},
 	}
 	vm.teleEmit = emit
-	vm.globals["Telemetry.emit"] = runtime.Func(emit)
-	vm.globals["Telemetry.attach"] = runtime.Func(&runtime.FuncValue{
+	vm.DefineGlobal("Telemetry.emit", runtime.Func(emit))
+	vm.DefineGlobal("Telemetry.attach", runtime.Func(&runtime.FuncValue{
 		Name: "Telemetry.attach", Arity: 3, IsNative: true,
 		Native: func(c runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 			return c.(*VM).scheduler.teleAttach(args[0], args[1], args[2])
 		},
-	})
-	vm.globals["Telemetry.detach"] = runtime.Func(&runtime.FuncValue{
+	}))
+	vm.DefineGlobal("Telemetry.detach", runtime.Func(&runtime.FuncValue{
 		Name: "Telemetry.detach", Arity: 1, IsNative: true,
 		Native: func(c runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 			return c.(*VM).scheduler.teleDetach(args[0]), nil
 		},
-	})
+	}))
 }

@@ -11,9 +11,9 @@ import (
 // Map с ключом "$bytes" не коллизирует с маркером Bytes.
 func InstallJSONPrelude(vm *VM) {
 	def := func(name string, arity int, fn runtime.NativeFunc) {
-		vm.globals[name] = runtime.Func(&runtime.FuncValue{
+		vm.DefineGlobal(name, runtime.Func(&runtime.FuncValue{
 			Name: name, Arity: arity, IsNative: true, Native: fn,
-		})
+		}))
 	}
 
 	// Json.encode(v) / Json.encode(v, { type_tag: Bool }) (§4.7).

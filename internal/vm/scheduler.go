@@ -1016,6 +1016,10 @@ func (s *Scheduler) execFrame(a *Actor, f *Frame) stepOutcome {
 	regs := f.regs
 	code := f.chunk.Code
 	consts := f.chunk.Constants
+	// cells — ячейки глобалов этого чанка (T-276): GETGLOBAL/SETGLOBAL берут
+	// их по индексу константы. Чанк меняется только на TAILCALL, а он выходит
+	// из execFrame, поэтому кэш достаточно взять на входе.
+	cells := s.vm.chunkCells(f.chunk)
 
 	fail := func(err error) stepOutcome {
 		a.err = err
@@ -1037,17 +1041,16 @@ func (s *Scheduler) execFrame(a *Actor, f *Frame) stepOutcome {
 			f.ip++
 
 		case GETGLOBAL:
-			name := consts[in.Bx()].Str
-			g, ok := s.vm.globals[name]
-			if !ok {
-				return fail(fmt.Errorf("undefined: %s", name))
+			c := cells[in.Bx()]
+			if !c.set {
+				return fail(fmt.Errorf("undefined: %s", consts[in.Bx()].Str))
 			}
-			regs[in.A()] = g
+			regs[in.A()] = c.val
 			f.ip++
 
 		case SETGLOBAL:
-			name := consts[in.Bx()].Str
-			s.vm.globals[name] = regs[in.A()]
+			c := cells[in.Bx()]
+			c.val, c.set = regs[in.A()], true
 			f.ip++
 
 		case GETUPVAL:
