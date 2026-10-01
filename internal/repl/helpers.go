@@ -877,6 +877,8 @@ var builtinParams = map[string]string{
 	"Str.split/2": "s, sep", "Str.join/2": "xs, sep", "Str.trim/1": "s",
 	"Str.find/2": "s, sub", "Str.replace/3": "s, old, new",
 	"Str.starts_with?/2": "s, prefix", "Str.ends_with?/2": "s, suffix",
+	"Float.round/2": "x, digits", "Float.to_str/2": "x, digits",
+	"Str.pad_left/3": "s, width, fill", "Str.pad_right/3": "s, width, fill",
 	"Str.lower/1": "s", "Str.upper/1": "s", "Str.slice/3": "s, start, end",
 	"Str.to_int/1":   "s",
 	"Str.to_float/1": "s",
