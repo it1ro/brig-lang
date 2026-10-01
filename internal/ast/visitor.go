@@ -220,6 +220,16 @@ func walkExpr(v Visitor, e Expr) error {
 		}
 		return walkNode(v, n.end)
 
+	case *BlockStmt:
+		// BlockStmt реализует и Expr, и Stmt: узел попадает сюда (VisitExpr),
+		// инструкции обходятся здесь же — один раз.
+		for _, st := range n.stmts {
+			if err := walkNode(v, st); err != nil {
+				return err
+			}
+		}
+		return nil
+
 	case *interpExpr:
 		for _, e := range n.exprs {
 			if err := walkNode(v, e); err != nil {

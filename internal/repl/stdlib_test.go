@@ -29,6 +29,15 @@ func TestSessionStdlib(t *testing.T) {
 		t.Fatalf("private: %q", out.String())
 	}
 
+	// T-285: ссылка на приватную функцию внутри тела fn тоже отклоняется.
+	out.Reset()
+	if _, err := s.Eval("fn g() ->\n    List.subject([1], :x)\n"); err == nil {
+		t.Fatal("private List.subject callable from fn body")
+	}
+	if !strings.Contains(out.String(), "subject/2 is private to List") {
+		t.Fatalf("private in body: %q", out.String())
+	}
+
 	out.Reset()
 	mustEval(t, s, out, "h(List)\n")
 	for _, frag := range []string{"Функции над `List`", "concat/2"} {

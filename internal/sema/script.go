@@ -54,14 +54,6 @@ func (r *mainRefs) VisitExpr(e ast.Expr) error {
 		if x.Name() == "main" {
 			r.found = true
 		}
-	case *ast.BlockStmt:
-		// ast.Walk доходит до BlockStmt как до Expr и в его инструкции
-		// не спускается — обходим их сами.
-		for _, s := range x.Stmts() {
-			if err := ast.Walk(r, s); err != nil {
-				return err
-			}
-		}
 	}
 	return nil
 }
