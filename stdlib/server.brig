@@ -30,7 +30,7 @@ pub fn call(pid, req, timeout) ->
 ## Отвечает на запрос `(:call, from, req)`: `from` — `(pid, ref)`
 ## вызывающего, `Server.reply(from, v)` ≡ `reply(pid, ref, v)` (§12.9).
 ## Результат — `()`; поздний или повторный ответ молча отбрасывается.
-## `from` не пара `(Pid, Ref)` — `(:type_error, (:reply, from))`.
+## `from` не пара `(Pid, Ref)` — `(:type_error, ((:server, :reply), from))`.
 ##
 ## ```brig repl
 ## > ref = make_ref()
@@ -40,4 +40,4 @@ pub fn call(pid, req, timeout) ->
 ## Ok(:pong)
 ## ```
 pub fn reply((pid, ref), v) -> Prelude.reply(pid, ref, v)
-pub fn reply(from, _) -> raise((:type_error, (:reply, from)))
+pub fn reply(from, _) -> raise((:type_error, ((:server, :reply), from)))

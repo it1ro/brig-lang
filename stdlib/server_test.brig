@@ -72,4 +72,4 @@ fn test_server_call_keeps_mailbox() ->
 
 fn test_server_reply_bad_from() ->
     r = trap(Server.reply(:nobody, 1))
-    Test.assert_eq(r, Error((:type_error, (:reply, :nobody))))
+    Test.assert_eq(r, Error((:type_error, ((:server, :reply), :nobody))))

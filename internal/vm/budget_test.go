@@ -191,6 +191,6 @@ fn main() ->
     assert(take() == (:down, ref, :normal))
     assert(Actor.info(p) == None)
     r = trap(Actor.info(:nope))
-    assert(to_str(r) == "Error((:type_error, (:Actor.info, :nope)))")
+    assert(r == Error((:type_error, ((:actor, :info), :nope))))
 `)
 }

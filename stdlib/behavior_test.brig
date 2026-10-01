@@ -54,9 +54,9 @@ fn test_behavior_bad_arity() ->
 # Первый аргумент не Behavior или handlers не Map — ошибка у вызывающего.
 fn test_behavior_spawn_type_error() ->
     r = trap(spawn_behavior(:nope, %{}))
-    Test.assert_eq(r, Error((:type_error, (:spawn_behavior, :nope))))
+    Test.assert_eq(r, Error((:type_error, ((:behavior, :spawn), :nope))))
     r2 = trap(spawn_behavior(Behavior{ handlers: [] }, %{}))
-    Test.assert_eq(r2, Error((:type_error, (:spawn_behavior, []))))
+    Test.assert_eq(r2, Error((:type_error, ((:behavior, :spawn), []))))
 
 # Цикл хвостовой: 100k сообщений подряд не растят кадры.
 fn test_behavior_tail_loop() ->

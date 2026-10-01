@@ -60,7 +60,10 @@ description: >
   native, `Json.encode`) — ловимый `(:function_clause, [args])`
   (`functionClause`, форма §6.1 как у мультиклоза). Фатальны остались
   только `internal:` и `deadlock`. Новый `:type_error` — только через
-  `typeErr`, новый `:function_clause` — через `functionClause`; в
+  `typeErr` (голая прелюдия, оператор) или `modTypeErr(mod, fn, v)`
+  (функция модуля: `((:mod, :f), v)`, T-236 #372; новая функция модуля —
+  строка в `internal/examples/module_type_error_test.go`), новый
+  `:function_clause` — через `functionClause`; в
   `stepFrame` ошибку сначала отдавать в `f.catch`, затем `fail`.
 - **K-4.** Редукция — это `CALL`/`TAILCALL` в байткод-функцию, `RETURN`,
   шаг unwind. Вызов native не тратит редукцию; колбэк возобновляемого

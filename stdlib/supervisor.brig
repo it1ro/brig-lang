@@ -20,14 +20,14 @@ module Supervisor
 ## или вернул не `Pid` — уже запущенные гасятся в обратном порядке, а
 ## вызывающий получает `raise((:start_failed, (name, reason)))`.
 ## `strategy` не `:one_for_one` или `restart` не `:permanent`/`:transient`
-## — `(:type_error, (:start, value))`.
+## — `(:type_error, ((:supervisor, :start), value))`.
 ##
 ## ```brig repl
 ## > sup = Supervisor.start({ strategy: :one_for_one, max_restarts: 3, within: 5000, children: [{ name: :idle, start: () -> spawn_linked(() -> recv _msg -> ()), restart: :permanent }] })
 ## > Supervisor.stop(sup, :shutdown, { timeout: 1000 })
 ## Ok(())
 ## > Supervisor.start({ strategy: :rest_for_one, max_restarts: 3, within: 5000, children: [] })
-## raise (:type_error, (:start, :rest_for_one))
+## raise (:type_error, ((:supervisor, :start), :rest_for_one))
 ## ```
 pub fn start(spec) ->
     check(spec)
@@ -59,7 +59,7 @@ pub fn stop(sup, reason, opts) ->
 ## Дети супервизора `sup` в порядке старта: `(id, pid, restart)`, `id` —
 ## `name` child spec (§13.1). Запрос — `Server.call` с `:which_children`.
 ## Супервизор не ответил — `(:timeout, (:which_children, sup))`. `sup` не
-## `Pid` — `(:type_error, (:which_children, sup))`.
+## `Pid` — `(:type_error, ((:supervisor, :which_children), sup))`.
 ##
 ## ```brig repl
 ## > sup = Supervisor.start({ strategy: :one_for_one, max_restarts: 3, within: 5000, children: [] })
@@ -69,12 +69,12 @@ pub fn stop(sup, reason, opts) ->
 ## > Enum.map(Supervisor.which_children(sup2), c -> (c[0], c[2]))
 ## [(:idle, :permanent)]
 ## > Supervisor.which_children(:nope)
-## raise (:type_error, (:which_children, :nope))
+## raise (:type_error, ((:supervisor, :which_children), :nope))
 ## ```
 pub fn which_children(sup) ->
     checked = trap(Actor.info(sup))
     match checked
-        Error((:type_error, _)) -> raise((:type_error, (:which_children, sup)))
+        Error((:type_error, _)) -> raise((:type_error, ((:supervisor, :which_children), sup)))
         Error(e) -> raise(e)
         Ok(_) ->
             match Server.call(sup, :which_children, which_children_timeout_ms())
@@ -96,10 +96,10 @@ fn kill_grace_ms() -> 1000
 fn check(spec) ->
     match spec.strategy
         :one_for_one -> ()
-        s -> raise((:type_error, (:start, s)))
+        s -> raise((:type_error, ((:supervisor, :start), s)))
     match spec.children
         [..] -> Enum.each(spec.children, check_child)
-        cs -> raise((:type_error, (:start, cs)))
+        cs -> raise((:type_error, ((:supervisor, :start), cs)))
 
 fn check_child(c) ->
     _ = c.name
@@ -107,7 +107,7 @@ fn check_child(c) ->
     match c.restart
         :permanent -> ()
         :transient -> ()
-        r -> raise((:type_error, (:start, r)))
+        r -> raise((:type_error, ((:supervisor, :start), r)))
 
 # ---- актор супервизора ----
 
