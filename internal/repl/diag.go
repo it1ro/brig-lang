@@ -89,7 +89,7 @@ func writeEvalError(w io.Writer, file, src string, err error, opt Print) error {
 	if located {
 		return writeLocated(w, "error", f, line, col, msg, src, opt.Pal, opt.Env, src != "", false)
 	}
-	_, werr := fmt.Fprintf(w, "error: %v\n", err)
+	_, werr := fmt.Fprintf(w, "%s %v\n", errorHead(opt.Pal, "error:"), err)
 	return werr
 }
 
@@ -97,6 +97,7 @@ func writeRaise(w io.Writer, file, src string, e *vm.ErrRaise, opt Print) error 
 	prefix := "error: raise: "
 	body := render(e.Val, false, 1, displayWidth(prefix), opt.Width, opt.Limits)
 	text := joinPrefix(prefix, colorize(body, opt))
+	text = errorHead(opt.Pal, "error:") + text[len("error:"):]
 	if _, err := fmt.Fprintln(w, text); err != nil {
 		return err
 	}
