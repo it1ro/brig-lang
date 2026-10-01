@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/it1ro/brig-lang/internal/termio"
 )
@@ -32,9 +33,9 @@ type Editor struct {
 	// той же ширины. nil — простой текст.
 	Highlight func(src string, cursor int) string
 	// Hint — суффикс истории после курсора. Редактор зовёт его только в
-	// конце строки курсора. На экране — первая строка, серым и только
-	// при Color; → и End вставляют весь суффикс и без цвета тоже.
-	// nil — без хвоста.
+	// конце строки курсора и только при Color: невидимый хвост не
+	// вставляется. На экране — первая строка, приглушённо, и `…`, если
+	// строк больше; → и End вставляют по одной строке. nil — без хвоста.
 	Hint func(src string, pos int) string
 	// Complete — кандидаты Tab. Span [From, To) редактор заменяет сам,
 	// не разбирая, где в тексте имя.
@@ -50,6 +51,14 @@ type Editor struct {
 	History *History
 	// Width — ширина терминала в колонках; nil или не больше 0 — 80.
 	Width func() int
+	// Wait — придут ли байты ввода за d (poll терминала). Без него Esc
+	// ждёт хвост без таймаута, а Resized не опрашивается.
+	Wait func(d time.Duration) bool
+	// Resized — окно изменило размер с прошлого вызова (SIGWINCH).
+	Resized func() bool
+	// External — правка ввода во внешнем редакторе (Ctrl-X Ctrl-E);
+	// nil — клавиша ничего не делает.
+	External func(src string) (string, error)
 
 	in  *bufio.Reader
 	out io.Writer
@@ -61,8 +70,28 @@ type Editor struct {
 	draft        string
 	search       *search
 	noHint       bool
-	menu         []string
+	final        bool // последняя отрисовка ввода: без пары скобок
 	ghost        string
+	menu         menuState
+	layout       layout // раскладка последней отрисовки для resize
+
+	last    termio.KeyCode // предыдущая клавиша: склейка kill, Alt-Y, Alt-.
+	ctrlX   bool           // нажат префикс Ctrl-X
+	kills   []string       // kill ring, последний — в конце
+	yank    yankState
+	undo    []buffer
+	lastArg lastArgState
+	prefix  string // префикс поиска ↑/↓ по истории
+	// pastedNL — последняя клавиша — вставка с переводом строки в конце.
+	pastedNL bool
+}
+
+// layout — строки последней отрисовки в колонках (с приглашением) и
+// позиция курсора: по ним resize находит начало ввода после переноса.
+type layout struct {
+	cells []int
+	cline int
+	cx    int
 }
 
 // search — состояние Ctrl-R.
@@ -85,7 +114,7 @@ func (e *Editor) ReadInput(prompt, cont string) (string, error) {
 	e.prompt, e.cont = prompt, cont
 	e.reset()
 	for {
-		k, err := termio.ReadKey(e.in)
+		k, err := e.readKey()
 		if err != nil {
 			e.finish("")
 			return "", err
@@ -98,35 +127,107 @@ func (e *Editor) ReadInput(prompt, cont string) (string, error) {
 	}
 }
 
+// resizePoll — как часто ожидание клавиши проверяет Resized.
+const resizePoll = 100 * time.Millisecond
+
+// readKey ждёт клавишу. С Wait ожидание идёт порциями: между ними
+// редактор замечает resize и перерисовывает ввод.
+func (e *Editor) readKey() (termio.Key, error) {
+	for e.Wait != nil && e.in.Buffered() == 0 {
+		ready := e.Wait(resizePoll)
+		if e.Resized != nil && e.Resized() {
+			e.resize()
+		}
+		if ready {
+			break
+		}
+	}
+	var wait func(time.Duration) bool
+	if e.Wait != nil {
+		wait = func(d time.Duration) bool { return e.in.Buffered() > 0 || e.Wait(d) }
+	}
+	return termio.ReadKeyWait(e.in, wait)
+}
+
+// resize перерисовывает ввод после смены ширины. Терминал уже перенёс
+// строки под новую ширину: курсор стоит на строке экрана, которую даёт
+// прежняя раскладка при новой ширине.
+func (e *Editor) resize() {
+	w := e.width()
+	rows := 0
+	for i, n := range e.layout.cells {
+		if i == e.layout.cline {
+			rows += e.layout.cx / w
+			break
+		}
+		rows += n/w + 1
+	}
+	e.crow = rows
+	e.render()
+}
+
 // reset начинает новый ввод.
 func (e *Editor) reset() {
 	e.buf = buffer{}
 	e.crow = 0
 	e.hist = e.historyLen()
 	e.draft = ""
+	e.prefix = ""
 	e.search = nil
-	e.menu = nil
+	e.menu = menuState{}
 	e.ghost = ""
+	e.undo = nil
+	e.ctrlX = false
+	e.last = termio.KeyUnknown
 	e.render()
 }
 
 // handle применяет клавишу. done — ввод закончен: src и err — итог
 // ReadInput.
 func (e *Editor) handle(k termio.Key) (src string, done bool, err error) {
+	before := buffer{r: append([]rune(nil), e.buf.r...), pos: e.buf.pos}
+	src, done, err = e.apply(k)
+	if k.Code != termio.KeyUndo && !done && string(before.r) != string(e.buf.r) {
+		// Набор подряд — один шаг undo.
+		if !(k.Code == termio.KeyRune && e.last == termio.KeyRune && len(e.undo) > 0) {
+			e.undo = append(e.undo, before)
+		}
+	}
+	e.last = k.Code
+	if k.Code != termio.KeyPaste {
+		e.pastedNL = false
+	}
+	return src, done, err
+}
+
+func (e *Editor) apply(k termio.Key) (src string, done bool, err error) {
 	if e.search != nil && e.searchKey(k) {
 		return "", false, nil
 	}
-	if k.Code != termio.KeyTab {
-		e.menu = nil
+	if e.ctrlX {
+		e.ctrlX = false
+		if k.Code == termio.KeyEnd { // Ctrl-E
+			e.external()
+		}
+		return "", false, nil
+	}
+	if k.Code != termio.KeyTab && k.Code != termio.KeyShiftTab {
+		e.menu = menuState{}
 	}
 	b := &e.buf
 	switch k.Code {
 	case termio.KeyRune:
 		b.insert(string(k.Rune))
 	case termio.KeyPaste:
-		b.insert(k.Text)
+		// Хвостовой перевод строки вставки не оставляет курсор на пустой
+		// строке: ввод отправляет Enter.
+		text := strings.TrimRight(k.Text, "\n")
+		b.insert(text)
+		e.pastedNL = text != k.Text
 	case termio.KeyEnter:
 		return e.enter()
+	case termio.KeySubmit:
+		return e.submit()
 	case termio.KeyBackspace:
 		if _, col := b.lineCol(); e.IndentWidth > 0 && b.onlySpacesBefore() {
 			b.del(b.pos-(col-1)%e.IndentWidth-1, b.pos)
@@ -158,10 +259,20 @@ func (e *Editor) handle(k termio.Key) (src string, done bool, err error) {
 		}
 	case termio.KeyTab:
 		e.tab()
+	case termio.KeyShiftTab:
+		if e.menu.active() {
+			e.menuStep(-1)
+		} else {
+			e.dedent()
+		}
 	case termio.KeyWordLeft:
 		b.wordLeft()
 	case termio.KeyWordRight:
 		b.wordRight()
+	case termio.KeyBufStart:
+		b.pos = 0
+	case termio.KeyBufEnd:
+		b.pos = len(b.r)
 	case termio.KeyUp:
 		if b.firstLine() {
 			e.historyMove(-1)
@@ -174,18 +285,39 @@ func (e *Editor) handle(k termio.Key) (src string, done bool, err error) {
 		} else {
 			b.down()
 		}
+	case termio.KeyHistPrev:
+		e.historyMove(-1)
+	case termio.KeyHistNext:
+		e.historyMove(+1)
 	case termio.KeyKillEnd:
-		b.killEnd()
+		e.kill(b.pos, max(b.lineEnd(), min(b.pos+1, len(b.r))), false)
 	case termio.KeyKillStart:
-		b.killStart()
+		e.kill(b.lineStart(), b.pos, true)
 	case termio.KeyKillWord:
-		b.killWord()
+		e.kill(b.wordStartSpace(), b.pos, true)
+	case termio.KeyKillWordAlnum:
+		e.kill(b.wordStartAlnum(), b.pos, true)
+	case termio.KeyKillWordRight:
+		e.kill(b.pos, b.wordEndAlnum(), false)
+	case termio.KeyYank:
+		e.yankTop()
+	case termio.KeyYankPop:
+		e.yankPop()
+	case termio.KeyUndo:
+		e.undoStep()
+	case termio.KeyTranspose:
+		b.transpose()
+	case termio.KeyLastArg:
+		e.insertLastArg()
+	case termio.KeyCtrlX:
+		e.ctrlX = true
+	case termio.KeyEsc:
 	case termio.KeyClear:
 		e.write("\x1b[H\x1b[2J")
 		e.crow = 0
 	case termio.KeySearch:
 		e.ghost = ""
-		e.menu = nil
+		e.menu = menuState{}
 		if e.History != nil {
 			saved := buffer{r: append([]rune(nil), b.r...), pos: b.pos}
 			e.search = &search{match: -1, saved: saved}
@@ -194,11 +326,31 @@ func (e *Editor) handle(k termio.Key) (src string, done bool, err error) {
 	return "", false, nil
 }
 
+// submit — Alt-Enter: ввод отправляется целиком с любой позиции курсора.
+func (e *Editor) submit() (string, bool, error) {
+	src := e.buf.String()
+	if strings.TrimSpace(src) == "" {
+		return "", false, nil
+	}
+	e.finish("")
+	return src + "\n", true, nil
+}
+
 // enter: в конце незавершённого ввода и внутри многострочного буфера —
 // перевод строки с автоотступом, иначе — конец ввода.
 func (e *Editor) enter() (string, bool, error) {
+	// Неизменённая запись истории: Enter — как в её конце, курсор после
+	// ↑ стоит на первой строке.
+	if e.hist < e.historyLen() && e.buf.String() == e.History.At(e.hist) {
+		e.buf.pos = len(e.buf.r)
+	}
 	src := e.buf.String()
 	more := e.NeedMore != nil && e.NeedMore(src+"\n")
+	if more && e.pastedNL && e.buf.atEnd() && !e.NeedMore(src+"\n\n") {
+		// Вставка кончалась пустой строкой, которая закрывает блок: Enter
+		// отправляет ввод, лишний Enter не нужен.
+		more = false
+	}
 	if more || e.buf.multiline() && !e.buf.atEnd() {
 		indent := ""
 		if e.Indent != nil {
@@ -215,10 +367,11 @@ func (e *Editor) enter() (string, bool, error) {
 // mark и переводит строку: следующий вывод начинается под вводом.
 func (e *Editor) finish(mark string) {
 	e.search = nil
+	e.menu = menuState{}
 	e.buf.pos = len(e.buf.r)
-	e.noHint = true
+	e.noHint, e.final = true, true
 	e.render()
-	e.noHint = false
+	e.noHint, e.final = false, false
 	e.write(mark + "\r\n")
 	e.crow = 0
 }
@@ -231,21 +384,32 @@ func (e *Editor) historyLen() int {
 }
 
 // historyMove листает историю на d записей; за последней — черновик,
-// который редактировался до начала листания.
+// который редактировался до начала листания. Непустой черновик — префикс:
+// показываются только записи, которые с него начинаются (как fish). После
+// шага назад курсор — в конце первой строки записи, вперёд — в конце
+// записи: следующий ↑ или ↓ снова листает историю.
 func (e *Editor) historyMove(d int) {
 	n := e.historyLen()
-	i := e.hist + d
-	if i < 0 || i > n {
-		return
-	}
 	if e.hist == n {
 		e.draft = e.buf.String()
+		e.prefix = e.draft
+	}
+	i := e.hist + d
+	for i >= 0 && i < n && !strings.HasPrefix(e.History.At(i), e.prefix) {
+		i += d
+	}
+	if i < 0 || i > n {
+		return
 	}
 	e.hist = i
 	if i == n {
 		e.buf.set(e.draft)
-	} else {
-		e.buf.set(e.History.At(i))
+		return
+	}
+	e.buf.set(e.History.At(i))
+	if d < 0 {
+		e.buf.pos = 0
+		e.buf.end()
 	}
 }
 
@@ -333,21 +497,27 @@ func (e *Editor) render() {
 	src := e.buf.String()
 	lines := strings.Split(src, "\n")
 	shown := lines
-	if e.Highlight != nil {
-		if h := strings.Split(e.Highlight(src, e.buf.pos), "\n"); len(h) == len(lines) {
+	switch {
+	case e.search != nil && e.search.match >= 0 && !e.search.failed:
+		shown = strings.Split(e.searchShown(src), "\n")
+	case e.Highlight != nil:
+		cursor := e.buf.pos
+		if e.final {
+			cursor = -1
+		}
+		if h := strings.Split(e.Highlight(src, cursor), "\n"); len(h) == len(lines) {
 			shown = h
 		}
 	}
 	cl, cc := e.buf.lineCol()
 	hint := ""
 	e.ghost = ""
-	if e.Hint != nil && !e.noHint && e.search == nil && e.buf.pos == e.buf.lineEnd() {
+	if e.Hint != nil && e.Color && !e.noHint && e.search == nil && e.buf.pos == e.buf.lineEnd() {
 		e.ghost = e.Hint(src, e.buf.pos)
-		if e.Color {
-			hint, _, _ = strings.Cut(e.ghost, "\n")
-		}
+		hint = ghostLine(e.ghost)
 	}
 
+	e.layout = layout{cline: cl}
 	rows, crow, ccol := 0, 0, 0
 	for i, line := range lines {
 		p := e.cont
@@ -360,11 +530,13 @@ func (e *Editor) render() {
 		if i == cl {
 			x := termio.Cells(p) + termio.Cells(string([]rune(line)[:cc]))
 			crow, ccol = rows+x/w, x%w
+			e.layout.cx = x
 			if hint != "" {
 				b.WriteString("\x1b[2m" + termio.Visible(hint) + "\x1b[0m")
 				n += termio.Cells(hint)
 			}
 		}
+		e.layout.cells = append(e.layout.cells, n)
 		if n > 0 && n%w == 0 {
 			b.WriteString(" \b\x1b[K")
 		}

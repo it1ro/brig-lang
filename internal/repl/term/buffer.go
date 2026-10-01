@@ -104,31 +104,6 @@ func (b *buffer) delete() {
 	}
 }
 
-// killEnd удаляет текст до конца строки; в конце строки — её перевод.
-func (b *buffer) killEnd() {
-	if e := b.lineEnd(); e > b.pos {
-		b.del(b.pos, e)
-	} else {
-		b.delete()
-	}
-}
-
-// killStart удаляет текст от начала строки до курсора.
-func (b *buffer) killStart() { b.del(b.lineStart(), b.pos) }
-
-// killWord удаляет слово перед курсором вместе с пробелами за ним
-// (граница слова — пробельный символ, как unix-word-rubout).
-func (b *buffer) killWord() {
-	i := b.pos
-	for i > 0 && unicode.IsSpace(b.r[i-1]) {
-		i--
-	}
-	for i > 0 && !unicode.IsSpace(b.r[i-1]) {
-		i--
-	}
-	b.del(i, b.pos)
-}
-
 // wordLeft и wordRight — к началу/концу слова из букв и цифр.
 func (b *buffer) wordLeft() {
 	for b.pos > 0 && !isWord(b.r[b.pos-1]) {
