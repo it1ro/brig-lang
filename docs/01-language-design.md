@@ -1,6 +1,6 @@
-# Brig — Language Specification v0.5.0
+# Brig — Language Specification v0.5.1
 
-**Версия:** v0.5.0
+**Версия:** v0.5.1
 **Статус:** нормативный документ, единый источник истины
 **Заменяет:** `01-language-design.md` v0.4.6 и `01.1-brig-formalization.md` v0.4.6
 **Референсная реализация:** Go (Golang)
@@ -38,7 +38,7 @@
 - [E. Diagnostics Format](#e-diagnostics-format)
 - [F. Validation Stages](#f-validation-stages)
 - [G. `cmd/check-examples` Specification](#g-cmdcheck-examples-specification)
-- [Что изменилось в v0.5.0](#что-изменилось-в-v050)
+- [Что изменилось в v0.5.1](#что-изменилось-в-v051)
 
 ---
 
@@ -1274,7 +1274,8 @@ fn process(a, b) -> (a, b)
 - `(:recv_clause, msg)`
 - `(:cond_clause, ())` — ни одно условие `cond` не истинно (§8.4).
 - `(:assertion_failed, ())`
-- `(:type_error, (op, val))`
+- `(:type_error, (op, val))` — голая функция прелюдии и оператор: `op` — атом имени (`(:len, 5)`, `(:add, (1, "a"))`; DD #217, единая форма — T-237 #373).
+- `(:type_error, ((mod, f), val))` — функция встроенного модуля или модуля `stdlib/*.brig`: `mod` — имя модуля в snake_case, `f` — имя функции, `val` — аргумент неверного вида. `Map.get(5, 1)` бросает `(:type_error, ((:map, :get), 5))`, `Option.map(1, f)` — `(:type_error, ((:option, :map), 1))`. Тег пишется в паттерне и различает одноимённые функции разных модулей. Модули `Global`, `Test`, `Telemetry`, `Timer`, `Port`, `File`, `Signal`, `HttpServer` и функции `Record.to_anon`, `Sys.halt`, `Json.encode`, `Json.decode` пока бросают короткий атом `(op, val)` (T-237 #373).
 - `(:division_by_zero, ())`
 - `(:index_out_of_bounds, (idx, len))`
 - `(:range_error, (start, end))`
@@ -1535,25 +1536,25 @@ brig[2]> v(1) + 1
 
 | Имя | Арность | Аргументы | Результат | Авто-raise |
 | --- | --- | --- | --- | --- |
-| `Str.split` | 2 | `(s, sep)`; `sep == ""` — по кодпоинтам | `List<Str>` | `(:type_error, (:Str.split, v))` |
-| `Str.join` | 2 | `(xs, sep)`, `xs: List<Str>` | `Str` | `(:type_error, (:Str.join, v))` — `xs` не `List` или элемент не `Str` |
-| `Str.trim` | 1 | `(s)` | `Str` без ведущих/замыкающих пробельных | `(:type_error, (:Str.trim, s))` |
-| `Str.find` | 2 | `(s, sub)` | `Option<Int>` — индекс первого совпадения по кодпоинтам | `(:type_error, (:Str.find, v))` |
-| `Str.replace` | 3 | `(s, old, new)` | `Str`, все вхождения `old` заменены на `new` | `(:type_error, (:Str.replace, v))` |
-| `Str.starts_with?` | 2 | `(s, prefix)` | `Bool` | `(:type_error, (:Str.starts_with?, v))` |
-| `Str.ends_with?` | 2 | `(s, suffix)` | `Bool` | `(:type_error, (:Str.ends_with?, v))` |
-| `Str.lower` | 1 | `(s)` | `Str` в нижнем регистре | `(:type_error, (:Str.lower, s))` |
-| `Str.upper` | 1 | `(s)` | `Str` в верхнем регистре | `(:type_error, (:Str.upper, s))` |
-| `Str.slice` | 3 | `(s, start, end)`, по кодпоинтам | `Str` | `(:type_error, (:Str.slice, s))`; `(:index_out_of_bounds, (idx, len))` |
-| `Str.to_int` | 1 | `(s)` | `Option<Int>` | `(:type_error, (:Str.to_int, s))` |
-| `Str.to_float` | 1 | `(s)`; пробелы по краям отбрасываются, `inf`/`nan` — не число | `Option<Float>` | `(:type_error, (:Str.to_float, s))` |
+| `Str.split` | 2 | `(s, sep)`; `sep == ""` — по кодпоинтам | `List<Str>` | `(:type_error, ((:str, :split), v))` |
+| `Str.join` | 2 | `(xs, sep)`, `xs: List<Str>` | `Str` | `(:type_error, ((:str, :join), v))` — `xs` не `List` или элемент не `Str` |
+| `Str.trim` | 1 | `(s)` | `Str` без ведущих/замыкающих пробельных | `(:type_error, ((:str, :trim), s))` |
+| `Str.find` | 2 | `(s, sub)` | `Option<Int>` — индекс первого совпадения по кодпоинтам | `(:type_error, ((:str, :find), v))` |
+| `Str.replace` | 3 | `(s, old, new)` | `Str`, все вхождения `old` заменены на `new` | `(:type_error, ((:str, :replace), v))` |
+| `Str.starts_with?` | 2 | `(s, prefix)` | `Bool` | `(:type_error, ((:str, :starts_with?), v))` |
+| `Str.ends_with?` | 2 | `(s, suffix)` | `Bool` | `(:type_error, ((:str, :ends_with?), v))` |
+| `Str.lower` | 1 | `(s)` | `Str` в нижнем регистре | `(:type_error, ((:str, :lower), s))` |
+| `Str.upper` | 1 | `(s)` | `Str` в верхнем регистре | `(:type_error, ((:str, :upper), s))` |
+| `Str.slice` | 3 | `(s, start, end)`, по кодпоинтам | `Str` | `(:type_error, ((:str, :slice), s))`; `(:index_out_of_bounds, (idx, len))` |
+| `Str.to_int` | 1 | `(s)` | `Option<Int>` | `(:type_error, ((:str, :to_int), s))` |
+| `Str.to_float` | 1 | `(s)`; пробелы по краям отбрасываются, `inf`/`nan` — не число | `Option<Float>` | `(:type_error, ((:str, :to_float), s))` |
 | `Str.pad_left` | 3 | `(s, width, fill)`, `width: Int`, `fill` — `Str` из одного кодпоинта | `Str`, дополненная слева `fill` до `width` кодпоинтов; `s` не короче `width` — `s` | `(:type_error, ((:str, :pad_left), v))` — `v`: неверный из трёх аргументов; `width` вне `0..16777216` (кроме отрицательного, он даёт `s`) — тоже |
 | `Str.pad_right` | 3 | `(s, width, fill)`, как у `pad_left` | `Str`, дополненная справа | `(:type_error, ((:str, :pad_right), v))` |
-| `Bytes.slice` | 3 | `(b, start, end)`, по байтам | `Bytes` | `(:type_error, (:Bytes.slice, b))`; `(:index_out_of_bounds, (idx, len))` |
-| `Bytes.find` | 2 | `(b, sub)`, `sub: Bytes` | `Option<Int>` — байтовый индекс первого совпадения | `(:type_error, (:Bytes.find, v))` |
-| `Bytes.split` | 2 | `(b, sep)`, `sep: Bytes`; `sep == b""` — по байтам | `List<Bytes>` | `(:type_error, (:Bytes.split, v))` |
-| `Bytes.concat` | 2 | `(a, b)` | `Bytes` — склейка | `(:type_error, (:Bytes.concat, v))` |
-| `Bytes.at` | 2 | `(b, i)` | `Int` — байт `0..255` | `(:type_error, (:Bytes.at, b))`; `(:index_out_of_bounds, (i, len))` |
+| `Bytes.slice` | 3 | `(b, start, end)`, по байтам | `Bytes` | `(:type_error, ((:bytes, :slice), b))`; `(:index_out_of_bounds, (idx, len))` |
+| `Bytes.find` | 2 | `(b, sub)`, `sub: Bytes` | `Option<Int>` — байтовый индекс первого совпадения | `(:type_error, ((:bytes, :find), v))` |
+| `Bytes.split` | 2 | `(b, sep)`, `sep: Bytes`; `sep == b""` — по байтам | `List<Bytes>` | `(:type_error, ((:bytes, :split), v))` |
+| `Bytes.concat` | 2 | `(a, b)` | `Bytes` — склейка | `(:type_error, ((:bytes, :concat), v))` |
+| `Bytes.at` | 2 | `(b, i)` | `Int` — байт `0..255` | `(:type_error, ((:bytes, :at), b))`; `(:index_out_of_bounds, (i, len))` |
 
 `Map.get_or` и `Json.at` (T-176) — в таблицах §11.5a.
 
@@ -1628,17 +1629,17 @@ info: `len` shadows prelude function; use `Prelude.len` if prelude was intended
 
 Модули без `import` (§11.1), кроме `Str`, `Bytes` и `Enum` (таблицы выше): `Map` (§4.5), `Vec` (§4.4), `Json` (§4.7), `Record` (§4.7), `Float` — функции ВМ; `List`, `Option`, `Result`, `Server`, `Supervisor`, `Behavior` — модули на Brig (`stdlib/*.brig`), в справочнике только `pub fn` (§11.2). Субъект — первый аргумент (§7.5). Колонки как в §11.5. `Observer` — служебный модуль консоли (`tree()`, §11.4), в справочник не входит. Таблица сверяется с кодом тестом `TestSpecModulesMatchCode`: каждая функция модуля из списка выше — строка с той же арностью, и наоборот.
 
-Ошибка субъекта — `(:type_error, (op, v))`: `op` — имя функции (у `Vec.*`, `Map.*` с модулем: `:Vec.push`), у `Float.*`, `Str.pad_left`, `Str.pad_right`, `Map.get_or`, новых функций `Map` (`to_list`, `from_list`, `values`, `filter`, `update`) и `Json.at` — структурный тег `((:mod, :f), v)`, `mod` — имя модуля в snake_case. Ошибка внутри колбэка пробрасывается как есть.
+Ошибка субъекта — `(:type_error, ((:mod, :f), v))` (§10.4): `mod` — имя модуля в snake_case, `f` — имя функции, `v` — аргумент неверного вида. Ошибка внутри колбэка пробрасывается как есть.
 
 #### Модуль `Map`
 
 | Имя | Арность | Аргументы | Результат | Авто-raise |
 | --- | --- | --- | --- | --- |
-| `Map.put` | 3 | `(m, k, v)` | `Map` с парой `k => v`; ключ уже есть — значение заменено (равенство ключей §4.8) | `(:type_error, (:Map.put, m))` |
-| `Map.get` | 2 | `(m, k)` | `Option` — значение по ключу `k` | `(:type_error, (:Map.get, m))` |
+| `Map.put` | 3 | `(m, k, v)` | `Map` с парой `k => v`; ключ уже есть — значение заменено (равенство ключей §4.8) | `(:type_error, ((:map, :put), m))` |
+| `Map.get` | 2 | `(m, k)` | `Option` — значение по ключу `k` | `(:type_error, ((:map, :get), m))` |
 | `Map.get_or` | 3 | `(m, k, default)` | значение по ключу `k`, нет ключа — `default` | `(:type_error, ((:map, :get_or), m))` |
-| `Map.remove` | 2 | `(m, k)` | `Map` без ключа `k`; ключа нет — тот же `m` | `(:type_error, (:Map.remove, m))` |
-| `Map.keys` | 1 | `(m)` | `List` ключей | `(:type_error, (:Map.keys, m))` |
+| `Map.remove` | 2 | `(m, k)` | `Map` без ключа `k`; ключа нет — тот же `m` | `(:type_error, ((:map, :remove), m))` |
+| `Map.keys` | 1 | `(m)` | `List` ключей | `(:type_error, ((:map, :keys), m))` |
 | `Map.to_list` | 1 | `(m)` | `List` пар `(k, v)` в порядке печати (§7.4) | `(:type_error, ((:map, :to_list), m))` |
 | `Map.from_list` | 1 | `(xs)`, `xs: List` пар `(k, v)` | `Map`; ключ повторён — побеждает правая пара (§5.2) | `(:type_error, ((:map, :from_list), v))` — `v`: `xs` не `List` или элемент не пара |
 | `Map.values` | 1 | `(m)` | `List` значений в порядке ключей | `(:type_error, ((:map, :values), m))` |
@@ -1658,9 +1659,9 @@ info: `len` shadows prelude function; use `Prelude.len` if prelude was intended
 
 | Имя | Арность | Аргументы | Результат | Авто-raise |
 | --- | --- | --- | --- | --- |
-| `Vec.push` | 2 | `(v, x)` | `Vector` с `x` в конце | `(:type_error, (:Vec.push, v))` |
-| `Vec.set` | 3 | `(v, i, x)`, `i: Int` | `Vector` с `x` на месте `i` | `(:type_error, (:Vec.set, v))`; `(:index_out_of_bounds, (i, len))` — `i` вне `0..len-1` |
-| `Vec.get` | 2 | `(v, i)`, `i: Int` | `Option` — элемент `i`, вне `0..len-1` — `None` | `(:type_error, (:Vec.get, v))` |
+| `Vec.push` | 2 | `(v, x)` | `Vector` с `x` в конце | `(:type_error, ((:vec, :push), v))` |
+| `Vec.set` | 3 | `(v, i, x)`, `i: Int` | `Vector` с `x` на месте `i` | `(:type_error, ((:vec, :set), v))`; `(:index_out_of_bounds, (i, len))` — `i` вне `0..len-1` |
+| `Vec.get` | 2 | `(v, i)`, `i: Int` | `Option` — элемент `i`, вне `0..len-1` — `None` | `(:type_error, ((:vec, :get), v))` |
 
 Длина вектора — `len` (§11.5), как у остальных коллекций.
 
@@ -1686,26 +1687,26 @@ info: `len` shadows prelude function; use `Prelude.len` if prelude was intended
 
 | Имя | Арность | Аргументы | Результат | Авто-raise |
 | --- | --- | --- | --- | --- |
-| `List.concat` | 2 | `(xs, ys)` | `List`: элементы `xs`, затем `ys`, как `[..xs, ..ys]` (§5.2) | `(:type_error, (:concat, v))` — `xs` или `ys` не `List` |
+| `List.concat` | 2 | `(xs, ys)` | `List`: элементы `xs`, затем `ys`, как `[..xs, ..ys]` (§5.2) | `(:type_error, ((:list, :concat), v))` — `xs` или `ys` не `List` |
 
 #### Модуль `Option`
 
 | Имя | Арность | Аргументы | Результат | Авто-raise |
 | --- | --- | --- | --- | --- |
-| `Option.map` | 2 | `(o, f)`, `f(x)` | `Some(f(x))` для `Some(x)`, `None` — `None` | `(:type_error, (:map, o))` — `o` не `Option` |
-| `Option.and_then` | 2 | `(o, f)`, `f(x)` — `Option` | `f(x)` для `Some(x)`, `None` — `None` | `(:type_error, (:and_then, o))` |
-| `Option.unwrap` | 1 | `(o)` | `x` из `Some(x)` | `(:unwrap, None)` — `o` — `None`; `(:type_error, (:unwrap, o))` |
-| `Option.unwrap_or` | 2 | `(o, default)` | `x` из `Some(x)`, для `None` — `default` | `(:type_error, (:unwrap_or, o))` |
+| `Option.map` | 2 | `(o, f)`, `f(x)` | `Some(f(x))` для `Some(x)`, `None` — `None` | `(:type_error, ((:option, :map), o))` — `o` не `Option` |
+| `Option.and_then` | 2 | `(o, f)`, `f(x)` — `Option` | `f(x)` для `Some(x)`, `None` — `None` | `(:type_error, ((:option, :and_then), o))` |
+| `Option.unwrap` | 1 | `(o)` | `x` из `Some(x)` | `(:unwrap, None)` — `o` — `None`; `(:type_error, ((:option, :unwrap), o))` |
+| `Option.unwrap_or` | 2 | `(o, default)` | `x` из `Some(x)`, для `None` — `default` | `(:type_error, ((:option, :unwrap_or), o))` |
 
 #### Модуль `Result`
 
 | Имя | Арность | Аргументы | Результат | Авто-raise |
 | --- | --- | --- | --- | --- |
-| `Result.map` | 2 | `(r, f)`, `f(v)` | `Ok(f(v))` для `Ok(v)`, `Error(e)` — как есть | `(:type_error, (:map, r))` — `r` не `Result` |
-| `Result.and_then` | 2 | `(r, f)`, `f(v)` — `Result` | `f(v)` для `Ok(v)`, `Error(e)` — как есть | `(:type_error, (:and_then, r))` |
-| `Result.unwrap` | 1 | `(r)` | `v` из `Ok(v)` | `(:unwrap, Error(e))` — `r` — `Error(e)`; `(:type_error, (:unwrap, r))` |
-| `Result.unwrap_or` | 2 | `(r, default)` | `v` из `Ok(v)`, для `Error(_)` — `default` | `(:type_error, (:unwrap_or, r))` |
-| `Result.all` | 1 | `(rs)`, `rs: List` из `Result` | `Ok` со списком значений по порядку или первый `Error`; пустой `rs` — `Ok([])` | `(:type_error, (:all, v))` — `rs` не `List` или элемент не `Result` |
+| `Result.map` | 2 | `(r, f)`, `f(v)` | `Ok(f(v))` для `Ok(v)`, `Error(e)` — как есть | `(:type_error, ((:result, :map), r))` — `r` не `Result` |
+| `Result.and_then` | 2 | `(r, f)`, `f(v)` — `Result` | `f(v)` для `Ok(v)`, `Error(e)` — как есть | `(:type_error, ((:result, :and_then), r))` |
+| `Result.unwrap` | 1 | `(r)` | `v` из `Ok(v)` | `(:unwrap, Error(e))` — `r` — `Error(e)`; `(:type_error, ((:result, :unwrap), r))` |
+| `Result.unwrap_or` | 2 | `(r, default)` | `v` из `Ok(v)`, для `Error(_)` — `default` | `(:type_error, ((:result, :unwrap_or), r))` |
+| `Result.all` | 1 | `(rs)`, `rs: List` из `Result` | `Ok` со списком значений по порядку или первый `Error`; пустой `rs` — `Ok([])` | `(:type_error, ((:result, :all), v))` — `rs` не `List` или элемент не `Result` |
 
 #### Модуль `Server`
 
@@ -1714,7 +1715,7 @@ info: `len` shadows prelude function; use `Prelude.len` if prelude was intended
 | Имя | Арность | Аргументы | Результат | Авто-raise |
 | --- | --- | --- | --- | --- |
 | `Server.call` | 3 | `(pid, req, timeout)`, `timeout` — мс | `Ok(v)` — сервер ответил; `Error(:timeout)` — ответа нет, в том числе сервер мёртв; `Error(:busy)` — ящик полон (§12.2) | — |
-| `Server.reply` | 2 | `(from, v)`, `from` — пара `(pid, ref)` | `()`; поздний или повторный ответ отбрасывается | `(:type_error, (:reply, from))` — `from` не `(Pid, Ref)` |
+| `Server.reply` | 2 | `(from, v)`, `from` — пара `(pid, ref)` | `()`; поздний или повторный ответ отбрасывается | `(:type_error, ((:server, :reply), from))` — `from` не `(Pid, Ref)` |
 
 #### Модуль `Supervisor`
 
@@ -1722,9 +1723,9 @@ info: `len` shadows prelude function; use `Prelude.len` if prelude was intended
 
 | Имя | Арность | Аргументы | Результат | Авто-raise |
 | --- | --- | --- | --- | --- |
-| `Supervisor.start` | 1 | `(spec)`, `spec`: `{ strategy, max_restarts, within, children }` | `Pid` супервизора, когда все `start` детей вернулись | `(:start_failed, (name, reason))` — `start` ребёнка упал или вернул не `Pid`; `(:start_failed, :timeout)`; `(:type_error, (:start, v))` — `strategy` не `:one_for_one`, `restart` не `:permanent`/`:transient` |
+| `Supervisor.start` | 1 | `(spec)`, `spec`: `{ strategy, max_restarts, within, children }` | `Pid` супервизора, когда все `start` детей вернулись | `(:start_failed, (name, reason))` — `start` ребёнка упал или вернул не `Pid`; `(:start_failed, :timeout)`; `(:type_error, ((:supervisor, :start), v))` — `strategy` не `:one_for_one`, `restart` не `:permanent`/`:transient` |
 | `Supervisor.stop` | 3 | `(sup, reason, opts)`, `opts`: `{ timeout }` | `Ok(())`; `Error(:timeout)` — остановка не подтверждена | — |
-| `Supervisor.which_children` | 1 | `(sup)` | `List` из `(id, pid, restart)` в порядке старта | `(:type_error, (:which_children, sup))` — `sup` не `Pid`; `(:timeout, (:which_children, sup))` |
+| `Supervisor.which_children` | 1 | `(sup)` | `List` из `(id, pid, restart)` в порядке старта | `(:type_error, ((:supervisor, :which_children), sup))` — `sup` не `Pid`; `(:timeout, (:which_children, sup))` |
 
 Больше `max_restarts` перезапусков за `within` мс — супервизор гасит остальных детей и падает с `(:max_restarts, (name, reason))`.
 
@@ -1734,7 +1735,7 @@ info: `len` shadows prelude function; use `Prelude.len` if prelude was intended
 
 | Имя | Арность | Аргументы | Результат | Авто-raise |
 | --- | --- | --- | --- | --- |
-| `Behavior.spawn` | 2 | `(b, init_state)` | `Pid` актора; голое имя — `spawn_behavior` (§13.2) | `(:type_error, (:spawn_behavior, v))` — `b` не `Behavior` или `handlers` не `Map` |
+| `Behavior.spawn` | 2 | `(b, init_state)` | `Pid` актора; голое имя — `spawn_behavior` (§13.2) | `(:type_error, ((:behavior, :spawn), v))` — `b` не `Behavior` или `handlers` не `Map` |
 
 Ошибки самого актора (в нём, не у вызывающего): тега нет в `handlers` — `(:no_handler, tag)`; аргументов больше трёх — `(:bad_arity, tag)`; колбэк вернул не пару — `(:badmatch, v)`.
 
@@ -2286,7 +2287,7 @@ fn main() ->
 | `watching` | `List<Pid>` — акторы, за которыми наблюдает этот, по тем же правилам |
 | `initial_fn` | `Str` — имя функции, с которой актор начал исполнение, в том же виде, что в stack trace (T-79); для лямбды — имя, которое ей даёт trace |
 
-Мёртвый или несуществующий `pid` → `None`; `pid` не `Pid` → `(:type_error, (:Actor.info, pid))`. Для чужого актора значения racy (§15.2): каждое поле верно на момент чтения, но поля одной записи могут относиться к соседним моментам. Состояние актора (аргументы его цикла) `Actor.info` не отдаёт: оценка размера стейта — горизонт (§12.10).
+Мёртвый или несуществующий `pid` → `None`; `pid` не `Pid` → `(:type_error, ((:actor, :info), pid))`. Для чужого актора значения racy (§15.2): каждое поле верно на момент чтения, но поля одной записи могут относиться к соседним моментам. Состояние актора (аргументы его цикла) `Actor.info` не отдаёт: оценка размера стейта — горизонт (§12.10).
 
 ### 12.14 `Telemetry`: события инструментирования
 
@@ -2416,7 +2417,7 @@ fn main() ->
 
 **Тега нет в `handlers` — `(:no_handler, tag)`.** Ошибка падает в акторе по обычным правилам (§12.7): её видят `watch` и супервизор.
 
-`spawn_behavior(Behavior, InitState)` — акторный примитив. Определяется здесь; в прелюдию не входит. Возвращает `Pid`; актор не связан с вызывающим — линк и наблюдение делаются обычными `spawn_linked`/`watch` и `Supervisor` (§13.1). Первый аргумент не `Behavior` или его `handlers` не `Map` — `(:type_error, (:spawn_behavior, v))` у вызывающего.
+`spawn_behavior(Behavior, InitState)` — акторный примитив. Определяется здесь; в прелюдию не входит. Возвращает `Pid`; актор не связан с вызывающим — линк и наблюдение делаются обычными `spawn_linked`/`watch` и `Supervisor` (§13.1). Первый аргумент не `Behavior` или его `handlers` не `Map` — `(:type_error, ((:behavior, :spawn), v))` у вызывающего.
 
 ---
 
@@ -3656,12 +3657,8 @@ info: <file>:<line>:<col>: <message>
 
 ---
 
-# Что изменилось в v0.5.0
+# Что изменилось в v0.5.1
 
-Полная история до v0.5.0 — `docs/spec-history.md` (разделы H–L). Версия `v0.5.0` — первая после переноса истории из спеки; следующие нормативные PR поднимают её до `v0.5.N` и заменяют этот раздел.
+Прошлые версии — `docs/spec-history.md`.
 
-1. **TCO сквозь `ensure` — гарантия** (T-258): принцип §0.11, §10.3, §15.3; в §16 перенесён из Should в Must. Схема — `docs/02-register-based-virtual-machine.md` §5.1.
-2. **Структура спеки** (T-259): changelog, «Итоговый статус» и «Практические шаги» перенесены в `docs/spec-history.md`; в спеке — норма и этот раздел.
-3. **Версия** спеки и `brig.ebnf` совпадает; `TestSpecVersionMatchesEbnf` (`make spec-tables`) сверяет их.
-4. **§16** — списки по уровням вместо таблицы.
-5. Нормативные изменения после v0.4.7 (раздел L в `docs/spec-history.md`: T-95, DD #41–#43, T-124 и др.) входят в v0.5.0 без пересмотра.
+1. **Breaking: тег `:type_error` у функций модулей** (T-236, #372): §10.4, §11.5, §11.5a, §12.13, §13.2. Функция встроенного модуля или модуля `stdlib/*.brig` бросает `(:type_error, ((:mod, :f), v))`, `mod` — имя модуля в snake_case. Прежний тег Go-модулей — атом с точкой и заглавной буквой (имя `Map.get`, `Str.split`), в паттерне он не писался; модули на Brig бросали голое имя, и `Option.map` с `Result.map` давали один тег `(:map, v)`. Новая форма ловится паттерном: `Error((:type_error, ((:map, :get), _)))`. Голая прелюдия и операторы не меняются (`(op, val)`, DD #217; T-237 #373).
