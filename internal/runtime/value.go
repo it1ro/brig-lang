@@ -212,8 +212,7 @@ type Value struct {
 	// давал +7…15 % на горячих копиях Value в CI (TelemetryNoSubscribers).
 	_          [2]uintptr
 	vector     []Value
-	entries    []MapEntry
-	set        []Value
+	hamt       *hamt // Map и Set (T-272)
 	Func       *FuncValue
 	ClosureVal *ClosureValue
 	Variant    *VariantValue
@@ -237,10 +236,8 @@ func (v Value) Len() int {
 		return v.list.len()
 	case KindVector:
 		return len(v.vector)
-	case KindSet:
-		return len(v.set)
-	case KindMap:
-		return len(v.entries)
+	case KindSet, KindMap:
+		return v.hamt.len()
 	}
 	return 0
 }
@@ -264,18 +261,62 @@ func (v Value) Elems() []Value {
 	case KindVector:
 		return v.vector
 	case KindSet:
-		return v.set
+		return v.hamt.keyList()
 	}
 	return nil
 }
 
-// Entries — пары Map в порядке хранения; для прочих видов nil. Срез нельзя
+// Entries — пары Map в term order (§7.4); для прочих видов nil. Порядок
+// строится при первом обходе за O(n log n) и кэшируется. Срез нельзя
 // изменять.
 func (v Value) Entries() []MapEntry {
 	if v.Kind == KindMap {
-		return v.entries
+		return v.hamt.entries()
 	}
 	return nil
+}
+
+// MapGet — значение по ключу (KeyEqual), O(log₃₂ n); v должна быть Map.
+func (v Value) MapGet(k Value) (Value, bool) {
+	if l := v.hamt.get(hashKey(k), k); l != nil {
+		return l.val, true
+	}
+	return Unit, false
+}
+
+// MapKey — хранимый ключ, равный k (KeyEqual), O(log₃₂ n); v — Map или Set.
+func (v Value) MapKey(k Value) (Value, bool) {
+	if l := v.hamt.get(hashKey(k), k); l != nil {
+		return l.key, true
+	}
+	return Unit, false
+}
+
+// MapPut — Map с парой k => val (существующий ключ заменяется), O(log₃₂ n).
+func (v Value) MapPut(k, val Value) Value {
+	return Value{Kind: KindMap, hamt: v.hamt.put(hashKey(k), k, val)}
+}
+
+// MapRemove — Map без ключа k; ключа нет — v. O(log₃₂ n).
+func (v Value) MapRemove(k Value) Value {
+	return Value{Kind: KindMap, hamt: v.hamt.remove(hashKey(k), k)}
+}
+
+// SetHas — есть ли в Set элемент, равный e (KeyEqual), O(log₃₂ n).
+func (v Value) SetHas(e Value) bool { return v.hamt.get(hashKey(e), e) != nil }
+
+// SetAdd — Set с элементом e; уже есть — v. O(log₃₂ n).
+func (v Value) SetAdd(e Value) Value {
+	h := hashKey(e)
+	if v.hamt.get(h, e) != nil {
+		return v
+	}
+	return Value{Kind: KindSet, hamt: v.hamt.put(h, e, Unit)}
+}
+
+// SetRemove — Set без элемента e; элемента нет — v. O(log₃₂ n).
+func (v Value) SetRemove(e Value) Value {
+	return Value{Kind: KindSet, hamt: v.hamt.remove(hashKey(e), e)}
 }
 
 // ---- конструкторы ----
@@ -483,7 +524,14 @@ func (c *listCell) slice() []Value {
 func Vector(vs ...Value) Value { return Value{Kind: KindVector, vector: vs} }
 
 // Set создаёт множество (Sprint 5.2, §4.6).
-func Set(vs ...Value) Value { return Value{Kind: KindSet, set: vs} }
+// Повторы (KeyEqual) отбрасываются, первое вхождение сохраняется.
+func Set(vs ...Value) Value {
+	s := Value{Kind: KindSet}
+	for _, e := range vs {
+		s = s.SetAdd(e)
+	}
+	return s
+}
 
 // Range создаёт диапазон (Sprint 5.1, §4.3).
 func Range(start, end int64) Value {
@@ -529,7 +577,14 @@ func Record(typ string, fields []RecordField) Value {
 }
 
 // Map создаёт мапу.
-func Map(entries []MapEntry) Value { return Value{Kind: KindMap, entries: entries} }
+// Повторный ключ (KeyEqual) перезаписывает значение.
+func Map(entries []MapEntry) Value {
+	m := Value{Kind: KindMap}
+	for _, e := range entries {
+		m = m.MapPut(e.Key, e.Val)
+	}
+	return m
+}
 
 // ---- печать ----
 
@@ -567,14 +622,14 @@ func (v Value) Inspect() string {
 	case KindMap:
 		// Печать и to_str — по term order (§7.4), как сравнение карт.
 		// Порядок вставки и обход map при Json.decode не наблюдаются.
-		entries := sortedEntries(v.entries)
+		entries := v.Entries()
 		parts := make([]string, len(entries))
 		for i, e := range entries {
 			parts[i] = inspectLit(e.Key) + " => " + inspectLit(e.Val)
 		}
 		return "%{" + strings.Join(parts, ", ") + "}"
 	case KindSet:
-		return "set(" + inspectJoin(v.set) + ")"
+		return "set(" + inspectJoin(v.Elems()) + ")"
 	case KindRange:
 		return strconv.FormatInt(v.RangeStart, 10) + " to " +
 			strconv.FormatInt(v.RangeEnd, 10)
@@ -782,39 +837,27 @@ func equal(a, b Value, strict bool) bool {
 	case KindVector:
 		return equalSlice(a.vector, b.vector, strict)
 	case KindMap:
-		if len(a.entries) != len(b.entries) {
+		// Ключи ищутся по KeyEqual, значения — по правилу strict.
+		if a.Len() != b.Len() {
 			return false
 		}
-		for _, ae := range a.entries {
-			found := false
-			for _, be := range b.entries {
-				if equal(ae.Key, be.Key, strict) && equal(ae.Val, be.Val, strict) {
-					found = true
-					break
-				}
-			}
-			if !found {
-				return false
-			}
-		}
-		return true
+		eq := true
+		a.hamt.each(func(l *hamtLeaf) bool {
+			bv, ok := b.MapGet(l.key)
+			eq = ok && equal(l.val, bv, strict)
+			return eq
+		})
+		return eq
 	case KindSet:
-		if len(a.set) != len(b.set) {
+		if a.Len() != b.Len() {
 			return false
 		}
-		for _, ae := range a.set {
-			found := false
-			for _, be := range b.set {
-				if equal(ae, be, strict) {
-					found = true
-					break
-				}
-			}
-			if !found {
-				return false
-			}
-		}
-		return true
+		eq := true
+		a.hamt.each(func(l *hamtLeaf) bool {
+			eq = b.SetHas(l.key)
+			return eq
+		})
+		return eq
 	case KindVariant:
 		if a.Variant.Tag != b.Variant.Tag || a.Variant.Type != b.Variant.Type ||
 			len(a.Variant.Args) != len(b.Variant.Args) {
@@ -942,9 +985,9 @@ func Compare(a, b Value) (int, error) {
 	case rankList:
 		return compareLists(a.list, b.list)
 	case rankMap:
-		return compareMaps(a.entries, b.entries)
+		return compareMaps(a.Entries(), b.Entries())
 	case rankSet:
-		return compareSlices(sortedValues(a.set), sortedValues(b.set))
+		return compareSlices(a.Elems(), b.Elems())
 	case rankNominal:
 		return compareNominal(a, b)
 	case rankAnon:
@@ -1151,23 +1194,13 @@ func compareLists(a, b *listCell) (int, error) {
 	return 0, nil
 }
 
-// sortedValues возвращает отсортированную копию; при несравнимых
-// элементах порядок остаётся исходным (ошибку отдаст compareSlices).
-func sortedValues(vs []Value) []Value {
-	out := append([]Value(nil), vs...)
-	sort.SliceStable(out, func(i, j int) bool {
-		c, err := Compare(out[i], out[j])
-		return err == nil && c < 0
-	})
-	return out
-}
-
-// compareMaps: размер, затем по парам, отсортированным по ключу.
+// compareMaps: размер, затем по парам; обе стороны уже в term order
+// (Value.Entries).
 func compareMaps(a, b []MapEntry) (int, error) {
 	if len(a) != len(b) {
 		return cmpInt(len(a), len(b)), nil
 	}
-	sa, sb := sortedEntries(a), sortedEntries(b)
+	sa, sb := a, b
 	for i := range sa {
 		if c, err := Compare(sa[i].Key, sb[i].Key); err != nil || c != 0 {
 			return c, err
@@ -1177,15 +1210,6 @@ func compareMaps(a, b []MapEntry) (int, error) {
 		}
 	}
 	return 0, nil
-}
-
-func sortedEntries(es []MapEntry) []MapEntry {
-	out := append([]MapEntry(nil), es...)
-	sort.SliceStable(out, func(i, j int) bool {
-		c, err := Compare(out[i].Key, out[j].Key)
-		return err == nil && c < 0
-	})
-	return out
 }
 
 // variantTagOrder: None < Some < Ok < Error. Порядок между группами

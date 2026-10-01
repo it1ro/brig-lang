@@ -1413,20 +1413,12 @@ func (s *Scheduler) execFrame(a *Actor, f *Frame) stepOutcome {
 			n := in.C()
 			base := in.B()
 			// Повторный ключ (KeyEqual: 1 и 1.0 — один ключ, §4.8)
-			// перезаписывает пару на месте первого появления, как Map.put (§5.2).
-			entries := make([]runtime.MapEntry, 0, n)
-		pairs:
+			// перезаписывает значение, как Map.put (§5.2).
+			m := runtime.Map(nil)
 			for i := 0; i < n; i++ {
-				k, v := regs[base+2*i], regs[base+2*i+1]
-				for j := range entries {
-					if runtime.KeyEqual(entries[j].Key, k) {
-						entries[j] = runtime.MapEntry{Key: k, Val: v}
-						continue pairs
-					}
-				}
-				entries = append(entries, runtime.MapEntry{Key: k, Val: v})
+				m = m.MapPut(regs[base+2*i], regs[base+2*i+1])
 			}
-			regs[in.A()] = runtime.Map(entries)
+			regs[in.A()] = m
 			s.charge(a, &regs[in.A()])
 			f.ip++
 
@@ -1985,10 +1977,8 @@ func vmIndex(obj, idx runtime.Value) (runtime.Value, error) {
 		return obj.Tuple[i], nil
 
 	case runtime.KindMap:
-		for _, e := range obj.Entries() {
-			if runtime.KeyEqual(e.Key, idx) {
-				return runtime.Variant("Some", e.Val), nil
-			}
+		if v, ok := obj.MapGet(idx); ok {
+			return runtime.Variant("Some", v), nil
 		}
 		return runtime.Variant("None"), nil
 	}
@@ -2060,17 +2050,7 @@ func vmSpreadMap(segs []runtime.Value) (runtime.Value, error) {
 	if len(segs)%3 != 0 {
 		return runtime.Unit, fmt.Errorf("internal: spread map: %d regs", len(segs))
 	}
-	entries := []runtime.MapEntry{}
-	put := func(k, v runtime.Value) {
-		for i := range entries {
-			if runtime.KeyEqual(entries[i].Key, k) {
-				entries[i].Key = k
-				entries[i].Val = v
-				return
-			}
-		}
-		entries = append(entries, runtime.MapEntry{Key: k, Val: v})
-	}
+	m := runtime.Map(nil)
 	for i := 0; i < len(segs); i += 3 {
 		tag := segs[i]
 		if tag.Kind != runtime.KindBool {
@@ -2081,14 +2061,19 @@ func vmSpreadMap(segs []runtime.Value) (runtime.Value, error) {
 			if src.Kind != runtime.KindMap {
 				return runtime.Unit, typeErr("spread", src)
 			}
+			if i == 0 {
+				// Первый спред — основа без копирования (§4.5).
+				m = src
+				continue
+			}
 			for _, e := range src.Entries() {
-				put(e.Key, e.Val)
+				m = m.MapPut(e.Key, e.Val)
 			}
 			continue
 		}
-		put(segs[i+1], segs[i+2])
+		m = m.MapPut(segs[i+1], segs[i+2])
 	}
-	return runtime.Map(entries), nil
+	return m, nil
 }
 
 // ---- helpers for RECORD / GETFIELD (T-73, §4.7) ----

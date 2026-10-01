@@ -133,7 +133,7 @@ func jsonEncode(sb *strings.Builder, opts JSONOptions, v Value, depth int) error
 
 	case KindSet:
 		sb.WriteByte('[')
-		for i, e := range v.set {
+		for i, e := range v.Elems() {
 			if i > 0 {
 				sb.WriteByte(',')
 			}
@@ -145,7 +145,7 @@ func jsonEncode(sb *strings.Builder, opts JSONOptions, v Value, depth int) error
 
 	case KindMap:
 		sb.WriteByte('{')
-		for i, e := range v.entries {
+		for i, e := range v.Entries() {
 			if i > 0 {
 				sb.WriteByte(',')
 			}

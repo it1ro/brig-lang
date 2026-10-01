@@ -135,7 +135,7 @@ func TestJSONDecodeCollections(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if v.Kind != KindMap || len(v.entries) != 2 {
+	if v.Kind != KindMap || v.Len() != 2 {
 		t.Errorf("decode object: got %s", v.Inspect())
 	}
 }
