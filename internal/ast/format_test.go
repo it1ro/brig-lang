@@ -160,3 +160,9 @@ func TestRoundTripCond(t *testing.T) {
 		}
 	}
 }
+
+// T-288 (#444): `(fn->-0)` — Format печатает блок лямбды в скобках, и вывод
+// парсится обратно в тот же AST (ведущий `-` не продолжает строку, T-255).
+func TestRoundTripLambdaUnaryMinusBody(t *testing.T) {
+	roundTrip(t, parser.ModeRepl, "(fn->-0)")
+}
