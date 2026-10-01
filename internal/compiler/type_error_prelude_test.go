@@ -11,6 +11,8 @@ func TestPreludeTypeErrorsAreCatchable(t *testing.T) {
 		// прелюдия
 		"len": `r = trap(len(5))
     assert(r == Error((:type_error, (:len, 5))))`,
+		"assert": `r = trap(assert(5))
+    assert(r == Error((:type_error, (:assert, 5))))`,
 		"vec_push": `r = trap(Vec.push(5, 1))
     assert(r == Error((:type_error, ((:vec, :push), 5))))`,
 		"vec_set": `r = trap(Vec.set(5, 0, 1))

@@ -2549,7 +2549,7 @@ func (s *Scheduler) tryUnwindRaise(a *Actor) bool {
 
 // notBoolErr — raise (:type_error, (:expected_bool, v)) для не-Bool в
 // условии if, операнде and/or и guard (строгий Bool, DD #41 вариант A);
-// форма payload — как у assert: (:type_error, (:assert_expected_bool, v)).
+// форма payload — как у assert: (:type_error, (:assert, v)).
 func notBoolErr(v runtime.Value) error {
 	return typeErr("expected_bool", v)
 }
