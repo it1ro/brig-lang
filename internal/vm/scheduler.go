@@ -14,7 +14,10 @@ import (
 )
 
 const (
-	defaultHWM        = 64
+	// defaultHWM — порог ящика по умолчанию (§12.2): типовой fan-in на
+	// тысячи ответов проходит без потерь, память под очередь ограничена.
+	// Поле лимитов spawn mailbox_hwm задаёт порог на актора (§12.10).
+	defaultHWM        = 10_000
 	defaultReductions = 1000
 )
 
@@ -380,6 +383,9 @@ type Actor struct {
 	mailbox  []runtime.Value
 	downMsgs []runtime.Value
 	hwm      int
+	// dropped — сколько сообщений не принято из-за HWM (§12.2): счётчик
+	// отказов этого актора, виден в Actor.info как dropped.
+	dropped int64
 
 	watchers map[int]int
 	watching map[int]int
@@ -530,6 +536,7 @@ func (s *Scheduler) Send(to int, msg runtime.Value) runtime.Value {
 		return runtime.Variant("Ok", runtime.Unit)
 	}
 	if len(a.mailbox) >= a.hwm {
+		a.dropped++
 		return runtime.Variant("Error", runtime.Atom("busy"))
 	}
 	a.mailbox = append(a.mailbox, msg)
@@ -1604,10 +1611,10 @@ func (s *Scheduler) execFrame(a *Actor, f *Frame) stepOutcome {
 		case SPAWN:
 			base, mode := in.A(), in.C()&spawnModeMask
 			fn := regs[in.B()]
-			var limReds, limAlloc int64
+			var lim spawnLimits
 			var err error
 			if in.C()&SpawnLimits != 0 {
-				limReds, limAlloc, err = parseLimits(regs[in.B()+1])
+				lim, err = parseLimits(regs[in.B()+1])
 			}
 			var pid int
 			if err == nil {
@@ -1620,7 +1627,10 @@ func (s *Scheduler) execFrame(a *Actor, f *Frame) stepOutcome {
 				return fail(err)
 			}
 			child := s.actors[pid]
-			child.limitReds, child.limitAlloc = limReds, limAlloc
+			child.limitReds, child.limitAlloc = lim.reds, lim.alloc
+			if lim.hwm > 0 {
+				child.hwm = lim.hwm
+			}
 			pidVal := runtime.Value{Kind: runtime.KindPid, Pid: pid}
 			switch mode {
 			case 1: // linked

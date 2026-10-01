@@ -167,26 +167,26 @@ fn main() ->
     assert(tc.pid == v)
     assert(tc.name == None)
     assert(tc.reason == (:raise, (:crash, 1)))
-    f = spawn(filler)
+    f = spawn(filler, { mailbox_hwm: 2 })
     (:evt, ed0, md0, td0) = recv
         m -> m
     assert(ed0 == [:vm, :spawn])
     assert(td0.pid == f)
     assert(td0.initial_fn == "filler")
-    fill(f, 65)
+    fill(f, 3)
     (:evt, ed, md, td) = recv
         m -> m
     assert(ed == [:vm, :mailbox, :hwm])
     assert(md.monotonic_ms >= 0)
-    assert(md.mailbox == 64)
-    assert(md.hwm == 64)
+    assert(md.mailbox == 2)
+    assert(md.hwm == 2)
     assert(td.pid == f)
     assert(td.from == Some(me))
     _ = Timer.send_after(1, f, :late)
     (:evt, ee, me2, te) = recv
         m -> m
     assert(ee == [:vm, :mailbox, :hwm])
-    assert(me2.hwm == 64)
+    assert(me2.hwm == 2)
     assert(te.pid == f)
     assert(te.from == None)
     assert(len(Actor.list()) == 3)

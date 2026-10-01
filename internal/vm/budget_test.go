@@ -74,9 +74,11 @@ fn check_one([l, ..rest]) ->
 
 fn main() ->
     check([{ turn_steps: 10 }, { turn_reductions: 0 }, { turn_reductions: -5 },
-        { turn_alloc_bytes: 1.5 }, { turn_reductions: "x" }, (1, 2), [1]])
+        { turn_alloc_bytes: 1.5 }, { turn_reductions: "x" }, { mailbox_hwm: 0 },
+        { mailbox_hwm: "x" }, (1, 2), [1]])
     assert(bad({}) == :spawned)
     assert(bad({ turn_reductions: 1, turn_alloc_bytes: 1 }) == :spawned)
+    assert(bad({ mailbox_hwm: 1 }) == :spawned)
 `)
 }
 

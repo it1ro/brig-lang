@@ -25,12 +25,12 @@
  name  http                                                                     [K
  status  running                                                                [K
  mailbox  4                                                                     [K
+ dropped  0                                                                     [K
  reductions  98 311                                                             [K
  alloc  786 488                                                                 [K
  turn_reductions  3                                                             [K
  turn_alloc  40                                                                 [K
  watchers  1 2 3 4 5 6 7 8 … +2                                                 [K
  watching  —                                                                    [K
- initial_fn  App.Handler.handle_request$lambda$0$                               [K
 ────────────────────────────────────────────────────────────────────────────────[K
  ↑↓ выбор   Enter детали   s сортировка   q выход                               [K

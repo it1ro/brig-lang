@@ -245,6 +245,7 @@ func detailBlock(m observe.Model, w int, color bool) []string {
 		{"name", displayName(a)},
 		{"status", a.Status},
 		{"mailbox", formatInt(int64(a.Mailbox))},
+		{"dropped", formatInt(a.Dropped)},
 		{"reductions", formatInt(a.Reductions)},
 		{"alloc", formatInt(a.AllocBytes)},
 		{"turn_reductions", formatInt(a.TurnReductions)},

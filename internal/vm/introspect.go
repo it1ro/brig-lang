@@ -22,8 +22,10 @@ type ActorSnapshot struct {
 	Name    runtime.Value
 	HasName bool
 	// Status — "running", "recv" или "waiting".
-	Status         string
-	Mailbox        int
+	Status  string
+	Mailbox int
+	// Dropped — сообщений не принято из-за HWM (§12.2).
+	Dropped        int64
 	Reductions     int64
 	AllocBytes     int64
 	TurnReductions int64
@@ -104,6 +106,7 @@ func (s *Scheduler) describe(a *Actor, es []watchEdge) ActorSnapshot {
 		Pid:            a.pid,
 		Status:         a.statusName(),
 		Mailbox:        len(a.mailbox),
+		Dropped:        a.dropped,
 		Reductions:     a.pastReds + a.turnReds,
 		AllocBytes:     a.pastAlloc + a.turnAlloc,
 		TurnReductions: a.turnReds,
@@ -155,6 +158,7 @@ func (s *Scheduler) actorInfo(pid int) runtime.Value {
 		{Name: "reductions", Val: runtime.Int(d.Reductions)},
 		{Name: "alloc_bytes", Val: runtime.Int(d.AllocBytes)},
 		{Name: "mailbox", Val: runtime.Int(int64(d.Mailbox))},
+		{Name: "dropped", Val: runtime.Int(d.Dropped)},
 		{Name: "turn_reductions", Val: runtime.Int(d.TurnReductions)},
 		{Name: "turn_alloc_bytes", Val: runtime.Int(d.TurnAllocBytes)},
 		{Name: "name", Val: name},

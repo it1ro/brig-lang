@@ -264,7 +264,9 @@ description: >
   обнуляет `a.result = Unit`, поэтому `a.result` в reason использовать
   нельзя. Наблюдатель получает `(:down, ref, (:raise, val))`.
 - `Send` возвращает `Result<(), Atom>`: `Error(:busy)` при переполнении
-  HWM (`defaultHWM = 64`). `:down`-сообщения (`sendDown`) идут в отдельную
+  HWM (`defaultHWM = 10_000`, на актора — поле лимитов `spawn`
+  `mailbox_hwm`, T-251). Отказ считает `Actor.dropped` (`Actor.info`,
+  поле `dropped`). `:down`-сообщения (`sendDown`) идут в отдельную
   очередь `downMsgs` и **не подчиняются HWM** — приоритет над обычными.
 - `Watch`/`Unwatch`/`notifyWatchers` — карты `watchers`/`watching` по
   `ref`; при добавлении новой акторной операции сверяться с уже

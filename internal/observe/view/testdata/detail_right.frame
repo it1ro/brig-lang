@@ -5,14 +5,14 @@
 ▸ ├    7 http                   running       4     98 311   name  http                             [K
     ├    8 worker               recv         40         10   status  running                        [K
     └   10 —                    waiting       1          2   mailbox  4                             [K
-  └    9 db_pool                recv          0     12 907   reductions  98 311                     [K
+  └    9 db_pool                recv          0     12 907   dropped  0                             [K
+                                                             reductions  98 311                     [K
                                                              alloc  786 488                         [K
                                                              turn_reductions  3                     [K
                                                              turn_alloc  40                         [K
                                                              watchers  1 2 3 4 5 6 7 8 … +2         [K
                                                              watching  —                            [K
                                                              initial_fn  App.Handler.handle_request…[K
-                                                                                                    [K
                                                                                                     [K
                                                                                                     [K
                                                                                                     [K

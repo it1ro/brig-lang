@@ -159,18 +159,18 @@ fn fill(n) ->
     fill(n - 1)
 
 fn main() ->
-    fill(64)
+    fill(10_000)
     assert(send(self(), 0) == Error(:busy))
     ref = make_ref()
     reply(self(), ref, :full)
-    assert(mailbox_size() == 64)
+    assert(mailbox_size() == 10_000)
     assert(await(ref, 0) == Ok(:full))
 
     srv = spawn(() -> server(7))
     ref2 = make_ref()
     send(srv, (:get, self(), ref2))
     assert(await(ref2, 1000) == Ok(7))
-    assert(mailbox_size(self()) == 64)
+    assert(mailbox_size(self()) == 10_000)
     :ok
 `)
 }
