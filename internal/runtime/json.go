@@ -110,18 +110,27 @@ func jsonEncode(sb *strings.Builder, opts JSONOptions, v Value, depth int) error
 		sb.Write(b)
 		sb.WriteByte('}')
 
-	case KindList, KindVector, KindTuple:
-		var elems []Value
-		switch v.Kind {
-		case KindList:
-			elems = v.list.slice()
-		case KindVector:
-			elems = v.vector
-		case KindTuple:
-			elems = v.Tuple
-		}
+	case KindList, KindVector:
+		// Обход без копии элементов (T-271, T-273).
 		sb.WriteByte('[')
-		for i, e := range elems {
+		first, encErr := true, error(nil)
+		for e := range v.Items() {
+			if !first {
+				sb.WriteByte(',')
+			}
+			first = false
+			if encErr = jsonEncode(sb, opts, e, depth+1); encErr != nil {
+				break
+			}
+		}
+		if encErr != nil {
+			return encErr
+		}
+		sb.WriteByte(']')
+
+	case KindTuple:
+		sb.WriteByte('[')
+		for i, e := range v.Tuple {
 			if i > 0 {
 				sb.WriteByte(',')
 			}

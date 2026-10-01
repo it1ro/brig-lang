@@ -80,8 +80,10 @@ func TestListBuilderAndItems(t *testing.T) {
 	if len(got) != 2 || !Equal(got[1], Int(1)) {
 		t.Fatalf("Items early stop = %v", got)
 	}
-	for range Vector(Int(1)).Items() {
-		t.Fatal("Items over Vector yields")
+	// Items — только последовательности: List и Vector (T-273). Для Map
+	// порядок задаёт Entries, обхода по Items у неё нет.
+	for range Map(nil).Items() {
+		t.Fatal("Items over Map yields")
 	}
 }
 
