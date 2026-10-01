@@ -145,14 +145,14 @@ func installStreams(def func(name string, arity int, fn runtime.NativeFunc)) {
 		s := c.(*VM).scheduler
 		v := args[0]
 		if !s.ownsPort(v) {
-			return runtime.Unit, typeErr("request", v)
+			return runtime.Unit, modTypeErr("port", "request", v)
 		}
 		if v.Port.Closed {
 			return errClosed, nil
 		}
 		sp := s.ports[v.Port.ID].stream
 		if sp == nil || !sp.read {
-			return runtime.Unit, typeErr("request", v)
+			return runtime.Unit, modTypeErr("port", "request", v)
 		}
 		if !sp.armed {
 			sp.armed = true
@@ -164,18 +164,18 @@ func installStreams(def func(name string, arity int, fn runtime.NativeFunc)) {
 		s := c.(*VM).scheduler
 		v := args[0]
 		if !s.ownsPort(v) {
-			return runtime.Unit, typeErr("write", v)
+			return runtime.Unit, modTypeErr("port", "write", v)
 		}
 		b, ok := appendIOData(nil, args[1])
 		if !ok {
-			return runtime.Unit, typeErr("write", args[1])
+			return runtime.Unit, modTypeErr("port", "write", args[1])
 		}
 		if v.Port.Closed {
 			return errClosed, nil
 		}
 		sp := s.ports[v.Port.ID].stream
 		if sp == nil || !sp.write {
-			return runtime.Unit, typeErr("write", v)
+			return runtime.Unit, modTypeErr("port", "write", v)
 		}
 		if sp.pending >= streamHWM {
 			sp.promiseReady = true
@@ -191,10 +191,10 @@ func installStreams(def func(name string, arity int, fn runtime.NativeFunc)) {
 		s := c.(*VM).scheduler
 		v, pid := args[0], args[1]
 		if !s.ownsPort(v) {
-			return runtime.Unit, typeErr("give", v)
+			return runtime.Unit, modTypeErr("port", "give", v)
 		}
 		if pid.Kind != runtime.KindPid {
-			return runtime.Unit, typeErr("give", pid)
+			return runtime.Unit, modTypeErr("port", "give", pid)
 		}
 		if v.Port.Closed {
 			return errClosed, nil
@@ -214,10 +214,10 @@ func installStreams(def func(name string, arity int, fn runtime.NativeFunc)) {
 		m := c.(*VM)
 		path, mode := args[0], args[1]
 		if path.Kind != runtime.KindStr {
-			return runtime.Unit, typeErr("open", path)
+			return runtime.Unit, modTypeErr("file", "open", path)
 		}
 		if mode.Kind != runtime.KindAtom || (mode.Atom != "read" && mode.Atom != "write" && mode.Atom != "append") {
-			return runtime.Unit, typeErr("open", mode)
+			return runtime.Unit, modTypeErr("file", "open", mode)
 		}
 		s := m.scheduler
 		a := s.active

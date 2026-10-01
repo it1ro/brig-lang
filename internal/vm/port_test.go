@@ -413,7 +413,7 @@ fn owner(parent) ->
 
 fn is_close(r, port) ->
     match r
-        Error((:type_error, (:close, p))) -> p == port
+        Error((:type_error, ((:port, :close), p))) -> p == port
         _ -> false
 
 fn main() ->
@@ -517,12 +517,12 @@ fn main() ->
     assert(p != q)
     assert(p < q)
     assert(make_ref() < p)
-    assert(is_err(trap(Signal.subscribe([])), :subscribe, []))
-    assert(is_err(trap(Signal.subscribe([:sighup])), :subscribe, [:sighup]))
-    assert(is_err(trap(Signal.subscribe(:sigterm)), :subscribe, :sigterm))
-    assert(is_err(trap(Signal.subscribe([:sigterm, 1])), :subscribe, [:sigterm, 1]))
+    assert(is_err(trap(Signal.subscribe([])), (:signal, :subscribe), []))
+    assert(is_err(trap(Signal.subscribe([:sighup])), (:signal, :subscribe), [:sighup]))
+    assert(is_err(trap(Signal.subscribe(:sigterm)), (:signal, :subscribe), :sigterm))
+    assert(is_err(trap(Signal.subscribe([:sigterm, 1])), (:signal, :subscribe), [:sigterm, 1]))
     r = make_ref()
-    assert(is_err(trap(Port.close(r)), :close, r))
+    assert(is_err(trap(Port.close(r)), (:port, :close), r))
     Port.close(p)
     Port.close(q)
     :ok
@@ -558,7 +558,7 @@ fn main() ->
 	runModuleSync(t, `module Main
 fn is_halt(r, v) ->
     match r
-        Error((:type_error, (:halt, x))) -> x == v
+        Error((:type_error, ((:sys, :halt), x))) -> x == v
         _ -> false
 
 fn main() ->

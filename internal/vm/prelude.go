@@ -157,7 +157,7 @@ func InstallPrelude(vm *VM) {
 	def("Record.to_anon", 1, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		r := args[0]
 		if r.Kind != runtime.KindRecord {
-			return runtime.Unit, typeErr("to_anon", r)
+			return runtime.Unit, modTypeErr("record", "to_anon", r)
 		}
 		if r.Record.Type == "" {
 			return r, nil
@@ -564,9 +564,7 @@ func InstallPrelude(vm *VM) {
 	})
 	def("assert", 1, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		if args[0].Kind != runtime.KindBool {
-			return runtime.Unit, &ErrRaise{Val: runtime.Tuple(
-				runtime.Atom("type_error"),
-				runtime.Tuple(runtime.Atom("assert_expected_bool"), args[0]))}
+			return runtime.Unit, typeErr("assert", args[0])
 		}
 		if !args[0].Bool {
 			return runtime.Unit, &ErrRaise{Val: runtime.Tuple(

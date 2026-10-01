@@ -26,7 +26,9 @@ type modTypeErrCase struct {
 // modTypeErrCases — по строке на каждый аргумент, вид которого функция
 // проверяет сама. Аргумент, чью ошибку бросает прелюдия (индекс, колбэк,
 // поле записи), здесь не описан: это тег прелюдии (`(:index_key, v)`,
-// `(:call, f)`), не модуля.
+// `(:call, f)`), не модуля. Аргументы после порта (`Port.write`,
+// `Port.give`, `HttpServer.respond`) требуют живого порта и проверены в
+// internal/vm (stream_test.go, http_test.go).
 var modTypeErrCases = []modTypeErrCase{
 	{"Actor.info", 0, `Actor.info(5)`, `5`},
 
@@ -42,6 +44,15 @@ var modTypeErrCases = []modTypeErrCase{
 	{"Bytes.split", 0, `Bytes.split(5, b",")`, `5`},
 	{"Bytes.split", 1, `Bytes.split(b"a", 5)`, `5`},
 	{"Bytes.to_str", 0, `Bytes.to_str(5)`, `5`},
+
+	{"File.open", 0, `File.open(:path, :read)`, `:path`},
+	{"File.open", 1, `File.open("x", :rw)`, `:rw`},
+
+	{"Global.get", 0, `Global.get(1.0e308 * 10.0 * 0.0)`, `1.0e308 * 10.0 * 0.0`},
+	{"Global.put", 0, `Global.put(1.0e308 * 10.0 * 0.0, 1)`, `1.0e308 * 10.0 * 0.0`},
+
+	{"HttpServer.listen", 0, `HttpServer.listen(8080)`, `8080`},
+	{"HttpServer.respond", 0, `HttpServer.respond(5, 200, [])`, `5`},
 
 	{"Enum.all?", 0, `Enum.all?(5, x -> true)`, `5`},
 	{"Enum.any?", 0, `Enum.any?(5, x -> true)`, `5`},
@@ -77,6 +88,8 @@ var modTypeErrCases = []modTypeErrCase{
 	{"Float.to_str", 0, `Float.to_str(5, 1)`, `5`},
 	{"Float.to_str", 1, `Float.to_str(1.5, :a)`, `:a`},
 
+	{"Json.decode", 0, `Json.decode(5)`, `5`},
+	{"Json.encode", 1, `Json.encode(1, :x)`, `:x`},
 	{"Json.at", 1, `Json.at(%{}, 5)`, `5`},
 
 	{"List.concat", 0, `List.concat(5, [])`, `5`},
@@ -94,10 +107,17 @@ var modTypeErrCases = []modTypeErrCase{
 	{"Map.update", 0, `Map.update(5, 1, 0, x -> x)`, `5`},
 	{"Map.values", 0, `Map.values(5)`, `5`},
 
+	{"Port.close", 0, `Port.close(5)`, `5`},
+	{"Port.give", 0, `Port.give(5, self())`, `5`},
+	{"Port.request", 0, `Port.request(5)`, `5`},
+	{"Port.write", 0, `Port.write(5, "x")`, `5`},
+
 	{"Option.and_then", 0, `Option.and_then(1, x -> x)`, `1`},
 	{"Option.map", 0, `Option.map(1, x -> x)`, `1`},
 	{"Option.unwrap", 0, `Option.unwrap(1)`, `1`},
 	{"Option.unwrap_or", 0, `Option.unwrap_or(1, 0)`, `1`},
+
+	{"Record.to_anon", 0, `Record.to_anon(5)`, `5`},
 
 	{"Result.all", 0, `Result.all(1)`, `1`},
 	{"Result.all", 0, `Result.all([Ok(1), 2])`, `2`},
@@ -107,6 +127,8 @@ var modTypeErrCases = []modTypeErrCase{
 	{"Result.unwrap_or", 0, `Result.unwrap_or(1, 0)`, `1`},
 
 	{"Server.reply", 0, `Server.reply(:nobody, 1)`, `:nobody`},
+
+	{"Signal.subscribe", 0, `Signal.subscribe(:sigterm)`, `:sigterm`},
 
 	{"Str.ends_with?", 0, `Str.ends_with?(5, "a")`, `5`},
 	{"Str.ends_with?", 1, `Str.ends_with?("a", 5)`, `5`},
@@ -139,6 +161,24 @@ var modTypeErrCases = []modTypeErrCase{
 	{"Supervisor.start", 0, `Supervisor.start({ strategy: :rest_for_one, max_restarts: 3, within: 5000, children: [] })`, `:rest_for_one`},
 	{"Supervisor.which_children", 0, `Supervisor.which_children(:nope)`, `:nope`},
 
+	{"Sys.halt", 0, `Sys.halt(-1)`, `-1`},
+
+	{"Telemetry.attach", 0, `Telemetry.attach(1.0e308 * 10.0 * 0.0, [:app], fn (e, m, d) -> ())`, `1.0e308 * 10.0 * 0.0`},
+	{"Telemetry.attach", 1, `Telemetry.attach(:id, :no, fn (e, m, d) -> ())`, `:no`},
+	{"Telemetry.attach", 2, `Telemetry.attach(:id, [:app], 5)`, `5`},
+	{"Telemetry.emit", 0, `Telemetry.emit(:no, {}, {})`, `:no`},
+	{"Telemetry.emit", 1, `Telemetry.emit([:a], :no, {})`, `:no`},
+	{"Telemetry.emit", 2, `Telemetry.emit([:a], {}, :no)`, `:no`},
+
+	{"Test.assert", 0, `Test.assert(5)`, `5`},
+	{"Test.describe", 0, `Test.describe(5)`, `5`},
+	{"Test.it", 0, `Test.it(5, () -> ())`, `5`},
+	{"Test.it", 1, `Test.it("n", 5)`, `5`},
+
+	{"Timer.cancel", 0, `Timer.cancel(1)`, `1`},
+	{"Timer.send_after", 0, `Timer.send_after(-1, self(), :x)`, `-1`},
+	{"Timer.send_after", 1, `Timer.send_after(0, 1, :x)`, `1`},
+
 	{"Vec.get", 0, `Vec.get(5, 0)`, `5`},
 	{"Vec.push", 0, `Vec.push(5, 1)`, `5`},
 	{"Vec.set", 0, `Vec.set(5, 0, 1)`, `5`},
@@ -147,30 +187,17 @@ var modTypeErrCases = []modTypeErrCase{
 // modTypeErrExempt — функции модулей вне таблицы: ключ "Module.f" или
 // "Module" (весь модуль) → причина.
 var modTypeErrExempt = map[string]string{
-	"Actor.list":      "нет аргументов",
-	"Observer.nodes":  "нет аргументов",
-	"Sys.args":        "нет аргументов",
-	"Time":            "нет аргументов",
-	"Server.call":     "pid проверяет send прелюдии: (:send, v) — тег прелюдии",
-	"Supervisor.stop": "делегирует Server.call: ошибки — теги прелюдии",
-	"Test.assert_eq":  "без :type_error",
-	"Test.assert_ne":  "без :type_error",
-	"Test.fail":       "без :type_error",
-	"Test.run":        "нет аргументов",
-	"Test.assert":     "короткий тег модуля — T-237 #373",
-	"Test.describe":   "короткий тег модуля — T-237 #373",
-	"Test.it":         "короткий тег модуля — T-237 #373",
-	"Global":          "короткий тег модуля — T-237 #373",
-	"Record.to_anon":  "короткий тег модуля — T-237 #373",
-	"Sys.halt":        "короткий тег модуля — T-237 #373",
-	"Json.encode":     "короткий тег модуля — T-237 #373",
-	"Json.decode":     "короткий тег модуля — T-237 #373",
-	"File":            "короткий тег модуля — T-237 #373",
-	"HttpServer":      "короткий тег модуля — T-237 #373",
-	"Port":            "короткий тег модуля — T-237 #373",
-	"Signal":          "короткий тег модуля — T-237 #373",
-	"Telemetry":       "короткий тег модуля — T-237 #373",
-	"Timer":           "короткий тег модуля — T-237 #373",
+	"Actor.list":       "нет аргументов",
+	"Observer.nodes":   "нет аргументов",
+	"Sys.args":         "нет аргументов",
+	"Time":             "нет аргументов",
+	"Test.run":         "нет аргументов",
+	"Telemetry.detach": "без :type_error",
+	"Test.assert_eq":   "без :type_error",
+	"Test.assert_ne":   "без :type_error",
+	"Test.fail":        "без :type_error",
+	"Server.call":      "pid проверяет send прелюдии: (:send, v) — тег прелюдии",
+	"Supervisor.stop":  "делегирует Server.call: ошибки — теги прелюдии",
 }
 
 // snakeCase — имя модуля в теге: HttpServer → http_server.
@@ -230,7 +257,8 @@ func TestModuleTypeErrorTags(t *testing.T) {
 		}
 		t.Run(c.fn+"/"+c.call, func(t *testing.T) {
 			got, want := runModTypeErr(t, c)
-			if !runtime.Equal(got, want) {
+			// По Inspect, не ==: NaN (ключ Global, не равный себе) != NaN.
+			if got.Inspect() != want.Inspect() {
 				t.Errorf("arg %d: got %s, want %s", c.arg, got.Inspect(), want.Inspect())
 			}
 		})

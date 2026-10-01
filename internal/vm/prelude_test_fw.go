@@ -41,9 +41,7 @@ func InstallTestPrelude(vm *VM) {
 			return runtime.Unit, fmt.Errorf("internal: Test.describe without VM")
 		}
 		if args[0].Kind != runtime.KindStr {
-			return runtime.Unit, &ErrRaise{Val: runtime.Tuple(
-				runtime.Atom("type_error"),
-				runtime.Tuple(runtime.Atom("test_describe_name"), args[0]))}
+			return runtime.Unit, modTypeErr("test", "describe", args[0])
 		}
 		m.currentGroup = args[0].Str
 		return runtime.Unit, nil
@@ -55,14 +53,10 @@ func InstallTestPrelude(vm *VM) {
 			return runtime.Unit, fmt.Errorf("internal: Test.it without VM")
 		}
 		if args[0].Kind != runtime.KindStr {
-			return runtime.Unit, &ErrRaise{Val: runtime.Tuple(
-				runtime.Atom("type_error"),
-				runtime.Tuple(runtime.Atom("test_it_name"), args[0]))}
+			return runtime.Unit, modTypeErr("test", "it", args[0])
 		}
 		if args[1].Kind != runtime.KindFunction && args[1].Kind != runtime.KindClosure {
-			return runtime.Unit, &ErrRaise{Val: runtime.Tuple(
-				runtime.Atom("type_error"),
-				runtime.Tuple(runtime.Atom("test_it_thunk"), args[1]))}
+			return runtime.Unit, modTypeErr("test", "it", args[1])
 		}
 		m.tests = append(m.tests, testCase{
 			group: m.currentGroup,
@@ -102,9 +96,7 @@ func InstallTestPrelude(vm *VM) {
 
 	def("Test.assert", 1, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		if args[0].Kind != runtime.KindBool {
-			return runtime.Unit, &ErrRaise{Val: runtime.Tuple(
-				runtime.Atom("type_error"),
-				runtime.Tuple(runtime.Atom("assert_expected_bool"), args[0]))}
+			return runtime.Unit, modTypeErr("test", "assert", args[0])
 		}
 		if !args[0].Bool {
 			return runtime.Unit, &ErrRaise{Val: runtime.Tuple(
