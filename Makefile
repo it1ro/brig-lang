@@ -166,6 +166,7 @@ fuzz:
 	$(GO) test ./internal/lexer/  -run=^$$ -fuzz=FuzzLex        -fuzztime=60s
 	$(GO) test ./internal/parser/ -run=^$$ -fuzz=FuzzParse      -fuzztime=60s
 	$(GO) test ./internal/ast/    -run=^$$ -fuzz=FuzzRoundTrip  -fuzztime=60s
+	$(GO) test ./internal/runtime/ -run=^$$ -fuzz=FuzzVectorOps -fuzztime=60s
 
 ## ---- Бенчмарки (T-152) ----
 # Микро-бенчмарки VM с -benchmem, BENCH_COUNT повторов (для benchstat).
