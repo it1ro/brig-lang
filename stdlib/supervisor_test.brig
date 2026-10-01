@@ -259,3 +259,23 @@ fn test_supervisor_bad_spec() ->
     r2 = trap(Supervisor.start({ strategy: :one_for_one, max_restarts: 3, within: 5000, children: :none }))
     Test.assert_eq(r2, Error((:type_error, (:start, :none))))
     Test.assert_eq(mailbox_size(), 0)
+
+# Убитый супервизор не оставляет сирот (X-3, T-252): дети связаны с ним
+# `spawn_linked`, поэтому `exit(sup, :kill)` даёт каждому
+# `exit((:linked_exit, :kill))` — причина не `:kill`, их `ensure`
+# выполняются. После этого живых акторов, кроме вызывающего, нет.
+fn test_supervisor_kill_leaves_no_orphans() ->
+    me = self()
+    sup = sup_of([child(me, :a, :permanent), child(me, :b, :permanent)], 3, 5000)
+    a = started(:a)
+    b = started(:b)
+    sref = watch(sup)
+    _refs = [watch(a), watch(b)]
+    exit(sup, :kill)
+    Test.assert_eq(down(sref), :kill)
+    ms = msgs(4)
+    Test.assert_eq(List.sort(stops(ms)), [(:stopped, :a), (:stopped, :b)])
+    Test.assert_eq(map(downs(ms), d -> d[2]), [(:linked_exit, :kill), (:linked_exit, :kill)])
+    Test.assert_eq(Actor.info(a), None)
+    Test.assert_eq(Actor.info(b), None)
+    Test.assert_eq(Actor.list(), [self()])

@@ -116,6 +116,9 @@ const (
 	// Снимает handler TRAPENSURE, кладёт запись в Frame.cleanups, дальше —
 	// как TAILCALL.
 	TAILCALLENS
+
+	// Связь владелец → ребёнок (§12.2, T-252).
+	LINK // link(R[B]): вызывающий становится владельцем R[B]; R[A] = ()
 )
 
 // SpawnLimits — бит операнда C у SPAWN: второй аргумент spawn (лимиты
@@ -194,6 +197,7 @@ var opNames = [...]string{
 	AWAIT:          "AWAIT",
 	REPLY:          "REPLY",
 	TAILCALLENS:    "TAILCALLENS",
+	LINK:           "LINK",
 }
 
 func (op OpCode) String() string {

@@ -390,6 +390,15 @@ type Actor struct {
 	watchers map[int]int
 	watching map[int]int
 
+	// links — акторы, которыми этот владеет (link, spawn_linked, §12.2):
+	// его смерть делает каждому exit((:linked_exit, reason)). owners —
+	// обратная сторона той же связи; она нужна только для уборки: смерть
+	// ребёнка убирает его из links владельцев. Семантика
+	// однонаправленная — смерть ребёнка владельцу ничего не шлёт.
+	// Карты создаются первой связью: без link они nil.
+	links  map[int]bool
+	owners map[int]bool
+
 	status actorStatus
 	result runtime.Value
 	err    error
@@ -606,11 +615,79 @@ func (s *Scheduler) Unwatch(watcherPid, ref int) {
 	}
 }
 
+// Link делает ownerPid владельцем childPid (§12.2): смерть владельца
+// завершит ребёнка сигналом exit((:linked_exit, reason)). Связь
+// однонаправленная: смерть ребёнка владельцу ничего не шлёт, наблюдение
+// — это watch. Мёртвый или несуществующий childPid — ничего (как send);
+// link на себя — тоже ничего. У ребёнка может быть несколько владельцев:
+// завершает его смерть любого из них.
+func (s *Scheduler) Link(ownerPid, childPid int) {
+	if ownerPid == childPid {
+		return
+	}
+	owner, child := s.liveActor(ownerPid), s.liveActor(childPid)
+	if owner == nil || child == nil {
+		return
+	}
+	if owner.links == nil {
+		owner.links = make(map[int]bool)
+	}
+	owner.links[childPid] = true
+	if child.owners == nil {
+		child.owners = make(map[int]bool)
+	}
+	child.owners[ownerPid] = true
+}
+
+// exitLinked завершает детей умершего владельца a: каждому —
+// exit(child, (:linked_exit, reason)) (§12.2, §12.7). Это не raise: trap
+// ребёнка причину не ловит, ensure выполняются, его наблюдатели получают
+// :down с этой причиной. Причина не :kill, даже когда владельца убили,
+// поэтому ensure ребёнка не пропускаются.
+func (s *Scheduler) exitLinked(a *Actor, reason runtime.Value) {
+	if len(a.links) == 0 {
+		return
+	}
+	linked := runtime.Tuple(runtime.Atom("linked_exit"), reason)
+	for _, child := range s.sortedPids(a.links) {
+		s.Exit(child, linked)
+	}
+}
+
+// dropLinks убирает умершего актора из связей живых: он больше не
+// владелец своих детей и не ребёнок своих владельцев.
+func (s *Scheduler) dropLinks(a *Actor) {
+	for child := range a.links {
+		if c := s.actors[child]; c != nil {
+			delete(c.owners, a.pid)
+		}
+	}
+	for owner := range a.owners {
+		if o := s.actors[owner]; o != nil {
+			delete(o.links, a.pid)
+		}
+	}
+	a.links, a.owners = nil, nil
+}
+
+// sortedPids — ключи множества pid по возрастанию: обход map напрямую
+// сделал бы порядок сигналов невоспроизводимым (§15.4).
+func (s *Scheduler) sortedPids(set map[int]bool) []int {
+	pids := make([]int, 0, len(set))
+	for pid := range set {
+		pids = append(pids, pid)
+	}
+	slices.Sort(pids)
+	return pids
+}
+
 func (s *Scheduler) notifyWatchers(a *Actor, reason runtime.Value) {
-	// Имена снимаются и порты закрываются в той же редукции, что и
-	// ставится :down (§12.8, §12.12).
+	// Имена снимаются, порты закрываются и дети получают exit в той же
+	// редукции, что и ставится :down (§12.2, §12.8, §12.12).
 	s.dropNames(a.pid)
 	s.closeActorPorts(a)
+	s.exitLinked(a, reason)
+	s.dropLinks(a)
 	for ref, watcherPid := range a.watchers {
 		s.sendDown(watcherPid, runtime.Tuple(
 			runtime.Atom("down"),
@@ -1633,8 +1710,8 @@ func (s *Scheduler) execFrame(a *Actor, f *Frame) stepOutcome {
 			}
 			pidVal := runtime.Value{Kind: runtime.KindPid, Pid: pid}
 			switch mode {
-			case 1: // linked
-				s.Watch(a.pid, pid)
+			case 1: // linked: создатель — владелец ребёнка (§12.2)
+				s.Link(a.pid, pid)
 				regs[base] = pidVal
 			case 2: // watched: наблюдение взведено до первой редукции ребёнка
 				ref := s.Watch(a.pid, pid)
@@ -1752,6 +1829,19 @@ func (s *Scheduler) execFrame(a *Actor, f *Frame) stepOutcome {
 			}
 			ref := s.Watch(a.pid, pidVal.Pid)
 			regs[in.A()] = runtime.Value{Kind: runtime.KindRef, Ref: ref}
+			f.ip++
+
+		case LINK:
+			pidVal := regs[in.B()]
+			if pidVal.Kind != runtime.KindPid {
+				err := typeErr("link", pidVal)
+				if f.catch(err) {
+					continue
+				}
+				return fail(err)
+			}
+			s.Link(a.pid, pidVal.Pid)
+			regs[in.A()] = runtime.Unit
 			f.ip++
 
 		case UNWATCH:

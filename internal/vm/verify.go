@@ -86,7 +86,7 @@ func RegUse(in Instr) (reads, writes []int, err error) {
 	switch in.Op() {
 	case LOADK, GETGLOBAL, GETUPVAL, SELF, MAKEREF, RECVTIMER, RECVTAKE:
 		return nil, []int{a}, nil
-	case MOVE, NEG, NOT, MAKEOK, MAKEERROR, WATCH, UNWATCH, MAILBOXSIZE,
+	case MOVE, NEG, NOT, MAKEOK, MAKEERROR, WATCH, UNWATCH, LINK, MAILBOXSIZE,
 		UNREGISTER, WHEREIS:
 		return []int{b}, []int{a}, nil
 	case ADD, SUB, MUL, DIV, INTDIV, REM, POW, CONCAT,
