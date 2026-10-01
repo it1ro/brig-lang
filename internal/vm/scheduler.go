@@ -840,7 +840,7 @@ func (s *Scheduler) armSend(pid int, msg runtime.Value, deadline time.Time) runt
 }
 
 // sendAfter — Timer.send_after(ms, pid, msg). ms не Int, < 0 или вне
-// Duration, либо pid не Pid — (:type_error, (:send_after, arg)).
+// Duration, либо pid не Pid — (:type_error, ((:timer, :send_after), arg)).
 func (s *Scheduler) sendAfter(msVal, pidVal, msg runtime.Value) (runtime.Value, error) {
 	ms, ok := nonNegMillis(msVal)
 	if !ok {
