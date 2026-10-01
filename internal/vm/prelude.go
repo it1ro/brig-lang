@@ -110,22 +110,9 @@ func InstallPrelude(vm *VM) {
 	})
 
 	// set(...) — конструктор множества (Sprint 5.2, §4.6). Дедуплицирует
-	// по структурному равенству, сохраняя порядок первого появления.
+	// по KeyEqual.
 	def("set", -1, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
-		out := make([]runtime.Value, 0, len(args))
-		for _, a := range args {
-			found := false
-			for _, e := range out {
-				if runtime.KeyEqual(a, e) {
-					found = true
-					break
-				}
-			}
-			if !found {
-				out = append(out, a)
-			}
-		}
-		return runtime.Set(out...), nil
+		return runtime.Set(args...), nil
 	})
 
 	// Функции высшего порядка — возобновляемые нативы (G3, T-58): на CALL
@@ -304,30 +291,15 @@ func InstallPrelude(vm *VM) {
 		if args[0].Kind != runtime.KindMap {
 			return runtime.Unit, typeErr("Map.put", args[0])
 		}
-		out := make([]runtime.MapEntry, 0, args[0].Len()+1)
-		found := false
-		for _, e := range args[0].Entries() {
-			if runtime.KeyEqual(e.Key, args[1]) {
-				out = append(out, runtime.MapEntry{Key: args[1], Val: args[2]})
-				found = true
-			} else {
-				out = append(out, e)
-			}
-		}
-		if !found {
-			out = append(out, runtime.MapEntry{Key: args[1], Val: args[2]})
-		}
-		return runtime.Map(out), nil
+		return args[0].MapPut(args[1], args[2]), nil
 	})
 
 	def("Map.get", 2, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		if args[0].Kind != runtime.KindMap {
 			return runtime.Unit, typeErr("Map.get", args[0])
 		}
-		for _, e := range args[0].Entries() {
-			if runtime.KeyEqual(e.Key, args[1]) {
-				return runtime.Variant("Some", e.Val), nil
-			}
+		if v, ok := args[0].MapGet(args[1]); ok {
+			return runtime.Variant("Some", v), nil
 		}
 		return runtime.Variant("None"), nil
 	})
@@ -337,10 +309,8 @@ func InstallPrelude(vm *VM) {
 		if args[0].Kind != runtime.KindMap {
 			return runtime.Unit, modTypeErr("map", "get_or", args[0])
 		}
-		for _, e := range args[0].Entries() {
-			if runtime.KeyEqual(e.Key, args[1]) {
-				return e.Val, nil
-			}
+		if v, ok := args[0].MapGet(args[1]); ok {
+			return v, nil
 		}
 		return args[2], nil
 	})
@@ -349,13 +319,7 @@ func InstallPrelude(vm *VM) {
 		if args[0].Kind != runtime.KindMap {
 			return runtime.Unit, typeErr("Map.remove", args[0])
 		}
-		out := make([]runtime.MapEntry, 0, args[0].Len())
-		for _, e := range args[0].Entries() {
-			if !runtime.KeyEqual(e.Key, args[1]) {
-				out = append(out, e)
-			}
-		}
-		return runtime.Map(out), nil
+		return args[0].MapRemove(args[1]), nil
 	})
 
 	def("Map.keys", 1, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {

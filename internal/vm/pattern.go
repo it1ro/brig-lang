@@ -209,17 +209,14 @@ func MatchPattern(v runtime.Value, p *CompiledPattern, locals []runtime.Value) b
 			return false
 		}
 		for _, pair := range p.Pairs {
-			found := false
-			for _, entry := range v.Entries() {
-				if runtime.MatchEqual(entry.Key, pair.Key) {
-					if !MatchPattern(entry.Val, pair.Value, locals) {
-						return false
-					}
-					found = true
-					break
-				}
+			// Ключ ищется по KeyEqual; паттерн строже (MatchEqual): `1`
+			// не матчит ключ `1.0` — в мапе у них один слот.
+			key, ok := v.MapKey(pair.Key)
+			if !ok || !runtime.MatchEqual(key, pair.Key) {
+				return false
 			}
-			if !found {
+			val, _ := v.MapGet(pair.Key)
+			if !MatchPattern(val, pair.Value, locals) {
 				return false
 			}
 		}

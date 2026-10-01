@@ -92,11 +92,7 @@ func jsonEncodeOpts(v runtime.Value) (runtime.JSONOptions, bool) {
 func jsonStep(v, step runtime.Value) (runtime.Value, bool) {
 	switch {
 	case v.Kind == runtime.KindMap && step.Kind == runtime.KindStr:
-		for _, e := range v.Entries() {
-			if e.Key.Kind == runtime.KindStr && e.Key.Str == step.Str {
-				return e.Val, true
-			}
-		}
+		return v.MapGet(step)
 	case v.Kind == runtime.KindList && step.Kind == runtime.KindInt && step.IsSmall:
 		if i := step.SmallInt; i >= 0 && i < int64(v.Len()) {
 			return v.At(int(i)), true
