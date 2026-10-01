@@ -6,9 +6,10 @@ import (
 
 // InstallJSONPrelude регистрирует Json.encode/Json.decode (§4.7, Must).
 //
-// Семантика делегируется runtime.JSONEncode/JSONDecode (I-F13):
-// Inf/NaN → raise :json_encode_error; Float 1.0 round-trip сохраняет Float;
-// Map с ключом "$bytes" не коллизирует с маркером Bytes.
+// Семантика делегируется runtime.JSONEncode/JSONDecode (I-F13): encode
+// непредставимого значения — raise((:json, reason)), decode —
+// Error((:json, reason)); Float 1.0 round-trip сохраняет Float; Map с ключом
+// "$bytes" не коллизирует с маркером Bytes.
 func InstallJSONPrelude(vm *VM) {
 	def := func(name string, arity int, fn runtime.NativeFunc) {
 		vm.DefineGlobal(name, runtime.Func(&runtime.FuncValue{
@@ -33,9 +34,7 @@ func InstallJSONPrelude(vm *VM) {
 		}
 		s, err := runtime.JSONEncodeOpts(args[0], opts)
 		if err != nil {
-			return runtime.Unit, &ErrRaise{Val: runtime.Tuple(
-				runtime.Atom("json_encode_error"),
-				runtime.Str(err.Error()))}
+			return runtime.Unit, jsonRaise(err)
 		}
 		return runtime.Str(s), nil
 	})
@@ -48,7 +47,7 @@ func InstallJSONPrelude(vm *VM) {
 		}
 		v, err := runtime.JSONDecode(args[0].Str)
 		if err != nil {
-			return runtime.Variant("Error", runtime.Str(err.Error())), nil
+			return runtime.Variant("Error", jsonReason(err)), nil
 		}
 		return runtime.Variant("Ok", v), nil
 	})
@@ -71,6 +70,17 @@ func InstallJSONPrelude(vm *VM) {
 		return runtime.Variant("Some", cur), nil
 	})
 }
+
+// jsonReason — `(:json, reason)` из ошибки runtime.JSONEncode/JSONDecode.
+func jsonReason(err error) runtime.Value {
+	reason := runtime.Atom("syntax")
+	if je, ok := err.(*runtime.JSONError); ok {
+		reason = je.Reason
+	}
+	return runtime.Tuple(runtime.Atom("json"), reason)
+}
+
+func jsonRaise(err error) error { return &ErrRaise{Val: jsonReason(err)} }
 
 // jsonEncodeOpts разбирает анонимную запись опций Json.encode; известно
 // только поле type_tag: Bool.

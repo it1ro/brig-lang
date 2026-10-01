@@ -295,19 +295,18 @@ var (
 // которых нет в списке §10.4: либо описаны в своём разделе спеки, либо
 // расхождение с номером задачи.
 var raiseNotInSpec104 = map[string]string{
-	"assert_eq_failed":  "Test.assert_eq, §11.6",
-	"assert_ne_failed":  "Test.assert_ne, §11.6",
-	"assert_fail":       "Test.fail, §11.6",
-	"load_error":        "хелпер консоли load, §11.4",
-	"no_value":          "хелпер консоли v, §11.4",
-	"json_encode_error": "Json.encode, N10",
-	"field_error":       "нет в спеке: User{ ..r } с полем не из типа — T-234",
-	"unwrap":            "нет в спеке: Option.unwrap/Result.unwrap — T-234",
-	"max_restarts":      "нет в спеке: Supervisor — T-234",
-	"start_failed":      "нет в спеке: Supervisor — T-234",
-	"timeout":           "нет в спеке: Supervisor.which_children — T-234",
-	"no_handler":        "Behavior, §13.2",
-	"bad_arity":         "Behavior, §13.2",
+	"assert_eq_failed": "Test.assert_eq, §11.6",
+	"assert_ne_failed": "Test.assert_ne, §11.6",
+	"assert_fail":      "Test.fail, §11.6",
+	"load_error":       "хелпер консоли load, §11.4",
+	"no_value":         "хелпер консоли v, §11.4",
+	"field_error":      "нет в спеке: User{ ..r } с полем не из типа — T-234",
+	"unwrap":           "нет в спеке: Option.unwrap/Result.unwrap — T-234",
+	"max_restarts":     "нет в спеке: Supervisor — T-234",
+	"start_failed":     "нет в спеке: Supervisor — T-234",
+	"timeout":          "нет в спеке: Supervisor.which_children — T-234",
+	"no_handler":       "Behavior, §13.2",
+	"bad_arity":        "Behavior, §13.2",
 }
 
 // thrownAtoms — атомы-теги raise в Go-коде internal/ и в stdlib/*.brig.
