@@ -26,7 +26,7 @@ func TestToIntToFloatErrors(t *testing.T) {
     assert(Str.to_float("inf") == None)
     assert(Str.to_float("nan") == None)`,
 		"str_to_float_type": `r = trap(Str.to_float(1))
-    assert(to_str(r) == "Error((:type_error, (:Str.to_float, 1)))")`,
+    assert(r == Error((:type_error, ((:str, :to_float), 1))))`,
 	}
 	for name, body := range cases {
 		t.Run(name, func(t *testing.T) {

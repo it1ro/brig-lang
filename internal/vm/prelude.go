@@ -123,14 +123,14 @@ func InstallPrelude(vm *VM) {
 
 	def("Vec.push", 2, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		if args[0].Kind != runtime.KindVector {
-			return runtime.Unit, typeErr("Vec.push", args[0])
+			return runtime.Unit, modTypeErr("vec", "push", args[0])
 		}
 		return args[0].VecPush(args[1]), nil
 	})
 
 	def("Vec.set", 3, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		if args[0].Kind != runtime.KindVector {
-			return runtime.Unit, typeErr("Vec.set", args[0])
+			return runtime.Unit, modTypeErr("vec", "set", args[0])
 		}
 		i, ok := smallIdx(args[1])
 		if !ok || i < 0 || i >= int64(args[0].Len()) {
@@ -143,7 +143,7 @@ func InstallPrelude(vm *VM) {
 
 	def("Vec.get", 2, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		if args[0].Kind != runtime.KindVector {
-			return runtime.Unit, typeErr("Vec.get", args[0])
+			return runtime.Unit, modTypeErr("vec", "get", args[0])
 		}
 		i, ok := smallIdx(args[1])
 		if !ok || i < 0 || i >= int64(args[0].Len()) {
@@ -169,14 +169,14 @@ func InstallPrelude(vm *VM) {
 
 	def("Map.put", 3, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		if args[0].Kind != runtime.KindMap {
-			return runtime.Unit, typeErr("Map.put", args[0])
+			return runtime.Unit, modTypeErr("map", "put", args[0])
 		}
 		return args[0].MapPut(args[1], args[2]), nil
 	})
 
 	def("Map.get", 2, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		if args[0].Kind != runtime.KindMap {
-			return runtime.Unit, typeErr("Map.get", args[0])
+			return runtime.Unit, modTypeErr("map", "get", args[0])
 		}
 		if v, ok := args[0].MapGet(args[1]); ok {
 			return runtime.Variant("Some", v), nil
@@ -197,14 +197,14 @@ func InstallPrelude(vm *VM) {
 
 	def("Map.remove", 2, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		if args[0].Kind != runtime.KindMap {
-			return runtime.Unit, typeErr("Map.remove", args[0])
+			return runtime.Unit, modTypeErr("map", "remove", args[0])
 		}
 		return args[0].MapRemove(args[1]), nil
 	})
 
 	def("Map.keys", 1, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		if args[0].Kind != runtime.KindMap {
-			return runtime.Unit, typeErr("Map.keys", args[0])
+			return runtime.Unit, modTypeErr("map", "keys", args[0])
 		}
 		out := make([]runtime.Value, 0, args[0].Len())
 		for _, e := range args[0].Entries() {
@@ -221,7 +221,7 @@ func InstallPrelude(vm *VM) {
 	// UTF-8 → raise(:invalid_utf8, b) (§C.6).
 	def("Bytes.to_str", 1, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		if args[0].Kind != runtime.KindBytes {
-			return runtime.Unit, typeErr("Bytes.to_str", args[0])
+			return runtime.Unit, modTypeErr("bytes", "to_str", args[0])
 		}
 		s := string(args[0].Bytes)
 		if !utf8.ValidString(s) {
@@ -234,14 +234,14 @@ func InstallPrelude(vm *VM) {
 	// Str.to_bytes(s) — всегда успешно, возвращает UTF-8-байты (§C.6).
 	def("Str.to_bytes", 1, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		if args[0].Kind != runtime.KindStr {
-			return runtime.Unit, typeErr("Str.to_bytes", args[0])
+			return runtime.Unit, modTypeErr("str", "to_bytes", args[0])
 		}
 		return runtime.Bytes([]byte(args[0].Str)), nil
 	})
 
 	def("Bytes.slice", 3, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		if args[0].Kind != runtime.KindBytes {
-			return runtime.Unit, typeErr("Bytes.slice", args[0])
+			return runtime.Unit, modTypeErr("bytes", "slice", args[0])
 		}
 		start, end, err := sliceBounds(args[1], args[2], int64(len(args[0].Bytes)))
 		if err != nil {
@@ -254,10 +254,10 @@ func InstallPrelude(vm *VM) {
 
 	def("Bytes.find", 2, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		if args[0].Kind != runtime.KindBytes {
-			return runtime.Unit, typeErr("Bytes.find", args[0])
+			return runtime.Unit, modTypeErr("bytes", "find", args[0])
 		}
 		if args[1].Kind != runtime.KindBytes {
-			return runtime.Unit, typeErr("Bytes.find", args[1])
+			return runtime.Unit, modTypeErr("bytes", "find", args[1])
 		}
 		i := bytes.Index(args[0].Bytes, args[1].Bytes)
 		if i < 0 {
@@ -268,10 +268,10 @@ func InstallPrelude(vm *VM) {
 
 	def("Bytes.split", 2, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		if args[0].Kind != runtime.KindBytes {
-			return runtime.Unit, typeErr("Bytes.split", args[0])
+			return runtime.Unit, modTypeErr("bytes", "split", args[0])
 		}
 		if args[1].Kind != runtime.KindBytes {
-			return runtime.Unit, typeErr("Bytes.split", args[1])
+			return runtime.Unit, modTypeErr("bytes", "split", args[1])
 		}
 		var parts [][]byte
 		if len(args[1].Bytes) == 0 {
@@ -290,10 +290,10 @@ func InstallPrelude(vm *VM) {
 
 	def("Bytes.concat", 2, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		if args[0].Kind != runtime.KindBytes {
-			return runtime.Unit, typeErr("Bytes.concat", args[0])
+			return runtime.Unit, modTypeErr("bytes", "concat", args[0])
 		}
 		if args[1].Kind != runtime.KindBytes {
-			return runtime.Unit, typeErr("Bytes.concat", args[1])
+			return runtime.Unit, modTypeErr("bytes", "concat", args[1])
 		}
 		out := make([]byte, 0, len(args[0].Bytes)+len(args[1].Bytes))
 		out = append(out, args[0].Bytes...)
@@ -303,7 +303,7 @@ func InstallPrelude(vm *VM) {
 
 	def("Bytes.at", 2, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		if args[0].Kind != runtime.KindBytes {
-			return runtime.Unit, typeErr("Bytes.at", args[0])
+			return runtime.Unit, modTypeErr("bytes", "at", args[0])
 		}
 		i, err := indexToInt(args[1])
 		if err != nil {
@@ -321,10 +321,10 @@ func InstallPrelude(vm *VM) {
 
 	def("Str.split", 2, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		if args[0].Kind != runtime.KindStr {
-			return runtime.Unit, typeErr("Str.split", args[0])
+			return runtime.Unit, modTypeErr("str", "split", args[0])
 		}
 		if args[1].Kind != runtime.KindStr {
-			return runtime.Unit, typeErr("Str.split", args[1])
+			return runtime.Unit, modTypeErr("str", "split", args[1])
 		}
 		var parts []string
 		if args[1].Str == "" {
@@ -343,15 +343,15 @@ func InstallPrelude(vm *VM) {
 
 	def("Str.join", 2, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		if args[0].Kind != runtime.KindList {
-			return runtime.Unit, typeErr("Str.join", args[0])
+			return runtime.Unit, modTypeErr("str", "join", args[0])
 		}
 		if args[1].Kind != runtime.KindStr {
-			return runtime.Unit, typeErr("Str.join", args[1])
+			return runtime.Unit, modTypeErr("str", "join", args[1])
 		}
 		parts := make([]string, args[0].Len())
 		for i, v := range args[0].Elems() {
 			if v.Kind != runtime.KindStr {
-				return runtime.Unit, typeErr("Str.join", v)
+				return runtime.Unit, modTypeErr("str", "join", v)
 			}
 			parts[i] = v.Str
 		}
@@ -360,17 +360,17 @@ func InstallPrelude(vm *VM) {
 
 	def("Str.trim", 1, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		if args[0].Kind != runtime.KindStr {
-			return runtime.Unit, typeErr("Str.trim", args[0])
+			return runtime.Unit, modTypeErr("str", "trim", args[0])
 		}
 		return runtime.Str(strings.TrimSpace(args[0].Str)), nil
 	})
 
 	def("Str.find", 2, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		if args[0].Kind != runtime.KindStr {
-			return runtime.Unit, typeErr("Str.find", args[0])
+			return runtime.Unit, modTypeErr("str", "find", args[0])
 		}
 		if args[1].Kind != runtime.KindStr {
-			return runtime.Unit, typeErr("Str.find", args[1])
+			return runtime.Unit, modTypeErr("str", "find", args[1])
 		}
 		i := strings.Index(args[0].Str, args[1].Str)
 		if i < 0 {
@@ -381,54 +381,54 @@ func InstallPrelude(vm *VM) {
 
 	def("Str.replace", 3, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		if args[0].Kind != runtime.KindStr {
-			return runtime.Unit, typeErr("Str.replace", args[0])
+			return runtime.Unit, modTypeErr("str", "replace", args[0])
 		}
 		if args[1].Kind != runtime.KindStr {
-			return runtime.Unit, typeErr("Str.replace", args[1])
+			return runtime.Unit, modTypeErr("str", "replace", args[1])
 		}
 		if args[2].Kind != runtime.KindStr {
-			return runtime.Unit, typeErr("Str.replace", args[2])
+			return runtime.Unit, modTypeErr("str", "replace", args[2])
 		}
 		return runtime.Str(strings.ReplaceAll(args[0].Str, args[1].Str, args[2].Str)), nil
 	})
 
 	def("Str.starts_with?", 2, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		if args[0].Kind != runtime.KindStr {
-			return runtime.Unit, typeErr("Str.starts_with?", args[0])
+			return runtime.Unit, modTypeErr("str", "starts_with?", args[0])
 		}
 		if args[1].Kind != runtime.KindStr {
-			return runtime.Unit, typeErr("Str.starts_with?", args[1])
+			return runtime.Unit, modTypeErr("str", "starts_with?", args[1])
 		}
 		return runtime.Bool(strings.HasPrefix(args[0].Str, args[1].Str)), nil
 	})
 
 	def("Str.ends_with?", 2, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		if args[0].Kind != runtime.KindStr {
-			return runtime.Unit, typeErr("Str.ends_with?", args[0])
+			return runtime.Unit, modTypeErr("str", "ends_with?", args[0])
 		}
 		if args[1].Kind != runtime.KindStr {
-			return runtime.Unit, typeErr("Str.ends_with?", args[1])
+			return runtime.Unit, modTypeErr("str", "ends_with?", args[1])
 		}
 		return runtime.Bool(strings.HasSuffix(args[0].Str, args[1].Str)), nil
 	})
 
 	def("Str.lower", 1, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		if args[0].Kind != runtime.KindStr {
-			return runtime.Unit, typeErr("Str.lower", args[0])
+			return runtime.Unit, modTypeErr("str", "lower", args[0])
 		}
 		return runtime.Str(strings.ToLower(args[0].Str)), nil
 	})
 
 	def("Str.upper", 1, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		if args[0].Kind != runtime.KindStr {
-			return runtime.Unit, typeErr("Str.upper", args[0])
+			return runtime.Unit, modTypeErr("str", "upper", args[0])
 		}
 		return runtime.Str(strings.ToUpper(args[0].Str)), nil
 	})
 
 	def("Str.slice", 3, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		if args[0].Kind != runtime.KindStr {
-			return runtime.Unit, typeErr("Str.slice", args[0])
+			return runtime.Unit, modTypeErr("str", "slice", args[0])
 		}
 		runes := []rune(args[0].Str)
 		start, end, err := sliceBounds(args[1], args[2], int64(len(runes)))
@@ -440,7 +440,7 @@ func InstallPrelude(vm *VM) {
 
 	def("Str.to_int", 1, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		if args[0].Kind != runtime.KindStr {
-			return runtime.Unit, typeErr("Str.to_int", args[0])
+			return runtime.Unit, modTypeErr("str", "to_int", args[0])
 		}
 		n, err := strconv.ParseInt(strings.TrimSpace(args[0].Str), 10, 64)
 		if err != nil {
@@ -451,7 +451,7 @@ func InstallPrelude(vm *VM) {
 
 	def("Str.to_float", 1, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		if args[0].Kind != runtime.KindStr {
-			return runtime.Unit, typeErr("Str.to_float", args[0])
+			return runtime.Unit, modTypeErr("str", "to_float", args[0])
 		}
 		f, err := strconv.ParseFloat(strings.TrimSpace(args[0].Str), 64)
 		if err != nil || math.IsInf(f, 0) || math.IsNaN(f) {
@@ -535,7 +535,7 @@ func InstallPrelude(vm *VM) {
 
 	def("Actor.info", 1, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		if args[0].Kind != runtime.KindPid {
-			return runtime.Unit, typeErr("Actor.info", args[0])
+			return runtime.Unit, modTypeErr("actor", "info", args[0])
 		}
 		return vm.scheduler.actorInfo(args[0].Pid), nil
 	})
