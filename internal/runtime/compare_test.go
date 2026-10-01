@@ -71,8 +71,8 @@ func TestCompareWithinKind(t *testing.T) {
 		{"unit<tuple", Unit, Tuple(Int(0)), -1},
 		{"tuple len", Tuple(Int(9)), Tuple(Int(1), Int(1)), -1},
 		{"tuple elems", Tuple(Int(1), Int(2)), Tuple(Int(1), Int(3)), -1},
-		{"vector len", Vector(Int(9)), Vector(Int(1), Int(1)), -1},
-		{"list len", List(Int(9)), List(Int(1), Int(1)), -1},
+		{"vector prefix", Vector(Int(1)), Vector(Int(1), Int(1)), -1},
+		{"list prefix", List(Int(1)), List(Int(1), Int(1)), -1},
 		{"list elems", List(Int(1), Int(2)), List(Int(1), Int(3)), -1},
 		{"list mixed kinds", List(Int(1)), List(Str("a")), -1},
 		{"map size", m(Int(9), Int(9)), m(Int(1), Int(1), Int(2), Int(2)), -1},
@@ -103,6 +103,46 @@ func TestCompareWithinKind(t *testing.T) {
 		got, err := Compare(tc.a, tc.b)
 		if err != nil || got != tc.want {
 			t.Errorf("%s: Compare = %d, %v; want %d", tc.name, got, err, tc.want)
+		}
+	}
+}
+
+func TestCompareListLexicographic(t *testing.T) {
+	long := func(n int, last int64) Value {
+		vs := make([]Value, n)
+		for i := range vs {
+			vs[i] = Int(0)
+		}
+		vs[n-1] = Int(last)
+		return Vector(vs...)
+	}
+	cases := []struct {
+		name string
+		a, b Value
+		want int
+	}{
+		{"list first elem wins over len", List(Int(1), Int(1)), List(Int(2)), -1},
+		{"list prefix", List(Int(1)), List(Int(1), Int(0)), -1},
+		{"list empty", List(), List(Int(0)), -1},
+		{"list equal", List(Int(1), Int(2)), List(Int(1), Int(2)), 0},
+		{"list longer vs greater", List(Int(2)), List(Int(1), Int(1)), 1},
+		{"vector first elem wins over len", Vector(Int(1), Int(1)), Vector(Int(2)), -1},
+		{"vector prefix", Vector(Int(1)), Vector(Int(1), Int(0)), -1},
+		{"vector empty", Vector(), Vector(Int(0)), -1},
+		{"vector equal", Vector(Int(1), Int(2)), Vector(Int(1), Int(2)), 0},
+		{"vector trie diff", long(100, 1), long(100, 2), -1},
+		{"vector trie prefix", long(100, 0), long(101, 0), -1},
+		{"vector trie first wins", Vector(Int(1)), long(100, 0), 1},
+		{"tuple still by size", Tuple(Int(9)), Tuple(Int(1), Int(1)), -1},
+	}
+	for _, tc := range cases {
+		got, err := Compare(tc.a, tc.b)
+		if err != nil || got != tc.want {
+			t.Errorf("%s: Compare = %d, %v; want %d", tc.name, got, err, tc.want)
+		}
+		back, err := Compare(tc.b, tc.a)
+		if err != nil || back != -tc.want {
+			t.Errorf("%s: reverse Compare = %d, %v; want %d", tc.name, back, err, -tc.want)
 		}
 	}
 }

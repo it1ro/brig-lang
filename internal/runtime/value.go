@@ -1218,16 +1218,24 @@ func compareSlices(a, b []Value) (int, error) {
 	return 0, nil
 }
 
-// compareLists — как compareSlices, обходом ячеек.
+// compareLists — лексикографически (§7.4 п.9): первое различие решает,
+// при равном префиксе меньше более короткий список.
 func compareLists(a, b *listCell) (int, error) {
-	if a.len() != b.len() {
-		return cmpInt(a.len(), b.len()), nil
-	}
-	for ; a != nil; a, b = a.tail, b.tail {
+	for a != nil && b != nil {
+		if a == b {
+			return 0, nil
+		}
 		c, err := Compare(a.head, b.head)
 		if err != nil || c != 0 {
 			return c, err
 		}
+		a, b = a.tail, b.tail
+	}
+	switch {
+	case a != nil:
+		return 1, nil
+	case b != nil:
+		return -1, nil
 	}
 	return 0, nil
 }
