@@ -5,7 +5,7 @@
 //	Unit         → null
 //	Bool         → true/false
 //	Int          → number
-//	Float        → number
+//	Float        → number (Inf/NaN — unsupported, RFC 8259)
 //	Str          → string
 //	Atom         → ":name" (строка с ведущим ':')
 //	Decimal      → "dec\"...\"" (строка — точность важнее)
@@ -14,17 +14,17 @@
 //	Map          → object (ключи только Str/Atom; ключи с префиксом "$"
 //	               экранируются как "$$…", чтобы не пересекаться с маркером)
 //	None         → null
-//	Some(x)/Ok(x)→ прозрачно, encode(x)
-//	Error(e)     → {"error": encode(e)}
+//	Some(x)      → прозрачно, encode(x)
 //	иной вариант → {"tag": "Name", "args": [...]}
 //	запись       → object по полям; номинальная с TypeTag —
 //	               {"__type__": "Name", ...} (§4.7)
-//	Function/Closure/Pid/Ref → ошибка (§14.8)
-//	Float Inf/NaN → ошибка (RFC 8259)
+//	Ok/Error, Function/Closure/Pid/Ref/Port, Range, ключ Map не Str/Atom →
+//	               *JSONError{(:unsupported, v)}
 //
-// Decode (JSON → Value):
+// Decode (JSON → Value); ошибка — *JSONError с причиной :syntax,
+// (:number, s), :depth_limit, :trailing_data или :invalid_utf8:
 //
-//	null         → Unit
+//	null         → None
 //	true/false   → Bool
 //	integer      → Int
 //	fractional   → Float (в т.ч. "1.0" остаётся Float)
@@ -37,14 +37,29 @@ package runtime
 import (
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
+	"io"
 	"math"
 	"math/big"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 const jsonMaxDepth = 64
+
+// JSONError — ошибка Json.encode/Json.decode. Reason кладётся в
+// `(:json, reason)`: у encode это `(:unsupported, v)` или `:depth_limit`, у
+// decode — `:syntax`, `(:number, s)`, `:depth_limit`, `:trailing_data`,
+// `:invalid_utf8`.
+type JSONError struct{ Reason Value }
+
+func (e *JSONError) Error() string { return "(:json, " + e.Reason.Inspect() + ")" }
+
+func jsonErr(reason Value) error { return &JSONError{Reason: reason} }
+
+func jsonUnsupported(v Value) error {
+	return jsonErr(Tuple(Atom("unsupported"), v))
+}
 
 // JSONOptions — опции Json.encode (§4.7).
 type JSONOptions struct {
@@ -68,7 +83,7 @@ func JSONEncodeOpts(v Value, opts JSONOptions) (string, error) {
 
 func jsonEncode(sb *strings.Builder, opts JSONOptions, v Value, depth int) error {
 	if depth > jsonMaxDepth {
-		return fmt.Errorf("(:json_encode, :depth_limit)")
+		return jsonErr(Atom("depth_limit"))
 	}
 	switch v.Kind {
 	case KindUnit:
@@ -85,9 +100,9 @@ func jsonEncode(sb *strings.Builder, opts JSONOptions, v Value, depth int) error
 		sb.WriteString(v.Inspect())
 
 	case KindFloat:
-		s, err := formatJSONFloat(v.Float)
-		if err != nil {
-			return err
+		s, ok := formatJSONFloat(v.Float)
+		if !ok {
+			return jsonUnsupported(v)
 		}
 		sb.WriteString(s)
 
@@ -165,7 +180,7 @@ func jsonEncode(sb *strings.Builder, opts JSONOptions, v Value, depth int) error
 			case KindAtom:
 				ks = e.Key.Atom
 			default:
-				return fmt.Errorf("(:json_encode, (:invalid_key, %s))", e.Key.Inspect())
+				return jsonUnsupported(e.Key)
 			}
 			ks = jsonEscapeKey(ks)
 			b, _ := json.Marshal(ks)
@@ -179,25 +194,18 @@ func jsonEncode(sb *strings.Builder, opts JSONOptions, v Value, depth int) error
 
 	case KindVariant:
 		if v.Variant == nil {
-			return fmt.Errorf("(:json_encode, :nil_variant)")
+			return jsonUnsupported(v)
 		}
 		switch v.Variant.Tag {
 		case "None":
 			sb.WriteString("null")
-		case "Some", "Ok":
+		case "Some":
 			if len(v.Variant.Args) != 1 {
-				return fmt.Errorf("(:json_encode, (:bad_variant, %s))", v.Inspect())
+				return jsonUnsupported(v)
 			}
 			return jsonEncode(sb, opts, v.Variant.Args[0], depth+1)
-		case "Error":
-			if len(v.Variant.Args) != 1 {
-				return fmt.Errorf("(:json_encode, (:bad_variant, %s))", v.Inspect())
-			}
-			sb.WriteString(`{"error":`)
-			if err := jsonEncode(sb, opts, v.Variant.Args[0], depth+1); err != nil {
-				return err
-			}
-			sb.WriteByte('}')
+		case "Ok", "Error":
+			return jsonUnsupported(v)
 		default:
 			sb.WriteString(`{"tag":`)
 			b, _ := json.Marshal(v.Variant.Tag)
@@ -237,38 +245,41 @@ func jsonEncode(sb *strings.Builder, opts JSONOptions, v Value, depth int) error
 		}
 		sb.WriteByte('}')
 
-	case KindFunction, KindClosure, KindPid, KindRef, KindPort:
-		return fmt.Errorf("(:json_encode, (:not_serializable, %s))", v.Kind)
-
 	default:
-		return fmt.Errorf("(:json_encode, (:unknown_kind, %s))", v.Kind)
+		// Function, Closure, Pid, Ref, Port, Range.
+		return jsonUnsupported(v)
 	}
 	return nil
 }
 
-// JSONDecode — парсит строку JSON в значение.
+// JSONDecode — парсит строку JSON в значение; ошибка — *JSONError.
 func JSONDecode(s string) (Value, error) {
+	if !utf8.ValidString(s) {
+		return Unit, jsonErr(Atom("invalid_utf8"))
+	}
 	dec := json.NewDecoder(strings.NewReader(s))
 	dec.UseNumber()
 	var raw any
 	if err := dec.Decode(&raw); err != nil {
-		return Unit, fmt.Errorf("(:json_decode, %q)", err.Error())
+		if strings.Contains(err.Error(), "exceeded max depth") {
+			return Unit, jsonErr(Atom("depth_limit"))
+		}
+		return Unit, jsonErr(Atom("syntax"))
 	}
-	// Проверка на хвостовые данные после первого значения.
-	var tail any
-	if err := dec.Decode(&tail); err == nil {
-		return Unit, fmt.Errorf("(:json_decode, :trailing_data)")
+	// Всё после первого значения, кроме пробелов, — хвост.
+	if _, err := dec.Token(); err != io.EOF {
+		return Unit, jsonErr(Atom("trailing_data"))
 	}
 	return fromJSON(raw, 0)
 }
 
 func fromJSON(raw any, depth int) (Value, error) {
 	if depth > jsonMaxDepth {
-		return Unit, fmt.Errorf("(:json_decode, :depth_limit)")
+		return Unit, jsonErr(Atom("depth_limit"))
 	}
 	switch x := raw.(type) {
 	case nil:
-		return Unit, nil
+		return Variant("None"), nil
 	case bool:
 		return Bool(x), nil
 	case string:
@@ -283,7 +294,7 @@ func fromJSON(raw any, depth int) (Value, error) {
 		}
 		f, err := x.Float64()
 		if err != nil {
-			return Unit, fmt.Errorf("(:json_decode, (:number, %q))", s)
+			return Unit, jsonErr(Tuple(Atom("number"), Str(s)))
 		}
 		return Float(f), nil
 	case []any:
@@ -303,7 +314,7 @@ func fromJSON(raw any, depth int) (Value, error) {
 				if bs, ok := b.(string); ok {
 					raw, err := base64.StdEncoding.DecodeString(bs)
 					if err != nil {
-						return Unit, fmt.Errorf("(:json_decode, (:bytes, %q))", err.Error())
+						return Unit, jsonErr(Atom("syntax"))
 					}
 					return Bytes(raw), nil
 				}
@@ -319,20 +330,20 @@ func fromJSON(raw any, depth int) (Value, error) {
 		}
 		return Map(entries), nil
 	}
-	return Unit, fmt.Errorf("(:json_decode, :unexpected_type)")
+	return Unit, jsonErr(Atom("syntax"))
 }
 
 // formatJSONFloat — JSON number для Float: Inf/NaN запрещены (RFC 8259);
 // целочисленные значения пишутся с ".0", чтобы decode сохранил KindFloat.
-func formatJSONFloat(f float64) (string, error) {
+func formatJSONFloat(f float64) (string, bool) {
 	if math.IsInf(f, 0) || math.IsNaN(f) {
-		return "", fmt.Errorf("(:json_encode, :non_finite)")
+		return "", false
 	}
 	s := strconv.FormatFloat(f, 'g', -1, 64)
 	if !strings.ContainsAny(s, ".eE") {
 		s += ".0"
 	}
-	return s, nil
+	return s, true
 }
 
 // jsonEscapeKey — ключи Map с префиксом "$" получают ещё один "$",

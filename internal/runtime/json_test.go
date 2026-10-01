@@ -66,11 +66,10 @@ func TestJSONEncodeVariant(t *testing.T) {
 	if got := mustEncode(t, Variant("Some", Int(42))); got != "42" {
 		t.Errorf("Some(42): got %q", got)
 	}
-	if got := mustEncode(t, Variant("Ok", Str("x"))); got != `"x"` {
-		t.Errorf("Ok(x): got %q", got)
-	}
-	if got := mustEncode(t, Variant("Error", Atom("boom"))); got != `{"error":":boom"}` {
-		t.Errorf("Error: got %q", got)
+	for _, v := range []Value{Variant("Ok", Str("x")), Variant("Error", Atom("boom"))} {
+		if s, err := JSONEncode(v); err == nil {
+			t.Errorf("%s: want unsupported, got %q", v.Inspect(), s)
+		}
 	}
 }
 
@@ -104,7 +103,7 @@ func TestJSONDecodeScalars(t *testing.T) {
 		in   string
 		want Value
 	}{
-		{"null", Unit},
+		{"null", Variant("None")},
 		{"true", Bool(true)},
 		{"false", Bool(false)},
 		{"42", Int(42)},
@@ -219,5 +218,112 @@ func TestJSONFloatRoundTrip(t *testing.T) {
 	}
 	if got.Float != 1.0 {
 		t.Fatalf("round-trip Float(1.0): got %v", got.Float)
+	}
+}
+
+func jsonReason(t *testing.T, err error) string {
+	t.Helper()
+	je, ok := err.(*JSONError)
+	if !ok {
+		t.Fatalf("error %T %v is not *JSONError", err, err)
+	}
+	return je.Reason.Inspect()
+}
+
+// TestJsonMappingTable — по строке на каждую строку таблицы маппинга
+// (§4.7, T-256, #409).
+func TestJsonMappingTable(t *testing.T) {
+	nested := Map([]MapEntry{
+		{Key: Str("a"), Val: List(Int(1), Float(2.5), Variant("None"))},
+		{Key: Str("b"), Val: Map([]MapEntry{{Key: Str("c"), Val: Bool(true)}})},
+	})
+	roundTrip := []struct {
+		name string
+		v    Value
+		json string
+	}{
+		{"None", Variant("None"), "null"},
+		{"Bool", Bool(true), "true"},
+		{"Int", Int(7), "7"},
+		{"Float", Float(1), "1.0"},
+		{"Str", Str("x"), `"x"`},
+		{"List", List(Int(1), Int(2)), "[1,2]"},
+		{"Map", Map([]MapEntry{{Key: Str("k"), Val: Int(1)}}), `{"k":1}`},
+		{"nested", nested, `{"a":[1,2.5,null],"b":{"c":true}}`},
+	}
+	for _, c := range roundTrip {
+		got, err := JSONEncode(c.v)
+		if err != nil || got != c.json {
+			t.Errorf("%s: encode = %q, %v; want %q", c.name, got, err, c.json)
+		}
+		back, err := JSONDecode(got)
+		if err != nil || !Equal(back, c.v) || back.Kind != c.v.Kind {
+			t.Errorf("%s: decode(encode) = %s, %v; want %s", c.name, back.Inspect(), err, c.v.Inspect())
+		}
+	}
+
+	// Some(v) кодируется как v; обратно — v, не Some(v).
+	if got, err := JSONEncode(Variant("Some", Int(1))); err != nil || got != "1" {
+		t.Errorf("Some(1): encode = %q, %v", got, err)
+	}
+	if got, err := JSONEncode(Variant("Some", Variant("None"))); err != nil || got != "null" {
+		t.Errorf("Some(None): encode = %q, %v", got, err)
+	}
+	// Запись — объект по полям.
+	if got, err := JSONEncode(rec("", "id", Int(1), "n", Str("a"))); err != nil || got != `{"id":1,"n":"a"}` {
+		t.Errorf("record: encode = %q, %v", got, err)
+	}
+
+	// Не кодируется: (:unsupported, v).
+	unsupported := []struct {
+		name string
+		v    Value
+	}{
+		{"Ok", Variant("Ok", Int(2))},
+		{"Error", Variant("Error", Atom("e"))},
+		{"Pid", Value{Kind: KindPid, Pid: 1}},
+		{"Ref", Value{Kind: KindRef, Ref: 1}},
+		{"Function", Func(&FuncValue{Name: "f", IsNative: true})},
+		{"Range", Range(1, 2)},
+		{"Map key Int", Map([]MapEntry{{Key: Int(1), Val: Int(1)}})},
+		{"nested Ok", List(Int(1), Variant("Ok", Int(2)))},
+		{"NaN", Float(math.NaN())},
+	}
+	for _, c := range unsupported {
+		_, err := JSONEncode(c.v)
+		if err == nil {
+			t.Errorf("%s: want unsupported", c.name)
+			continue
+		}
+		if got := jsonReason(t, err); !strings.HasPrefix(got, "(:unsupported, ") {
+			t.Errorf("%s: reason = %s, want (:unsupported, _)", c.name, got)
+		}
+	}
+	_, err := JSONEncode(Variant("Ok", Int(2)))
+	if got := jsonReason(t, err); got != "(:unsupported, Ok(2))" {
+		t.Errorf("Ok(2): reason = %s", got)
+	}
+
+	// Ошибки decode.
+	deep := strings.Repeat("[", jsonMaxDepth+2) + strings.Repeat("]", jsonMaxDepth+2)
+	bad := []struct{ in, reason string }{
+		{"nope", ":syntax"},
+		{"", ":syntax"},
+		{"{", ":syntax"},
+		{"1 2", ":trailing_data"},
+		{"1 x", ":trailing_data"},
+		{"1e999", `(:number, "1e999")`},
+		{deep, ":depth_limit"},
+		{"\"\xff\"", ":invalid_utf8"},
+	}
+	for _, c := range bad {
+		_, err := JSONDecode(c.in)
+		if err == nil {
+			t.Errorf("decode %q: want error", c.in)
+			continue
+		}
+		if got := jsonReason(t, err); got != c.reason {
+			t.Errorf("decode %q: reason = %s, want %s", c.in, got, c.reason)
+		}
 	}
 }
