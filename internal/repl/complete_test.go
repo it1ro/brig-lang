@@ -87,14 +87,14 @@ func TestCompletePrelude(t *testing.T) {
 	if got := one(t, at(t, s, "len|"), "len"); got.Display != "len/1" {
 		t.Fatalf("len display = %q", got.Display)
 	}
-	if got := one(t, at(t, s, "map|"), "map"); got.Display != "map/2" {
-		t.Fatalf("map display = %q", got.Display)
+	if got := one(t, at(t, s, "to_int|"), "to_int"); got.Display != "to_int/1" {
+		t.Fatalf("to_int display = %q", got.Display)
 	}
 	if got := one(t, at(t, s, "mailbox_size|"), "mailbox_size"); got.Display != "mailbox_size/0,1" {
 		t.Fatalf("mailbox_size display = %q", got.Display)
 	}
 	c := at(t, s, "ma|")
-	for _, name := range []string{"map", "mailbox_size", "make_ref"} {
+	for _, name := range []string{"mailbox_size", "make_ref"} {
 		if one(t, c, name).Insert != name {
 			t.Fatalf("missing %s", name)
 		}
@@ -108,10 +108,10 @@ func TestCompletePrelude(t *testing.T) {
 func TestCompleteModuleMembers(t *testing.T) {
 	s, out := helperSession(t)
 
-	c := at(t, s, "List.ta|")
+	c := at(t, s, "Enum.ta|")
 	got := one(t, c, "take")
-	if got.Display != "take/2" || c.From != len("List.") || c.To != len("List.ta") {
-		t.Fatalf("List.take: %+v span %d:%d", got, c.From, c.To)
+	if got.Display != "take/2" || c.From != len("Enum.") || c.To != len("Enum.ta") {
+		t.Fatalf("Enum.take: %+v span %d:%d", got, c.From, c.To)
 	}
 	none(t, at(t, s, "List.|"), "subject")
 	none(t, at(t, s, "List.|"), "span")
@@ -203,11 +203,11 @@ func TestSignatureHint(t *testing.T) {
 		t.Fatalf("len(: text %q mark %d:%d", text, a, b)
 	}
 
-	text, a, b = sigAt(t, s, `map("a,b"|)`)
-	if !strings.Contains(text, "map(xs, f)") || a < 0 || text[a:b] != "xs" {
+	text, a, b = sigAt(t, s, `Enum.map("a,b"|)`)
+	if !strings.Contains(text, "Enum.map(xs, f)") || a < 0 || text[a:b] != "xs" {
 		t.Fatalf("comma in string: text %q mark %d:%d %q", text, a, b, sliceMark(text, a, b))
 	}
-	text, a, b = sigAt(t, s, `map("a,b", |)`)
+	text, a, b = sigAt(t, s, `Enum.map("a,b", |)`)
 	if a < 0 || sliceMark(text, a, b) != "f" {
 		t.Fatalf("real comma: text %q mark %q", text, sliceMark(text, a, b))
 	}
@@ -222,7 +222,7 @@ func TestSignatureHint(t *testing.T) {
 		t.Fatalf("after paren: %q", text)
 	}
 
-	text, a, b = sigAt(t, s, "map(len(|), 1)")
+	text, a, b = sigAt(t, s, "Enum.map(len(|), 1)")
 	if !strings.HasPrefix(text, "len(") || sliceMark(text, a, b) != "v" {
 		t.Fatalf("nested: text %q mark %q", text, sliceMark(text, a, b))
 	}

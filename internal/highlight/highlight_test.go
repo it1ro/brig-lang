@@ -50,7 +50,7 @@ func TestHighlightClasses(t *testing.T) {
 		{"+", highlight.Op},
 		{",", highlight.Punct},
 		{"x", highlight.Binding},
-		{"map", highlight.Prelude},
+		{"len", highlight.Prelude},
 		{"h", highlight.Helper},
 		{"nope", highlight.Unknown},
 	}
@@ -62,7 +62,7 @@ func TestHighlightClasses(t *testing.T) {
 		}
 		seen[c.class] = true
 	}
-	for c := range classesOf(`"\(map)"`, -1, env) {
+	for c := range classesOf(`"\(len)"`, -1, env) {
 		seen[c] = true
 	}
 	for c := range classesOf("fn f() ->\n    x\n  y\n", -1, env) {
@@ -113,11 +113,11 @@ func TestHighlightIncomplete(t *testing.T) {
 
 // TestHighlightInterp — код внутри \(…) красится как код, не как строка.
 func TestHighlightInterp(t *testing.T) {
-	src := `"pre\(map)post"`
+	src := `"pre\(len)post"`
 	env := highlight.REPLEnv()
-	off := strings.Index(src, "map")
+	off := strings.Index(src, "len")
 	if c, ok := classAt(src, off, -1, env); !ok || c != highlight.Prelude {
-		t.Errorf("map inside interp: %q, want prelude", c)
+		t.Errorf("len inside interp: %q, want prelude", c)
 	}
 	if c, _ := classAt(src, strings.Index(src, `\(`), -1, env); c != highlight.Interp {
 		t.Errorf(`\( class %q, want interp`, c)
@@ -144,7 +144,7 @@ func TestHighlightUnknownName(t *testing.T) {
 		}
 	}
 	one("x", 0, highlight.Binding)
-	one("map", 0, highlight.Prelude)
+	one("len", 0, highlight.Prelude)
 	one("h", 0, highlight.Helper)
 	one("nope", 0, highlight.Unknown)
 	one("M.f", 0, highlight.Module)
@@ -153,7 +153,7 @@ func TestHighlightUnknownName(t *testing.T) {
 	one("M.g", 2, highlight.Unknown)
 	one("Z.f", 0, highlight.Unknown)
 	one("Z.f", 2, highlight.Unknown)
-	one("Vec.len", strings.Index("Vec.len", "len"), highlight.Prelude)
+	one("Vec.get", strings.Index("Vec.get", "get"), highlight.Prelude)
 	one("Vec.nope", strings.Index("Vec.nope", "nope"), highlight.Unknown)
 
 	same := "n = n"

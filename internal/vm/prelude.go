@@ -3,6 +3,7 @@ package vm
 import (
 	"bytes"
 	"fmt"
+	"math"
 	"math/big"
 	"strconv"
 	"strings"
@@ -114,117 +115,6 @@ func InstallPrelude(vm *VM) {
 		return runtime.Set(args...), nil
 	})
 
-	// Функции высшего порядка — возобновляемые нативы (G3, T-58): на CALL
-	// из байткода состояние обхода живёт в кадре актора, колбэк исполняется
-	// обычным кадром и тратит редукции. Через Caller (vm.Call) — синхронно.
-	defResumable("map", 2, func(args []runtime.Value) (nativeCont, error) {
-		xs, f := args[0], args[1]
-		if xs.Kind != runtime.KindList {
-			return nil, typeErr("map", xs)
-		}
-		out := runtime.NewListBuilder(xs.Len())
-		return &listCont{
-			f: f, xs: xs.Cursor(),
-			visit: func(_, r runtime.Value) (bool, runtime.Value, error) {
-				out.Add(r)
-				return false, runtime.Unit, nil
-			},
-			final: out.List,
-		}, nil
-	})
-
-	defResumable("filter", 2, func(args []runtime.Value) (nativeCont, error) {
-		xs, f := args[0], args[1]
-		if xs.Kind != runtime.KindList {
-			return nil, typeErr("filter", xs)
-		}
-		out := runtime.NewListBuilder(xs.Len())
-		return &listCont{
-			f: f, xs: xs.Cursor(),
-			visit: func(e, r runtime.Value) (bool, runtime.Value, error) {
-				if r.Kind != runtime.KindBool {
-					return false, runtime.Unit, typeErr("filter_predicate", r)
-				}
-				if r.Bool {
-					out.Add(e)
-				}
-				return false, runtime.Unit, nil
-			},
-			final: out.List,
-		}, nil
-	})
-
-	defResumable("find", 2, func(args []runtime.Value) (nativeCont, error) {
-		xs, f := args[0], args[1]
-		if xs.Kind != runtime.KindList {
-			return nil, typeErr("find", xs)
-		}
-		return &listCont{
-			f: f, xs: xs.Cursor(),
-			visit: func(e, r runtime.Value) (bool, runtime.Value, error) {
-				if r.Kind != runtime.KindBool {
-					return false, runtime.Unit, typeErr("find_predicate", r)
-				}
-				return r.Bool, runtime.Variant("Some", e), nil
-			},
-			final: func() runtime.Value { return runtime.Variant("None") },
-		}, nil
-	})
-
-	defResumable("all", 2, func(args []runtime.Value) (nativeCont, error) {
-		xs, f := args[0], args[1]
-		if xs.Kind != runtime.KindList {
-			return nil, typeErr("all", xs)
-		}
-		return &listCont{
-			f: f, xs: xs.Cursor(),
-			visit: func(_, r runtime.Value) (bool, runtime.Value, error) {
-				if r.Kind != runtime.KindBool {
-					return false, runtime.Unit, typeErr("all_predicate", r)
-				}
-				return !r.Bool, runtime.Bool(false), nil
-			},
-			final: func() runtime.Value { return runtime.Bool(true) },
-		}, nil
-	})
-
-	defResumable("any", 2, func(args []runtime.Value) (nativeCont, error) {
-		xs, f := args[0], args[1]
-		if xs.Kind != runtime.KindList {
-			return nil, typeErr("any", xs)
-		}
-		return &listCont{
-			f: f, xs: xs.Cursor(),
-			visit: func(_, r runtime.Value) (bool, runtime.Value, error) {
-				if r.Kind != runtime.KindBool {
-					return false, runtime.Unit, typeErr("any_predicate", r)
-				}
-				return r.Bool, runtime.Bool(true), nil
-			},
-			final: func() runtime.Value { return runtime.Bool(false) },
-		}, nil
-	})
-
-	defResumable("fold", 3, func(args []runtime.Value) (nativeCont, error) {
-		xs, acc, f := args[0], args[1], args[2]
-		if xs.Kind != runtime.KindList {
-			return nil, typeErr("fold", xs)
-		}
-		buf := make([]runtime.Value, 2)
-		return &listCont{
-			f: f, xs: xs.Cursor(),
-			args: func(e runtime.Value) []runtime.Value {
-				buf[0], buf[1] = acc, e
-				return buf
-			},
-			visit: func(_, r runtime.Value) (bool, runtime.Value, error) {
-				acc = r
-				return false, runtime.Unit, nil
-			},
-			final: func() runtime.Value { return acc },
-		}, nil
-	})
-
 	// ---- Enum module (T-257) ----
 
 	installEnum(def, defResumable)
@@ -260,13 +150,6 @@ func InstallPrelude(vm *VM) {
 			return runtime.Variant("None"), nil
 		}
 		return runtime.Variant("Some", args[0].At(int(i))), nil
-	})
-
-	def("Vec.len", 1, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
-		if args[0].Kind != runtime.KindVector {
-			return runtime.Unit, typeErr("Vec.len", args[0])
-		}
-		return runtime.Int(int64(args[0].Len())), nil
 	})
 
 	// ---- Record module (§4.7) ----
@@ -564,6 +447,17 @@ func InstallPrelude(vm *VM) {
 		return runtime.Variant("Some", runtime.Int(n)), nil
 	})
 
+	def("Str.to_float", 1, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+		if args[0].Kind != runtime.KindStr {
+			return runtime.Unit, typeErr("Str.to_float", args[0])
+		}
+		f, err := strconv.ParseFloat(strings.TrimSpace(args[0].Str), 64)
+		if err != nil || math.IsInf(f, 0) || math.IsNaN(f) {
+			return runtime.Variant("None"), nil
+		}
+		return runtime.Variant("Some", runtime.Float(f)), nil
+	})
+
 	// ---- Конверсии ----
 
 	def("to_str", 1, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
@@ -577,13 +471,6 @@ func InstallPrelude(vm *VM) {
 			return a, nil
 		case runtime.KindFloat:
 			return runtime.Int(int64(a.Float)), nil
-		case runtime.KindStr:
-			s := strings.TrimSpace(a.Str)
-			var n int64
-			if _, err := fmt.Sscanf(s, "%d", &n); err != nil {
-				return runtime.Unit, parseErr("to_int", a)
-			}
-			return runtime.Int(n), nil
 		}
 		return runtime.Unit, typeErr("to_int", a)
 	})
@@ -598,13 +485,6 @@ func InstallPrelude(vm *VM) {
 				return runtime.Float(float64(a.SmallInt)), nil
 			}
 			f, _ := new(big.Float).SetInt(a.AsBig()).Float64()
-			return runtime.Float(f), nil
-		case runtime.KindStr:
-			s := strings.TrimSpace(a.Str)
-			var f float64
-			if _, err := fmt.Sscanf(s, "%f", &f); err != nil {
-				return runtime.Unit, parseErr("to_float", a)
-			}
 			return runtime.Float(f), nil
 		}
 		return runtime.Unit, typeErr("to_float", a)
@@ -785,41 +665,4 @@ func runSync(c runtime.Caller, k nativeCont) (runtime.Value, error) {
 			return runtime.Unit, err
 		}
 	}
-}
-
-// listCont обходит xs, вызывая f на каждом элементе (с аргументами
-// args(e), по умолчанию — e). visit получает элемент и результат колбэка
-// и может завершить обход досрочно со значением res; иначе итог — final().
-// Срез аргументов — буфер, переиспользуемый между колбэками (T-103):
-// enterCall копирует его в регистры кадра или в свежий срез натива.
-type listCont struct {
-	f     runtime.Value
-	xs    runtime.ListCursor // стоит на элементе, чей колбэк исполняется
-	arg   [1]runtime.Value
-	args  func(e runtime.Value) []runtime.Value
-	visit func(e, r runtime.Value) (stop bool, res runtime.Value, err error)
-	final func() runtime.Value
-}
-
-func (c *listCont) resume(ret runtime.Value) (nativeStep, error) {
-	if c.xs.Started() {
-		stop, res, err := c.visit(c.xs.Value(), ret)
-		if err != nil {
-			return nativeStep{}, err
-		}
-		if stop {
-			return nativeStep{done: true, res: res}, nil
-		}
-	}
-	if !c.xs.Next() {
-		return nativeStep{done: true, res: c.final()}, nil
-	}
-	var args []runtime.Value
-	if c.args != nil {
-		args = c.args(c.xs.Value())
-	} else {
-		c.arg[0] = c.xs.Value()
-		args = c.arg[:]
-	}
-	return nativeStep{fn: c.f, args: args}, nil
 }

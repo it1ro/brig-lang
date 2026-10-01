@@ -7,13 +7,13 @@ fn double(x) -> x * 2
 
 fn main() ->
     nums = [1, 2, 3, 4, 5]
-    print(nums |> map(x -> x * 2))
-    print(nums |> filter(x -> x > 2) |> map(double))
-    print(nums |> fold(0, (acc, x) -> acc + x))
-    print(nums |> find(x -> x > 3))
-    print(nums |> find(x -> x > 10))
-    print(nums |> all(x -> x > 0), nums |> any(x -> x > 4))
-    print(nums |> map(x -> x**2) |> len())
+    print(nums |> Enum.map(x -> x * 2))
+    print(nums |> Enum.filter(x -> x > 2) |> Enum.map(double))
+    print(nums |> Enum.fold(0, (acc, x) -> acc + x))
+    print(nums |> Enum.find(x -> x > 3))
+    print(nums |> Enum.find(x -> x > 10))
+    print(nums |> Enum.all?(x -> x > 0), nums |> Enum.any?(x -> x > 4))
+    print(nums |> Enum.map(x -> x**2) |> len())
     words = ["b", "a", "c"]
-    print(words |> map(to_str) |> fold("", (acc, w) -> "\(acc)\(w)"))
-    print(list(1 to 4) |> map(x -> x * 10))
+    print(words |> Enum.map(to_str) |> Enum.fold("", (acc, w) -> "\(acc)\(w)"))
+    print(list(1 to 4) |> Enum.map(x -> x * 10))

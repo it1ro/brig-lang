@@ -38,7 +38,7 @@ Message}`; `SeverityError` блокирует компиляцию, `SeverityInf
    встречен `LocalFnDecl` после «обычного» стейтмента, это ошибка
    (`checkBlockBody`).
 6. Shadowing имён прелюдии/встроенных вариантов (`Some`, `Ok`, `Error`,
-   `None`, `map`, `filter`, ...) — **info**, не ошибка. Для вариант-
+   `None`, `len`, `list`, ...) — **info**, не ошибка. Для вариант-
    деклараций (`checkTypeDecl`, §14.7, T-136): конструктор `Some`/`None`/
    `Ok`/`Error` и тип `Option`/`Result` — info на позиции `type`.
 7. Неизвестное имя и арность (§F.3, T-139) — `CheckNames`, не `Check`.

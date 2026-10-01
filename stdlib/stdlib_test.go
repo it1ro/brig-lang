@@ -46,7 +46,7 @@ func TestStdlibEmbeddedLoads(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, fn := range []string{"List.each", "List.sort", "Option.and_then", "Result.all"} {
+	for _, fn := range []string{"List.concat", "Option.and_then", "Result.all"} {
 		if img.Functions[fn] == nil {
 			t.Errorf("image has no %s", fn)
 		}
@@ -111,9 +111,9 @@ func TestStdlibSharedAcrossVMs(t *testing.T) {
 	const src = `module Main
 
 fn main() ->
-    xs = List.sort([5, 3, 9, 1, 7])
-    List.each(xs, x -> x)
-    [Ok(List.reverse(xs)), Ok(List.take(xs, 2))] |> Result.all()
+    xs = Enum.sort([5, 3, 9, 1, 7])
+    Enum.each(xs, x -> x)
+    [Ok(Enum.reverse(xs)), Ok(Enum.take(xs, 2))] |> Result.all()
 `
 	prog, err := parser.ParseProgram(parser.ModeModule, src)
 	if err != nil {

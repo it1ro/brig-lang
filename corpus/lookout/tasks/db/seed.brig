@@ -13,8 +13,8 @@ pub fn run(args) ->
     opts = Cli.parse(args, { flags: %{ "--count" => { key: :count, default: 3 } } })
     Task.run("sql.migrate", [])            # явная зависимость, один раз за запуск
     samples()
-        |> List.take(opts.count)
-        |> map(params -> Monitors.create(params))
+        |> Enum.take(opts.count)
+        |> Enum.map(params -> Monitors.create(params))
         |> Result.all()
 
 fn samples() ->

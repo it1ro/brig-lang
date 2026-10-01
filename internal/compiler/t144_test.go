@@ -21,12 +21,12 @@ alias Http.Client as Http
 fn main() ->
     g = Util.g
     assert(g(1) == 2)
-    assert(map([1, 2], Util.g) == [2, 3])
-    assert(fold([1, 2, 3], 0, Util.add) == 6)
+    assert(Enum.map([1, 2], Util.g) == [2, 3])
+    assert(Enum.fold([1, 2, 3], 0, Util.add) == 6)
     assert(Util.apply(Util.g, 5) == 6)
     get = Http.get
     assert(get("x") == "GET x")
-    assert(map(["y"], Http.Client.get) == ["GET y"])
+    assert(Enum.map(["y"], Http.Client.get) == ["GET y"])
     assert((Util.g |> Util.apply(1)) == 2)
 `},
 		src{"Util", `module Util
@@ -48,7 +48,7 @@ fn main() -> assert(Util.run() == [6])
 `},
 			src{"Util", `module Util
 import Main
-pub fn run() -> Prelude.map([3], Main.twice)
+pub fn run() -> Enum.map([3], Main.twice)
 `},
 		)
 	})
@@ -95,7 +95,7 @@ fn main() ->
     assert(Util.Box != Box)
     assert(Util.Box == Util.Box)
     assert(Json.encode == Json.encode)
-    assert(Prelude.map == map)
+    assert(Prelude.len == len)
     assert([Util.g, Util.h] == [Util.g, Util.h])
 `},
 		src{"Util", `module Util
@@ -137,12 +137,12 @@ alias Json as J
 fn main() ->
     f = Json.encode
     assert(f([1]) == "[1]")
-    assert(map([[1], [2]], J.encode) == ["[1]", "[2]"])
-    assert(List.map([[3]], Json.encode) == ["[3]"])
-    rev = List.reverse
+    assert(Enum.map([[1], [2]], J.encode) == ["[1]", "[2]"])
+    assert(Enum.map([[3]], Json.encode) == ["[3]"])
+    rev = Enum.reverse
     assert(rev([1, 2]) == [2, 1])
-    assert(map([[2, 1]], List.reverse) == [[1, 2]])
-    assert(List.reverse == List.reverse)
+    assert(Enum.map([[2, 1]], Enum.reverse) == [[1, 2]])
+    assert(Enum.reverse == Enum.reverse)
     assert(len == Prelude.len)
 `
 	prog, err := parser.ParseProgram(parser.ModeModule, src)

@@ -2,24 +2,31 @@ package vm_test
 
 import "testing"
 
-// T-196 (#220, DD #217 вариант B): to_int/to_float при ошибке бросают
-// ловимый (:type_error, (op, val)) для значений не своего типа и
-// (:parse_error, (op, val)) для Str, которая не разбирается как число —
-// вместо (:badarg, v).
+// T-284 (§0.2): to_int/to_float принимают только числа; Str — не число:
+// (:type_error, (op, val)). Разбор строк — Str.to_int/Str.to_float
+// (Option, без raise).
 func TestToIntToFloatErrors(t *testing.T) {
 	cases := map[string]string{
 		"to_int_atom": `r = trap(to_int(:x))
     assert(r == Error((:type_error, (:to_int, :x))))`,
 		"to_int_list": `r = trap(to_int([1]))
     assert(r == Error((:type_error, (:to_int, [1]))))`,
-		"to_int_bad_str": `r = trap(to_int("abc"))
-    assert(r == Error((:parse_error, (:to_int, "abc"))))`,
+		"to_int_str": `r = trap(to_int("42"))
+    assert(r == Error((:type_error, (:to_int, "42"))))`,
 		"to_float_atom": `r = trap(to_float(:x))
     assert(r == Error((:type_error, (:to_float, :x))))`,
 		"to_float_list": `r = trap(to_float([1]))
     assert(r == Error((:type_error, (:to_float, [1]))))`,
-		"to_float_bad_str": `r = trap(to_float("abc"))
-    assert(r == Error((:parse_error, (:to_float, "abc"))))`,
+		"to_float_str": `r = trap(to_float("1.5"))
+    assert(r == Error((:type_error, (:to_float, "1.5"))))`,
+		"str_to_float": `assert(Str.to_float("1.5") == Some(1.5))
+    assert(Str.to_float(" 2 ") == Some(2.0))
+    assert(Str.to_float("x") == None)
+    assert(Str.to_float("") == None)
+    assert(Str.to_float("inf") == None)
+    assert(Str.to_float("nan") == None)`,
+		"str_to_float_type": `r = trap(Str.to_float(1))
+    assert(to_str(r) == "Error((:type_error, (:Str.to_float, 1)))")`,
 	}
 	for name, body := range cases {
 		t.Run(name, func(t *testing.T) {

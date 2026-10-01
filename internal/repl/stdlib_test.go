@@ -12,7 +12,7 @@ import (
 func TestSessionStdlib(t *testing.T) {
 	s, out := helperSession(t)
 
-	got := mustEval(t, s, out, "[3, 1, 2] |> List.sort() |> List.take(2)\n")
+	got := mustEval(t, s, out, "[3, 1, 2] |> Enum.sort() |> Enum.take(2)\n")
 	if !runtime.Equal(got, runtime.List(runtime.Int(1), runtime.Int(2))) {
 		t.Fatalf("List: %s", got.Inspect())
 	}
@@ -31,7 +31,7 @@ func TestSessionStdlib(t *testing.T) {
 
 	out.Reset()
 	mustEval(t, s, out, "h(List)\n")
-	for _, frag := range []string{"Функции над `List`", "take/2", "member?/2"} {
+	for _, frag := range []string{"Функции над `List`", "concat/2"} {
 		if !strings.Contains(out.String(), frag) {
 			t.Fatalf("h(List) missing %q:\n%s", frag, out.String())
 		}

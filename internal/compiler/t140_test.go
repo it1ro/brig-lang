@@ -8,7 +8,7 @@ func TestRunShortLambdaMultiParam(t *testing.T) {
 fn main() ->
     add = (a, b) -> a + b
     assert(add(2, 3) == 5)
-    assert(fold([1, 2, 3, 4], 0, (acc, x) -> acc + x) == 10)
+    assert(Enum.fold([1, 2, 3, 4], 0, (acc, x) -> acc + x) == 10)
     base = 100
     f3 = (a, b, c) -> base + a * b - c
     assert(f3(2, 3, 1) == 105)

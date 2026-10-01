@@ -17,7 +17,7 @@ pub fn child_spec(config) ->
     })
 
 pub fn all(schema, sql, params) ->
-    Sql.query(:repo, sql, params) |> Result.map(rows -> map(rows, r -> Sql.to_record(schema, r)))
+    Sql.query(:repo, sql, params) |> Result.map(rows -> Enum.map(rows, r -> Sql.to_record(schema, r)))
 
 pub fn one(schema, sql, params) ->
     match all(schema, sql, params)

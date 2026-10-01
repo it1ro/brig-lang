@@ -168,8 +168,6 @@ func (s sig) matches(n int) bool {
 // bareBuiltins — голые имена прелюдии, конструкторы и акторные опкоды (§11.5).
 // Список функций совпадает с InstallPrelude / InstallJSONPrelude / InstallTestPrelude.
 var bareBuiltins = map[string]sig{
-	"map": exact(2), "filter": exact(2), "find": exact(2),
-	"all": exact(2), "any": exact(2), "fold": exact(3),
 	"len": exact(1), "list": variadic(0), "set": variadic(0),
 	"to_str": exact(1), "to_int": exact(1), "to_float": exact(1),
 	"print": variadic(0), "eprint": variadic(0), "log": variadic(0),
@@ -192,13 +190,13 @@ var bareStdlib = map[string]sig{"spawn_behavior": exact(2)}
 // modBuiltins — функции встроенных модулей. Json.encode — 1 или 2
 // аргумента (§4.7), не открытый вариадик.
 var modBuiltins = map[string]map[string]sig{
-	"Vec":    {"push": exact(2), "set": exact(3), "get": exact(2), "len": exact(1)},
+	"Vec":    {"push": exact(2), "set": exact(3), "get": exact(2)},
 	"Map":    {"put": exact(3), "get": exact(2), "get_or": exact(3), "remove": exact(2), "keys": exact(1)},
 	"Record": {"to_anon": exact(1)},
 	"Str": {
 		"to_bytes": exact(1), "split": exact(2), "join": exact(2), "trim": exact(1),
 		"find": exact(2), "replace": exact(3), "starts_with?": exact(2), "ends_with?": exact(2),
-		"lower": exact(1), "upper": exact(1), "slice": exact(3), "to_int": exact(1),
+		"lower": exact(1), "upper": exact(1), "slice": exact(3), "to_int": exact(1), "to_float": exact(1),
 	},
 	"Bytes": {
 		"to_str": exact(1), "slice": exact(3), "find": exact(2), "split": exact(2),

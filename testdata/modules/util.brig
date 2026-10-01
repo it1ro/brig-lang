@@ -8,6 +8,6 @@ pub fn f() -> "Util.f"
 
 pub fn unit() -> Square(1)
 
-pub fn scale(xs, k) -> map(xs, (x) -> x * k)
+pub fn scale(xs, k) -> Enum.map(xs, (x) -> x * k)
 
 pub fn countdown(n) -> if n == 0 then Main.f() else countdown(n - 1)

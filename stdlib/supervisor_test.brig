@@ -41,8 +41,8 @@ fn msgs(n) ->
 fn stop_msg?((:stopped, _)) -> true
 fn stop_msg?(_) -> false
 
-fn stops(ms) -> filter(ms, stop_msg?)
-fn downs(ms) -> filter(ms, m -> not stop_msg?(m))
+fn stops(ms) -> Enum.filter(ms, stop_msg?)
+fn downs(ms) -> Enum.filter(ms, m -> not stop_msg?(m))
 
 fn sleep(ms) ->
     recv
@@ -116,8 +116,8 @@ fn test_supervisor_transient_normal_exit() ->
     exit(v, (:shutdown, :done))
     # Порядок смерти жертв exit не задан.
     ms = msgs(6)
-    Test.assert_eq(List.sort(stops(ms)), [(:stopped, :t), (:stopped, :u), (:stopped, :v)])
-    Test.assert_eq(List.sort(map(downs(ms), d -> d[2])), List.sort([:normal, :shutdown, (:shutdown, :done)]))
+    Test.assert_eq(Enum.sort(stops(ms)), [(:stopped, :t), (:stopped, :u), (:stopped, :v)])
+    Test.assert_eq(Enum.sort(Enum.map(downs(ms), d -> d[2])), Enum.sort([:normal, :shutdown, (:shutdown, :done)]))
     # Супервизор берёт :down раньше запроса stop: будь кто-то
     # перезапущен, его :started и :stopped были бы в ящике.
     Test.assert_eq(Supervisor.stop(sup, :shutdown, { timeout: 1000 }), Ok(()))
@@ -230,7 +230,7 @@ fn test_supervisor_which_children() ->
     a = started(:a)
     b = started(:b)
     cs = Supervisor.which_children(sup)
-    Test.assert_eq(map(cs, c -> (c[0], c[1], c[2])), [(:a, a, :permanent), (:b, b, :transient)])
+    Test.assert_eq(Enum.map(cs, c -> (c[0], c[1], c[2])), [(:a, a, :permanent), (:b, b, :transient)])
     empty = sup_of([], 1, 5000)
     Test.assert_eq(Supervisor.which_children(empty), [])
     Test.assert_eq(Supervisor.stop(sup, :shutdown, { timeout: 1000 }), Ok(()))
@@ -274,8 +274,8 @@ fn test_supervisor_kill_leaves_no_orphans() ->
     exit(sup, :kill)
     Test.assert_eq(down(sref), :kill)
     ms = msgs(4)
-    Test.assert_eq(List.sort(stops(ms)), [(:stopped, :a), (:stopped, :b)])
-    Test.assert_eq(map(downs(ms), d -> d[2]), [(:linked_exit, :kill), (:linked_exit, :kill)])
+    Test.assert_eq(Enum.sort(stops(ms)), [(:stopped, :a), (:stopped, :b)])
+    Test.assert_eq(Enum.map(downs(ms), d -> d[2]), [(:linked_exit, :kill), (:linked_exit, :kill)])
     Test.assert_eq(Actor.info(a), None)
     Test.assert_eq(Actor.info(b), None)
     Test.assert_eq(Actor.list(), [self()])

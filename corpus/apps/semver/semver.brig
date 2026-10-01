@@ -51,14 +51,14 @@ fn split_pre(s) ->
         None -> (s, "")
 
 fn build(input, parts, pre) ->
-    nums = map(parts, p -> Str.to_int(p))
+    nums = Enum.map(parts, p -> Str.to_int(p))
     match nums
         [Some(ma), Some(mi), Some(pa)] ->
             Ok(Version{ major: ma, minor: mi, patch: pa, pre: pre_ids(pre) })
         _ -> Error(ParseError{ reason: :bad_number, input: input })
 
 fn pre_ids("") -> []
-fn pre_ids(pre) -> map(Str.split(pre, "."), id -> pre_id(id, Str.to_int(id)))
+fn pre_ids(pre) -> Enum.map(Str.split(pre, "."), id -> pre_id(id, Str.to_int(id)))
 
 fn pre_id(_id, Some(n)) -> n
 fn pre_id(id, None) -> id
@@ -135,8 +135,8 @@ fn caret_upper(x) -> Version{ major: x.major + 1, minor: 0, patch: 0, pre: [] }
 
 ## Наибольшая версия из списка, удовлетворяющая ограничению.
 pub fn max_satisfying(versions, con) ->
-    ok = filter(versions, ver -> satisfies?(ver, con))
-    fold(ok, None, pick_max)
+    ok = Enum.filter(versions, ver -> satisfies?(ver, con))
+    Enum.fold(ok, None, pick_max)
 
 fn pick_max(None, ver) -> Some(ver)
 fn pick_max(Some(best), ver) -> if compare(ver, best) > 0 then Some(ver) else Some(best)
@@ -154,5 +154,5 @@ pub fn bump(ver, :patch) -> { ..ver, patch: ver.patch + 1, pre: [] }
 ## Строковая форма.
 pub fn to_string(Version{ major: a, minor: b, patch: c, pre: [] }) -> "\(a).\(b).\(c)"
 pub fn to_string(ver) ->
-    ids = Str.join(map(ver.pre, to_str), ".")
+    ids = Str.join(Enum.map(ver.pre, to_str), ".")
     "\(ver.major).\(ver.minor).\(ver.patch)-\(ids)"

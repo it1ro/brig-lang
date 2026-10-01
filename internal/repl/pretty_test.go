@@ -237,7 +237,7 @@ func TestReplErrorCaret(t *testing.T) {
 	errOut.Reset()
 	out.Reset()
 	fe.Pal = colorOn()
-	if err := fe.Eval(s, "map = 1\n"); err != nil {
+	if err := fe.Eval(s, "len = 1\n"); err != nil {
 		t.Fatal(err)
 	}
 	info := errOut.String()
@@ -247,7 +247,7 @@ func TestReplErrorCaret(t *testing.T) {
 	if strings.Contains(info, "error:") {
 		t.Fatalf("info counted as error:\n%s", info)
 	}
-	if stripANSI(out.String()) != "map = 1\n" {
+	if stripANSI(out.String()) != "len = 1\n" {
 		t.Fatalf("binding after info: %q", out.String())
 	}
 

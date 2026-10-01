@@ -29,8 +29,8 @@ fn main() ->
     })
     token = Env.required("LOOKOUT_API_TOKEN")
     rows = read_rows(opts.input)
-    results = rows |> map(row -> import_row(row, opts, token))
-    failed = results |> filter(r -> r != :ok) |> len
+    results = rows |> Enum.map(row -> import_row(row, opts, token))
+    failed = results |> Enum.filter(r -> r != :ok) |> len
     print("imported: \(len(rows) - failed), failed: \(failed)")
     Sys.exit(if failed == 0 then 0 else 1)
 

@@ -254,7 +254,7 @@ fn main() ->
 `},
 		src{"Util", `module Util
 type Wrap { Box(Int) }
-fn add_all(xs, n) -> map(xs, (x) -> x + n)
+fn add_all(xs, n) -> Enum.map(xs, (x) -> x + n)
 fn inc(x) -> x + 1
 `},
 		src{"Http.Client", `module Http.Client

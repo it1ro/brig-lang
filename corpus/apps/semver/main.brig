@@ -16,7 +16,7 @@ fn resolve((name, spec)) ->
     with
         Ok(con) <- Semver.constraint(spec)
         Some(raw) <- Map.get(available(), name)
-        Ok(vers) <- Result.all(map(raw, Semver.parse))
+        Ok(vers) <- Result.all(Enum.map(raw, Semver.parse))
         Some(best) <- Semver.max_satisfying(vers, con)
         Ok((name, best))
     else
@@ -28,8 +28,8 @@ fn describe(Ok((name, v))) -> "\(name) \(Semver.to_string(v))"
 fn describe(Error(e)) -> "error: \(e)"
 
 fn main() ->
-    results = map(wanted(), resolve)
-    _ = map(results, r -> print(describe(r)))
+    results = Enum.map(wanted(), resolve)
+    _ = Enum.map(results, r -> print(describe(r)))
     next = Semver.bump(Semver.ver("1.2.3"), :major)
     print("bump:", Semver.to_string(next), next == Semver.Version{ major: 2, minor: 0, patch: 0, pre: [] })
     print(Semver.satisfies?(next, Semver.Caret(Semver.ver("2.0.0"))), Semver.compare(next, Semver.ver("2.0.0-rc.1")))

@@ -16,20 +16,20 @@ func TestCompleteRecordShadowsModule(t *testing.T) {
 	s := New(vm.New(), io.Discard)
 	t.Cleanup(s.Close)
 
-	s.env["List"] = runtime.Record("", []runtime.RecordField{
+	s.env["Enum"] = runtime.Record("", []runtime.RecordField{
 		{Name: "id", Val: runtime.Int(1)},
 	})
-	c := s.Complete("List.", len("List."))
+	c := s.Complete("Enum.", len("Enum."))
 	if !hasInsert(c, "id") || hasInsert(c, "take") {
 		t.Fatalf("record should hide the module: %+v", c.Candidates)
 	}
 
-	s.env["List"] = runtime.Int(1)
-	c = s.Complete("List.ta", len("List.ta"))
+	s.env["Enum"] = runtime.Int(1)
+	c = s.Complete("Enum.ta", len("Enum.ta"))
 	if !hasInsert(c, "take") {
-		t.Fatalf("non-record binding hid List.take: %+v", c.Candidates)
+		t.Fatalf("non-record binding hid Enum.take: %+v", c.Candidates)
 	}
-	if c.From != len("List.") || c.To != len("List.ta") {
+	if c.From != len("Enum.") || c.To != len("Enum.ta") {
 		t.Fatalf("span %d:%d", c.From, c.To)
 	}
 }

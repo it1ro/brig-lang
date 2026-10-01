@@ -13,7 +13,7 @@ module Observer
 ## ```brig repl
 ## > sup = Supervisor.start({ strategy: :one_for_one, max_restarts: 1, within: 5000, children: [] })
 ## > roots = Observer.nodes()
-## > any(roots, n -> n.pid == sup and n.children == [])
+## > Enum.any?(roots, n -> n.pid == sup and n.children == [])
 ## true
 ## ```
 pub fn nodes() ->
@@ -56,7 +56,7 @@ fn render_roots([(pid, _), ..rest], claimed, tab) ->
         true -> [render(pid, tab), ..render_roots(rest, claimed, tab)]
         false -> render_roots(rest, claimed, tab)
 
-fn root?(claimed, pid) -> not any(claimed, p -> p == pid)
+fn root?(claimed, pid) -> not Enum.any?(claimed, p -> p == pid)
 
 fn render(pid, tab) ->
     match Actor.info(pid)
@@ -78,7 +78,7 @@ fn child_list(pid, info, tab) ->
 fn row_pid((pid, _)) -> pid
 
 fn children_of(pid, table) ->
-    match find(table, row -> row_pid(row) == pid)
+    match Enum.find(table, row -> row_pid(row) == pid)
         Some((_, pids)) -> pids
         None -> []
 

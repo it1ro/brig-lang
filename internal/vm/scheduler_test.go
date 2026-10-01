@@ -306,14 +306,14 @@ func TestFairnessPreludeCallback(t *testing.T) {
 	const want = "hog 0\ntick 0\nhog 1\ntick 1\nhog 2\ntick 2\nhog 3\ntick 3\n"
 	cases := []struct{ name, hog string }{
 		{"recursion", `ticks("hog", 0, 4)`},
-		{"map", `map([0, 1, 2, 3], fn (i) -> step("hog", i))`},
-		{"filter", `filter([0, 1, 2, 3], fn (i) -> step("hog", i) >= 0)`},
-		{"find", `find([0, 1, 2, 3], fn (i) -> step("hog", i) < 0)`},
-		{"all", `all([0, 1, 2, 3], fn (i) -> step("hog", i) >= 0)`},
-		{"any", `any([0, 1, 2, 3], fn (i) -> step("hog", i) < 0)`},
-		{"fold", `fold([0, 1, 2, 3], 0, fn (acc, i) -> acc + step("hog", i))`},
+		{"map", `Enum.map([0, 1, 2, 3], fn (i) -> step("hog", i))`},
+		{"filter", `Enum.filter([0, 1, 2, 3], fn (i) -> step("hog", i) >= 0)`},
+		{"find", `Enum.find([0, 1, 2, 3], fn (i) -> step("hog", i) < 0)`},
+		{"all", `Enum.all?([0, 1, 2, 3], fn (i) -> step("hog", i) >= 0)`},
+		{"any", `Enum.any?([0, 1, 2, 3], fn (i) -> step("hog", i) < 0)`},
+		{"fold", `Enum.fold([0, 1, 2, 3], 0, fn (acc, i) -> acc + step("hog", i))`},
 		// не хвостовой CALL (выше — TAILCALL из тела лямбды) через алиас
-		{"map_call", `assert(Prelude.map([0, 1, 2, 3], fn (i) -> step("hog", i)) == [0, 1, 2, 3])`},
+		{"map_call", `assert(Enum.map([0, 1, 2, 3], fn (i) -> step("hog", i)) == [0, 1, 2, 3])`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -340,7 +340,7 @@ fn feeder(dst) ->
 fn main() ->
     me = self()
     spawn(() -> feeder(me))
-    ys = map([1, 2], take)
+    ys = Enum.map([1, 2], take)
     assert(ys == [11, 22])
 `)
 }
@@ -352,16 +352,16 @@ func TestPreludeCallbackFrames(t *testing.T) {
 fn g(x) -> if x == 2 then raise(:bad) else x
 
 fn main() ->
-    r = trap(map([1, 2, 3], g))
+    r = trap(Enum.map([1, 2, 3], g))
     assert(r == Error(:bad))
-    zs = map([[1], [2, 3]], fn (xs) -> map(xs, fn (x) -> x * 2))
+    zs = Enum.map([[1], [2, 3]], fn (xs) -> Enum.map(xs, fn (x) -> x * 2))
     assert(zs == [[2], [4, 6]])
-    assert(fold(zs, 0, fn (a, xs) -> fold(xs, a, fn (b, x) -> b + x)) == 12)
-    assert(map([1, 2], Some) == [Some(1), Some(2)])
-    assert(find([1, 2], fn (x) -> g(x) == 1) == Some(1))
-    assert(any([1, 2], fn (x) -> g(x) == 1))
-    assert(not all([1, 2], fn (x) -> g(x) == 3))
-    assert(filter([1, 2, 3], fn (x) -> x > 1) == [2, 3])
+    assert(Enum.fold(zs, 0, fn (a, xs) -> Enum.fold(xs, a, fn (b, x) -> b + x)) == 12)
+    assert(Enum.map([1, 2], Some) == [Some(1), Some(2)])
+    assert(Enum.find([1, 2], fn (x) -> g(x) == 1) == Some(1))
+    assert(Enum.any?([1, 2], fn (x) -> g(x) == 1))
+    assert(not Enum.all?([1, 2], fn (x) -> g(x) == 3))
+    assert(Enum.filter([1, 2, 3], fn (x) -> x > 1) == [2, 3])
 `)
 }
 
@@ -372,7 +372,7 @@ func TestPreludeCallbackRaiseTrace(t *testing.T) {
 fn g(x) -> if x == 2 then raise(:bad) else x
 
 fn main() ->
-    ys = map([1, 2, 3], g)
+    ys = Enum.map([1, 2, 3], g)
     print(ys)
 `)
 	if err != nil {
@@ -395,12 +395,12 @@ fn main() ->
 	for _, fr := range rerr.Trace {
 		funcs = append(funcs, fr.Func)
 	}
-	if got := strings.Join(funcs, ","); got != "g,map,main" {
-		t.Errorf("trace funcs = %q, want %q", got, "g,map,main")
+	if got := strings.Join(funcs, ","); got != "g,Enum.map,main" {
+		t.Errorf("trace funcs = %q, want %q", got, "g,Enum.map,main")
 	}
 	if len(rerr.Trace) == 3 {
-		if p := rerr.Trace[1].Pos; p.Line != 5 || p.Col != 10 {
-			t.Errorf("map frame pos = %d:%d, want 5:10", p.Line, p.Col)
+		if p := rerr.Trace[1].Pos; p.Line != 5 || p.Col != 14 {
+			t.Errorf("map frame pos = %d:%d, want 5:14", p.Line, p.Col)
 		}
 	}
 }

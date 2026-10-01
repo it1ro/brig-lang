@@ -17,7 +17,7 @@ pub fn build(text) ->
     with
         Ok(rows) <- tag(:csv, Csv.parse(text))
         Ok(recs) <- tag(:header, Csv.with_header(rows))
-        Ok(sales) <- tag(:row, Result.all(map(recs, to_sale)))
+        Ok(sales) <- tag(:row, Result.all(Enum.map(recs, to_sale)))
         Ok(sort_desc(totals(sales)))
     else
         Error(e) -> Error(e)
@@ -52,10 +52,9 @@ fn int_field(rec, name) ->
 
 fn float_field(rec, name) ->
     raw = Map.get_or(rec, name, "")
-    r = trap(to_float(Str.trim(raw)))
-    match r
-        Ok(f) -> Ok(f)
-        Error(_) -> Error((to_atom(name), raw))
+    match Str.to_float(Str.trim(raw))
+        Some(f) -> Ok(f)
+        None -> Error((to_atom(name), raw))
 
 # Нет Str → Atom: имена колонок — фиксированный набор.
 fn to_atom("qty") -> :qty
@@ -64,24 +63,24 @@ fn to_atom(_) -> :field
 
 ## Итоги по регионам.
 pub fn totals(sales) ->
-    groups = fold(sales, %{}, (acc, s) -> Map.put(acc, s.region, [s, ..Map.get_or(acc, s.region, [])]))
-    map(Map.keys(groups), r -> total(r, Map.get_or(groups, r, [])))
+    groups = Enum.fold(sales, %{}, (acc, s) -> Map.put(acc, s.region, [s, ..Map.get_or(acc, s.region, [])]))
+    Enum.map(Map.keys(groups), r -> total(r, Map.get_or(groups, r, [])))
 
 fn total(region, sales) ->
     Total{
         region: region,
         orders: len(sales),
-        units: fold(sales, 0, (a, s) -> a + s.qty),
-        revenue: fold(sales, 0.0, (a, s) -> a + s.qty * s.price),
+        units: Enum.fold(sales, 0, (a, s) -> a + s.qty),
+        revenue: Enum.fold(sales, 0.0, (a, s) -> a + s.qty * s.price),
     }
 
 fn sort_desc(ts) ->
-    keyed = map(ts, t -> (0.0 - t.revenue, t.region, t))
-    map(List.sort(keyed), fn ((_, _, t)) -> t)
+    keyed = Enum.map(ts, t -> (0.0 - t.revenue, t.region, t))
+    Enum.map(Enum.sort(keyed), fn ((_, _, t)) -> t)
 
 ## Таблица для печати.
 pub fn render(ts) ->
-    lines = map(ts, t -> "\(pad(t.region, 8)) \(pad(to_str(t.orders), 6)) \(pad(to_str(t.units), 6)) \(money(t.revenue))")
+    lines = Enum.map(ts, t -> "\(pad(t.region, 8)) \(pad(to_str(t.orders), 6)) \(pad(to_str(t.units), 6)) \(money(t.revenue))")
     Str.join(["region   orders units  revenue", ..lines], "\n")
 
 fn pad(s, w) when len(s) >= w -> s

@@ -856,8 +856,6 @@ func (s *Session) initDocs() {
 
 // builtinParams — имена параметров встроенных функций по "имя/арность".
 var builtinParams = map[string]string{
-	"map/2": "xs, f", "filter/2": "xs, p", "find/2": "xs, p",
-	"all/2": "xs, p", "any/2": "xs, p", "fold/3": "xs, acc, f",
 	"len/1": "v", "list/0..": "..xs", "set/0..": "..xs",
 	"to_str/1": "v", "to_int/1": "v", "to_float/1": "v",
 	"send/2": "pid, msg", "spawn/1": "f", "spawn_linked/1": "f",
@@ -871,7 +869,7 @@ var builtinParams = map[string]string{
 	"assert/1": "x", "raise/1": "e",
 	"Some/1": "v", "Ok/1": "v", "Error/1": "e",
 
-	"Vec.push/2": "v, x", "Vec.set/3": "v, i, x", "Vec.get/2": "v, i", "Vec.len/1": "v",
+	"Vec.push/2": "v, x", "Vec.set/3": "v, i, x", "Vec.get/2": "v, i",
 	"Map.put/3": "m, k, v", "Map.get/2": "m, k", "Map.get_or/3": "m, k, default", "Map.remove/2": "m, k", "Map.keys/1": "m",
 	"Record.to_anon/1": "r",
 	"Str.to_bytes/1":   "s", "Bytes.to_str/1": "b",
@@ -879,8 +877,9 @@ var builtinParams = map[string]string{
 	"Str.find/2": "s, sub", "Str.replace/3": "s, old, new",
 	"Str.starts_with?/2": "s, prefix", "Str.ends_with?/2": "s, suffix",
 	"Str.lower/1": "s", "Str.upper/1": "s", "Str.slice/3": "s, start, end",
-	"Str.to_int/1":  "s",
-	"Bytes.slice/3": "b, start, end", "Bytes.find/2": "b, sub", "Bytes.split/2": "b, sep",
+	"Str.to_int/1":   "s",
+	"Str.to_float/1": "s",
+	"Bytes.slice/3":  "b, start, end", "Bytes.find/2": "b, sub", "Bytes.split/2": "b, sep",
 	"Bytes.concat/2": "a, b", "Bytes.at/2": "b, i",
 	"Json.encode/1": "v", "Json.encode/2": "v, opts", "Json.decode/1": "s", "Json.at/2": "v, path",
 	"Enum.map/2": "xs, f", "Enum.filter/2": "xs, p", "Enum.reject/2": "xs, p",

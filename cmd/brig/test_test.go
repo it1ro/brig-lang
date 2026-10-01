@@ -141,7 +141,7 @@ func TestBrigTestImportsProjectModule(t *testing.T) {
 	writeFiles(t, dir, map[string]string{
 		"calc.brig":      "module Calc\n\n## Сумма.\n##\n## ```brig repl\n## > add(1, 2)\n## 3\n## ```\npub fn add(a, b) -> a + b\n",
 		"calc_test.brig": "import Calc\n\nfn test_add() -> Test.assert_eq(Calc.add(2, 3), 5)\n",
-		"report.brig":    "module Report\nimport Calc\n\n## Итог.\n##\n## ```brig repl\n## > total([1, 2, 3])\n## 6\n## > Calc.add(1, 1)\n## 2\n## ```\npub fn total(xs) -> fold(xs, 0, (acc, x) -> Calc.add(acc, x))\n",
+		"report.brig":    "module Report\nimport Calc\n\n## Итог.\n##\n## ```brig repl\n## > total([1, 2, 3])\n## 6\n## > Calc.add(1, 1)\n## 2\n## ```\npub fn total(xs) -> Enum.fold(xs, 0, (acc, x) -> Calc.add(acc, x))\n",
 	})
 	got, out := runBrigTest(t, bin, dir)
 	if got != exitOK {
