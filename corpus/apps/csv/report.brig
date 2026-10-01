@@ -80,16 +80,5 @@ fn sort_desc(ts) ->
 
 ## Таблица для печати.
 pub fn render(ts) ->
-    lines = Enum.map(ts, t -> "\(pad(t.region, 8)) \(pad(to_str(t.orders), 6)) \(pad(to_str(t.units), 6)) \(money(t.revenue))")
+    lines = Enum.map(ts, t -> "\(Str.pad_right(t.region, 8, " ")) \(Str.pad_right(to_str(t.orders), 6, " ")) \(Str.pad_right(to_str(t.units), 6, " ")) \(Float.to_str(t.revenue, 2))")
     Str.join(["region   orders units  revenue", ..lines], "\n")
-
-fn pad(s, w) when len(s) >= w -> s
-fn pad(s, w) -> pad(s <> " ", w)
-
-# Нет форматирования чисел: два знака после точки руками.
-fn money(x) ->
-    cents = to_int(x * 100.0 + 0.5)
-    "\(cents div 100).\(two(cents rem 100))"
-
-fn two(n) when n < 10 -> "0\(n)"
-fn two(n) -> to_str(n)

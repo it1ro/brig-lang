@@ -494,7 +494,7 @@ var (
 
 // specModules — модули справочника §11.5a: функции ВМ и модули на Brig.
 var specModules = []string{
-	"Map", "Vec", "Json", "Record",
+	"Map", "Vec", "Json", "Record", "Float",
 	"List", "Option", "Result", "Server", "Supervisor", "Behavior",
 }
 

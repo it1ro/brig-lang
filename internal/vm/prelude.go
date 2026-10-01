@@ -460,6 +460,8 @@ func InstallPrelude(vm *VM) {
 		return runtime.Variant("Some", runtime.Float(f)), nil
 	})
 
+	installFormat(def)
+
 	// ---- Конверсии ----
 
 	def("to_str", 1, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
@@ -771,4 +773,90 @@ func installMapExtras(def func(string, int, runtime.NativeFunc), defResumable fu
 		}
 		return &updateCont{m: args[0], k: args[1], cur: cur, f: args[3]}, nil
 	})
+}
+
+// maxPadWidth — верхняя граница width у Str.pad_*: защита от случайного
+// гигабайтного результата.
+const maxPadWidth = 1 << 24
+
+// maxFloatDigits — верхняя граница digits у Float.round/to_str.
+const maxFloatDigits = 400
+
+// digitsArg — digits: Int в [0, maxFloatDigits].
+func digitsArg(v runtime.Value) (int, bool) {
+	n, ok := smallIdx(v)
+	if !ok || n < 0 || n > maxFloatDigits {
+		return 0, false
+	}
+	return int(n), true
+}
+
+// installFormat — Float.round, Float.to_str, Str.pad_left, Str.pad_right
+// (T-282). Ошибка аргумента — (:type_error, ((:mod, :f), v)), v — неверный
+// аргумент. Десятичная запись точна: округление идёт по точному двоичному
+// значению Float, ничья — к чётной цифре.
+func installFormat(def func(string, int, runtime.NativeFunc)) {
+	// Float.round(x, digits) — x с digits знаками после точки.
+	def("Float.round", 2, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+		if args[0].Kind != runtime.KindFloat {
+			return runtime.Unit, modTypeErr("float", "round", args[0])
+		}
+		d, ok := digitsArg(args[1])
+		if !ok {
+			return runtime.Unit, modTypeErr("float", "round", args[1])
+		}
+		x := args[0].Float
+		if math.IsNaN(x) || math.IsInf(x, 0) {
+			return args[0], nil
+		}
+		r, err := strconv.ParseFloat(strconv.FormatFloat(x, 'f', d, 64), 64)
+		if err != nil {
+			return runtime.Unit, modTypeErr("float", "round", args[0])
+		}
+		return runtime.Float(r), nil
+	})
+
+	// Float.to_str(x, digits) — Str ровно с digits знаками после точки.
+	def("Float.to_str", 2, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+		if args[0].Kind != runtime.KindFloat {
+			return runtime.Unit, modTypeErr("float", "to_str", args[0])
+		}
+		d, ok := digitsArg(args[1])
+		if !ok {
+			return runtime.Unit, modTypeErr("float", "to_str", args[1])
+		}
+		x := args[0].Float
+		if math.IsNaN(x) || math.IsInf(x, 0) {
+			return runtime.Str(args[0].Inspect()), nil
+		}
+		return runtime.Str(strconv.FormatFloat(x, 'f', d, 64)), nil
+	})
+
+	pad := func(fn string, left bool) runtime.NativeFunc {
+		return func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+			if args[0].Kind != runtime.KindStr {
+				return runtime.Unit, modTypeErr("str", fn, args[0])
+			}
+			w, ok := smallIdx(args[1])
+			if !ok || w > maxPadWidth {
+				return runtime.Unit, modTypeErr("str", fn, args[1])
+			}
+			if args[2].Kind != runtime.KindStr || utf8.RuneCountInString(args[2].Str) != 1 {
+				return runtime.Unit, modTypeErr("str", fn, args[2])
+			}
+			n := int(w) - utf8.RuneCountInString(args[0].Str)
+			if n <= 0 {
+				return args[0], nil
+			}
+			fill := strings.Repeat(args[2].Str, n)
+			if left {
+				return runtime.Str(fill + args[0].Str), nil
+			}
+			return runtime.Str(args[0].Str + fill), nil
+		}
+	}
+	// Str.pad_left(s, width, fill) / Str.pad_right: дополняет s до width
+	// кодпоинтов одним кодпоинтом fill; длиннее — s как есть.
+	def("Str.pad_left", 3, pad("pad_left", true))
+	def("Str.pad_right", 3, pad("pad_right", false))
 }

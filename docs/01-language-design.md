@@ -1552,6 +1552,8 @@ brig[2]> v(1) + 1
 | `Str.slice` | 3 | `(s, start, end)`, по кодпоинтам | `Str` | `(:type_error, (:Str.slice, s))`; `(:index_out_of_bounds, (idx, len))` |
 | `Str.to_int` | 1 | `(s)` | `Option<Int>` | `(:type_error, (:Str.to_int, s))` |
 | `Str.to_float` | 1 | `(s)`; пробелы по краям отбрасываются, `inf`/`nan` — не число | `Option<Float>` | `(:type_error, (:Str.to_float, s))` |
+| `Str.pad_left` | 3 | `(s, width, fill)`, `width: Int`, `fill` — `Str` из одного кодпоинта | `Str`, дополненная слева `fill` до `width` кодпоинтов; `s` не короче `width` — `s` | `(:type_error, ((:str, :pad_left), v))` — `v`: неверный из трёх аргументов; `width` вне `0..16777216` (кроме отрицательного, он даёт `s`) — тоже |
+| `Str.pad_right` | 3 | `(s, width, fill)`, как у `pad_left` | `Str`, дополненная справа | `(:type_error, ((:str, :pad_right), v))` |
 | `Bytes.slice` | 3 | `(b, start, end)`, по байтам | `Bytes` | `(:type_error, (:Bytes.slice, b))`; `(:index_out_of_bounds, (idx, len))` |
 | `Bytes.find` | 2 | `(b, sub)`, `sub: Bytes` | `Option<Int>` — байтовый индекс первого совпадения | `(:type_error, (:Bytes.find, v))` |
 | `Bytes.split` | 2 | `(b, sep)`, `sep: Bytes`; `sep == b""` — по байтам | `List<Bytes>` | `(:type_error, (:Bytes.split, v))` |
@@ -1629,9 +1631,9 @@ info: `len` shadows prelude function; use `Prelude.len` if prelude was intended
 
 ### 11.5a Встроенные модули и stdlib
 
-Модули без `import` (§11.1), кроме `Str`, `Bytes` и `Enum` (таблицы выше): `Map` (§4.5), `Vec` (§4.4), `Json` (§4.7), `Record` (§4.7) — функции ВМ; `List`, `Option`, `Result`, `Server`, `Supervisor`, `Behavior` — модули на Brig (`stdlib/*.brig`), в справочнике только `pub fn` (§11.2). Субъект — первый аргумент (§7.5). Колонки как в §11.5. `Observer` — служебный модуль консоли (`tree()`, §11.4), в справочник не входит. Таблица сверяется с кодом тестом `TestSpecModulesMatchCode`: каждая функция модуля из списка выше — строка с той же арностью, и наоборот.
+Модули без `import` (§11.1), кроме `Str`, `Bytes` и `Enum` (таблицы выше): `Map` (§4.5), `Vec` (§4.4), `Json` (§4.7), `Record` (§4.7), `Float` — функции ВМ; `List`, `Option`, `Result`, `Server`, `Supervisor`, `Behavior` — модули на Brig (`stdlib/*.brig`), в справочнике только `pub fn` (§11.2). Субъект — первый аргумент (§7.5). Колонки как в §11.5. `Observer` — служебный модуль консоли (`tree()`, §11.4), в справочник не входит. Таблица сверяется с кодом тестом `TestSpecModulesMatchCode`: каждая функция модуля из списка выше — строка с той же арностью, и наоборот.
 
-Ошибка субъекта — `(:type_error, (op, v))`: `op` — имя функции (у `Vec.*`, `Map.*` с модулем: `:Vec.push`), у `Map.get_or`, новых функций `Map` (`to_list`, `from_list`, `values`, `filter`, `update`) и `Json.at` — структурный тег `((:mod, :f), v)`, `mod` — имя модуля в snake_case. Ошибка внутри колбэка пробрасывается как есть.
+Ошибка субъекта — `(:type_error, (op, v))`: `op` — имя функции (у `Vec.*`, `Map.*` с модулем: `:Vec.push`), у `Float.*`, `Str.pad_left`, `Str.pad_right`, `Map.get_or`, новых функций `Map` (`to_list`, `from_list`, `values`, `filter`, `update`) и `Json.at` — структурный тег `((:mod, :f), v)`, `mod` — имя модуля в snake_case. Ошибка внутри колбэка пробрасывается как есть.
 
 #### Модуль `Map`
 
@@ -1647,6 +1649,15 @@ info: `len` shadows prelude function; use `Prelude.len` if prelude was intended
 | `Map.values` | 1 | `(m)` | `List` значений в порядке ключей | `(:type_error, ((:map, :values), m))` |
 | `Map.filter` | 2 | `(m, f)`, `f(k, v)` — `Bool` | `Map` из пар, для которых `f` истинно | `(:type_error, ((:map, :filter), m))`; `(:type_error, (:expected_bool, r))` — `f` вернула не `Bool` |
 | `Map.update` | 4 | `(m, k, default, f)`, `f(x)` | `Map` с `k => f(x)`, где `x` — `m[k]`, нет ключа — `default` | `(:type_error, ((:map, :update), m))` |
+
+#### Модуль `Float`
+
+| Имя | Арность | Аргументы | Результат | Авто-raise |
+| --- | --- | --- | --- | --- |
+| `Float.round` | 2 | `(x, digits)`, `x: Float`, `digits: Int` из `0..400` | `Float` — `x`, округлённый до `digits` знаков после точки; `NaN` и `±inf` — как есть | `(:type_error, ((:float, :round), v))` — `v`: неверный аргумент |
+| `Float.to_str` | 2 | `(x, digits)`, как у `round` | `Str` ровно с `digits` знаками после точки: `Float.to_str(34.456, 2) == "34.46"`; без экспоненты; `NaN` и `±inf` — как их печатает `to_str` | `(:type_error, ((:float, :to_str), v))` |
+
+Округление идёт по точному двоичному значению `x`, ничья — к чётной цифре: `Float.round(0.5, 0) == 0.0`, `Float.to_str(1.5, 0) == "2"`. Локали и разделители тысяч нет.
 
 #### Модуль `Vec`
 
