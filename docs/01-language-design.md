@@ -523,6 +523,52 @@ Json.encode(User{ id: 1 })                       # {"id": 1}
 Json.encode(User{ id: 1 }, { type_tag: true })   # {"__type__": "User", "id": 1}
 ```
 
+#### JSON: маппинг и ошибки
+
+`Json.encode(v) -> Str` и `Json.decode(s) -> Result<V, (:json, reason)>`.
+
+| Значение Brig | JSON | `decode` возвращает |
+| --- | --- | --- |
+| `None` | `null` | `None` |
+| `Some(v)` | кодируется как `v` | `v` (не `Some(v)`) |
+| `()` | `null` | `None` |
+| `Bool` | `true`/`false` | `Bool` |
+| `Int` | число | `Int` |
+| `Float` | число с `.` или `e`; `NaN`, `Inf`, `-Inf` — не кодируются | `Float` |
+| `Decimal` | строка `dec"…"` | `Str` |
+| `Str` | строка | `Str` |
+| атом | строка `":имя"` | `Str` |
+| `Bytes` | `{"$bytes": "<base64>"}` | `Bytes` |
+| `List`, `Vector`, `Set`, кортеж | массив | `List` |
+| `Map` со `Str`/`Atom` ключами | объект | `Map` со `Str`-ключами |
+| запись | объект по полям; с `{ type_tag: true }` номинальная получает `"__type__"` | `Map` |
+| пользовательский вариант | `{"tag": "Имя", "args": [...]}` | `Map` |
+| `Ok`, `Error`, `Pid`, `Ref`, `Port`, функция, `Range` | не кодируются | — |
+
+Ключи `Map`, начинающиеся с `$`, кодируются с лишним `$`, чтобы не совпасть с маркером `Bytes`; `decode` снимает его. Целое число без `.` и экспоненты разбирается в `Int` любой величины, остальные — в `Float`.
+
+`Json.decode` не бросает: ошибка — `Error((:json, reason))`.
+
+| `reason` | Когда |
+| --- | --- |
+| `:syntax` | не JSON |
+| `(:number, s)` | число `s` не представимо в `Float` (`1e999`) |
+| `:depth_limit` | вложенность больше 64 |
+| `:trailing_data` | после первого значения есть непробельный текст |
+| `:invalid_utf8` | входная `Str` не UTF-8 |
+
+`Json.encode` на значении без маппинга бросает `raise((:json, (:unsupported, v)))`, где `v` — само непредставимое значение (для ключа `Map` — ключ), и `raise((:json, :depth_limit))` при вложенности больше 64. Паттерн `Error((:json, _))` и `trap`-паттерн `(:json, _)` ловят все ошибки модуля.
+
+```brig
+fn json_roundtrip() ->
+    assert(Json.decode("nope") == Error((:json, :syntax)))
+    assert(Json.decode("null") == Ok(None))
+    assert(Json.decode(Json.encode(%{ "a" => [1, 2.5, None] })) == Ok(%{ "a" => [1, 2.5, None] }))
+    assert(Json.encode(Some(1)) == "1")
+    r = trap(Json.encode(Ok(2)))
+    assert(r == Error((:json, (:unsupported, Ok(2)))))
+```
+
 ### 4.8 Равенство — сводная таблица
 
 | Вид                        | Равенство               | Pattern matching        | Комментарий                      |
@@ -3438,7 +3484,7 @@ info: <file>:<line>:<col>: <message>
 | **N7**  | `Pid`/`Ref` — по identity, отдельный уровень после `Function`                        |
 | **N8**  | `->` в `type_expr` — функциональный тип; в выражении — лямбда                        |
 | **N9**  | `..` в аргументах вызова, в т.ч. в pipe RHS                                          |
-| **N10** | (v0.4.8, T-121 п.7) `Range` в JSON не сериализуется: `Json.encode` бросает `:json_encode_error` |
+| **N10** | (v0.4.8, T-121 п.7) `Range` в JSON не сериализуется: `Json.encode` бросает `(:json, (:unsupported, v))` |
 | **N11** | `SendError` не вводится; в MVP `Atom` достаточно                                     |
 | **N12** | REPL-замыкания — лексический снимок                                                  |
 
