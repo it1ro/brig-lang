@@ -74,8 +74,8 @@ pub fn all(rs) ->
 
 # collect — первый не-Ok решает: Error — результат, прочее — :type_error.
 fn collect(rs) ->
-    match find(rs, r -> not ok?(r))
-        None -> Ok(Prelude.map(rs, unwrap))
+    match Enum.find(rs, r -> not ok?(r))
+        None -> Ok(Enum.map(rs, unwrap))
         Some(Error(e)) -> Error(e)
         Some(r) -> raise((:type_error, (:all, r)))
 

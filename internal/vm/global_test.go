@@ -77,7 +77,8 @@ fn is_get(r) ->
         _ -> false
 
 fn main() ->
-    nan = to_float("NaN")
+    inf = 1.0e308 * 10.0
+    nan = inf - inf
     assert(is_put(trap(Global.put(nan, 1))))
     assert(is_get(trap(Global.get(nan))))
     assert(is_put(trap(Global.put((:a, nan), 1))))

@@ -172,7 +172,7 @@ func TestLambdaShort(t *testing.T) {
 	runModule(t, `module Main
 fn main() ->
     xs = [1, 2, 3]
-    ys = map(xs, x -> x * 2)
+    ys = Enum.map(xs, x -> x * 2)
     print(ys)
 `)
 }
@@ -500,7 +500,7 @@ func TestPreludeFilter(t *testing.T) {
 	runModule(t, `module Main
 fn main() ->
     xs = [1, 2, 3, 4, 5]
-    ys = filter(xs, x -> x rem 2 == 0)
+    ys = Enum.filter(xs, x -> x rem 2 == 0)
     print(ys)
 `)
 }
@@ -509,27 +509,29 @@ func TestPreludeFind(t *testing.T) {
 	runModule(t, `module Main
 fn main() ->
     xs = [1, 2, 3]
-    print(find(xs, x -> x == 2))
-    print(find(xs, x -> x == 99))
+    print(Enum.find(xs, x -> x == 2))
+    print(Enum.find(xs, x -> x == 99))
 `)
 }
 
 func TestPreludeAllAny(t *testing.T) {
 	runModule(t, `module Main
 fn main() ->
-    print(all([1, 2, 3], x -> x > 0))
-    print(all([1, -2, 3], x -> x > 0))
-    print(any([1, 2, 3], x -> x > 2))
-    print(any([1, 2, 3], x -> x > 9))
+    print(Enum.all?([1, 2, 3], x -> x > 0))
+    print(Enum.all?([1, -2, 3], x -> x > 0))
+    print(Enum.any?([1, 2, 3], x -> x > 2))
+    print(Enum.any?([1, 2, 3], x -> x > 9))
 `)
 }
 
 func TestPreludeToIntToFloat(t *testing.T) {
 	runModule(t, `module Main
 fn main() ->
-    print(to_int("42"))
-    print(to_float("3.14"))
+    print(to_int(7.9))
+    print(to_float(3))
     print(to_int(7))
+    print(Str.to_int("42"))
+    print(Str.to_float("3.14"))
 `)
 }
 
@@ -691,10 +693,10 @@ fn main() ->
 `)
 }
 
-func TestVecLen(t *testing.T) {
+func TestVecLenBare(t *testing.T) {
 	runModule(t, `module Main
 fn main() ->
-    assert(Vec.len(%[1, 2, 3, 4]) == 4)
+    assert(len(%[1, 2, 3, 4]) == 4)
 `)
 }
 

@@ -40,8 +40,8 @@ fn expiry(None) -> None
 fn expiry(Some(ms)) -> Some(now() + ms)
 
 fn sweep(items, t) ->
-    keep = filter(Map.keys(items), k -> alive?(Map.get(items, k), t))
-    fold(keep, %{}, (acc, k) -> Map.put(acc, k, unwrap(Map.get(items, k))))
+    keep = Enum.filter(Map.keys(items), k -> alive?(Map.get(items, k), t))
+    Enum.fold(keep, %{}, (acc, k) -> Map.put(acc, k, unwrap(Map.get(items, k))))
 
 fn alive?(Some({ expires: None }), _t) -> true
 fn alive?(Some({ expires: Some(e) }), t) -> e > t
@@ -115,7 +115,7 @@ fn stats() ->
         Ok(s) -> (200, s)
         Error(e) -> (503, %{ "error" => to_str(e) })
 
-fn split_path(path) -> filter(Str.split(path, "/"), s -> s != "")
+fn split_path(path) -> Enum.filter(Str.split(path, "/"), s -> s != "")
 
 # Тело запроса целиком: pull по порциям до :port_eof.
 fn read_body(req, acc) ->

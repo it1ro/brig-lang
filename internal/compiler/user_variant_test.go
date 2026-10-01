@@ -25,7 +25,7 @@ fn main() ->
     assert(Wrap(1) != Wrap(2))
     assert(Wrap(Red) != Wrap(Green))
 
-    assert(map([1, 2], Wrap) == [Wrap(1), Wrap(2)])
+    assert(Enum.map([1, 2], Wrap) == [Wrap(1), Wrap(2)])
     w = Wrap
     assert(w(3) == Wrap(3))
     assert(Wrap == Wrap)
@@ -87,7 +87,7 @@ fn main() ->
 
     assert(area(Circle(2)) == 12)
     assert(area(Rect(2, 3)) == 6)
-    assert(map([Circle(1), Rect(1, 2)], area) == [3, 2])
+    assert(Enum.map([Circle(1), Rect(1, 2)], area) == [3, 2])
 
     assert(is_red(Red))
     assert(not is_red(Blue))
@@ -117,7 +117,7 @@ func TestUserVariantShadowBuiltin(t *testing.T) {
 	runModule(t, `module Main
 type Opt { Some(Int), None }
 
-fn builtin_some() -> Prelude.find([1], (x) -> true)
+fn builtin_some() -> Enum.find([1], (x) -> true)
 
 fn user(Some(n)) -> n
 fn user(_) -> :other
@@ -127,7 +127,7 @@ fn main() ->
     assert(user(Some(2)) == 2)
     assert(user(builtin_some()) == :other)
     assert(Some(1) != builtin_some())
-    assert(None != Prelude.find([], (x) -> true))
+    assert(None != Enum.find([], (x) -> true))
 `)
 }
 

@@ -23,7 +23,7 @@ pub fn child_spec(opts) ->
 fn start_all(opts) ->
     with
         Ok(monitors) <- Monitors.list()
-        Ok(_) <- monitors |> map(m -> start_checker(m, opts)) |> Result.all()
+        Ok(_) <- monitors |> Enum.map(m -> start_checker(m, opts)) |> Result.all()
         Ok(())
 
 pub fn start_checker(monitor) -> start_checker(monitor, Config.get(:checks))

@@ -94,8 +94,8 @@ fn recent_events() ->
 fn events_loop(state) ->
     recv
         (:event, ev) ->
-            Map.values(state.subscribers) |> map(pid -> send(pid, (:new_event, ev)))
-            events_loop({ ..state, events: [ev, ..state.events] |> List.take(100) })
+            Map.values(state.subscribers) |> Enum.map(pid -> send(pid, (:new_event, ev)))
+            events_loop({ ..state, events: [ev, ..state.events] |> Enum.take(100) })
         (:subscribe, pid) ->
             ref = watch(pid)
             events_loop({ ..state, subscribers: %{ ..state.subscribers, ref => pid } })

@@ -336,8 +336,8 @@ fn main() ->
 func TestShadowingPreludeInfo(t *testing.T) {
 	wantInfo(t, `module Main
 fn main() ->
-    map = 1
-    map
+    len = 1
+    len
 `, "shadows prelude")
 }
 
@@ -556,7 +556,7 @@ func TestNames(t *testing.T) {
 	ok("fn main() ->\n    f = len\n    f(1, 2)\n")
 	ok("fn main() ->\n    xs = [1]\n    len(..xs)\n")
 	ok("fn main() ->\n    fn a() -> b()\n    fn b() -> 1\n    a()\n")
-	ok("fn add(a, b) -> a + b\nfn main() -> [1, 2] |> map(add) |> len()\n")
+	ok("fn add(a, b) -> a + b\nfn main() -> [1, 2] |> Enum.map(add) |> len()\n")
 	ok("fn main() -> mailbox_size()\n")
 
 	// spawn_behavior — голое имя модуля stdlib (§13.2, T-171): арность 2.
@@ -621,10 +621,10 @@ func TestModuleFunctionRef(t *testing.T) {
 		}
 	}
 
-	ok("module Main\nimport Util\nfn main() -> map([1], Util.twice)\n")
+	ok("module Main\nimport Util\nfn main() -> Enum.map([1], Util.twice)\n")
 	ok("module Main\nalias Util as U\nfn main() ->\n    f = U.twice\n    f(1)\n")
-	ok("module Main\nfn main() -> map([[1]], Json.encode)\n")
-	ok("module Main\nfn main() -> List.reverse\n")
+	ok("module Main\nfn main() -> Enum.map([[1]], Json.encode)\n")
+	ok("module Main\nfn main() -> Enum.reverse\n")
 	ok("module Main\ntype T { Json }\nfn main() -> Json\n")
 	ok("module Main\nimport Util\nfn main() -> Util.twice(1) + len(Util.twice(2))\n")
 
@@ -734,7 +734,7 @@ func TestUnboundName(t *testing.T) {
 	ok("module Main\nfn main() ->\n    r = trap\n        f = 1\n        ensure print(f)\n        f + 1\n    r\n")
 	errAt("module Main\nfn main() ->\n    r = trap\n        f = 1\n        f + 1\n    f\n", "f", 6, 5)
 	// Функции модуля, прелюдии, конструкторы, видимые модули.
-	ok("module Main\ntype T { A, B(Int) }\nfn g(x) -> x\nfn main() -> (g, len, map, print, Some, None, Ok, Error, A, B, Json.encode, List.reverse)\n")
+	ok("module Main\ntype T { A, B(Int) }\nfn g(x) -> x\nfn main() -> (g, len, Enum.map, print, Some, None, Ok, Error, A, B, Json.encode, Enum.reverse)\n")
 	ok("module Main\ntype User { name: Str }\nfn main() ->\n    n = \"a\"\n    (User{ name: n }, { name: n })\n")
 	ok("module Main\nfn main() -> spawn_behavior\n")
 	// Акторный примитив, затенённый привязкой, параметром или паттерном, —

@@ -17,7 +17,7 @@ fn pingpong(k, pid, msg) ->
         (:ack) -> pingpong(k - 1, pid, msg)
 
 fn main() ->
-    msg = map(i -> (i, "item", :ok), list(1 to bench_n()))
+    msg = Enum.map(list(1 to bench_n()), i -> (i, "item", :ok))
     capture(msg)
     pid = spawn(() -> echo())
     t0 = clock_ns()

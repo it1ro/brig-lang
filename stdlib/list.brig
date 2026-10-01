@@ -1,115 +1,9 @@
-## Функции над `List` (§4.2). Субъект — первый аргумент (T-120), поэтому
-## каждая функция встаёт в pipe: `xs |> List.take(2)`. Не `List` на
-## месте субъекта — `(:type_error, (:<имя>, xs))`, как у прелюдии (§11.5);
-## ошибка внутри колбэка пробрасывается как есть.
+## Функции над `List` (§4.2), специфичные списку. Общие функции над
+## коллекциями (`map`, `filter`, `fold`, `reverse`, `take`, `drop`, `sort`,
+## `member?`, …) — модуль `Enum` (§11.5, §0.2). Субъект — первый аргумент
+## (T-120), поэтому `xs |> List.concat(ys)` встаёт в pipe. Не `List` на
+## месте субъекта — `(:type_error, (:<имя>, xs))`, как у прелюдии (§11.5).
 module List
-
-## Вызывает `f(x)` для каждого элемента по порядку, ради эффекта.
-## Результат — `()`.
-##
-## ```brig repl
-## > List.each([1, 2, 3], x -> send(self(), x))
-## ()
-## > mailbox_size()
-## 3
-## ```
-pub fn each([], _) -> ()
-pub fn each([x, ..rest], f) ->
-    f(x)
-    each(rest, f)
-pub fn each(xs, _) -> raise((:type_error, (:each, xs)))
-
-## Список `f(x)` для каждого `x` — `map` прелюдии.
-##
-## ```brig repl
-## > [1, 2, 3] |> List.map(x -> x * 10)
-## [10, 20, 30]
-## ```
-pub fn map(xs, f) -> Prelude.map(xs, f)
-
-## Элементы, для которых `p(x)` — `true`, в исходном порядке — `filter`
-## прелюдии.
-##
-## ```brig repl
-## > List.filter([1, 2, 3, 4], x -> x rem 2 == 0)
-## [2, 4]
-## ```
-pub fn filter(xs, p) -> Prelude.filter(xs, p)
-
-## Свёртка слева: `f(acc, x)` по элементам, результат — последний `acc`
-## (`fold` прелюдии).
-##
-## ```brig repl
-## > List.fold([1, 2, 3], 0, (acc, x) -> acc + x)
-## 6
-## ```
-pub fn fold(xs, acc, f) -> Prelude.fold(xs, acc, f)
-
-## Элементы в обратном порядке.
-##
-## ```brig repl
-## > List.reverse([1, 2, 3])
-## [3, 2, 1]
-## > List.reverse([])
-## []
-## ```
-pub fn reverse(xs) ->
-    last = len(subject(xs, :reverse)) - 1
-    map(span(0, last + 1), i -> xs[last - i])
-
-## Первые `n` элементов; `n` больше длины — весь список, `n <= 0` — `[]`.
-##
-## ```brig repl
-## > List.take([1, 2, 3], 2)
-## [1, 2]
-## > List.take([1, 2, 3], 5)
-## [1, 2, 3]
-## ```
-pub fn take(xs, n) ->
-    size = len(subject(xs, :take))
-    if n >= size then xs else map(span(0, n), i -> xs[i])
-
-## Список без первых `n` элементов; `n` больше длины — `[]`, `n <= 0` —
-## весь список.
-##
-## ```brig repl
-## > List.drop([1, 2, 3], 1)
-## [2, 3]
-## > List.drop([1, 2, 3], 5)
-## []
-## ```
-pub fn drop(xs, n) ->
-    size = len(subject(xs, :drop))
-    if n <= 0 then xs else map(span(n, size), i -> xs[i])
-
-## Элементы по возрастанию в term order (`<`, §7.4). Сортировка
-## устойчивая: равные элементы (ни один не `<` другого) сохраняют
-## исходный порядок. Несравнимые элементы — ошибка `<`.
-##
-## ```brig repl
-## > List.sort([3, 1, 2])
-## [1, 2, 3]
-## > List.sort([(2, :a), (1, :b), (2, :c)])
-## [(1, :b), (2, :a), (2, :c)]
-## ```
-pub fn sort(xs) ->
-    match subject(xs, :sort)
-        [] -> []
-        _ ->
-            p = xs[len(xs) div 2]
-            below = sort(filter(xs, x -> x < p))
-            above = sort(filter(xs, x -> p < x))
-            [..below, ..filter(xs, x -> not (x < p or p < x)), ..above]
-
-## `true`, если в списке есть элемент, равный `x` (`==`, §4.8).
-##
-## ```brig repl
-## > List.member?([1, 2, 3], 2)
-## true
-## > [1, 2, 3] |> List.member?(4)
-## false
-## ```
-pub fn member?(xs, x) -> any(subject(xs, :member?), y -> y == x)
 
 ## Элементы `xs`, затем элементы `ys` — то же, что `[..xs, ..ys]` (§5.2).
 ##
@@ -124,6 +18,3 @@ fn subject(xs, fname) ->
     match xs
         [..] -> xs
         _ -> raise((:type_error, (fname, xs)))
-
-# span — индексы a…b-1; пустой, если a >= b.
-fn span(a, b) -> if a < b then list(a to b - 1) else []

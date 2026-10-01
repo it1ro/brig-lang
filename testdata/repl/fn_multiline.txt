@@ -12,7 +12,7 @@ twice(fn (n) -> n * 3, 2)
 xs = [1,
   2,
   3]
-twice((ys) -> map(ys, (y) -> y * 2), xs)
+twice((ys) -> Enum.map(ys, (y) -> y * 2), xs)
 -- output --
 120
 18

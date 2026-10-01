@@ -66,7 +66,7 @@ pub fn stop(sup, reason, opts) ->
 ## > Supervisor.which_children(sup)
 ## []
 ## > sup2 = Supervisor.start({ strategy: :one_for_one, max_restarts: 3, within: 5000, children: [{ name: :idle, start: () -> spawn_linked(() -> recv _msg -> ()), restart: :permanent }] })
-## > map(Supervisor.which_children(sup2), c -> (c[0], c[2]))
+## > Enum.map(Supervisor.which_children(sup2), c -> (c[0], c[2]))
 ## [(:idle, :permanent)]
 ## > Supervisor.which_children(:nope)
 ## raise (:type_error, (:which_children, :nope))
@@ -98,7 +98,7 @@ fn check(spec) ->
         :one_for_one -> ()
         s -> raise((:type_error, (:start, s)))
     match spec.children
-        [..] -> List.each(spec.children, check_child)
+        [..] -> Enum.each(spec.children, check_child)
         cs -> raise((:type_error, (:start, cs)))
 
 fn check_child(c) ->
@@ -148,20 +148,20 @@ fn loop(state) ->
             Server.reply(from, ())
             exit(self(), reason)
         (:call, from, :which_children) ->
-            Server.reply(from, map(state.children, c -> (c.name, c.pid, c.restart)))
+            Server.reply(from, Enum.map(state.children, c -> (c.name, c.pid, c.restart)))
             loop(state)
     else _msg
         loop(state)
 
 fn child_down(state, ref, reason) ->
-    match find(state.children, c -> c.ref == ref)
+    match Enum.find(state.children, c -> c.ref == ref)
         Some(c) -> exited(state, c, reason)
         None -> state
 
 fn exited(state, c, reason) ->
     match restart?(c.restart, reason)
         true -> restart(state, c, reason)
-        false -> { ..state, children: filter(state.children, x -> x.ref != c.ref) }
+        false -> { ..state, children: Enum.filter(state.children, x -> x.ref != c.ref) }
 
 fn restart?(:permanent, _) -> true
 fn restart?(:transient, reason) -> not normal_exit?(reason)
@@ -175,7 +175,7 @@ fn normal_exit?(_) -> false
 # считаются.
 fn restart(state, c, reason) ->
     now = Time.monotonic_ms()
-    restarts = [..filter(state.restarts, t -> now - t < state.within), now]
+    restarts = [..Enum.filter(state.restarts, t -> now - t < state.within), now]
     match len(restarts) > state.max_restarts
         true -> escalate(state, c, reason)
         false -> restart_child({ ..state, restarts: restarts }, c)
@@ -184,11 +184,11 @@ fn restart(state, c, reason) ->
 # окне, пока супервизор не эскалирует.
 fn restart_child(state, c) ->
     match start_child(c)
-        Ok(child) -> { ..state, children: map(state.children, x -> if x.ref == c.ref then child else x) }
+        Ok(child) -> { ..state, children: Enum.map(state.children, x -> if x.ref == c.ref then child else x) }
         Error(e) -> exited(state, c, e)
 
 fn escalate(state, c, reason) ->
-    stop_children(filter(state.children, x -> x.ref != c.ref), :shutdown, shutdown_ms())
+    stop_children(Enum.filter(state.children, x -> x.ref != c.ref), :shutdown, shutdown_ms())
     raise((:max_restarts, (c.name, reason)))
 
 # ---- остановка детей ----
@@ -197,11 +197,11 @@ fn escalate(state, c, reason) ->
 # `:down` уже пришёл, пока ждали другого: их не ждут повторно.
 fn stop_children(children, reason, timeout) ->
     deadline = Time.monotonic_ms() + timeout
-    _ = fold(List.reverse(children), [], (downs, c) -> stop_child(c, reason, deadline, downs))
+    _ = Enum.fold(Enum.reverse(children), [], (downs, c) -> stop_child(c, reason, deadline, downs))
     ()
 
 fn stop_child(c, reason, deadline, downs) ->
-    match any(downs, r -> r == c.ref)
+    match Enum.any?(downs, r -> r == c.ref)
         true -> downs
         false ->
             exit(c.pid, reason)

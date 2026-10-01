@@ -22,7 +22,7 @@ fn take() ->
         m -> m
     after 1000 -> :timeout
 
-fn has(xs, p) -> any(xs, (x) -> x == p)
+fn has(xs, p) -> Enum.any?(xs, (x) -> x == p)
 
 fn info(p) ->
     Some(i) = Actor.info(p)

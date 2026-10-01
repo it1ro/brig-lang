@@ -189,7 +189,7 @@ var replSnapshot = []string{
 func TestReplBlockExecutes(t *testing.T) {
 	cases := map[string][]string{
 		"§11.4":              replSnapshot,
-		"ответ — выражение":  {"> xs = [1, 2, 3]", "> map(xs, x -> x * 2)", "[2, 4, 6]", "> len(xs)", "1 + 2"},
+		"ответ — выражение":  {"> xs = [1, 2, 3]", "> Enum.map(xs, x -> x * 2)", "[2, 4, 6]", "> len(xs)", "1 + 2"},
 		"Int == Float":       {"> 2 * 3", "6.0"},
 		"строка":             {`> to_str(12)`, `"12"`},
 		"без ответа":         {"> y = 1", "> y + 1"},

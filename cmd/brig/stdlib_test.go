@@ -17,11 +17,11 @@ func TestStdlibNoFilesystem(t *testing.T) {
 		"main.brig": `module Main
 
 fn main() ->
-    print([3, 1, 2] |> List.sort() |> List.take(2))
+    print([3, 1, 2] |> Enum.sort() |> Enum.take(2))
     print(Some(2) |> Option.map(x -> x * 10) |> Option.unwrap())
     print([Ok(1), Ok(2)] |> Result.all())
 `,
-		"script.brig": "print(List.reverse([1, 2, 3]))\n",
+		"script.brig": "print(Enum.reverse([1, 2, 3]))\n",
 		"doc.brig": "module Doc\n\n## ```brig repl\n## > twice([1])\n## [1, 1]\n## ```\n" +
 			"pub fn twice(xs) -> List.concat(xs, xs)\n",
 	})
@@ -39,10 +39,10 @@ fn main() ->
 	}
 }
 
-// §6.3: `args |> List.each(log)` исполняется.
+// §6.3: `args |> Enum.each(log)` исполняется.
 func TestStdlibVariadicPipeEach(t *testing.T) {
 	bin := buildBrig(t)
-	src := "module Main\n\nfn log_all(..args) ->\n    args |> List.each(log)\n\nfn main() ->\n    log_all(1, 2, 3)\n"
+	src := "module Main\n\nfn log_all(..args) ->\n    args |> Enum.each(log)\n\nfn main() ->\n    log_all(1, 2, 3)\n"
 	for _, cmd := range []string{"check", ""} {
 		out, code := brigFile(t, bin, cmd, src)
 		if code != exitOK {
@@ -83,7 +83,7 @@ fn len(_) -> :mine
 fn map(_, _) -> :mine
 
 fn main() ->
-    print(List.member?([1, 2], 2), List.reverse([1, 2]), List.map([1], x -> x + 1))
+    print(Enum.member?([1, 2], 2), Enum.reverse([1, 2]), Enum.map([1], x -> x + 1))
     print(Result.all([Ok(1), Error(:e)]))
 `
 	out, code := brigFile(t, bin, "", src)
@@ -97,11 +97,11 @@ fn main() ->
 func TestStdlibBuiltinWinsOverFile(t *testing.T) {
 	bin := buildBrig(t)
 	dir := writeMods(t, map[string]string{
-		"list.brig": "module List\npub fn take(_, _) -> :file\n",
-		"main.brig": "module Main\nimport List\nfn main() -> print(List.take([1, 2], 1))\n",
+		"list.brig": "module List\npub fn concat(_, _) -> :file\n",
+		"main.brig": "module Main\nimport List\nfn main() -> print(List.concat([1], [2]))\n",
 	})
 	out, code := brigIn(t, bin, dir, "main.brig")
-	if code != exitOK || out != "[1]\n" {
+	if code != exitOK || out != "[1, 2]\n" {
 		t.Fatalf("exit %d, out %q", code, out)
 	}
 }

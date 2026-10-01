@@ -287,7 +287,7 @@ func TestListLiteralViaNative(t *testing.T) {
 	runModule(t, `module Main
 fn main() ->
     xs = [1, 2, 3]
-    ys = map(xs, x -> x * 2)
+    ys = Enum.map(xs, x -> x * 2)
     assert(xs == [1, 2, 3])
     assert(ys == [2, 4, 6])
 `)
@@ -297,7 +297,7 @@ func TestListLiteralViaNativeFilter(t *testing.T) {
 	runModule(t, `module Main
 fn main() ->
     xs = [1, 2, 3, 4, 5]
-    ys = filter(xs, x -> x rem 2 == 0)
+    ys = Enum.filter(xs, x -> x rem 2 == 0)
     assert(xs == [1, 2, 3, 4, 5])
     assert(ys == [2, 4])
 `)

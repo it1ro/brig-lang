@@ -23,9 +23,9 @@ pub fn parse(text) ->
 # :quote_in_quoted. Поле копится в cur, строка — в row, строки — в rows
 # (в обратном порядке, разворот в конце).
 fn parse_rows([], line, rows, row, cur, :quoted) -> Error((:unclosed_quote, line))
-fn parse_rows([], _line, rows, [], "", :field_start) -> Ok(List.reverse(rows))
+fn parse_rows([], _line, rows, [], "", :field_start) -> Ok(Enum.reverse(rows))
 fn parse_rows([], _line, rows, row, cur, _st) ->
-    Ok(List.reverse([List.reverse([cur, ..row]), ..rows]))
+    Ok(Enum.reverse([Enum.reverse([cur, ..row]), ..rows]))
 
 fn parse_rows(["\"", ..rest], line, rows, row, "", :field_start) ->
     parse_rows(rest, line, rows, row, "", :quoted)
@@ -42,7 +42,7 @@ fn parse_rows([",", ..rest], line, rows, row, cur, _st) ->
 fn parse_rows(["\r", "\n", ..rest], line, rows, row, cur, st) ->
     parse_rows(["\n", ..rest], line, rows, row, cur, st)
 fn parse_rows(["\n", ..rest], line, rows, row, cur, _st) ->
-    parse_rows(rest, line + 1, [List.reverse([cur, ..row]), ..rows], [], "", :field_start)
+    parse_rows(rest, line + 1, [Enum.reverse([cur, ..row]), ..rows], [], "", :field_start)
 fn parse_rows([c, ..rest], line, rows, row, cur, _st) ->
     parse_rows(rest, line, rows, row, cur <> c, :unquoted)
 
@@ -59,17 +59,17 @@ fn parse_rows([c, ..rest], line, rows, row, cur, _st) ->
 pub fn with_header([]) -> Error(:no_header)
 pub fn with_header([header, ..rows]) ->
     w = len(header)
-    Result.all(map(index(rows, 0, []), pair -> row_map(header, w, pair)))
+    Result.all(Enum.map(index(rows, 0, []), pair -> row_map(header, w, pair)))
 
 fn row_map(header, w, (row, i)) ->
     if len(row) == w
-        Ok(fold(zip(header, row, []), %{}, fn (m, (k, v)) -> Map.put(m, k, v)))
+        Ok(Enum.fold(zip(header, row, []), %{}, fn (m, (k, v)) -> Map.put(m, k, v)))
     else
         Error((:width, i + 2))
 
 # Нет List.zip и List.with_index в stdlib — свои.
 fn zip([a, ..xs], [b, ..ys], acc) -> zip(xs, ys, [(a, b), ..acc])
-fn zip(_, _, acc) -> List.reverse(acc)
+fn zip(_, _, acc) -> Enum.reverse(acc)
 
-fn index([], _i, acc) -> List.reverse(acc)
+fn index([], _i, acc) -> Enum.reverse(acc)
 fn index([x, ..xs], i, acc) -> index(xs, i + 1, [(x, i), ..acc])

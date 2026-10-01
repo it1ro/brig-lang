@@ -9,7 +9,7 @@ fn hold(data) ->
         (:stop) -> len(data)
 
 fn holder(s, parent) ->
-    data = map(i -> (i, "item", :ok), list(1 to s))
+    data = Enum.map(list(1 to s), i -> (i, "item", :ok))
     send(parent, :ready)
     hold(data)
 
@@ -21,7 +21,7 @@ fn start_holders(h, s, me) ->
 
 fn churn(0, parent) -> send(parent, :done)
 fn churn(k, parent) ->
-    xs = map(i -> (i, "x", :ok), list(1 to 1000))
+    xs = Enum.map(list(1 to 1000), i -> (i, "x", :ok))
     if len(xs) == 1000 then churn(k - 1, parent) else raise(:bad_len)
 
 fn start_churn(0, _) -> :ok

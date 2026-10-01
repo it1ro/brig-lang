@@ -11,7 +11,7 @@ fn build(i, acc) -> if i == 0 then acc else build(i - 1, Vec.push(acc, i))
 fn main() ->
     v = build(2000, %[])
     assert(len(v) == 2000)
-    assert(Vec.len(v) == 2000)
+    assert(len(v) == 2000)
     # build кладёт 2000, затем 1999 … 1.
     assert(v[0] == 2000)
     assert(v[31] == 1969)

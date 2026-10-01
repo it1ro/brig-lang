@@ -6,11 +6,11 @@ import "testing"
 func TestRunMiniBlockExamples(t *testing.T) {
 	runModule(t, `module Main
 fn main() ->
-    ys = map([1, 2], fn (x) ->
+    ys = Enum.map([1, 2], fn (x) ->
         y = x * 2
         y + 1)
     assert(ys == [3, 5])
-    zs = map([1, 2, 3], fn (x) ->
+    zs = Enum.map([1, 2, 3], fn (x) ->
         match x
             1 -> :one
             _ -> :many
@@ -27,7 +27,7 @@ fn main() ->
     else
         :no]
     assert(c == [:yes])
-    s = fold([1, 2, 3], 0, fn (acc, x) ->
+    s = Enum.fold([1, 2, 3], 0, fn (acc, x) ->
         t = acc + x
         t * 1, )
     assert(s == 6)

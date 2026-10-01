@@ -95,10 +95,10 @@ fn main() ->
     cb = fn (x) ->
         r = trap(x + "a")
         r
-    ys = map([1], cb)
+    ys = Enum.map([1], cb)
     assert(ys == [Error((:type_error, (:add, (1, "a"))))])
     bad = fn (x) -> not x
-    zs = trap(map([1], bad))
+    zs = trap(Enum.map([1], bad))
     assert(zs == Error((:type_error, (:not, 1))))
 `)
 }

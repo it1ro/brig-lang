@@ -222,7 +222,7 @@ var actorPrimitives = map[string]bool{
 func preludeNames() map[string]bool {
 	names := []string{
 		// Коллекции
-		"map", "filter", "find", "fold", "all", "any", "len",
+		"len",
 		// Конструкторы
 		"list", "set",
 		// Конверсии

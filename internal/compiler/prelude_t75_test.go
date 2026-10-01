@@ -48,7 +48,7 @@ fn len(x) -> 42
 fn main() ->
     assert(len([1]) == 42)
     assert(Prelude.len([1]) == 1)
-    assert(Prelude.map([1, 2], fn (x) -> x + 1) == [2, 3])
+    assert(Prelude.len([1, 2]) == 2)
 `)
 }
 

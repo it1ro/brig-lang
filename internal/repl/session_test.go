@@ -134,8 +134,8 @@ func TestHighlightEnv(t *testing.T) {
 	s := repl.New(vm.New(), io.Discard)
 	t.Cleanup(s.Close)
 	env := s.HighlightEnv()
-	if !env.Prelude["map"] || !env.Helpers["h"] || !env.Modules["Vec"]["len"] {
-		t.Fatalf("prelude/helpers/Vec.len missing: %+v", env)
+	if !env.Prelude["len"] || !env.Helpers["h"] || !env.Modules["Vec"]["get"] {
+		t.Fatalf("prelude/helpers/Vec.get missing: %+v", env)
 	}
 	if _, err := s.Eval("x = 1\n"); err != nil {
 		t.Fatal(err)

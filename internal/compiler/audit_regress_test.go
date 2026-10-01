@@ -395,7 +395,7 @@ fn value(base) ->
     h(1)
 fn higher(k, xs) ->
     fn scale(x) -> x * k
-    map(xs, scale)
+    Enum.map(xs, scale)
 fn rec_value(base) ->
     fn go(0) -> base
     fn go(n) -> go(n - 1)
@@ -525,7 +525,7 @@ fn main() ->
     cb = fn (x) ->
         r = trap(g(x))
         r
-    ys = map([1, 2], cb)
+    ys = Enum.map([1, 2], cb)
     assert(ys == [Ok(1), Error(:bad)])
 `); err != nil {
 		t.Errorf("trap across callSync: %v", err)
@@ -557,7 +557,7 @@ fn main() ->
     g = fn ([h, ..t]) -> h
     assert(g([1, 2, 3]) == 1)
     pairs = [(1, 2), (3, 4)]
-    assert(map(pairs, fn ((k, v)) -> v) == [2, 4])
+    assert(Enum.map(pairs, fn ((k, v)) -> v) == [2, 4])
     outer = 10
     h = fn ((a, b)) -> a + b + outer
     assert(h((1, 2)) == 13)
