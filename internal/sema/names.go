@@ -190,8 +190,11 @@ var bareStdlib = map[string]sig{"spawn_behavior": exact(2)}
 // modBuiltins — функции встроенных модулей. Json.encode — 1 или 2
 // аргумента (§4.7), не открытый вариадик.
 var modBuiltins = map[string]map[string]sig{
-	"Vec":    {"push": exact(2), "set": exact(3), "get": exact(2)},
-	"Map":    {"put": exact(3), "get": exact(2), "get_or": exact(3), "remove": exact(2), "keys": exact(1)},
+	"Vec": {"push": exact(2), "set": exact(3), "get": exact(2)},
+	"Map": {
+		"put": exact(3), "get": exact(2), "get_or": exact(3), "remove": exact(2), "keys": exact(1),
+		"to_list": exact(1), "from_list": exact(1), "values": exact(1), "filter": exact(2), "update": exact(4),
+	},
 	"Record": {"to_anon": exact(1)},
 	"Str": {
 		"to_bytes": exact(1), "split": exact(2), "join": exact(2), "trim": exact(1),
