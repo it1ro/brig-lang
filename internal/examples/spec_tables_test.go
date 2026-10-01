@@ -525,28 +525,36 @@ func arityString(t *testing.T, name string, ns []int) string {
 	return strconv.Itoa(ns[0]) + ".." + strconv.Itoa(ns[len(ns)-1])
 }
 
-// codeModuleArities — "Module.fn" → арность для функций ВМ и pub fn
-// stdlib/*.brig из specModules.
-func codeModuleArities(t *testing.T) map[string]string {
+// moduleFuncs — арности функций встроенных модулей: "Module.fn" →
+// арности. Функции ВМ — из sema.BuiltinArities, модули на Brig — pub fn
+// stdlib/*.brig. Вариадик с n обязательными — -(n+1), как спред-параметр
+// в stdlib. Голые имена прелюдии и Repl не входят; mods == nil — все
+// модули. Общий источник списка функций модулей для сверок с кодом.
+func moduleFuncs(t *testing.T, mods map[string]bool) map[string][]int {
 	t.Helper()
-	out := map[string]string{}
-	native := sema.BuiltinArities()
-	for _, mod := range specModules {
-		for fn, labels := range native[mod] {
+	out := map[string][]int{}
+	for mod, fns := range sema.BuiltinArities() {
+		if mod == "" || mod == "Repl" || mods != nil && !mods[mod] {
+			continue
+		}
+		for fn, labels := range fns {
 			var ns []int
 			for _, l := range labels {
-				n, err := strconv.Atoi(l)
+				variadic := strings.HasSuffix(l, "..")
+				n, err := strconv.Atoi(strings.TrimSuffix(l, ".."))
 				if err != nil {
 					t.Fatalf("%s.%s: арность %q", mod, fn, l)
 				}
+				if variadic {
+					n = -(n + 1)
+				}
 				ns = append(ns, n)
 			}
-			out[mod+"."+fn] = arityString(t, mod+"."+fn, ns)
+			out[mod+"."+fn] = ns
 		}
 	}
-	want := toSet(specModules)
 	for _, m := range stdlib.MustModules() {
-		if !want[m.Name] {
+		if mods != nil && !mods[m.Name] {
 			continue
 		}
 		set := map[string]map[int]bool{}
@@ -575,8 +583,19 @@ func codeModuleArities(t *testing.T) map[string]string {
 			for n := range ar {
 				ns = append(ns, n)
 			}
-			out[m.Name+"."+fn] = arityString(t, m.Name+"."+fn, ns)
+			out[m.Name+"."+fn] = ns
 		}
+	}
+	return out
+}
+
+// codeModuleArities — "Module.fn" → арность для функций ВМ и pub fn
+// stdlib/*.brig из specModules.
+func codeModuleArities(t *testing.T) map[string]string {
+	t.Helper()
+	out := map[string]string{}
+	for name, ns := range moduleFuncs(t, toSet(specModules)) {
+		out[name] = arityString(t, name, ns)
 	}
 	return out
 }
