@@ -1062,6 +1062,10 @@ func (s *Scheduler) execFrame(a *Actor, f *Frame) stepOutcome {
 			f.ip++
 
 		case ADD:
+			if fastAdd(&regs[in.A()], &regs[in.B()], &regs[in.C()]) {
+				f.ip++
+				break
+			}
 			r, err := add(regs[in.B()], regs[in.C()])
 			if err != nil {
 				if f.catch(err) {
@@ -1088,6 +1092,10 @@ func (s *Scheduler) execFrame(a *Actor, f *Frame) stepOutcome {
 			f.ip++
 
 		case SUB:
+			if fastSub(&regs[in.A()], &regs[in.B()], &regs[in.C()]) {
+				f.ip++
+				break
+			}
 			r, err := sub(regs[in.B()], regs[in.C()])
 			if err != nil {
 				if f.catch(err) {
@@ -1099,6 +1107,10 @@ func (s *Scheduler) execFrame(a *Actor, f *Frame) stepOutcome {
 			f.ip++
 
 		case MUL:
+			if fastMul(&regs[in.A()], &regs[in.B()], &regs[in.C()]) {
+				f.ip++
+				break
+			}
 			r, err := mul(regs[in.B()], regs[in.C()])
 			if err != nil {
 				if f.catch(err) {
@@ -1177,6 +1189,14 @@ func (s *Scheduler) execFrame(a *Actor, f *Frame) stepOutcome {
 			f.ip++
 
 		case EQ, NEQ:
+			if eq, ok := fastEq(&regs[in.B()], &regs[in.C()]); ok {
+				if op == NEQ {
+					eq = !eq
+				}
+				regs[in.A()] = runtime.Bool(eq)
+				f.ip++
+				break
+			}
 			av := regs[in.B()]
 			bv := regs[in.C()]
 			if err := checkMixedEq(av, bv); err != nil {
@@ -1193,6 +1213,11 @@ func (s *Scheduler) execFrame(a *Actor, f *Frame) stepOutcome {
 			f.ip++
 
 		case LT, GT, LE, GE:
+			if res, ok := fastCmp(op, &regs[in.B()], &regs[in.C()]); ok {
+				regs[in.A()] = runtime.Bool(res)
+				f.ip++
+				break
+			}
 			av := regs[in.B()]
 			bv := regs[in.C()]
 			if err := checkMixedCmp(av, bv); err != nil {

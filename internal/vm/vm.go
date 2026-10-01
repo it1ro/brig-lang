@@ -226,6 +226,135 @@ func (vm *VM) ReductionsAfterInterrupt() uint64 {
 	return vm.scheduler.afterInterrupt.Load()
 }
 
+// ---- быстрый путь арифметики и сравнений (T-276) ----
+//
+// runtime.Value — крупная структура (272 B, раскладку меняет T-104),
+// поэтому передача операндов в add/sub/mul и runtime.Equal/Compare по
+// значению копирует её трижды на операцию: в профиле BenchmarkTailCall это
+// самая дорогая точка (~26 %). Быстрый путь работает прямо по указателям на
+// регистры и покрывает два самых частых сочетания — Int в smallint-форме и
+// Float×Float. Всё остальное (Decimal, big.Int, смешанные Int×Float,
+// не-числа, переполнение smallint) отдаётся прежнему медленному пути, он же
+// остаётся единственным источником :type_error и значений результата —
+// семантика §7.3/§7.4 и K-3 не меняется.
+
+// fastAdd, fastSub, fastMul пишут результат в dst (может совпадать с a или
+// b: операнды читаются до записи) и возвращают false, если сочетание видов
+// или переполнение им не по силам. Условия переполнения smallint — те же,
+// что в add/sub/mul.
+func fastAdd(dst, a, b *runtime.Value) bool {
+	if a.Kind == runtime.KindInt && b.Kind == runtime.KindInt {
+		if !a.IsSmall || !b.IsSmall {
+			return false
+		}
+		sum := a.SmallInt + b.SmallInt
+		if (b.SmallInt > 0 && sum > a.SmallInt) ||
+			(b.SmallInt < 0 && sum < a.SmallInt) ||
+			b.SmallInt == 0 {
+			*dst = runtime.Int(sum)
+			return true
+		}
+		return false
+	}
+	if a.Kind == runtime.KindFloat && b.Kind == runtime.KindFloat {
+		*dst = runtime.Float(a.Float + b.Float)
+		return true
+	}
+	return false
+}
+
+func fastSub(dst, a, b *runtime.Value) bool {
+	if a.Kind == runtime.KindInt && b.Kind == runtime.KindInt {
+		if !a.IsSmall || !b.IsSmall {
+			return false
+		}
+		diff := a.SmallInt - b.SmallInt
+		if (b.SmallInt > 0 && diff < a.SmallInt) ||
+			(b.SmallInt < 0 && diff > a.SmallInt) ||
+			b.SmallInt == 0 {
+			*dst = runtime.Int(diff)
+			return true
+		}
+		return false
+	}
+	if a.Kind == runtime.KindFloat && b.Kind == runtime.KindFloat {
+		*dst = runtime.Float(a.Float - b.Float)
+		return true
+	}
+	return false
+}
+
+func fastMul(dst, a, b *runtime.Value) bool {
+	if a.Kind == runtime.KindInt && b.Kind == runtime.KindInt {
+		if !a.IsSmall || !b.IsSmall {
+			return false
+		}
+		x, y := a.SmallInt, b.SmallInt
+		r := x * y
+		if x == 0 || (r/x == y && (x != -1 || y != math.MinInt64) && (y != -1 || x != math.MinInt64)) {
+			*dst = runtime.Int(r)
+			return true
+		}
+		return false
+	}
+	if a.Kind == runtime.KindFloat && b.Kind == runtime.KindFloat {
+		*dst = runtime.Float(a.Float * b.Float)
+		return true
+	}
+	return false
+}
+
+// fastEq — равенство для smallint×smallint и Float×Float. Правила те же, что
+// у runtime.Equal: Int равен Int численно, NaN не равен ничему, -0.0 == 0.0.
+func fastEq(a, b *runtime.Value) (eq, ok bool) {
+	switch {
+	case a.Kind == runtime.KindInt && b.Kind == runtime.KindInt:
+		if !a.IsSmall || !b.IsSmall {
+			return false, false
+		}
+		return a.SmallInt == b.SmallInt, true
+	case a.Kind == runtime.KindFloat && b.Kind == runtime.KindFloat:
+		return a.Float == b.Float, true
+	}
+	return false, false
+}
+
+// fastCmp — результат LT/GT/LE/GE для smallint×smallint и Float×Float.
+// Сравнение float в Go даёт false для любого операнда NaN — это и есть
+// правило §7.4 (runtime.IsNaNOperand на медленном пути).
+func fastCmp(op OpCode, a, b *runtime.Value) (res, ok bool) {
+	switch {
+	case a.Kind == runtime.KindInt && b.Kind == runtime.KindInt:
+		if !a.IsSmall || !b.IsSmall {
+			return false, false
+		}
+		x, y := a.SmallInt, b.SmallInt
+		switch op {
+		case LT:
+			return x < y, true
+		case GT:
+			return x > y, true
+		case LE:
+			return x <= y, true
+		case GE:
+			return x >= y, true
+		}
+	case a.Kind == runtime.KindFloat && b.Kind == runtime.KindFloat:
+		x, y := a.Float, b.Float
+		switch op {
+		case LT:
+			return x < y, true
+		case GT:
+			return x > y, true
+		case LE:
+			return x <= y, true
+		case GE:
+			return x >= y, true
+		}
+	}
+	return false, false
+}
+
 // ---- арифметика (§7.3, §7.4) ----
 
 // numToRat возвращает big.Rat для Int/Decimal. Float и прочее — false.
