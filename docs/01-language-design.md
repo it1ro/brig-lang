@@ -1558,12 +1558,7 @@ brig[2]> v(1) + 1
 | `Bytes.concat` | 2 | `(a, b)` | `Bytes` — склейка | `(:type_error, (:Bytes.concat, v))` |
 | `Bytes.at` | 2 | `(b, i)` | `Int` — байт `0..255` | `(:type_error, (:Bytes.at, b))`; `(:index_out_of_bounds, (i, len))` |
 
-**`Map.get_or` и `Json.at` (T-176).** Функции встроенных модулей `Map` (§4.5) и `Json` (§4.7), субъект первым аргументом. Остальные `Map.*` и `Json.encode`/`Json.decode` здесь не дублируются. Тег `:type_error` — структурный `(:mod, :f)`, `mod` — имя модуля в snake_case: пишется в паттерне и не совпадает у одноимённых функций разных модулей. Путь `Json.at` — `List` шагов: `Str` — ключ `Map`, `Int` — индекс `List` с нуля; пустой путь — `Some(v)`. Нет ключа, индекс вне списка (в том числе отрицательный), шаг другого вида или спуск в скаляр — `None`.
-
-| Имя | Арность | Аргументы | Результат | Авто-raise |
-| --- | --- | --- | --- | --- |
-| `Map.get_or` | 3 | `(m, k, default)` | значение по ключу `k` (равенство ключей §4.8), нет ключа — `default` | `(:type_error, ((:map, :get_or), m))` |
-| `Json.at` | 2 | `(v, path)`, `path: List` | `Option` — значение по пути | `(:type_error, ((:json, :at), path))` — `path` не `List` |
+`Map.get_or` и `Json.at` (T-176) — в таблицах §11.5a.
 
 `Str.to_bytes`/`Bytes.to_str` — уже в §C.3/§C.6, здесь не дублируются.
 
@@ -1631,6 +1626,106 @@ info: `len` shadows prelude function; use `Prelude.len` if prelude was intended
 ```
 
 Для доступа к прелюдии при shadowing — `import Prelude` даёт `Prelude.len`. Диагностика не блокирует компиляцию.
+
+### 11.5a Встроенные модули и stdlib
+
+Модули без `import` (§11.1), кроме `Str`, `Bytes` и `Enum` (таблицы выше): `Map` (§4.5), `Vec` (§4.4), `Json` (§4.7), `Record` (§4.7) — функции ВМ; `List`, `Option`, `Result`, `Server`, `Supervisor`, `Behavior` — модули на Brig (`stdlib/*.brig`), в справочнике только `pub fn` (§11.2). Субъект — первый аргумент (§7.5). Колонки как в §11.5. `Observer` — служебный модуль консоли (`tree()`, §11.4), в справочник не входит. Таблица сверяется с кодом тестом `TestSpecModulesMatchCode`: каждая функция модуля из списка выше — строка с той же арностью, и наоборот.
+
+Ошибка субъекта — `(:type_error, (op, v))`: `op` — имя функции (у `Vec.*`, `Map.*` с модулем: `:Vec.push`), у `Map.get_or` и `Json.at` — структурный тег `((:mod, :f), v)`, `mod` — имя модуля в snake_case. Ошибка внутри колбэка пробрасывается как есть.
+
+#### Модуль `Map`
+
+| Имя | Арность | Аргументы | Результат | Авто-raise |
+| --- | --- | --- | --- | --- |
+| `Map.put` | 3 | `(m, k, v)` | `Map` с парой `k => v`; ключ уже есть — значение заменено (равенство ключей §4.8) | `(:type_error, (:Map.put, m))` |
+| `Map.get` | 2 | `(m, k)` | `Option` — значение по ключу `k` | `(:type_error, (:Map.get, m))` |
+| `Map.get_or` | 3 | `(m, k, default)` | значение по ключу `k`, нет ключа — `default` | `(:type_error, ((:map, :get_or), m))` |
+| `Map.remove` | 2 | `(m, k)` | `Map` без ключа `k`; ключа нет — тот же `m` | `(:type_error, (:Map.remove, m))` |
+| `Map.keys` | 1 | `(m)` | `List` ключей | `(:type_error, (:Map.keys, m))` |
+
+#### Модуль `Vec`
+
+| Имя | Арность | Аргументы | Результат | Авто-raise |
+| --- | --- | --- | --- | --- |
+| `Vec.push` | 2 | `(v, x)` | `Vector` с `x` в конце | `(:type_error, (:Vec.push, v))` |
+| `Vec.set` | 3 | `(v, i, x)`, `i: Int` | `Vector` с `x` на месте `i` | `(:type_error, (:Vec.set, v))`; `(:index_out_of_bounds, (i, len))` — `i` вне `0..len-1` |
+| `Vec.get` | 2 | `(v, i)`, `i: Int` | `Option` — элемент `i`, вне `0..len-1` — `None` | `(:type_error, (:Vec.get, v))` |
+
+Длина вектора — `len` (§11.5), как у остальных коллекций.
+
+#### Модуль `Json`
+
+| Имя | Арность | Аргументы | Результат | Авто-raise |
+| --- | --- | --- | --- | --- |
+| `Json.encode` | 1..2 | `(v)` или `(v, opts)`, `opts`: `{ type_tag: Bool }` | `Str` — JSON значения | `(:json, reason)` — значение непредставимо (§4.7); `(:type_error, (:json_encode_opts, opts))` |
+| `Json.decode` | 1 | `(s)`, `s: Str` | `Ok(v)` или `Error((:json, reason))` (§4.7) | `(:type_error, (:json_decode_arg, s))` — `s` не `Str` |
+| `Json.at` | 2 | `(v, path)`, `path: List` | `Option` — значение по пути | `(:type_error, ((:json, :at), path))` — `path` не `List` |
+
+Путь `Json.at` — `List` шагов: `Str` — ключ `Map`, `Int` — индекс `List` с нуля; пустой путь — `Some(v)`. Нет ключа, индекс вне списка (в том числе отрицательный), шаг другого вида или спуск в скаляр — `None`.
+
+#### Модуль `Record`
+
+| Имя | Арность | Аргументы | Результат | Авто-raise |
+| --- | --- | --- | --- | --- |
+| `Record.to_anon` | 1 | `(r)` | анонимная запись с теми же полями; анонимная `r` — она же | `(:type_error, (:to_anon, r))` — `r` не запись |
+
+#### Модуль `List`
+
+В `List` — только то, что специфично списку; общие функции над коллекциями — `Enum` (§0.2).
+
+| Имя | Арность | Аргументы | Результат | Авто-raise |
+| --- | --- | --- | --- | --- |
+| `List.concat` | 2 | `(xs, ys)` | `List`: элементы `xs`, затем `ys`, как `[..xs, ..ys]` (§5.2) | `(:type_error, (:concat, v))` — `xs` или `ys` не `List` |
+
+#### Модуль `Option`
+
+| Имя | Арность | Аргументы | Результат | Авто-raise |
+| --- | --- | --- | --- | --- |
+| `Option.map` | 2 | `(o, f)`, `f(x)` | `Some(f(x))` для `Some(x)`, `None` — `None` | `(:type_error, (:map, o))` — `o` не `Option` |
+| `Option.and_then` | 2 | `(o, f)`, `f(x)` — `Option` | `f(x)` для `Some(x)`, `None` — `None` | `(:type_error, (:and_then, o))` |
+| `Option.unwrap` | 1 | `(o)` | `x` из `Some(x)` | `(:unwrap, None)` — `o` — `None`; `(:type_error, (:unwrap, o))` |
+| `Option.unwrap_or` | 2 | `(o, default)` | `x` из `Some(x)`, для `None` — `default` | `(:type_error, (:unwrap_or, o))` |
+
+#### Модуль `Result`
+
+| Имя | Арность | Аргументы | Результат | Авто-raise |
+| --- | --- | --- | --- | --- |
+| `Result.map` | 2 | `(r, f)`, `f(v)` | `Ok(f(v))` для `Ok(v)`, `Error(e)` — как есть | `(:type_error, (:map, r))` — `r` не `Result` |
+| `Result.and_then` | 2 | `(r, f)`, `f(v)` — `Result` | `f(v)` для `Ok(v)`, `Error(e)` — как есть | `(:type_error, (:and_then, r))` |
+| `Result.unwrap` | 1 | `(r)` | `v` из `Ok(v)` | `(:unwrap, Error(e))` — `r` — `Error(e)`; `(:type_error, (:unwrap, r))` |
+| `Result.unwrap_or` | 2 | `(r, default)` | `v` из `Ok(v)`, для `Error(_)` — `default` | `(:type_error, (:unwrap_or, r))` |
+| `Result.all` | 1 | `(rs)`, `rs: List` из `Result` | `Ok` со списком значений по порядку или первый `Error`; пустой `rs` — `Ok([])` | `(:type_error, (:all, v))` — `rs` не `List` или элемент не `Result` |
+
+#### Модуль `Server`
+
+Синхронный запрос к актору-серверу (§12.9): сообщение `(:call, from, req)` в ящик сервера, ответ — `Server.reply(from, v)` мимо ящика вызывающего.
+
+| Имя | Арность | Аргументы | Результат | Авто-raise |
+| --- | --- | --- | --- | --- |
+| `Server.call` | 3 | `(pid, req, timeout)`, `timeout` — мс | `Ok(v)` — сервер ответил; `Error(:timeout)` — ответа нет, в том числе сервер мёртв; `Error(:busy)` — ящик полон (§12.2) | — |
+| `Server.reply` | 2 | `(from, v)`, `from` — пара `(pid, ref)` | `()`; поздний или повторный ответ отбрасывается | `(:type_error, (:reply, from))` — `from` не `(Pid, Ref)` |
+
+#### Модуль `Supervisor`
+
+Супервизор (§13.1): актор, который запускает детей, наблюдает за ними через `watch` и перезапускает по `restart`.
+
+| Имя | Арность | Аргументы | Результат | Авто-raise |
+| --- | --- | --- | --- | --- |
+| `Supervisor.start` | 1 | `(spec)`, `spec`: `{ strategy, max_restarts, within, children }` | `Pid` супервизора, когда все `start` детей вернулись | `(:start_failed, (name, reason))` — `start` ребёнка упал или вернул не `Pid`; `(:start_failed, :timeout)`; `(:type_error, (:start, v))` — `strategy` не `:one_for_one`, `restart` не `:permanent`/`:transient` |
+| `Supervisor.stop` | 3 | `(sup, reason, opts)`, `opts`: `{ timeout }` | `Ok(())`; `Error(:timeout)` — остановка не подтверждена | — |
+| `Supervisor.which_children` | 1 | `(sup)` | `List` из `(id, pid, restart)` в порядке старта | `(:type_error, (:which_children, sup))` — `sup` не `Pid`; `(:timeout, (:which_children, sup))` |
+
+Больше `max_restarts` перезапусков за `within` мс — супервизор гасит остальных детей и падает с `(:max_restarts, (name, reason))`.
+
+#### Модуль `Behavior`
+
+Актор с поведением `Behavior{ handlers: %{...} }` (§13.2).
+
+| Имя | Арность | Аргументы | Результат | Авто-raise |
+| --- | --- | --- | --- | --- |
+| `Behavior.spawn` | 2 | `(b, init_state)` | `Pid` актора; голое имя — `spawn_behavior` (§13.2) | `(:type_error, (:spawn_behavior, v))` — `b` не `Behavior` или `handlers` не `Map` |
+
+Ошибки самого актора (в нём, не у вызывающего): тега нет в `handlers` — `(:no_handler, tag)`; аргументов больше трёх — `(:bad_arity, tag)`; колбэк вернул не пару — `(:badmatch, v)`.
 
 ### 11.6 Тест-фреймворк: `Test.*` и `brig test`
 
