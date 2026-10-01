@@ -3,6 +3,7 @@ package vm
 import (
 	"fmt"
 	"strings"
+	"sync/atomic"
 
 	"github.com/it1ro/brig-lang/internal/runtime"
 )
@@ -76,6 +77,39 @@ type Chunk struct {
 	Variadic  bool
 	// File — путь модуля-источника (stack trace, T-137); "" — неизвестен.
 	File string
+	// gcache — ячейки глобалов этого чанка для одной VM (T-276): GETGLOBAL и
+	// SETGLOBAL берут ячейку по индексу константы вместо поиска имени в
+	// таблице глобалов. Один образ может исполняться разными VM (новая VM на
+	// прогон, тот же Chunk), поэтому в кэше записан его владелец, а запись
+	// атомарная: две VM с общим чанком на разных горутинах гонки не дают.
+	gcache atomic.Pointer[globalCache]
+}
+
+// globalCache — кэш ячеек глобалов чанка, принадлежащий одной VM.
+type globalCache struct {
+	vm    *VM
+	cells []*globalCell
+}
+
+// chunkCells отдаёт кэш ячеек глобалов чанка для этой VM, строя его при
+// первом исполнении чанка (или после смены владельца). Ячейка создаётся и
+// для ещё не определённого имени: GETGLOBAL по пустой ячейке даёт ту же
+// ошибку `undefined: <имя>`, а последующее определение попадает в неё же.
+func (vm *VM) chunkCells(ch *Chunk) []*globalCell {
+	if gc := ch.gcache.Load(); gc != nil && gc.vm == vm {
+		return gc.cells
+	}
+	cells := make([]*globalCell, len(ch.Constants))
+	for _, in := range ch.Code {
+		switch in.Op() {
+		case GETGLOBAL, SETGLOBAL:
+			if k := in.Bx(); k < len(cells) && cells[k] == nil {
+				cells[k] = vm.cell(ch.Constants[k].Str)
+			}
+		}
+	}
+	ch.gcache.Store(&globalCache{vm: vm, cells: cells})
+	return cells
 }
 
 // NewChunk создаёт пустой чанк.

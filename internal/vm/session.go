@@ -294,10 +294,10 @@ func (s *Scheduler) takeJob(job *sessionJob) {
 
 func (s *Scheduler) applyGlobals(undef []string, defs map[string]runtime.Value) {
 	for _, name := range undef {
-		delete(s.vm.globals, name)
+		s.vm.undefineGlobal(name)
 	}
 	for name, v := range defs {
-		s.vm.globals[name] = v
+		s.vm.DefineGlobal(name, v)
 	}
 }
 

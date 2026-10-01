@@ -85,8 +85,13 @@ func TestCallFrameAllocs(t *testing.T) {
 // прогона.
 func BenchmarkMapLambda(b *testing.B) {
 	const n = 1000
+	// baseN — размер прогона постоянной части. Не 0: часть состояния чанка VM
+	// строит лениво, при первом его исполнении (кэш ячеек глобалов, T-276), а
+	// при n = 0 чанк лямбды не исполняется ни разу — разовая работа попала бы
+	// в allocs/call.
+	const baseN = 1
 	src := callAllocProgs["map_lambda"]
-	base := testing.AllocsPerRun(5, newCallAllocRun(b, src, 0))
+	base := testing.AllocsPerRun(5, newCallAllocRun(b, src, baseN))
 	run := newCallAllocRun(b, src, n)
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -94,7 +99,7 @@ func BenchmarkMapLambda(b *testing.B) {
 		run()
 	}
 	b.StopTimer()
-	b.ReportMetric((testing.AllocsPerRun(5, run)-base)/n, "allocs/call")
+	b.ReportMetric((testing.AllocsPerRun(5, run)-base)/(n-baseN), "allocs/call")
 }
 
 // TestFrameWindowReuse — окна регистров снятых кадров переиспользуются

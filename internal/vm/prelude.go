@@ -20,11 +20,10 @@ import (
 // Sprint 5.1–5.4: list материализует Range, добавлены set(), Vec.*, Map.*,
 // Bytes.to_str, Str.to_bytes.
 func InstallPrelude(vm *VM) {
-	globals := vm.globals
 	def := func(name string, arity int, fn runtime.NativeFunc) {
-		globals[name] = runtime.Func(&runtime.FuncValue{
+		vm.DefineGlobal(name, runtime.Func(&runtime.FuncValue{
 			Name: name, Arity: arity, IsNative: true, Native: fn,
-		})
+		}))
 	}
 	defResumable := func(name string, arity int, start resumableFunc) {
 		fv := &runtime.FuncValue{
@@ -37,7 +36,7 @@ func InstallPrelude(vm *VM) {
 				return runSync(c, k)
 			},
 		}
-		globals[name] = runtime.Func(fv)
+		vm.DefineGlobal(name, runtime.Func(fv))
 		vm.resumable[fv] = start
 	}
 
@@ -659,7 +658,7 @@ func InstallPrelude(vm *VM) {
 
 	// ---- Встроенные варианты (§10.1) ----
 
-	globals["None"] = runtime.Variant("None")
+	vm.DefineGlobal("None", runtime.Variant("None"))
 	def("Some", 1, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		return runtime.Variant("Some", args...), nil
 	})
