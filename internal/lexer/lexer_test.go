@@ -108,9 +108,9 @@ func TestLexOffside(t *testing.T) {
 }
 
 func TestLexContinuation(t *testing.T) {
-	// A5.6: '+' на строке-продолжении не порождает NEWLINE/INDENT/DEDENT,
+	// A5.6: '*' на строке-продолжении не порождает NEWLINE/INDENT/DEDENT,
 	// stmt_indent остаётся 4 (СУ-004).
-	src := "fn main() ->\n    x = 1\n        + 2\n    x\n"
+	src := "fn main() ->\n    x = 1\n        * 2\n    x\n"
 	toks, err := Lex(src)
 	if err != nil {
 		t.Fatal(err)
@@ -121,7 +121,7 @@ func TestLexContinuation(t *testing.T) {
 	}
 	want := []string{
 		"fn", "LOWER_IDENT", "(", ")", "->", "NEWLINE", "INDENT",
-		"LOWER_IDENT", "=", "INT", "+", "INT", "NEWLINE",
+		"LOWER_IDENT", "=", "INT", "*", "INT", "NEWLINE",
 		"LOWER_IDENT", "NEWLINE", "DEDENT", "EOF",
 	}
 	if strings.Join(got, " ") != strings.Join(want, " ") {
@@ -151,9 +151,60 @@ func TestLexContinuationConcat(t *testing.T) {
 }
 
 func TestLexContinuationTooShallow(t *testing.T) {
-	_, err := Lex("x = 1\n+ 2\n")
+	_, err := Lex("x = 1\n* 2\n")
 	if err == nil || !strings.Contains(err.Error(), "continuation") {
 		t.Fatalf("want continuation error, got %v", err)
+	}
+}
+
+// TestUnaryMinusStartsStatement: '+' и '-' не продолжают строку (§2.2,
+// T-255) — строка с ведущим '-' или '+' начинает новый стейтмент.
+func TestUnaryMinusStartsStatement(t *testing.T) {
+	for _, op := range []string{"-", "+"} {
+		src := "fn f(x) ->\n    y = x\n    " + op + "y\n"
+		toks, err := Lex(src)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var got []string
+		for _, tk := range toks {
+			got = append(got, tk.Type.String())
+		}
+		want := []string{
+			"fn", "LOWER_IDENT", "(", "LOWER_IDENT", ")", "->", "NEWLINE", "INDENT",
+			"LOWER_IDENT", "=", "LOWER_IDENT", "NEWLINE",
+			op, "LOWER_IDENT", "NEWLINE", "DEDENT", "EOF",
+		}
+		if strings.Join(got, " ") != strings.Join(want, " ") {
+			t.Fatalf("leading %s\n got: %v\nwant: %v", op, got, want)
+		}
+	}
+}
+
+// TestLexBracketContinuation: внутри скобок строка, которая кончается
+// бинарным оператором или начинается с оператора продолжения (кроме `..`),
+// не отделяется NEWLINE; ведущий '-' — новый элемент (§D.5, T-255).
+func TestLexBracketContinuation(t *testing.T) {
+	cases := []struct{ src, want string }{
+		{"(a +\n  b -\n  c)\n", "( LOWER_IDENT + LOWER_IDENT - LOWER_IDENT ) NEWLINE EOF"},
+		{"(xs\n  |> f)\n", "( LOWER_IDENT |> LOWER_IDENT ) NEWLINE EOF"},
+		{"(a\n  * b)\n", "( LOWER_IDENT * LOWER_IDENT ) NEWLINE EOF"},
+		{"[a\n  -b]\n", "[ LOWER_IDENT NEWLINE - LOWER_IDENT ] NEWLINE EOF"},
+		{"[a\n  ..b]\n", "[ LOWER_IDENT NEWLINE .. LOWER_IDENT ] NEWLINE EOF"},
+		{"[\"+\"\n  b]\n", "[ STRING NEWLINE LOWER_IDENT ] NEWLINE EOF"},
+	}
+	for _, tc := range cases {
+		toks, err := Lex(tc.src)
+		if err != nil {
+			t.Fatalf("Lex(%q): %v", tc.src, err)
+		}
+		var got []string
+		for _, tk := range toks {
+			got = append(got, tk.Type.String())
+		}
+		if strings.Join(got, " ") != tc.want {
+			t.Fatalf("Lex(%q)\n got: %v\nwant: %v", tc.src, strings.Join(got, " "), tc.want)
+		}
 	}
 }
 

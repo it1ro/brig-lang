@@ -191,7 +191,8 @@ func (l *lexer) processLine(pl physLine) error {
 		} else {
 			// Offside отключён, но NEWLINE может эмитироваться как
 			// разделитель элементов (§D.5).
-			if !l.firstLine && shouldEmitBracketNewline(l.lastTokenLit(), ft) {
+			if !l.firstLine && !l.lastTokenIsBinaryOp() &&
+				shouldEmitBracketNewline(l.lastTokenLit(), ft) {
 				l.emit(NEWLINE, "\n")
 			}
 			return l.lexBracketLine(pl, indent, ft)
@@ -305,14 +306,34 @@ func (l *lexer) lastTokenLit() string {
 	return l.tokens[len(l.tokens)-1].Lit
 }
 
+// bracketBinaryOps — бинарные операторы: строка внутри скобок, которая
+// кончается таким токеном, продолжается на следующей (§D.5, T-255).
+var bracketBinaryOps = map[TokenType]bool{
+	KW_AND: true, KW_OR: true, KW_DIV: true, KW_REM: true, KW_TO: true,
+	OP_PIPE: true, OP_POW: true, OP_EQ: true, OP_NEQ: true, OP_LE: true,
+	OP_GE: true, OP_CONCAT: true, OP_PLUS: true, OP_MINUS: true,
+	OP_STAR: true, OP_SLASH: true, OP_LT: true, OP_GT: true,
+}
+
+// lastTokenIsBinaryOp — последний токен — бинарный оператор (§D.5).
+func (l *lexer) lastTokenIsBinaryOp() bool {
+	return len(l.tokens) > 0 && bracketBinaryOps[l.tokens[len(l.tokens)-1].Type]
+}
+
 // shouldEmitBracketNewline решает, нужен ли NEWLINE между элементами
 // внутри бракетного литерала (A5.4 §D.5). NEWLINE эмитируется, если:
 //   - предыдущий токен может завершать элемент (не открывающая скобка,
 //     не запятая);
 //   - следующий токен может начинать элемент (не закрывающая скобка,
-//     не запятая).
+//     не запятая, не ведущий оператор продолжения §2.2 кроме спреда `..`).
+//
+// Строку, которая кончается бинарным оператором, отсекает вызывающий
+// (lastTokenIsBinaryOp): по литералу строку "+" не отличить от оператора.
 func shouldEmitBracketNewline(prev, next string) bool {
 	if prev == "" || next == "" {
+		return false
+	}
+	if next != ".." && continuationOps[next] {
 		return false
 	}
 	switch prev {

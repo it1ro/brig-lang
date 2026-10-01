@@ -241,9 +241,11 @@ var keywords = map[string]TokenType{
 }
 
 // continuationOps — leading operators that make a line a continuation (A5.3).
+// '+' and '-' are not here: a line starting with them is a new statement
+// (unary minus), §2.2, T-255.
 var continuationOps = map[string]bool{
-	"|>": true, "and": true, "or": true, "+": true, "-": true, "*": true,
-	"/": true, "**": true, "div": true, "rem": true, "to": true,
+	"|>": true, "and": true, "or": true, "*": true, "/": true, "**": true,
+	"div": true, "rem": true, "to": true,
 	"==": true, "!=": true, "<": true, ">": true, "<=": true, ">=": true,
 	"..": true, "<>": true,
 }
