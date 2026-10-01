@@ -205,6 +205,15 @@ var modBuiltins = map[string]map[string]sig{
 		"concat": exact(2), "at": exact(2),
 	},
 	"Json": {"encode": exact(1, 2), "decode": exact(1), "at": exact(2)},
+	"Enum": {
+		"map": exact(2), "filter": exact(2), "reject": exact(2), "fold": exact(3),
+		"find": exact(2), "all?": exact(2), "any?": exact(2), "each": exact(2),
+		"count": exact(1, 2), "member?": exact(2), "reverse": exact(1),
+		"take": exact(2), "drop": exact(2), "sort": exact(1), "sort_by": exact(2),
+		"zip": exact(2), "with_index": exact(1), "group_by": exact(2), "sum": exact(1),
+		"min": exact(1), "max": exact(1), "flat_map": exact(2), "uniq": exact(1),
+		"join": exact(2),
+	},
 	"Test": {
 		"describe": exact(1), "it": exact(2), "run": exact(0),
 		"assert_eq": exact(2), "assert_ne": exact(2), "assert": exact(1), "fail": exact(1),
@@ -225,7 +234,7 @@ var modBuiltins = map[string]map[string]sig{
 // loader.builtinModules и compiler.isNativeModule.
 func isNativeMod(name string) bool {
 	switch name {
-	case "Vec", "Map", "Record", "Str", "Bytes", "Json", "Test", "Sys", "Actor", "Prelude", "Global", "Timer", "Time", "Telemetry", "Port", "Signal", "File", "HttpServer":
+	case "Vec", "Map", "Record", "Str", "Bytes", "Json", "Enum", "Test", "Sys", "Actor", "Prelude", "Global", "Timer", "Time", "Telemetry", "Port", "Signal", "File", "HttpServer":
 		return true
 	}
 	return false

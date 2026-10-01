@@ -225,6 +225,10 @@ func InstallPrelude(vm *VM) {
 		}, nil
 	})
 
+	// ---- Enum module (T-257) ----
+
+	installEnum(def, defResumable)
+
 	// ---- Vec module (§4.4) ----
 
 	def("Vec.push", 2, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
