@@ -1,5 +1,4 @@
-# expect: run 2 5:5 deadlock
-# pending: T-265
+# expect: run 2 4:5 deadlock
 module Main
 fn main() ->
     recv

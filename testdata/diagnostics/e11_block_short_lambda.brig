@@ -1,5 +1,4 @@
-# expect: check 1 5:9 блочное тело у короткой лямбды
-# pending: T-265
+# expect: check 1 4:9 блочное тело у короткой лямбды
 module Main
 fn main() ->
     f = (x) ->

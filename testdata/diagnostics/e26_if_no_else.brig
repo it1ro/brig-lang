@@ -1,5 +1,4 @@
-# expect: check 1 5:9 else
-# pending: T-265
+# expect: check 1 4:9 else
 module Main
 fn main() ->
     x = if true then 1

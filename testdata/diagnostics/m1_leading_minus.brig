@@ -1,6 +1,6 @@
-# expect: check 1 6:5 унарный минус
-# pending: T-265
+# expect: check 1 5:9 унарный минус
 module Main
 fn main() ->
-    x = 1
-    -x
+    y = 1
+        - 3
+    y
