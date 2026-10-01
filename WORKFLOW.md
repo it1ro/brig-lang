@@ -234,6 +234,7 @@ Closes #<issue>
 ```
 
 - Перед merge зелёные: `make all` и `BRIG_VERIFY=1 go test ./...`.
+- **Версия спеки.** PR, меняющий норму `docs/01-language-design.md` (семантика, синтаксис, §16), поднимает версию `v0.5.N` в шапке спеки и в первой строке `brig.ebnf` (`TestSpecVersionMatchesEbnf` сверяет) и обновляет раздел «Что изменилось в v0.5.N». История прошлых версий — `docs/spec-history.md`.
 - **Golden-файлы.** PR меняет AST — `make update-golden`, bytecode — `make update-bytecode`.
   Diff просмотрен глазами и вынесен в отдельный коммит того же PR: `test(parser): regenerate golden files [T-14]`.
 - **Апрувы.**
