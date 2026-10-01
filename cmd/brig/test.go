@@ -40,7 +40,7 @@ func (t *testTally) fail(name string, err error) {
 // Exit 0 — всё прошло; 1 — упал тест, доктест или файл не скомпилировался.
 func runTest(args []string) {
 	if len(args) > 1 {
-		fmt.Fprintln(os.Stderr, "brig test: ожидается не больше одного пути")
+		fmt.Fprintln(os.Stderr, "brig test: at most one path expected")
 		os.Exit(exitParse)
 	}
 	root := "."
@@ -103,7 +103,7 @@ func testFile(path string, t *testTally) {
 
 	prog, mods, img, ok := loadTestModule(path)
 	if !ok {
-		t.fail(path, fmt.Errorf("файл не скомпилирован"))
+		t.fail(path, fmt.Errorf("file did not compile"))
 		return
 	}
 	newVM := func() *vm.VM {

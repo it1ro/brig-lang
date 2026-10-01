@@ -116,7 +116,7 @@ func checkNames(prog *ast.Program, world *World, session bool) *Result {
 // replMod — функции модуля Repl, видимые в сессии квалифицированно.
 // register — API регистрации (T-206), не голая команда консоли.
 var replMod = map[string]sig{
-	"h": exact(1), "i": exact(1), "v": exact(0, 1),
+	"h": exact(0, 1), "i": exact(1), "v": exact(0, 1),
 	"bindings": exact(0), "reset": exact(0), "load": exact(1),
 	"flush": exact(0), "time": exact(1), "dis": exact(1),
 	"recompile": exact(0), "register": exact(1),

@@ -1,4 +1,4 @@
- brig observe                                        0 акторов · sort: tree · 1s[K
+ brig observe                                         0 actors · sort: tree · 1s[K
 ────────────────────────────────────────────────────────────────────────────────[K
   PID  NAME                                           STATUS     MBOX REDUCTIONS[K
                                                                                 [K
@@ -21,4 +21,4 @@
                                                                                 [K
  crashes                                                                        [K
 ────────────────────────────────────────────────────────────────────────────────[K
- ↑↓ выбор   Enter детали   s сортировка   q выход                               [K
+ ↑↓ select   Enter details   s sort   q quit                                    [K

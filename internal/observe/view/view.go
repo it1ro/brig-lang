@@ -35,13 +35,13 @@ func Render(m observe.Model, w, h int, color bool) string {
 		lines[i] = blank
 	}
 	if w < 40 || h < 10 {
-		lines[0] = termio.Pad("терминал слишком мал", w)
+		lines[0] = termio.Pad("terminal too small", w)
 		return join(lines)
 	}
 	lines[0] = termio.Pad(header(m, w), w)
 	lines[1] = strings.Repeat("─", w)
 	lines[h-2] = strings.Repeat("─", w)
-	lines[h-1] = termio.Pad(" ↑↓ выбор   Enter детали   s сортировка   q выход", w)
+	lines[h-1] = termio.Pad(" ↑↓ select   Enter details   s sort   q quit", w)
 
 	showRed := w >= 60
 	right := m.Detail && w >= 100
@@ -120,7 +120,7 @@ func header(m observe.Model, w int) string {
 	left := " brig observe"
 	right := summary(m)
 	if m.Err != "" {
-		right = "снимок недоступен: " + m.Err
+		right = "snapshot unavailable: " + m.Err
 	} else if m.Note != "" {
 		right = m.Note
 	}
@@ -137,18 +137,10 @@ func summary(m observe.Model) string {
 }
 
 func actorsNoun(n int) string {
-	n100 := n % 100
-	if n100 >= 11 && n100 <= 14 {
-		return "акторов"
+	if n == 1 {
+		return "actor"
 	}
-	switch n % 10 {
-	case 1:
-		return "актор"
-	case 2, 3, 4:
-		return "актора"
-	default:
-		return "акторов"
-	}
+	return "actors"
 }
 
 func colHead(listW int, showRed bool) string {
@@ -235,10 +227,10 @@ func crashBlock(m observe.Model, w int, color bool) []string {
 }
 
 func detailBlock(m observe.Model, w int, color bool) []string {
-	title := termio.Pad(" детали", w)
+	title := termio.Pad(" details", w)
 	a, ok := selected(m)
 	if !ok {
-		return []string{title, termio.Pad(" актор не жив", w)}
+		return []string{title, termio.Pad(" actor is not alive", w)}
 	}
 	fields := [][2]string{
 		{"pid", strconv.Itoa(a.Pid)},

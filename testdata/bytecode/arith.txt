@@ -4,6 +4,6 @@
 0002   3:17  LOADK       r3 k2 ; 4
 0003   3:15  MUL         r2 r2 r3
 0004   3:11  ADD         r1 r1 r2
-0005   4:5   GETGLOBAL   r2 k3 ; print
+0005   4:5   GETGLOBAL   r2 k3 ; "print"
 0006   4:11  MOVE        r3 r1
 0007   4:5   TAILCALL    r2 1

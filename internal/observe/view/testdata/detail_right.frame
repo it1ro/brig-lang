@@ -1,6 +1,6 @@
- brig observe                                                            5 акторов · sort: tree · 1s[K
+ brig observe                                                             5 actors · sort: tree · 1s[K
 ────────────────────────────────────────────────────────────────────────────────────────────────────[K
-  PID  NAME                     STATUS     MBOX REDUCTIONS   детали                                 [K
+  PID  NAME                     STATUS     MBOX REDUCTIONS   details                                [K
      3 main_sup                 recv          0      1 204   pid  7                                 [K
 ▸ ├    7 http                   running       4     98 311   name  http                             [K
     ├    8 worker               recv         40         10   status  running                        [K
@@ -21,4 +21,4 @@
   12:04:31  #14 worker  (:badarg, …)                                                                [K
   12:04:29  #11 db_conn  :down                                                                      [K
 ────────────────────────────────────────────────────────────────────────────────────────────────────[K
- ↑↓ выбор   Enter детали   s сортировка   q выход                                                   [K
+ ↑↓ select   Enter details   s sort   q quit                                                        [K

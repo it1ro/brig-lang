@@ -1,5 +1,5 @@
 == main arity=0 params=0 regs=2 consts=1 patterns=0 ==
-0000   8:5   GETGLOBAL   r1 k0 ; worker
+0000   8:5   GETGLOBAL   r1 k0 ; "worker"
 0001   8:5   TAILCALL    r1 0
 == worker arity=0 params=0 regs=5 consts=4 patterns=1 ==
 0000   5:11  LOADK       r2 k0 ; 10

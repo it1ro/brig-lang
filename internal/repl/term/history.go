@@ -2,6 +2,8 @@ package term
 
 import (
 	"bufio"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"io/fs"
 	"os"
@@ -24,14 +26,51 @@ type History struct {
 // DefaultHistoryPath — `$XDG_STATE_HOME/brig/history`, без
 // XDG_STATE_HOME — `~/.local/state/brig/history`.
 func DefaultHistoryPath() (string, error) {
+	dir, err := stateDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "history"), nil
+}
+
+// ProjectHistoryPath — история проекта с корнем root:
+// `$XDG_STATE_HOME/brig/projects/<hash пути>/history`. Каталог проекта
+// не трогается.
+func ProjectHistoryPath(root string) (string, error) {
+	dir, err := stateDir()
+	if err != nil {
+		return "", err
+	}
+	if abs, err := filepath.Abs(root); err == nil {
+		root = abs
+	}
+	sum := sha256.Sum256([]byte(root))
+	return filepath.Join(dir, "projects", hex.EncodeToString(sum[:8]), "history"), nil
+}
+
+// stateDir — `$XDG_STATE_HOME/brig`, без XDG_STATE_HOME —
+// `~/.local/state/brig`.
+func stateDir() (string, error) {
 	if dir := os.Getenv("XDG_STATE_HOME"); filepath.IsAbs(dir) {
-		return filepath.Join(dir, "brig", "history"), nil
+		return filepath.Join(dir, "brig"), nil
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".local", "state", "brig", "history"), nil
+	return filepath.Join(home, ".local", "state", "brig"), nil
+}
+
+// Prepend ставит записи старого файла истории перед записями h, не
+// переписывая файл h (история проекта в `<проект>/.brig/history`).
+func (h *History) Prepend(old *History) {
+	if old == nil || len(old.entries) == 0 {
+		return
+	}
+	h.entries = append(append([]string(nil), old.entries...), h.entries...)
+	if len(h.entries) > HistoryLimit {
+		h.entries = h.entries[len(h.entries)-HistoryLimit:]
+	}
 }
 
 // LoadHistory читает историю из path; нет файла — пустая история. Файл
@@ -89,10 +128,12 @@ func (h *History) Suggest(prefix string) string {
 }
 
 // Add добавляет ввод: без пустых строк в конце, пустой ввод и повтор
-// последней записи не пишутся. Запись дописывается в файл сразу.
+// последней записи не пишутся. Ввод с ведущим пробелом не пишется, как
+// при HISTCONTROL=ignorespace: так секрет не попадает в файл. Запись
+// дописывается в файл сразу.
 func (h *History) Add(entry string) error {
 	entry = strings.TrimRight(entry, " \t\n")
-	if strings.TrimSpace(entry) == "" {
+	if strings.TrimSpace(entry) == "" || strings.HasPrefix(entry, " ") {
 		return nil
 	}
 	if n := len(h.entries); n > 0 && h.entries[n-1] == entry {

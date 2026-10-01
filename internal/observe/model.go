@@ -193,7 +193,7 @@ func onShot(m Model, msg ShotMsg) Model {
 	return m
 }
 
-const deadNote = "актор не жив"
+const deadNote = "actor is not alive"
 
 func move(m Model, d int) Model {
 	rows := m.rows()

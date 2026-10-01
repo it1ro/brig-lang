@@ -67,8 +67,8 @@ func TestCompleteBindings(t *testing.T) {
 		t.Fatalf("f = len display = %q, want f/1", got.Display)
 	}
 
-	if got := one(t, at(t, s, "h|"), "h"); got.Display != "h/1" {
-		t.Fatalf("helper h display = %q, want h/1", got.Display)
+	if got := one(t, at(t, s, "h|"), "h"); got.Display != "h/0,1" {
+		t.Fatalf("helper h display = %q, want h/0,1", got.Display)
 	}
 	mustEval(t, s, out, "h = 1\nmap = 1\n")
 	if got := one(t, at(t, s, "h|"), "h"); got.Display != "h" {

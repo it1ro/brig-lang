@@ -105,7 +105,7 @@ func (s *Session) observeScreen(in, out *os.File) (runtime.Value, error) {
 	case errors.Is(yerr, vm.ErrInterrupted):
 		return runtime.Unit, yerr
 	case errors.Is(yerr, vm.ErrSessionClosed), errors.Is(runErr, observe.ErrSessionClosed):
-		return runtime.Unit, s.writeOut("сессия закрыта\n")
+		return runtime.Unit, s.writeOut("session closed\n")
 	}
 	if runErr != nil && !errors.Is(runErr, context.Canceled) {
 		return runtime.Unit, s.writeOut("observe: %s\n", runErr)
@@ -140,7 +140,7 @@ func (s *Session) beginObserve(ring *observe.Ring) (bool, error) {
 	if err != nil || ok {
 		return ok, err
 	}
-	return false, s.writeOut("observe уже открыт\n")
+	return false, s.writeOut("observe is already open\n")
 }
 
 func (s *Session) attachObserve(ring *observe.Ring) (bool, error) {

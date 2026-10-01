@@ -34,7 +34,7 @@ func TestObserveNoTTY(t *testing.T) {
 	if strings.Contains(got, "\x1b[?1049") || strings.Contains(got, "\x1b[31m") || strings.Contains(got, "\x1b[0m") {
 		t.Fatalf("no-TTY touched the terminal or used color:\n%s", got)
 	}
-	if !strings.Contains(got, "brig observe") || !strings.Contains(got, "1 актор") {
+	if !strings.Contains(got, "brig observe") || !strings.Contains(got, "1 actor") {
 		t.Fatalf("frame:\n%s", got)
 	}
 	if strings.Count(got, "\n") < 1 {

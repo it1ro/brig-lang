@@ -77,6 +77,10 @@ type Chunk struct {
 	Variadic  bool
 	// File — путь модуля-источника (stack trace, T-137); "" — неизвестен.
 	File string
+	// Where — место определения для печати лямбды (`<repl>:3`); "" — по
+	// File и строке первой инструкции. Только метаданные: исполнение и
+	// Verify его не читают.
+	Where string
 	// gcache — ячейки глобалов этого чанка для одной VM (T-276): GETGLOBAL и
 	// SETGLOBAL берут ячейку по индексу константы вместо поиска имени в
 	// таблице глобалов. Один образ может исполняться разными VM (новая VM на
@@ -297,3 +301,20 @@ type Function struct {
 
 // IsBrigCode реализует runtime.Code.
 func (c *Chunk) IsBrigCode() {}
+
+// Origin реализует runtime.CodeOrigin: место определения для печати
+// лямбды — Where или файл модуля и строка первой инструкции с позицией.
+func (c *Chunk) Origin() string {
+	if c.Where != "" {
+		return c.Where
+	}
+	if c.File == "" {
+		return ""
+	}
+	for _, p := range c.Pos {
+		if p.Line > 0 {
+			return fmt.Sprintf("%s:%d", c.File, p.Line)
+		}
+	}
+	return ""
+}

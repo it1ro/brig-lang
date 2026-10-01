@@ -18,7 +18,7 @@ func colorOn() highlight.Palette {
 func colorOff() highlight.Palette {
 	return highlight.PaletteFromEnv(func(k string) (string, bool) {
 		if k == "NO_COLOR" {
-			return "", true
+			return "1", true
 		}
 		return "", false
 	})
@@ -236,12 +236,12 @@ func TestReplErrorCaret(t *testing.T) {
 
 	errOut.Reset()
 	out.Reset()
-	fe.Pal = colorOn()
+	fe.Pal, fe.ErrPal = colorOn(), colorOn()
 	if err := fe.Eval(s, "len = 1\n"); err != nil {
 		t.Fatal(err)
 	}
 	info := errOut.String()
-	if !strings.Contains(info, "shadows prelude") || !strings.Contains(info, "\x1b[90m") {
+	if !strings.Contains(info, "shadows prelude") || !strings.Contains(info, "\x1b[2m") {
 		t.Fatalf("info not dimmed:\n%s", info)
 	}
 	if strings.Contains(info, "error:") {
@@ -265,7 +265,7 @@ func TestReplErrorCaret(t *testing.T) {
 	}
 
 	errOut.Reset()
-	fe.Pal = highlight.Palette{}
+	fe.Pal, fe.ErrPal = highlight.Palette{}, highlight.Palette{}
 	if err := fe.Eval(s, "raise(:boom)\n"); err != nil {
 		t.Fatal(err)
 	}

@@ -19,14 +19,16 @@ type Plain struct {
 	In       io.Reader
 	Out, Err io.Writer
 	// Prompt — приглашение перед строкой: next — номер следующего ввода
-	// со значением, more — строка продолжает начатый ввод. nil — без
-	// приглашений (pipe, `brig -i -`).
+	// со значением, more — строка продолжает начатый ввод. Пишется в Err:
+	// в Out — только значения. nil — без приглашений (pipe, `brig -i -`).
 	Prompt func(next int, more bool) string
 	// Width — колонки терминала для pretty-printer. nil или <= 0 —
 	// одна строка, как Inspect.
 	Width func() int
-	// Pal — палитра вывода и диагностики. Нулевая — без escape-кодов.
-	Pal highlight.Palette
+	// Pal — палитра значений в Out, ErrPal — диагностики в Err: у
+	// каждого потока цвет только если он — терминал. Нулевая — без
+	// escape-кодов.
+	Pal, ErrPal highlight.Palette
 }
 
 // Run исполняет ввод до EOF. Ошибка ввода не завершает сессию; Run
@@ -37,7 +39,7 @@ func (p Plain) Run(s *Session) error {
 	var buf strings.Builder
 	for {
 		if p.Prompt != nil {
-			if _, err := io.WriteString(p.Out, p.Prompt(s.Next(), buf.Len() > 0)); err != nil {
+			if _, err := io.WriteString(p.Err, p.Prompt(s.Next(), buf.Len() > 0)); err != nil {
 				return err
 			}
 		}
@@ -75,7 +77,7 @@ func (p Plain) Eval(s *Session, src string) error {
 	if p.Err != nil {
 		s.SetOutput(p.Err)
 	}
-	s.SetPalette(p.Pal)
+	s.SetPalette(p.ErrPal)
 	res, err := s.Eval(src)
 	if err != nil {
 		var halt *vm.ErrHalt
@@ -84,14 +86,14 @@ func (p Plain) Eval(s *Session, src string) error {
 		}
 		var pe *printedError
 		if !errors.As(err, &pe) {
-			if werr := writeEvalError(p.Err, s.diagFile, src, err, p.opt(s)); werr != nil {
+			if werr := writeEvalError(p.Err, s.diagFile, src, err, p.opt(s, p.ErrPal)); werr != nil {
 				return werr
 			}
 		}
 		return nil
 	}
 	if n := len(res); n > 0 {
-		if text, ok := FormatAnswer(res[n-1].Name, res[n-1].Value, p.opt(s)); ok {
+		if text, ok := FormatAnswer(res[n-1].Name, res[n-1].Value, p.opt(s, p.Pal)); ok {
 			if _, werr := fmt.Fprintln(p.Out, text); werr != nil {
 				return werr
 			}
@@ -100,7 +102,7 @@ func (p Plain) Eval(s *Session, src string) error {
 	return nil
 }
 
-func (p Plain) opt(s *Session) Print {
+func (p Plain) opt(s *Session, pal highlight.Palette) Print {
 	w := 0
 	if p.Width != nil {
 		w = p.Width()
@@ -109,5 +111,5 @@ func (p Plain) opt(s *Session) Print {
 	if s != nil {
 		env = s.HighlightEnv()
 	}
-	return Print{Width: w, Pal: p.Pal, Env: env}
+	return Print{Width: w, Pal: pal, Env: env}
 }

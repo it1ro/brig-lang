@@ -20,4 +20,6 @@ v = (:ok, 42)
 r = :nope
 :nope
 error: raise: (:case_clause, 7)
-  at __repl__ (<repl>:1:1)
+match 7
+^
+  at <input> (<repl>:1:1)

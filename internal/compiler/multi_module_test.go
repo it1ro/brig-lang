@@ -129,7 +129,7 @@ fn down(n) -> if n == 0 then :done else Main.go(n - 1)
 		if err != nil {
 			t.Fatalf("compile: %v", err)
 		}
-		if dis := img.Main.Disassemble(); !strings.Contains(dis, "; Nope.f") {
+		if dis := img.Main.Disassemble(); !strings.Contains(dis, "; \"Nope.f\"") {
 			t.Fatalf("main does not call global Nope.f:\n%s", dis)
 		}
 	})

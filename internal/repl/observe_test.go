@@ -45,7 +45,7 @@ func TestObserveHelp(t *testing.T) {
 	defer s.Close()
 	evalOK(t, s, "h(observe)\n")
 	got := out.String()
-	for _, frag := range []string{"observe()", "observe уже открыт", ":crash", ":down"} {
+	for _, frag := range []string{"observe()", "observe is already open", ":crash", ":down"} {
 		if !strings.Contains(got, frag) {
 			t.Fatalf("h(observe) missing %q:\n%s", frag, got)
 		}
@@ -84,7 +84,7 @@ func TestObserveAlreadyOpen(t *testing.T) {
 	}); err != nil || ok {
 		t.Fatalf("second attach ok=%v err=%v", ok, err)
 	}
-	if !strings.Contains(out.String(), "observe уже открыт") {
+	if !strings.Contains(out.String(), "observe is already open") {
 		t.Fatalf("message:\n%s", out.String())
 	}
 

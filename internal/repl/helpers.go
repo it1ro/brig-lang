@@ -38,8 +38,14 @@ func (s *Session) installHelpers() {
 			defs[name] = runtime.Func(&runtime.FuncValue{Name: name, Arity: arity, IsNative: true, Native: fn})
 		}
 	}
-	add("h", 1, true, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
-		return s.help(args[0])
+	add("h", -1, true, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+		switch len(args) {
+		case 0:
+			return runtime.Unit, s.writeOut("%s", s.generalHelp())
+		case 1:
+			return s.help(args[0])
+		}
+		return runtime.Unit, raiseClause(args)
 	})
 	add("i", 1, true, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		if err := s.info(args[0]); err != nil {
@@ -149,7 +155,7 @@ func (d *helpDoc) format(pal highlight.Palette) string {
 
 func writeDocBody(b *strings.Builder, text string, pal highlight.Palette) {
 	if strings.TrimSpace(text) == "" {
-		b.WriteString("нет документации\n")
+		b.WriteString("no documentation\n")
 		return
 	}
 	painted := paintDoc(text, pal)
@@ -505,9 +511,7 @@ func (s *Session) info(v runtime.Value) error {
 
 func (s *Session) value(args []runtime.Value) (runtime.Value, error) {
 	if len(args) > 1 {
-		return runtime.Unit, &vm.ErrRaise{Val: runtime.Tuple(
-			runtime.Atom("function_clause"),
-			runtime.List(append([]runtime.Value(nil), args...)...))}
+		return runtime.Unit, raiseClause(args)
 	}
 	n := len(s.history)
 	if len(args) == 1 {
@@ -716,9 +720,9 @@ func (s *Session) recompileHelper() (runtime.Value, error) {
 		return runtime.Unit, loadErr(errPath(err), err)
 	}
 	if len(mods) == 0 {
-		return runtime.Unit, s.writeOut("нет изменений\n")
+		return runtime.Unit, s.writeOut("no changes\n")
 	}
-	return runtime.Unit, s.writeOut("перекомпилировано: %s\n", strings.Join(mods, ", "))
+	return runtime.Unit, s.writeOut("recompiled: %s\n", strings.Join(mods, ", "))
 }
 
 // errPath — файл, в котором ошибка загрузки или компиляции; "" — неизвестен.
@@ -840,7 +844,7 @@ func (s *Session) initDocs() {
 	for _, name := range sema.ReplHelperNames() {
 		s.docs[name] = &helpDoc{name: name, sigs: sigs(name, "Repl."+name, all["Repl"][name])}
 	}
-	observeHelp := "Полноэкранный вид на TTY: дерево акторов, ящик, счётчики и лента последних [:vm, :actor, :crash] и [:vm, :actor, :down]. Обновление раз в секунду. q, Esc и Ctrl-C возвращают в REPL; Enter показывает Actor.info. Без TTY печатает один кадр и возвращает (). Если observe уже открыт — «observe уже открыт» и ()."
+	observeHelp := "Full-screen view on a TTY: actor tree, mailbox, counters and a feed of recent [:vm, :actor, :crash] and [:vm, :actor, :down]. Refreshes once a second. q, Esc and Ctrl-C return to the REPL; Enter shows Actor.info. Without a TTY prints one frame and returns (). If observe is already open, prints \"observe is already open\" and returns ()."
 	if d := s.docs["observe"]; d != nil {
 		d.text = observeHelp
 	}
@@ -906,7 +910,7 @@ var builtinParams = map[string]string{
 	"Port.give/2": "port, pid", "Signal.subscribe/1": "names", "File.open/2": "path, mode",
 	"HttpServer.listen/1": "addr", "HttpServer.respond/3": "req, status, headers",
 
-	"Repl.h/1": "f", "Repl.i/1": "v", "Repl.v/0": "", "Repl.v/1": "n",
+	"Repl.h/0": "", "Repl.h/1": "f", "Repl.i/1": "v", "Repl.v/0": "", "Repl.v/1": "n",
 	"Repl.load/1": "path", "Repl.flush/0": "", "Repl.time/1": "f", "Repl.dis/1": "f",
 	"Repl.bindings/0": "", "Repl.reset/0": "", "Repl.recompile/0": "", "Repl.register/1": "module",
 	"Repl.tree/0": "", "Repl.info/1": "pid", "Repl.top/1": "n", "Repl.observe/0": "",

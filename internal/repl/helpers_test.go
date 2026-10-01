@@ -46,7 +46,7 @@ func TestHelperH(t *testing.T) {
 
 	mustEval(t, s, out, "h(len)\n")
 	got := out.String()
-	for _, frag := range []string{"len/1", "len(v)", "нет документации"} {
+	for _, frag := range []string{"len/1", "len(v)", "no documentation"} {
 		if !strings.Contains(got, frag) {
 			t.Fatalf("h(len) missing %q:\n%s", frag, got)
 		}
@@ -62,7 +62,7 @@ func TestHelperH(t *testing.T) {
 	out.Reset()
 	mustEval(t, s, out, "h(Map)\n")
 	got = out.String()
-	for _, frag := range []string{"Map\n", "get/2", "keys/1", "нет документации"} {
+	for _, frag := range []string{"Map\n", "get/2", "keys/1", "no documentation"} {
 		if !strings.Contains(got, frag) {
 			t.Fatalf("h(Map) missing %q:\n%s", frag, got)
 		}
@@ -70,7 +70,7 @@ func TestHelperH(t *testing.T) {
 
 	out.Reset()
 	mustEval(t, s, out, "h(Map.get)\n")
-	if !strings.Contains(out.String(), "Map.get/2") || !strings.Contains(out.String(), "нет документации") {
+	if !strings.Contains(out.String(), "Map.get/2") || !strings.Contains(out.String(), "no documentation") {
 		t.Fatalf("h(Map.get):\n%s", out.String())
 	}
 
@@ -99,7 +99,7 @@ func TestHelperH(t *testing.T) {
 
 	out.Reset()
 	mustEval(t, s, out, "h(Demo.hidden)\n")
-	if !strings.Contains(out.String(), "нет документации") {
+	if !strings.Contains(out.String(), "no documentation") {
 		t.Fatalf("h(Demo.hidden):\n%s", out.String())
 	}
 
@@ -278,7 +278,7 @@ func TestHelperRegister(t *testing.T) {
 	if err := s.RegisterHelpers("Tools"); err != nil {
 		t.Fatal(err)
 	}
-	if got := mustEval(t, s, out, "routes()\n"); got.Inspect() != "routes" {
+	if got := mustEval(t, s, out, "routes()\n"); got.Display() != "routes" {
 		t.Fatalf("routes() = %s", got.Inspect())
 	}
 	// T-143: регистрируются только pub-функции.
@@ -289,7 +289,7 @@ func TestHelperRegister(t *testing.T) {
 	s2, out2 := helperSession(t)
 	mustEval(t, s2, out2, "load(\""+tools+"\")\n")
 	mustEval(t, s2, out2, "Tools.console()\n")
-	if got := mustEval(t, s2, out2, "routes()\n"); got.Inspect() != "routes" {
+	if got := mustEval(t, s2, out2, "routes()\n"); got.Display() != "routes" {
 		t.Fatalf("routes() after console = %s", got.Inspect())
 	}
 }
@@ -322,14 +322,14 @@ func TestHelperRecompile(t *testing.T) {
 	if got := evalValue(t, s, out, "recompile()\n"); got != "()" {
 		t.Fatalf("recompile() без правок = %s", got)
 	}
-	if !strings.Contains(out.String(), "нет изменений") {
+	if !strings.Contains(out.String(), "no changes") {
 		t.Fatalf("recompile() без правок печатает:\n%s", out.String())
 	}
 
 	writeModule(t, path, "module M\n\nfn f() -> 2\n")
 	out.Reset()
 	evalValue(t, s, out, "recompile()\n")
-	if !strings.Contains(out.String(), "перекомпилировано: M") {
+	if !strings.Contains(out.String(), "recompiled: M") {
 		t.Fatalf("recompile() печатает:\n%s", out.String())
 	}
 	if got := evalValue(t, s, out, "M.f()\n"); got != "2" {

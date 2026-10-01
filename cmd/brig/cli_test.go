@@ -63,7 +63,7 @@ func TestCLINoArgsTTYvsPipe(t *testing.T) {
 		if code != exitOK || stdout != "ok\n" {
 			t.Fatalf("pipe: exit %d stdout %q stderr %s", code, stdout, stderr)
 		}
-		if strings.Contains(stdout+stderr, "brig[") || strings.Contains(stderr, "введите выражение") {
+		if strings.Contains(stdout+stderr, "brig 1") || strings.Contains(stderr, "Ctrl-D exit") {
 			t.Fatalf("pipe looked like a REPL: stdout %q stderr %q", stdout, stderr)
 		}
 	})
@@ -75,7 +75,7 @@ func TestCLINoArgsTTYvsPipe(t *testing.T) {
 		cmd.Stdin = slave
 		cmd.Stdout = slave
 		cmd.Stderr = slave
-		cmd.Env = append(os.Environ(), "XDG_CONFIG_HOME="+t.TempDir())
+		cmd.Env = append(os.Environ(), "XDG_CONFIG_HOME="+t.TempDir(), "XDG_STATE_HOME="+t.TempDir(), "LC_ALL=C.UTF-8")
 		if err := cmd.Start(); err != nil {
 			t.Fatal(err)
 		}
@@ -83,10 +83,10 @@ func TestCLINoArgsTTYvsPipe(t *testing.T) {
 			t.Fatal(err)
 		}
 		out := readREPLExit(t, master, cmd)
-		if !strings.Contains(out, "brig[1]>") {
+		if !strings.Contains(out, "1 ❯") {
 			t.Fatalf("tty output lacks prompt: %q", out)
 		}
-		if !strings.Contains(out, "введите выражение") {
+		if !strings.Contains(out, "Ctrl-D exit") || strings.Contains(out, "bye") {
 			t.Fatalf("tty output lacks banner: %q", out)
 		}
 	})
@@ -149,15 +149,15 @@ func TestCLISubcommandVsFile(t *testing.T) {
 	}
 
 	_, stderr, code := runCLI(t, bin, "", "run", "x.brig")
-	if code != exitParse || !strings.Contains(stderr, "неизвестная команда") || !strings.Contains(stderr, "подсказка: brig x.brig") {
+	if code != exitParse || !strings.Contains(stderr, "unknown command") || !strings.Contains(stderr, "hint: brig x.brig") {
 		t.Fatalf("run: exit %d stderr %q", code, stderr)
 	}
 	_, stderr, code = runCLI(t, bin, "", "repl")
-	if code != exitParse || !strings.Contains(stderr, `неизвестная команда "repl"`) {
+	if code != exitParse || !strings.Contains(stderr, `unknown command "repl"`) {
 		t.Fatalf("repl: exit %d stderr %q", code, stderr)
 	}
 	_, stderr, code = runCLI(t, bin, "", "nope")
-	if code != exitParse || !strings.Contains(stderr, "неизвестная команда") {
+	if code != exitParse || !strings.Contains(stderr, "unknown command") {
 		t.Fatalf("nope: exit %d stderr %q", code, stderr)
 	}
 
@@ -462,48 +462,87 @@ func openPTY(t *testing.T) (master, slave *os.File) {
 	return os.NewFile(uintptr(mfd), "ptmx"), os.NewFile(uintptr(sfd), "pts")
 }
 
-// readREPLExit ждёт приглашение, шлёт Ctrl-D и читает вывод до «bye».
-// Ctrl-D до raw mode съедается дисциплиной линии, поэтому байт уходит
-// только после того, как приглашение уже нарисовано.
+// readREPLExit ждёт приглашение, шлёт Ctrl-D и читает вывод до выхода
+// процесса. Ctrl-D до raw mode съедается дисциплиной линии, поэтому байт
+// уходит только после того, как приглашение уже нарисовано.
 func readREPLExit(t *testing.T, master *os.File, cmd *exec.Cmd) string {
 	t.Helper()
 	var buf bytes.Buffer
+	readPTYUntil(master, &buf, "❯", 5*time.Second)
+	if _, err := master.Write([]byte{0x04}); err != nil {
+		t.Fatal(err)
+	}
+	return waitPTYExit(t, master, cmd, &buf)
+}
+
+// readPTYUntil читает pty в buf, пока в нём нет want или не вышло время.
+func readPTYUntil(master *os.File, buf *bytes.Buffer, want string, d time.Duration) bool {
 	tmp := make([]byte, 256)
-	sent := false
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		_ = master.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
+	deadline := time.Now().Add(d)
+	for !strings.Contains(buf.String(), want) && time.Now().Before(deadline) {
+		_ = master.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
 		n, err := master.Read(tmp)
-		if n > 0 {
-			buf.Write(tmp[:n])
-		}
-		if !sent && strings.Contains(buf.String(), "brig[1]>") {
-			if _, werr := master.Write([]byte{0x04}); werr != nil {
-				t.Fatal(werr)
-			}
-			sent = true
-		}
-		if strings.Contains(buf.String(), "bye") {
-			wait := make(chan error, 1)
-			go func() { wait <- cmd.Wait() }()
-			select {
-			case werr := <-wait:
-				if werr != nil {
-					t.Fatalf("tty exit: %v\n%s", werr, buf.String())
-				}
-			case <-time.After(2 * time.Second):
-				_ = cmd.Process.Kill()
-				t.Fatal("tty did not exit")
-			}
-			return buf.String()
-		}
-		if err != nil && !isTimeout(err) && n == 0 {
-			break
+		buf.Write(tmp[:n])
+		if err != nil && !isTimeout(err) {
+			return false
 		}
 	}
-	_ = cmd.Process.Kill()
-	t.Fatalf("tty timeout, output %q", buf.String())
-	return ""
+	return strings.Contains(buf.String(), want)
+}
+
+// waitPTYExit дочитывает pty и ждёт выхода процесса.
+func waitPTYExit(t *testing.T, master *os.File, cmd *exec.Cmd, buf *bytes.Buffer) string {
+	t.Helper()
+	wait := make(chan error, 1)
+	go func() { wait <- cmd.Wait() }()
+	readPTYUntil(master, buf, "\x00never", 300*time.Millisecond)
+	select {
+	case err := <-wait:
+		if err != nil {
+			t.Fatalf("tty exit: %v\n%q", err, buf.String())
+		}
+	case <-time.After(5 * time.Second):
+		_ = cmd.Process.Kill()
+		t.Fatalf("tty did not exit, output %q", buf.String())
+	}
+	return buf.String()
+}
+
+// T-290 (E.1): stdin — терминал, stdout — pipe (`brig | tee out.txt`):
+// приглашения и баннер идут в stderr, в stdout — только значения.
+func TestPlainPromptToStderr(t *testing.T) {
+	bin := buildBrig(t)
+	master, slave := openPTY(t)
+	defer func() { _ = master.Close() }()
+	cmd := exec.Command(bin)
+	cmd.Stdin = slave
+	var stdout bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = slave
+	cmd.Env = append(os.Environ(), "XDG_CONFIG_HOME="+t.TempDir(), "XDG_STATE_HOME="+t.TempDir(), "LC_ALL=C.UTF-8")
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	if err := slave.Close(); err != nil {
+		t.Fatal(err)
+	}
+	var tty bytes.Buffer
+	if !readPTYUntil(master, &tty, "1 ❯", 5*time.Second) {
+		t.Fatalf("no prompt on the terminal: %q", tty.String())
+	}
+	if _, err := master.Write([]byte("1 + 1\n")); err != nil {
+		t.Fatal(err)
+	}
+	if !readPTYUntil(master, &tty, "2 ❯", 5*time.Second) {
+		t.Fatalf("no second prompt on the terminal: %q (stdout %q)", tty.String(), stdout.String())
+	}
+	if _, err := master.Write([]byte{0x04}); err != nil {
+		t.Fatal(err)
+	}
+	waitPTYExit(t, master, cmd, &tty)
+	if stdout.String() != "2\n" {
+		t.Fatalf("stdout %q, want only the value; tty %q", stdout.String(), tty.String())
+	}
 }
 
 func hasEnv(env []string, key string) bool {
@@ -699,24 +738,38 @@ func TestInitFile(t *testing.T) {
 	}
 }
 
-// T-209: история -i каталога — <корень>/.brig/history; нет прав — глобальная.
+// T-209, T-290 (E.5): история -i каталога —
+// $XDG_STATE_HOME/brig/projects/<hash>/history, каталог проекта не
+// создаётся; записи старого <корень>/.brig/history читаются первыми.
 func TestInteractiveHistory(t *testing.T) {
 	state := t.TempDir()
 	t.Setenv("XDG_STATE_HOME", state)
 
 	root := t.TempDir()
 	h := openHistory(root)
-	if h.Path != filepath.Join(root, ".brig", "history") {
+	if dir := filepath.Dir(filepath.Dir(h.Path)); dir != filepath.Join(state, "brig", "projects") {
 		t.Fatalf("project history %q", h.Path)
 	}
-
-	blocked := t.TempDir()
-	if err := os.WriteFile(filepath.Join(blocked, ".brig"), []byte("x"), 0o644); err != nil {
+	if err := h.Add("x = 1\n"); err != nil {
 		t.Fatal(err)
 	}
-	h = openHistory(blocked)
-	if h.Path != filepath.Join(state, "brig", "history") {
-		t.Fatalf("fallback history %q", h.Path)
+	if _, err := os.Stat(filepath.Join(root, ".brig")); err == nil {
+		t.Fatal("project .brig directory created")
+	}
+	if again := openHistory(root); again.Path != h.Path || again.Len() != 1 {
+		t.Fatalf("reopened history %q with %d entries", again.Path, again.Len())
+	}
+
+	legacy := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(legacy, ".brig"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(legacy, ".brig", "history"), []byte("old()\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	h = openHistory(legacy)
+	if h.Len() != 1 || h.At(0) != "old()" || strings.HasPrefix(h.Path, legacy) {
+		t.Fatalf("legacy history: path %q, %d entries", h.Path, h.Len())
 	}
 }
 

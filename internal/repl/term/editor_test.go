@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/it1ro/brig-lang/internal/repl"
 	"github.com/it1ro/brig-lang/internal/termio"
@@ -30,7 +31,7 @@ func drive(t *testing.T, e *Editor) []string {
 	e.reset()
 	var got []string
 	for {
-		k, err := termio.ReadKey(e.in)
+		k, err := e.readKey()
 		if errors.Is(err, io.EOF) {
 			return got
 		}
@@ -211,14 +212,23 @@ func TestEditorMultiline(t *testing.T) {
 	hist := func(e *Editor) {
 		e.History = &History{entries: []string{"x = 1", "fn g() ->\n    1", "y = 2"}}
 	}
+	// T-290 (D.8): после ↑ курсор — на первой строке записи, после ↓ — на
+	// последней; непустой черновик — префикс поиска.
 	checkKeys(t, []keysCase{
-		{"up on first line: history", "a" + up, "y = 2|"},
-		{"up twice: multiline entry", "a" + up + up, "fn g() ->\n    1|"},
-		{"up inside entry moves by lines", "a" + up + up + up, "fn g(|) ->\n    1"},
-		{"up past entry: older", "a" + up + up + up + up, "x = 1|"},
-		{"up at oldest stays", "a" + up + up + up + up + up, "x = 1|"},
-		{"down to newer", "a" + up + up + down, "y = 2|"},
-		{"down restores draft", "a" + up + up + down + down, "a|"},
+		{"up on empty: history", up, "y = 2|"},
+		{"up twice: first line of entry", up + up, "fn g() ->|\n    1"},
+		{"up past entry: older", up + up + up, "x = 1|"},
+		{"up at oldest stays", up + up + up + up, "x = 1|"},
+		{"down to newer: last line", up + up + up + down, "fn g() ->\n    1|"},
+		{"down past entry: newer", up + up + up + down + down, "y = 2|"},
+		{"down inside entry: last line", up + up + down, "fn g() ->\n    1|"},
+		{"down restores draft", up + up + down + down + down, "|"},
+		{"prefix up", "x" + up, "x = 1|"},
+		{"prefix no match stays", "a" + up, "a|"},
+		{"prefix down restores draft", "x" + up + down, "x|"},
+		{"prefix multiline", "fn" + up, "fn g() ->|\n    1"},
+		{"alt-p alt-n", "y" + "\x1bp" + "\x1bn", "y|"},
+		{"alt-p inside entry", up + up + "\x1bp", "x = 1|"},
 		{"down at draft stays", "a" + down, "a|"},
 	}, hist)
 
@@ -249,7 +259,8 @@ func TestBracketedPaste(t *testing.T) {
 	t.Run("enter after paste", func(t *testing.T) {
 		e := newTestEditor("\x1b[200~"+code+"\n\x1b[201~"+enter, io.Discard)
 		got := drive(t, e)
-		want := "fn f(x) ->\n    match x\n        0 -> 1\n        _ -> x\n\nf(2)\n\n"
+		// T-290 (D.11): хвостовой перевод строки вставки обрезан.
+		want := "fn f(x) ->\n    match x\n        0 -> 1\n        _ -> x\n\nf(2)\n"
 		if len(got) != 1 || got[0] != want {
 			t.Errorf("inputs = %q, want [%q]", got, want)
 		}
@@ -271,7 +282,7 @@ func TestHistorySearch(t *testing.T) {
 		{"backspace in query", ctrlR + "add" + ctrlR + backspace, "|add(1, 2)"},
 		{"ctrl-g cancels", "q" + ctrlR + "add" + ctrlG, "q|"},
 		{"key accepts and applies", ctrlR + "y =" + right, "y| = x + 1"},
-		{"accept then up: older", ctrlR + "y =" + up, "fn add(a, b) ->\n    a + b|"},
+		{"accept then up: older", ctrlR + "y =" + up, "fn add(a, b) ->|\n    a + b"},
 		{"ctrl-c clears", "q" + ctrlR + "add" + ctrlC, "|"},
 		{"no history: ignored", "", "|"},
 	}, hist)
@@ -364,7 +375,7 @@ func TestEditorHooks(t *testing.T) {
 		return " + 2"
 	}
 	drive(t, e)
-	if !strings.Contains(out.String(), "x = \x1b[33m1\x1b[0m\x1b[90m + 2\x1b[0m") {
+	if !strings.Contains(out.String(), "x = \x1b[33m1\x1b[0m\x1b[2m + 2\x1b[0m") {
 		t.Errorf("render = %q, want colored buffer and grey hint", out.String())
 	}
 	if got := scr.String(); got != "> x = 1█ + 2" {
@@ -414,11 +425,31 @@ func TestEditorComplete(t *testing.T) {
 	e = newTestEditor("fo\t\t\t", io.MultiWriter(&raw, scr))
 	e.Complete = food
 	drive(t, e)
-	if got := show(e); got != "foo|" {
+	// T-290 (D.10): повторный Tab перебирает кандидатов меню.
+	if got := show(e); got != "food|" {
 		t.Fatalf("third tab buffer = %q", got)
 	}
 	if !strings.Contains(scr.String(), "food/1") || !strings.Contains(scr.String(), "foot/1") {
 		t.Fatalf("third tab dropped the menu: %q", scr.String())
+	}
+	e = newTestEditor("fo\t\t\t\t", io.Discard)
+	e.Complete = food
+	drive(t, e)
+	if got := show(e); got != "foot|" {
+		t.Fatalf("fourth tab buffer = %q", got)
+	}
+	e = newTestEditor("fo\t\t\t\t\t\x1b[Z", io.Discard)
+	e.Complete = food
+	drive(t, e)
+	if got := show(e); got != "foot|" {
+		t.Fatalf("shift-tab buffer = %q", got)
+	}
+	var bell strings.Builder
+	e = newTestEditor("zz\t", &bell)
+	e.Complete = func(string, int) Completion { return Completion{} }
+	drive(t, e)
+	if !strings.Contains(bell.String(), "\a") {
+		t.Fatalf("no match: no bell in %q", bell.String())
 	}
 
 	scr = newScreen(80)
@@ -471,7 +502,7 @@ func TestEditorComplete(t *testing.T) {
 		return Completion{Candidates: items}
 	}
 	drive(t, e)
-	if !strings.Contains(scr.String(), "и ещё 6") {
+	if !strings.Contains(scr.String(), "and 6 more") {
 		t.Fatalf("menu cap: %q", scr.String())
 	}
 }
@@ -495,8 +526,8 @@ func TestEditorGhost(t *testing.T) {
 	e.Hint = func(string, int) string { return "GHOST" }
 	e.Complete = func(string, int) Completion { return Completion{} }
 	drive(t, e)
-	if got := show(e); got != "xGHOST|" {
-		t.Fatalf("right without color: buffer = %q", got)
+	if got := show(e); got != "x|" {
+		t.Fatalf("right without color inserted an invisible tail: buffer = %q", got)
 	}
 
 	e = newTestEditor("x\t", io.Discard)
@@ -571,5 +602,200 @@ func TestReadKeyEOF(t *testing.T) {
 		if _, err := termio.ReadKey(r); !errors.Is(err, io.EOF) {
 			t.Errorf("readKey(%q): err = %v, want EOF", in, err)
 		}
+	}
+}
+
+// chunkReader отдаёт вход порциями: одна порция на Read, как терминал,
+// в котором байты приходят с паузами.
+type chunkReader struct{ chunks []string }
+
+func (r *chunkReader) Read(p []byte) (int, error) {
+	if len(r.chunks) == 0 {
+		return 0, io.EOF
+	}
+	n := copy(p, r.chunks[0])
+	r.chunks[0] = r.chunks[0][n:]
+	if r.chunks[0] == "" {
+		r.chunks = r.chunks[1:]
+	}
+	return n, nil
+}
+
+// newChunked — редактор на порциях входа: хвост ESC ждётся только в
+// текущей порции, следующая приходит позже EscDelay.
+func newChunked(chunks ...string) *Editor {
+	e := NewEditor(&chunkReader{chunks: chunks}, io.Discard)
+	e.Wait = func(d time.Duration) bool {
+		if d == termio.EscDelay {
+			return e.in.Buffered() > 0
+		}
+		return true
+	}
+	return e
+}
+
+// TestEditorEscTimeout — T-290 (D.1): одиночный Esc без хвоста за
+// EscDelay — KeyEsc, следующая клавиша не теряется; ESC с хвостом в той
+// же порции — Alt-клавиша; в Ctrl-R Esc принимает найденное.
+func TestEditorEscTimeout(t *testing.T) {
+	e := newChunked("abc\x1b", "xy")
+	drive(t, e)
+	if got := show(e); got != "abcxy|" {
+		t.Errorf("esc then x: buffer = %q, want abcxy|", got)
+	}
+	e = newChunked("foo bar", "\x1bb")
+	drive(t, e)
+	if got := show(e); got != "foo |bar" {
+		t.Errorf("alt-b in one chunk: buffer = %q", got)
+	}
+	e = newChunked(ctrlR+"add", "\x1b", "!")
+	e.History = &History{entries: []string{"add(1, 2)", "x"}}
+	drive(t, e)
+	if got := show(e); got != "!|add(1, 2)" {
+		t.Errorf("esc in ctrl-r: buffer = %q, want the match kept", got)
+	}
+}
+
+// TestEditorGhostNoColor — T-290 (D.2, D.3): без цвета хвост истории не
+// предлагается и → не вставляет невидимый текст; с цветом хвост
+// многострочной записи показан первой строкой с `…` и принимается по
+// строке.
+func TestEditorGhostNoColor(t *testing.T) {
+	hist := &History{entries: []string{"List.map([1,2], f)", "fn g() ->\n    1"}}
+	hint := func(src string, pos int) string { return hist.Suggest(string([]rune(src)[:pos])) }
+	e := newTestEditor("Li"+right, io.Discard)
+	e.Color = false
+	e.History = hist
+	e.Hint = hint
+	drive(t, e)
+	if got := show(e); got != "Li|" {
+		t.Errorf("no color: buffer = %q, want Li|", got)
+	}
+
+	e = newTestEditor("fn"+right, io.Discard)
+	e.Color = true
+	e.History = hist
+	e.Hint = hint
+	drive(t, e)
+	if got := show(e); got != "fn g() ->|" {
+		t.Errorf("first right: buffer = %q, want one line", got)
+	}
+
+	scr := newScreen(80)
+	e = newTestEditor("fn", scr)
+	e.Color = true
+	e.History = hist
+	e.Hint = hint
+	drive(t, e)
+	if got := scr.String(); !strings.Contains(got, "fn█ g() -> …") {
+		t.Errorf("multiline hint without marker: %q", got)
+	}
+}
+
+// TestEditorTabIndent — T-290 (D.6): Tab в отступе вставляет уровень,
+// Shift-Tab снимает; после текста Tab — дополнение.
+func TestEditorTabIndent(t *testing.T) {
+	called := false
+	setup := func(e *Editor) {
+		e.Complete = func(string, int) Completion {
+			called = true
+			return Completion{}
+		}
+	}
+	checkKeys(t, []keysCase{
+		{"tab at block line start", "fn f(x) ->" + enter + ctrlA + "\t", "fn f(x) ->\n    |    "},
+		{"tab rounds to level", "fn f(x) ->" + enter + "  " + "\t", "fn f(x) ->\n        |"},
+		{"shift-tab dedents", "fn f(x) ->" + enter + "\x1b[Z", "fn f(x) ->\n|"},
+		{"shift-tab partial", "fn f(x) ->" + enter + "  \x1b[Z", "fn f(x) ->\n    |"},
+		{"shift-tab from text", "fn f(x) ->" + enter + "x\x1b[Z", "fn f(x) ->\nx|"},
+	}, setup)
+	if called {
+		t.Error("tab in indentation opened completion")
+	}
+}
+
+// TestEditorYankUndo — T-290 (D.5, D.9): Ctrl-K/U/W кладут текст в kill
+// ring, Ctrl-Y вставляет, Alt-Y листает, Ctrl-_ отменяет правку; набор
+// подряд — один шаг undo.
+func TestEditorYankUndo(t *testing.T) {
+	const (
+		ctrlY = "\x19"
+		altY  = "\x1by"
+		undo  = "\x1f"
+		altD  = "\x1bd"
+		ctrlT = "\x14"
+	)
+	checkKeys(t, []keysCase{
+		{"kill and yank", "hello world" + ctrlW + ctrlA + ctrlY, "world|hello "},
+		{"yank pop", "aa bb" + ctrlW + "cc" + ctrlW + ctrlY + altY, "aa bb|"},
+		{"kills append", "one two" + ctrlW + ctrlW + ctrlY, "one two|"},
+		{"kill end and yank twice", "abc" + ctrlA + ctrlK + ctrlY + ctrlY, "abcabc|"},
+		{"undo typing", "abc def" + undo, "|"},
+		{"undo kill", "abc def" + ctrlW + undo, "abc def|"},
+		{"undo twice", "abc " + ctrlW + "x" + undo + undo, "abc |"},
+		{"alt-d", "foo bar" + ctrlA + altD, "| bar"},
+		{"ctrl-delete", "foo bar" + ctrlA + "\x1b[3;5~", "| bar"},
+		{"alt-backspace alnum", "f(foo_bar" + "\x1b\x7f", "f(|"},
+		{"ctrl-w by space", "f(foo_bar" + ctrlW, "|"},
+		{"ctrl-t", "ab" + left + ctrlT, "ba|"},
+		{"ctrl-t at end", "ab" + ctrlT, "ba|"},
+		{"alt-<", "fn f() ->" + enter + "1" + "\x1b<", "|fn f() ->\n    1"},
+		{"alt->", "fn f() ->" + enter + "1" + "\x1b<" + "\x1b>", "fn f() ->\n    1|"},
+	}, nil)
+	checkKeys(t, []keysCase{
+		{"alt-dot", "print(\x1b.", "print(xs|"},
+		{"alt-dot twice", "\x1b.\x1b.", "b|"},
+	}, func(e *Editor) { e.History = &History{entries: []string{"a b", "f(1, xs)"}} })
+}
+
+// TestEditorAltEnter — T-290 (D.7): Alt-Enter отправляет многострочный
+// ввод целиком из середины, не разрезая строку.
+func TestEditorAltEnter(t *testing.T) {
+	e := newTestEditor("fn f(x) ->"+enter+"x + 1"+up+left+left+"\x1b\r", io.Discard)
+	got := drive(t, e)
+	if len(got) != 1 || got[0] != "fn f(x) ->\n    x + 1\n" {
+		t.Errorf("inputs = %q", got)
+	}
+	e = newTestEditor("\x1b\r", io.Discard)
+	if got := drive(t, e); len(got) != 0 {
+		t.Errorf("alt-enter on empty input submitted %q", got)
+	}
+}
+
+// TestEditorResize — T-290 (D.4): после сужения окна терминал переносит
+// строки, редактор рисует ввод заново с его первой строки: приглашение
+// не дублируется, старые строки не остаются.
+func TestEditorResize(t *testing.T) {
+	scr := newScreen(40)
+	width := 40
+	changed := false
+	e := NewEditor(&chunkReader{chunks: []string{"x = [1, 2, 3, 4, 5, 6, 7, 8]", "9"}}, scr)
+	e.prompt, e.cont = "brig 1 ❯ ", "       · "
+	e.Width = func() int { return width }
+	e.Wait = func(time.Duration) bool {
+		if e.in.Buffered() > 0 || changed || len(e.buf.r) == 0 {
+			return true
+		}
+		changed = true
+		width = 16
+		scr.resize(16)
+		return false
+	}
+	pending := true
+	e.Resized = func() bool {
+		r := changed && pending
+		if r {
+			pending = false
+		}
+		return r
+	}
+	drive(t, e)
+	got := scr.String()
+	if strings.Count(got, "brig 1") != 1 {
+		t.Errorf("prompt duplicated after resize:\n%s", got)
+	}
+	want := "brig 1 ❯ x = [1,\n 2, 3, 4, 5, 6,\n7, 8]9█"
+	if got != want {
+		t.Errorf("screen after resize:\n%s\nwant:\n%s", got, want)
 	}
 }

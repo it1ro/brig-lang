@@ -55,6 +55,7 @@ type Session struct {
 	termIn   *os.File // терминал observe; nil — os.Stdin
 	termOut  *os.File // nil — os.Stdout
 	pal      highlight.Palette
+	paths    ConsolePaths    // файлы консоли для h()
 	diagFile string          // имя в диагностике sema; у REPL — `<repl>`
 	seq      int             // счётчик инструкций: префикс глобальных имён
 	history  []runtime.Value // значения пронумерованных вводов, history[n-1] — ввод n
@@ -183,6 +184,8 @@ func (s *Session) evalLineOpt(src string, prog *ast.Program, here bool) (Result,
 	if err := c.DeclareProgram(s.entry); err != nil {
 		return Result{}, err
 	}
+	// Лямбда печатается с номером ввода, который он получит (§11.4).
+	c.SetWhere(fmt.Sprintf("<repl>:%d", len(s.history)+1))
 	fn, newName, err := c.CompileReplLine(s.seq, s.order, stmt)
 	if err != nil {
 		return Result{}, err
@@ -272,6 +275,18 @@ func (s *Session) Bindings() []Binding {
 // Next — номер, который получит следующий ввод со значением (приглашение
 // `brig[n]>`, §11.4).
 func (s *Session) Next() int { return len(s.history) + 1 }
+
+// UserModuleCount — число загруженных модулей пользователя без
+// зависимостей из deps/; псевдоним alias не считается отдельным модулем.
+func (s *Session) UserModuleCount() int {
+	paths := map[string]bool{}
+	for name, m := range s.mods {
+		if !s.deps[name] {
+			paths[m.path] = true
+		}
+	}
+	return len(paths)
+}
 
 // ProjectRoot — каталог с project.brig, если сессия загрузила проект.
 func (s *Session) ProjectRoot() string { return s.projectRoot }

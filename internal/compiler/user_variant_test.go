@@ -29,7 +29,7 @@ fn main() ->
     w = Wrap
     assert(w(3) == Wrap(3))
     assert(Wrap == Wrap)
-    assert(to_str(Wrap) == "#<function Wrap/1>")
+    assert(to_str(Wrap) == "#<fn Wrap/1>")
     assert(4 |> Wrap == Wrap(4))
     f = (x) -> Wrap(x)
     assert(f(5) == Wrap(5))
