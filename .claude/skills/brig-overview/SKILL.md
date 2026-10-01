@@ -40,7 +40,7 @@ compiler → vm`, без циклов зависимостей (`parser` не в
 
 1. `docs/01-language-design.md` (v0.4.7) — единственный нормативный
    документ языка, включая §16 (Must/Should/Nice/Не надо). Part I —
-   дизайн, Part II — формальная спецификация, Part III — changelog.
+   дизайн, Part II — формальная спецификация, история изменений — `docs/spec-history.md`.
 2. `brig.ebnf` — исполнительная грамматика, должна совпадать с §A.
 3. `docs/02-register-based-virtual-machine.md` —
    дизайн VM (опкоды, кадры, TCO, trap/ensure, соглашения K-1…K-8).
