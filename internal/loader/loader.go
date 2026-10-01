@@ -64,7 +64,7 @@ func (e *Error) Unwrap() error { return e.Err }
 // загружаются. Список совпадает с isNativeModule в internal/compiler.
 var builtinModules = map[string]bool{
 	"Vec": true, "Map": true, "Record": true, "Str": true, "Bytes": true,
-	"Json": true, "Test": true, "Sys": true, "Actor": true, "Prelude": true,
+	"Json": true, "Enum": true, "Test": true, "Sys": true, "Actor": true, "Prelude": true,
 	"Global": true, "Timer": true, "Time": true, "Telemetry": true,
 	"Port": true, "Signal": true, "File": true, "HttpServer": true,
 }
