@@ -1,6 +1,6 @@
 ## Функции над `Result` (§10.1): `Ok(v)` или `Error(e)`. Субъект — первый
 ## аргумент (T-120): `File.read(path) |> Result.map(parse)`. Не `Result`
-## на месте субъекта — `(:type_error, (:<имя>, r))`.
+## на месте субъекта — `(:type_error, ((:result, :<имя>), r))`.
 module Result
 
 ## `Ok(f(v))` для `Ok(v)`, `Error(e)` — как есть.
@@ -13,7 +13,7 @@ module Result
 ## ```
 pub fn map(Ok(v), f) -> Ok(f(v))
 pub fn map(Error(e), _) -> Error(e)
-pub fn map(r, _) -> raise((:type_error, (:map, r)))
+pub fn map(r, _) -> raise((:type_error, ((:result, :map), r)))
 
 ## `f(v)` для `Ok(v)` — `f` сама возвращает `Result`; `Error(e)` — как
 ## есть.
@@ -28,7 +28,7 @@ pub fn map(r, _) -> raise((:type_error, (:map, r)))
 ## ```
 pub fn and_then(Ok(v), f) -> f(v)
 pub fn and_then(Error(e), _) -> Error(e)
-pub fn and_then(r, _) -> raise((:type_error, (:and_then, r)))
+pub fn and_then(r, _) -> raise((:type_error, ((:result, :and_then), r)))
 
 ## Значение из `Ok(v)`. `Error(e)` — `raise((:unwrap, Error(e)))`.
 ##
@@ -40,7 +40,7 @@ pub fn and_then(r, _) -> raise((:type_error, (:and_then, r)))
 ## ```
 pub fn unwrap(Ok(v)) -> v
 pub fn unwrap(Error(e)) -> raise((:unwrap, Error(e)))
-pub fn unwrap(r) -> raise((:type_error, (:unwrap, r)))
+pub fn unwrap(r) -> raise((:type_error, ((:result, :unwrap), r)))
 
 ## Значение из `Ok(v)`, для `Error(_)` — `default`.
 ##
@@ -52,12 +52,12 @@ pub fn unwrap(r) -> raise((:type_error, (:unwrap, r)))
 ## ```
 pub fn unwrap_or(Ok(v), _) -> v
 pub fn unwrap_or(Error(_), default) -> default
-pub fn unwrap_or(r, _) -> raise((:type_error, (:unwrap_or, r)))
+pub fn unwrap_or(r, _) -> raise((:type_error, ((:result, :unwrap_or), r)))
 
 ## Список `Result` → `Result` списка: `Ok` со всеми значениями по порядку
 ## или первый `Error`. Пустой список — `Ok([])`. Не `List` —
-## `(:type_error, (:all, rs))`, элемент не `Result` —
-## `(:type_error, (:all, r))`.
+## `(:type_error, ((:result, :all), rs))`, элемент не `Result` —
+## `(:type_error, ((:result, :all), r))`.
 ##
 ## ```brig repl
 ## > Result.all([Ok(1), Ok(2)])
@@ -70,14 +70,14 @@ pub fn unwrap_or(r, _) -> raise((:type_error, (:unwrap_or, r)))
 pub fn all(rs) ->
     match rs
         [..] -> collect(rs)
-        _ -> raise((:type_error, (:all, rs)))
+        _ -> raise((:type_error, ((:result, :all), rs)))
 
 # collect — первый не-Ok решает: Error — результат, прочее — :type_error.
 fn collect(rs) ->
     match Enum.find(rs, r -> not ok?(r))
         None -> Ok(Enum.map(rs, unwrap))
         Some(Error(e)) -> Error(e)
-        Some(r) -> raise((:type_error, (:all, r)))
+        Some(r) -> raise((:type_error, ((:result, :all), r)))
 
 fn ok?(Ok(_)) -> true
 fn ok?(_) -> false

@@ -239,9 +239,9 @@ fn test_supervisor_which_children() ->
 
 fn test_supervisor_which_children_type() ->
     r = trap(Supervisor.which_children(:nope))
-    Test.assert_eq(r, Error((:type_error, (:which_children, :nope))))
+    Test.assert_eq(r, Error((:type_error, ((:supervisor, :which_children), :nope))))
     r2 = trap(Supervisor.which_children(1))
-    Test.assert_eq(r2, Error((:type_error, (:which_children, 1))))
+    Test.assert_eq(r2, Error((:type_error, ((:supervisor, :which_children), 1))))
 
 # Мёртвый pid — send принимается, ответа нет: таймаут which_children.
 fn test_supervisor_which_children_timeout() ->
@@ -255,9 +255,9 @@ fn test_supervisor_which_children_timeout() ->
 fn test_supervisor_bad_spec() ->
     me = self()
     r = trap(sup_of([{ ..child(me, :a, :permanent), restart: :temporary }], 3, 5000))
-    Test.assert_eq(r, Error((:type_error, (:start, :temporary))))
+    Test.assert_eq(r, Error((:type_error, ((:supervisor, :start), :temporary))))
     r2 = trap(Supervisor.start({ strategy: :one_for_one, max_restarts: 3, within: 5000, children: :none }))
-    Test.assert_eq(r2, Error((:type_error, (:start, :none))))
+    Test.assert_eq(r2, Error((:type_error, ((:supervisor, :start), :none))))
     Test.assert_eq(mailbox_size(), 0)
 
 # Убитый супервизор не оставляет сирот (X-3, T-252): дети связаны с ним

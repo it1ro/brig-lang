@@ -1,6 +1,6 @@
 ## Функции над `Option` (§10.1): `Some(x)` или `None`. Субъект — первый
 ## аргумент (T-120): `whereis(:db) |> Option.unwrap_or(fallback)`. Не
-## `Option` на месте субъекта — `(:type_error, (:<имя>, o))`.
+## `Option` на месте субъекта — `(:type_error, ((:option, :<имя>), o))`.
 module Option
 
 ## `Some(f(x))` для `Some(x)`, `None` — как есть.
@@ -13,7 +13,7 @@ module Option
 ## ```
 pub fn map(Some(x), f) -> Some(f(x))
 pub fn map(None, _) -> None
-pub fn map(o, _) -> raise((:type_error, (:map, o)))
+pub fn map(o, _) -> raise((:type_error, ((:option, :map), o)))
 
 ## `f(x)` для `Some(x)` — `f` сама возвращает `Option`; `None` — как есть.
 ##
@@ -27,7 +27,7 @@ pub fn map(o, _) -> raise((:type_error, (:map, o)))
 ## ```
 pub fn and_then(Some(x), f) -> f(x)
 pub fn and_then(None, _) -> None
-pub fn and_then(o, _) -> raise((:type_error, (:and_then, o)))
+pub fn and_then(o, _) -> raise((:type_error, ((:option, :and_then), o)))
 
 ## Значение из `Some(x)`. `None` — `raise((:unwrap, None))`.
 ##
@@ -39,7 +39,7 @@ pub fn and_then(o, _) -> raise((:type_error, (:and_then, o)))
 ## ```
 pub fn unwrap(Some(x)) -> x
 pub fn unwrap(None) -> raise((:unwrap, None))
-pub fn unwrap(o) -> raise((:type_error, (:unwrap, o)))
+pub fn unwrap(o) -> raise((:type_error, ((:option, :unwrap), o)))
 
 ## Значение из `Some(x)`, для `None` — `default`.
 ##
@@ -51,4 +51,4 @@ pub fn unwrap(o) -> raise((:type_error, (:unwrap, o)))
 ## ```
 pub fn unwrap_or(Some(x), _) -> x
 pub fn unwrap_or(None, default) -> default
-pub fn unwrap_or(o, _) -> raise((:type_error, (:unwrap_or, o)))
+pub fn unwrap_or(o, _) -> raise((:type_error, ((:option, :unwrap_or), o)))
