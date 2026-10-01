@@ -16,7 +16,7 @@ info(dead)
 -- output --
 pid = #<pid 1>
 Ok(())
-{ reductions: _, alloc_bytes: _, mailbox: 0, turn_reductions: _, turn_alloc_bytes: _, name: Some(:worker), status: :recv, watchers: [], watching: [], initial_fn: "__repl__2$lambda$0$" }
+{ reductions: _, alloc_bytes: _, mailbox: 0, dropped: 0, turn_reductions: _, turn_alloc_bytes: _, name: Some(:worker), status: :recv, watchers: [], watching: [], initial_fn: "__repl__2$lambda$0$" }
 error: raise: (:type_error, (:info, 1))
   at __repl__ (<repl>:1:1)
 error: raise: (:type_error, (:info, :nope))
