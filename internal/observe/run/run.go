@@ -172,7 +172,7 @@ func Run(ctx context.Context, d Deps) error {
 		if m.Quit {
 			return nil
 		}
-		ready, err := pollReady(fd, pollTimeout(next))
+		ready, err := termio.PollReady(fd, pollTimeout(next))
 		if err != nil {
 			return err
 		}
@@ -318,7 +318,7 @@ func readCommand(fd int, br *bufio.Reader) (termio.Key, error) {
 			if wait < 0 {
 				return termio.Key{Code: termio.KeyEsc}, nil
 			}
-			ok, err := pollReady(fd, wait)
+			ok, err := termio.PollReady(fd, wait)
 			if err != nil {
 				return termio.Key{}, err
 			}
