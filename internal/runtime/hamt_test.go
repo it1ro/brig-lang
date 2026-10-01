@@ -189,7 +189,7 @@ func TestMapIntFloatSameKey(t *testing.T) {
 	if v, _ := m.MapGet(Int(1)); v.Str != "b" {
 		t.Errorf("got %s", v.Inspect())
 	}
-	m = m.MapPut(Float(-0.0), Int(0)).MapPut(Int(0), Int(7))
+	m = m.MapPut(Float(math.Copysign(0, -1)), Int(0)).MapPut(Int(0), Int(7))
 	if m.Len() != 2 {
 		t.Errorf("Len = %d: -0.0 and 0 are one key", m.Len())
 	}

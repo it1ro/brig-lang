@@ -451,7 +451,8 @@ func hashFloat(f float64) uint64 {
 		if f >= -(1<<63) && f < 1<<63 {
 			return hashInt64(int64(f))
 		}
-		i, _ := new(big.Float).SetFloat64(f).Int(nil)
+		// Целое вне int64: точное десятичное представление.
+		i, _ := new(big.Int).SetString(new(big.Float).SetFloat64(f).Text('f', 0), 10)
 		return hashBigInt(i)
 	}
 	return hashCombine(hashTag(KindFloat), math.Float64bits(f))
