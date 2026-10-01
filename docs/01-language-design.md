@@ -104,8 +104,8 @@ WILDCARD    ::= "_"
 ### 1.3 Ключевые слова
 
 ```text
-fn match recv with else if then after when alias import module type ensure trap
-and or not div rem to true false as pub quote
+fn match cond recv with else if then after when alias import module type ensure
+trap and or not div rem to true false as pub quote
 ```
 
 `raise`, `assert` — функции прелюдии, не keywords.
@@ -999,7 +999,41 @@ match expr
     pattern2 -> result2
 ```
 
-`match` всегда блочный. Guards в `match` не разрешены.
+`match` всегда блочный. Guards в `match` не разрешены: условие по значению — `cond` (§8.4) в теле ветки или `fn` с guard (§6.1).
+
+### 8.4 `cond`
+
+Многоветочное условие — выражение `cond`. `else if` в языке нет.
+
+```brig
+fn sign(n) ->
+    cond
+        n < 0 -> :neg
+        n == 0 -> :zero
+        true -> :pos
+
+fn label(n) ->
+    s = cond
+        n > 100 ->
+            print("big")
+            "big"
+        true -> "small"
+    s
+```
+
+- Ветка — `условие -> тело`; тело однострочное или блоком, как у ветки `match`. Условие — выражение без лямбды на верхнем уровне (`or_expr`, как у guard).
+- Условия проверяются сверху вниз; значение `cond` — тело первой ветки с истинным условием.
+- Каждое условие — строгий `Bool`, как у `if` (§8.1): не-`Bool` → `:type_error`.
+- Ни одно условие не истинно → авто-raise `(:cond_clause, ())` (§10.4).
+- `cond` всегда блочный. Последняя ветка не `true ->` — info `brig check`.
+- `cond` — сахар: парсер разворачивает его во вложенные `if`, форматтер печатает как `cond`.
+
+```text
+cond
+    a -> x
+    b -> y
+# ≡ if a then x else (if b then y else raise((:cond_clause, ())))
+```
 
 ---
 
@@ -1176,6 +1210,7 @@ fn process(a, b) -> (a, b)
 - `(:function_clause, args)`
 - `(:case_clause, val)`
 - `(:recv_clause, msg)`
+- `(:cond_clause, ())` — ни одно условие `cond` не истинно (§8.4).
 - `(:assertion_failed, ())`
 - `(:type_error, (op, val))`
 - `(:division_by_zero, ())`
@@ -2350,8 +2385,8 @@ type Color { Red, Green, Blue }
 #### Ключевые слова
 
 ```text
-fn match recv with else if then after when alias import module type ensure trap
-and or not div rem to true false as pub quote
+fn match cond recv with else if then after when alias import module type ensure
+trap and or not div rem to true false as pub quote
 ```
 
 Ключевые слова не могут быть `LOWER_IDENT`, кроме случаев, когда они являются частью `ATOM`. `quote` — зарезервированное слово без продукций (§1.3).
@@ -3584,6 +3619,7 @@ info: <file>:<line>:<col>: <message>
 
 41. **DD T-251 (#404, вариант A) — политика ящика**: HWM по умолчанию — 10 000; поле лимитов `spawn` `mailbox_hwm` задаёт порог на актора (§12.10); переполнение — `Error(:busy)` у отправителя, счётчик `dropped` в `Actor.info` и событие `[:vm, :mailbox, :hwm]` (§0.8, §12.2, §12.3, §12.14). Info-диагностики на отброшенный результат `send` не вводится.
 42. **DD T-252 (#405, вариант A) — `link`/`spawn_linked` — связь владелец → ребёнок**: смерть владельца делает каждому ребёнку `exit(child, (:linked_exit, reason))` — не `raise`, `trap` не ловит, `ensure` выполняются; наблюдение за ребёнком — только `watch`/`spawn_watched`, `link` больше не синоним `watch` и не виден в `watchers`/`watching`; тег ошибки — `(:type_error, (:link, pid))` (§11.5, §12.2, §12.7, §12.13, §13.1). `trap_exit` и двунаправленная эскалация не вводятся; убитый супервизор сирот не оставляет.
+43. **DD T-253 (#406) — `cond` вместо `else if`**: новое ключевое слово `cond` (§1.3, §B.1); выражение `cond` с ветками `условие -> тело` (§8.4); ни одно условие не истинно — авто-raise `(:cond_clause, ())` (§10.4); последняя ветка не `true ->` — info `brig check`. Парсер разворачивает `cond` во вложенные `if`; компилятор не менялся. `else if` не вводится; guard'ов в `match` нет (§8.3).
 
 ---
 
