@@ -88,37 +88,101 @@ func (h *hamt) get(hash uint64, key Value) *hamtLeaf {
 
 // put возвращает таблицу с парой key => val; существующий ключ заменяется
 // (его прежний Key сохраняется ключом нового значения val, не ключа).
+//
+// Путь от корня до слота ключа проходится итеративно, копии узлов пути
+// собираются снизу вверх в одном буфере узлов и одном буфере слотов.
+// Аллокации «узел + срез слотов» на каждый уровень пути были большинством
+// аллокаций put и главным лишним ростом стоимости вставки с глубиной
+// дерева (X-1, T-289): на 8k путей из четырёх уровней это 8 аллокаций
+// вместо двух.
 func (h *hamt) put(hash uint64, key, val Value) *hamt {
 	if h == nil || h.root == nil {
 		root := &hamtNode{}
 		root = root.insert(0, &hamtLeaf{hash: hash, key: key, val: val})
 		return &hamt{root: root, n: 1}
 	}
-	root, added := h.root.put(0, hash, key, val)
-	n := h.n
+	// Спуск. Путь короткий: 64-битный хеш даёт ≤ 64/hamtBits уровней,
+	// +2 — слот терминального узла и запас. Узлы пути — на стеке.
+	const maxDepth = 64/hamtBits + 2
+	var (
+		path [maxDepth]*hamtNode // узлы пути: корень … узел слота ключа
+		idxs [maxDepth]int       // индекс слота в узле пути
+	)
+	d := -1
+	n := h.root
+	shift := uint(0)
+	var bit uint32              // бит слота в терминальном узле
+	var slot hamtSlot           // новый слот терминального узла
+	grow, added := false, false // grow — слот добавляется, не заменяется
+	for {
+		bit = uint32(1) << ((hash >> shift) & hamtMask)
+		idx := bits.OnesCount32(n.bitmap & (bit - 1))
+		d++
+		path[d], idxs[d] = n, idx
+		if n.bitmap&bit == 0 {
+			slot, grow, added = hamtSlot{leaf: &hamtLeaf{hash: hash, key: key, val: val}}, true, true
+			break
+		}
+		s := n.slots[idx]
+		if s.child == nil {
+			if s.leaf.hash == hash {
+				l, a := s.leaf.put(key, val)
+				slot, added = hamtSlot{leaf: l}, a
+			} else {
+				slot, grow, added = hamtSlot{child: joinLeaves(shift+hamtBits, s.leaf,
+					&hamtLeaf{hash: hash, key: key, val: val})}, false, true
+			}
+			break
+		}
+		n = s.child
+		shift += hamtBits
+	}
+	// Копия пути снизу вверх: срезы слотов всех новых узлов — один буфер
+	// (срезы не перекрываются и не растут append'ом), узлы — другой.
+	total := 0
+	for i := 0; i <= d; i++ {
+		total += len(path[i].slots)
+	}
+	if grow {
+		total++
+	}
+	newNodes := make([]hamtNode, d+1)
+	newSlots := make([]hamtSlot, total)
+	// Терминальный узел: слот вставляется или заменяется.
+	tn, ti, tl := path[d], idxs[d], len(path[d].slots)
+	ts := newSlots
+	if grow {
+		tl++
+		copy(ts[:ti], tn.slots[:ti])
+		ts[ti] = slot
+		copy(ts[ti+1:tl], tn.slots[ti:])
+	} else {
+		copy(ts[:tl], tn.slots)
+		ts[ti] = slot
+	}
+	bm := tn.bitmap
+	if grow {
+		bm |= bit
+	}
+	newNodes[d] = hamtNode{bitmap: bm, slots: ts[:tl:tl]}
+	// Предки: слот указывает на копию дочернего узла.
+	off := tl
+	child := &newNodes[d]
+	for i := d - 1; i >= 0; i-- {
+		ni := path[i]
+		l := len(ni.slots)
+		ns := newSlots[off : off+l : off+l]
+		copy(ns, ni.slots)
+		ns[idxs[i]] = hamtSlot{child: child}
+		newNodes[i] = hamtNode{bitmap: ni.bitmap, slots: ns}
+		child = &newNodes[i]
+		off += l
+	}
+	nn := h.n
 	if added {
-		n++
+		nn++
 	}
-	return &hamt{root: root, n: n}
-}
-
-func (n *hamtNode) put(shift uint, hash uint64, key, val Value) (*hamtNode, bool) {
-	bit := uint32(1) << ((hash >> shift) & hamtMask)
-	idx := bits.OnesCount32(n.bitmap & (bit - 1))
-	if n.bitmap&bit == 0 {
-		return n.withSlot(idx, bit, hamtSlot{leaf: &hamtLeaf{hash: hash, key: key, val: val}}), true
-	}
-	s := n.slots[idx]
-	switch {
-	case s.child != nil:
-		c, added := s.child.put(shift+hamtBits, hash, key, val)
-		return n.replaceSlot(idx, hamtSlot{child: c}), added
-	case s.leaf.hash == hash:
-		l, added := s.leaf.put(key, val)
-		return n.replaceSlot(idx, hamtSlot{leaf: l}), added
-	}
-	nl := &hamtLeaf{hash: hash, key: key, val: val}
-	return n.replaceSlot(idx, hamtSlot{child: joinLeaves(shift+hamtBits, s.leaf, nl)}), true
+	return &hamt{root: child, n: nn}
 }
 
 // insert кладёт лист в узел, где под его хеш нет слота.
