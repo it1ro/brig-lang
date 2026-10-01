@@ -1519,7 +1519,7 @@ brig[2]> v(1) + 1
 | `len` | 1 | `(v)` | `Int`: элементы `List`/`Vector`/`Set`/`Tuple`, пары `Map`, кодпоинты `Str`, байты `Bytes` | `(:type_error, (:len, v))` |
 | `list` | * | `(..xs)` | `List`; `list(a to b)` — элементы диапазона | `(:range_error, (a, b))` — `a > b` |
 | `set` | * | `(..xs)` | `Set` без повторов | — |
-| `to_str` | 1 | `(v)` | `Str` — печатная форма `v` | — |
+| `to_str` | 1 | `(v)` | `Str` — печатная форма `v`, разбирается обратно в значение того же вида (`to_str(1.0) == "1.0"`) | — |
 | `to_int` | 1 | `(v)`, `v`: `Int`, `Float` (отбрасывает дробную часть), `Str` | `Int` | `(:type_error, (:to_int, v))` — `v` не `Int`/`Float`/`Str`; `(:parse_error, (:to_int, v))` — `v`: `Str`, не разбирается как число |
 | `to_float` | 1 | `(v)`, `v`: `Float`, `Int`, `Str` | `Float` | `(:type_error, (:to_float, v))` — `v` не `Int`/`Float`/`Str`; `(:parse_error, (:to_float, v))` — `v`: `Str`, не разбирается как число |
 | `send` | 2 | `(pid, msg)` | `Result<(), Atom>` (§12.3) | `(:type_error, (:send, pid))` |
