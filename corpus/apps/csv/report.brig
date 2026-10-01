@@ -63,7 +63,7 @@ fn to_atom(_) -> :field
 
 ## Итоги по регионам.
 pub fn totals(sales) ->
-    groups = Enum.fold(sales, %{}, (acc, s) -> Map.put(acc, s.region, [s, ..Map.get_or(acc, s.region, [])]))
+    groups = Enum.fold(sales, %{}, (acc, s) -> Map.update(acc, s.region, [], xs -> [s, ..xs]))
     Enum.map(Map.keys(groups), r -> total(r, Map.get_or(groups, r, [])))
 
 fn total(region, sales) ->

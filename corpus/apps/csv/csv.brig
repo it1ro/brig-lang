@@ -59,17 +59,10 @@ fn parse_rows([c, ..rest], line, rows, row, cur, _st) ->
 pub fn with_header([]) -> Error(:no_header)
 pub fn with_header([header, ..rows]) ->
     w = len(header)
-    Result.all(Enum.map(index(rows, 0, []), pair -> row_map(header, w, pair)))
+    Result.all(Enum.map(Enum.with_index(rows), pair -> row_map(header, w, pair)))
 
 fn row_map(header, w, (row, i)) ->
     if len(row) == w
-        Ok(Enum.fold(zip(header, row, []), %{}, fn (m, (k, v)) -> Map.put(m, k, v)))
+        Ok(Map.from_list(Enum.zip(header, row)))
     else
         Error((:width, i + 2))
-
-# Нет List.zip и List.with_index в stdlib — свои.
-fn zip([a, ..xs], [b, ..ys], acc) -> zip(xs, ys, [(a, b), ..acc])
-fn zip(_, _, acc) -> Enum.reverse(acc)
-
-fn index([], _i, acc) -> Enum.reverse(acc)
-fn index([x, ..xs], i, acc) -> index(xs, i + 1, [(x, i), ..acc])
