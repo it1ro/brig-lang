@@ -159,12 +159,18 @@ func checkArity(c callee, args []runtime.Value) error {
 
 // bindArgs раскладывает args по регистрам параметров и НЕ удерживает args.
 // Безопасна при перекрытии args и regs (TAILCALL): rest копируется первым.
+// Вариадическая ветка — отдельной функцией: bindArgs стоит на каждом CALL
+// и должна оставаться встраиваемой.
 func bindArgs(regs []runtime.Value, ch *Chunk, args []runtime.Value) {
 	if !ch.Variadic {
 		copy(regs, args) // copy == memmove; перекрытие допустимо
 		return
 	}
-	fixed := ch.NumParams - 1
+	bindVariadic(regs, ch.NumParams-1, args)
+}
+
+//go:noinline
+func bindVariadic(regs []runtime.Value, fixed int, args []runtime.Value) {
 	rest := runtime.List(args[fixed:]...) // копирует args до записи в regs
 	copy(regs, args[:fixed])
 	regs[fixed] = rest
