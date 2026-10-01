@@ -251,7 +251,7 @@ func FormatCompiledPattern(p *CompiledPattern) string {
 	case PatLiteral:
 		return p.Lit.Inspect()
 	case PatStrConcat:
-		return fmt.Sprintf("%q <> %s", p.StrPrefix, FormatCompiledPattern(p.Inner))
+		return runtime.QuoteStr(p.StrPrefix) + " <> " + FormatCompiledPattern(p.Inner)
 	case PatAs:
 		return FormatCompiledPattern(p.Inner) + fmt.Sprintf(" as r%d", p.AsSlot)
 	case PatCtor:

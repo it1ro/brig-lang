@@ -49,7 +49,7 @@ func InstallPrelude(vm *VM) {
 			if i > 0 {
 				line += " "
 			}
-			line += a.Inspect()
+			line += a.Display()
 		}
 		fmt.Println(line)
 		return runtime.Unit, nil
@@ -59,7 +59,7 @@ func InstallPrelude(vm *VM) {
 			if i > 0 {
 				fmt.Print(" ")
 			}
-			fmt.Print(a.Inspect())
+			fmt.Print(a.Display())
 		}
 		fmt.Println()
 		return runtime.Unit, nil
@@ -70,7 +70,7 @@ func InstallPrelude(vm *VM) {
 			if i > 0 {
 				line += " "
 			}
-			line += a.Inspect()
+			line += a.Display()
 		}
 		fmt.Println("log:", line)
 		return runtime.Unit, nil
@@ -465,7 +465,7 @@ func InstallPrelude(vm *VM) {
 	// ---- Конверсии ----
 
 	def("to_str", 1, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
-		return runtime.Str(args[0].Inspect()), nil
+		return runtime.Str(args[0].Display()), nil
 	})
 
 	def("to_int", 1, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {

@@ -10,6 +10,7 @@ import (
 	"github.com/it1ro/brig-lang/internal/highlight"
 	"github.com/it1ro/brig-lang/internal/lexer"
 	"github.com/it1ro/brig-lang/internal/parser"
+	"github.com/it1ro/brig-lang/internal/runtime"
 	"github.com/it1ro/brig-lang/internal/sema"
 	"github.com/it1ro/brig-lang/internal/vm"
 )
@@ -95,12 +96,17 @@ func writeRaise(w io.Writer, file string, e *vm.ErrRaise, opt Print) error {
 	if _, err := fmt.Fprintln(w, text); err != nil {
 		return err
 	}
+	top := file
+	if file == "<repl>" {
+		top = "<input>"
+	}
 	for _, fr := range e.Trace {
 		f := fr.File
 		if f == "" {
 			f = file
 		}
-		if _, err := fmt.Fprintf(w, "  at %s (%s:%d:%d)\n", fr.Func, f, fr.Pos.Line, fr.Pos.Col); err != nil {
+		name := runtime.FrameName(fr.Func, top)
+		if _, err := fmt.Fprintf(w, "  at %s (%s:%d:%d)\n", name, f, fr.Pos.Line, fr.Pos.Col); err != nil {
 			return err
 		}
 	}

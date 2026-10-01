@@ -43,6 +43,9 @@ type Compiler struct {
 	// (`M.f@2$g`). recompile() не подменяет поднятые локальные fn у старых
 	// кадров (T-208, #246); у первой компиляции пуст.
 	gen string
+	// where — место определения новых чанков для печати лямбд
+	// (vm.Chunk.Where); REPL ставит `<repl>:N` по номеру ввода.
+	where string
 	// replHelpers — инструкция REPL: аргумент `h`/`Repl.h`, который есть
 	// имя модуля, компилируется как атом для хелпера.
 	replHelpers bool
@@ -132,6 +135,10 @@ func (c *Compiler) SetGeneration(n int) {
 		c.gen = fmt.Sprintf("@%d", n)
 	}
 }
+
+// SetWhere задаёт место определения для печати лямбд, которые компилируются
+// дальше (`<repl>:3`); "" — файл и строка исходника.
+func (c *Compiler) SetWhere(where string) { c.where = where }
 
 // Image возвращает собранный ProgramImage (для REPL).
 func (c *Compiler) Image() *ProgramImage { return c.image }
@@ -260,6 +267,7 @@ func posOf(n ast.Node) vm.SrcPos {
 func (c *Compiler) newFuncCompiler(parent *funcCompiler) *funcCompiler {
 	chunk := vm.NewChunk()
 	chunk.File = c.cur.path
+	chunk.Where = c.where
 	return &funcCompiler{
 		compiler: c,
 		parent:   parent,

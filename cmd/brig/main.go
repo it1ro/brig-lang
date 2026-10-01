@@ -31,6 +31,7 @@ import (
 	"github.com/it1ro/brig-lang/internal/parser"
 	"github.com/it1ro/brig-lang/internal/repl"
 	"github.com/it1ro/brig-lang/internal/repl/term"
+	"github.com/it1ro/brig-lang/internal/runtime"
 	"github.com/it1ro/brig-lang/internal/sema"
 	"github.com/it1ro/brig-lang/internal/vm"
 )
@@ -543,7 +544,7 @@ func exitRaise(name string, err error) {
 			if file == "" {
 				file = name
 			}
-			fmt.Fprintf(os.Stderr, "  at %s (%s:%d:%d)\n", fr.Func, file, fr.Pos.Line, fr.Pos.Col)
+			fmt.Fprintf(os.Stderr, "  at %s (%s:%d:%d)\n", runtime.FrameName(fr.Func, name), file, fr.Pos.Line, fr.Pos.Col)
 		}
 	}
 	os.Exit(exitForRunErr(err))

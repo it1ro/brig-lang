@@ -183,6 +183,8 @@ func (s *Session) evalLineOpt(src string, prog *ast.Program, here bool) (Result,
 	if err := c.DeclareProgram(s.entry); err != nil {
 		return Result{}, err
 	}
+	// Лямбда печатается с номером ввода, который он получит (§11.4).
+	c.SetWhere(fmt.Sprintf("<repl>:%d", len(s.history)+1))
 	fn, newName, err := c.CompileReplLine(s.seq, s.order, stmt)
 	if err != nil {
 		return Result{}, err

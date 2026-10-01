@@ -614,7 +614,18 @@ func Map(entries []MapEntry) Value {
 
 // ---- печать ----
 
-// Inspect — каноническое текстовое представление значения.
+// Display — сырой текст значения для print, to_str и интерполяции: строка
+// печатается как есть, остальные значения — как Inspect.
+func (v Value) Display() string {
+	if v.Kind == KindStr {
+		return v.Str
+	}
+	return v.Inspect()
+}
+
+// Inspect — форма литерала Brig: строка в кавычках с escape по §C, так что
+// вывод разбирается обратно в то же значение. Ответ REPL, raise, exit, dis
+// и сообщения доктестов печатают значения через Inspect.
 func (v Value) Inspect() string {
 	switch v.Kind {
 	case KindUnit:
@@ -632,7 +643,7 @@ func (v Value) Inspect() string {
 	case KindFloat:
 		return formatFloat(v.Float)
 	case KindStr:
-		return v.Str
+		return QuoteStr(v.Str)
 	case KindAtom:
 		return ":" + v.Atom
 	case KindTuple:
@@ -664,9 +675,9 @@ func (v Value) Inspect() string {
 	case KindDecimal:
 		return `dec"` + FormatDecimal(v.Dec) + `"`
 	case KindFunction:
-		return fmt.Sprintf("#<function %s/%d>", v.Func.Name, v.Func.Arity)
+		return funcForm(v.Func.Name, v.Func.Arity, v.Func.Body)
 	case KindClosure:
-		return fmt.Sprintf("#<closure %s/%d>", v.ClosureVal.Name, v.ClosureVal.Arity)
+		return funcForm(v.ClosureVal.Name, v.ClosureVal.Arity, v.ClosureVal.Func)
 	case KindVariant:
 		if len(v.Variant.Args) == 0 {
 			return v.Variant.Tag
@@ -728,12 +739,7 @@ func inspectRecord(r *RecordValue) string {
 	return r.Type + "{ " + strings.Join(parts, ", ") + " }"
 }
 
-func inspectLit(v Value) string {
-	if v.Kind == KindStr {
-		return fmt.Sprintf("%q", v.Str)
-	}
-	return v.Inspect()
-}
+func inspectLit(v Value) string { return v.Inspect() }
 
 func inspectJoin(vs []Value) string {
 	parts := make([]string, len(vs))

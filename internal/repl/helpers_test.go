@@ -278,7 +278,7 @@ func TestHelperRegister(t *testing.T) {
 	if err := s.RegisterHelpers("Tools"); err != nil {
 		t.Fatal(err)
 	}
-	if got := mustEval(t, s, out, "routes()\n"); got.Inspect() != "routes" {
+	if got := mustEval(t, s, out, "routes()\n"); got.Display() != "routes" {
 		t.Fatalf("routes() = %s", got.Inspect())
 	}
 	// T-143: регистрируются только pub-функции.
@@ -289,7 +289,7 @@ func TestHelperRegister(t *testing.T) {
 	s2, out2 := helperSession(t)
 	mustEval(t, s2, out2, "load(\""+tools+"\")\n")
 	mustEval(t, s2, out2, "Tools.console()\n")
-	if got := mustEval(t, s2, out2, "routes()\n"); got.Inspect() != "routes" {
+	if got := mustEval(t, s2, out2, "routes()\n"); got.Display() != "routes" {
 		t.Fatalf("routes() after console = %s", got.Inspect())
 	}
 }

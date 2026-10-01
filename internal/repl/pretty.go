@@ -3,12 +3,12 @@ package repl
 import (
 	"fmt"
 	"sort"
-	"strconv"
 	"strings"
 	"unicode/utf8"
 
 	"github.com/it1ro/brig-lang/internal/highlight"
 	"github.com/it1ro/brig-lang/internal/runtime"
+	"github.com/it1ro/brig-lang/internal/termio"
 )
 
 // Limits — потолки pretty-printer. Ноль в поле значит значение по
@@ -64,7 +64,10 @@ func FormatAnswer(name string, v runtime.Value, opt Print) (string, bool) {
 		prefix = name + " = "
 		indent = displayWidth(prefix)
 	}
-	body := render(v, false, 1, indent, opt.Width, opt.Limits)
+	body, ok := tripleStr(v, opt.Limits)
+	if !ok {
+		body = render(v, false, 1, indent, opt.Width, opt.Limits)
+	}
 	if prefix != "" {
 		body = joinPrefix(prefix, body)
 	}
@@ -122,16 +125,40 @@ func flatLeaf(v runtime.Value, nested bool, lim Limits) string {
 	return v.Inspect()
 }
 
-func flatStr(s string, nested bool, lim Limits) string {
-	rs := []rune(s)
+func flatStr(s string, _ bool, lim Limits) string {
 	limit := lim.runes()
-	if limit < 0 || len(rs) <= limit {
-		if nested {
-			return strconv.Quote(s)
-		}
-		return s
+	if limit < 0 || utf8.RuneCountInString(s) <= limit {
+		return runtime.QuoteStr(s)
 	}
-	return strconv.Quote(string(rs[:limit])) + fmt.Sprintf("… %d more", len(rs)-limit)
+	rs := []rune(s)
+	return runtime.QuoteStr(string(rs[:limit])) + fmt.Sprintf("… %d more", len(rs)-limit)
+}
+
+// tripleStr — многострочная строка ответа верхнего уровня литералом `"""`
+// (§3.5). Строка из одних пробелов внутри `"""` читается как пустая,
+// поэтому её первый пробел экранируется. Строка длиннее лимита печатается
+// однострочным литералом с усечением.
+func tripleStr(v runtime.Value, lim Limits) (string, bool) {
+	if v.Kind != runtime.KindStr || !strings.Contains(v.Str, "\n") {
+		return "", false
+	}
+	if limit := lim.runes(); limit >= 0 && utf8.RuneCountInString(v.Str) > limit {
+		return "", false
+	}
+	var b strings.Builder
+	b.WriteString(`"""` + "\n")
+	for i, line := range strings.Split(v.Str, "\n") {
+		if i > 0 {
+			b.WriteByte('\n')
+		}
+		if line != "" && strings.TrimLeft(line, " ") == "" {
+			b.WriteString(`\u{20}`)
+			line = line[1:]
+		}
+		runtime.EscapeStr(&b, line, true)
+	}
+	b.WriteString("\n" + `"""`)
+	return b.String(), true
 }
 
 func brokenForm(v runtime.Value, depth, indent, width int, lim Limits) string {
@@ -310,7 +337,8 @@ func firstLine(s string) string {
 	return s
 }
 
-func displayWidth(s string) int { return utf8.RuneCountInString(s) }
+// displayWidth — ширина в колонках терминала: CJK и эмодзи занимают две.
+func displayWidth(s string) int { return termio.Cells(s) }
 
 func colorize(text string, opt Print) string {
 	if text == "" {
