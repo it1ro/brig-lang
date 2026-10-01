@@ -140,3 +140,23 @@ func FuzzRoundTrip(f *testing.F) {
 		}
 	})
 }
+
+// T-253: `cond` печатается как `cond` (§8.4); однострочные и блочные
+// ветки, `cond` в позиции выражения и внутри скобок.
+func TestRoundTripCond(t *testing.T) {
+	cases := []string{
+		"module M\nfn f(n) ->\n    cond\n        n < 0 -> :neg\n        n == 0 -> :zero\n        true -> :pos\n",
+		"module M\nfn f(n) ->\n    x = cond\n        n > 1 ->\n            print(n)\n            :big\n        true -> :small\n    x\n",
+		"module M\nfn f(ok) ->\n    g(cond\n        ok -> 1\n        true -> 2)\n",
+	}
+	for _, src := range cases {
+		roundTrip(t, parser.ModeModule, src)
+		a, err := parser.ParseProgram(parser.ModeModule, src)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if out := ast.Format(a); out != src {
+			t.Fatalf("Format:\n%s\nwant:\n%s", out, src)
+		}
+	}
+}

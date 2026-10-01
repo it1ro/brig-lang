@@ -92,7 +92,7 @@ func expectsBlock(line []lexer.Token) bool {
 		return false
 	}
 	switch line[len(line)-1].Type {
-	case lexer.OP_ARROW, lexer.KW_TRAP, lexer.KW_RECV, lexer.KW_WITH, lexer.KW_ELSE, lexer.KW_ENSURE:
+	case lexer.OP_ARROW, lexer.KW_TRAP, lexer.KW_RECV, lexer.KW_WITH, lexer.KW_COND, lexer.KW_ELSE, lexer.KW_ENSURE:
 		return true
 	}
 	// recv: `else reason` — клауза с именем причины (else_clause).

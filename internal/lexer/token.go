@@ -35,6 +35,7 @@ const (
 	KW_WITH
 	KW_ELSE
 	KW_IF
+	KW_COND
 	KW_THEN
 	KW_AFTER
 	KW_WHEN
@@ -220,7 +221,7 @@ func (t TokenType) String() string {
 // keywordNames maps keyword token kinds to their source text.
 var keywordNames = map[TokenType]string{
 	KW_FN: "fn", KW_MATCH: "match", KW_RECV: "recv", KW_WITH: "with",
-	KW_ELSE: "else", KW_IF: "if", KW_THEN: "then", KW_AFTER: "after",
+	KW_ELSE: "else", KW_IF: "if", KW_COND: "cond", KW_THEN: "then", KW_AFTER: "after",
 	KW_WHEN: "when", KW_ALIAS: "alias", KW_IMPORT: "import",
 	KW_MODULE: "module", KW_TYPE: "type", KW_ENSURE: "ensure",
 	KW_TRAP: "trap", KW_AND: "and", KW_OR: "or", KW_NOT: "not",
@@ -231,7 +232,7 @@ var keywordNames = map[TokenType]string{
 // keywords maps source word → keyword kind (A3.1, step 11a of A3.2).
 var keywords = map[string]TokenType{
 	"fn": KW_FN, "match": KW_MATCH, "recv": KW_RECV, "with": KW_WITH,
-	"else": KW_ELSE, "if": KW_IF, "then": KW_THEN, "after": KW_AFTER,
+	"else": KW_ELSE, "if": KW_IF, "cond": KW_COND, "then": KW_THEN, "after": KW_AFTER,
 	"when": KW_WHEN, "alias": KW_ALIAS, "import": KW_IMPORT,
 	"module": KW_MODULE, "type": KW_TYPE, "ensure": KW_ENSURE,
 	"trap": KW_TRAP, "and": KW_AND, "or": KW_OR, "not": KW_NOT,

@@ -284,10 +284,11 @@ func TestSpecPreludeMatchesInstall(t *testing.T) {
 // ---- Авто-raise: §10.4 ↔ атомы, которые код бросает ----
 
 var (
-	reSpecRaise = regexp.MustCompile("(?m)^- `\\(:([a-z_?]+),")
-	reGoRaise   = regexp.MustCompile(`ErrRaise\{Val:\s*runtime\.Tuple\(\s*runtime\.Atom\("([a-z_?]+)"\)`)
-	reGoKonst   = regexp.MustCompile(`konst\(runtime\.Atom\("([a-z_?]+)"\)\)`)
-	reBrigRaise = regexp.MustCompile(`raise\(\(:([a-z_?]+)`)
+	reSpecRaise   = regexp.MustCompile("(?m)^- `\\(:([a-z_?]+),")
+	reGoRaise     = regexp.MustCompile(`ErrRaise\{Val:\s*runtime\.Tuple\(\s*runtime\.Atom\("([a-z_?]+)"\)`)
+	reGoKonst     = regexp.MustCompile(`konst\(runtime\.Atom\("([a-z_?]+)"\)\)`)
+	reGoAutoRaise = regexp.MustCompile(`newAutoRaise\("([a-z_?]+)"`)
+	reBrigRaise   = regexp.MustCompile(`raise\(\(:([a-z_?]+)`)
 )
 
 // raiseNotInSpec104 — атомы, которые код бросает первым элементом, но
@@ -335,7 +336,7 @@ func thrownAtoms(t *testing.T) map[string][]string {
 		if !strings.HasSuffix(path, ".go") {
 			return
 		}
-		for _, re := range []*regexp.Regexp{reGoRaise, reGoKonst} {
+		for _, re := range []*regexp.Regexp{reGoRaise, reGoKonst, reGoAutoRaise} {
 			for _, m := range re.FindAllStringSubmatch(src, -1) {
 				add(m[1], path)
 			}

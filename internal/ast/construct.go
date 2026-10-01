@@ -75,7 +75,42 @@ func NewIfExpr(cond, thenBody Expr, elseIf []IfBranch, elseBody Expr, pos, end i
 	for _, b := range elseIf {
 		branches = append(branches, ifExpr{cond: b.Cond, thenBody: b.Then})
 	}
-	return &ifExpr{posEnd{pos, end}, cond, thenBody, branches, elseBody}
+	return &ifExpr{posEnd{pos, end}, cond, thenBody, branches, elseBody, false}
+}
+
+// CondBranch — ветка `cond`: условие и тело (§8.4).
+type CondBranch struct {
+	Cond Expr
+	Body Expr
+}
+
+// newAutoRaise — вызов raise((:tag, ())) для сахара парсера (§10.4).
+// TestSpecAutoRaiseNames ищет теги по вызовам newAutoRaise.
+func newAutoRaise(tag string, pos, end int) Expr {
+	at := posEnd{pos, end}
+	return &callExpr{at, &variableExpr{at, "raise"}, []Expr{
+		&callExpr{at, &variableExpr{at, "()"}, []Expr{
+			&atomExpr{at, tag},
+			&literalExpr{at, "()"},
+		}},
+	}}
+}
+
+// NewCondExpr разворачивает `cond` во вложенные if (§8.4, T-253):
+// ветки проверяются сверху вниз, последний else —
+// raise((:cond_clause, ())). Внешний if помечен как cond для печати.
+func NewCondExpr(branches []CondBranch, pos, end int) Expr {
+	tail := newAutoRaise("cond_clause", pos, end)
+	for i := len(branches) - 1; i >= 0; i-- {
+		b := branches[i]
+		bp, be := b.Cond.Pos(), b.Cond.End()
+		tail = &ifExpr{posEnd: posEnd{bp, be}, cond: b.Cond, thenBody: b.Body, elseBody: tail}
+	}
+	if top, ok := tail.(*ifExpr); ok {
+		top.isCond = true
+		top.posEnd = posEnd{pos, end}
+	}
+	return tail
 }
 
 // MatchBranchArg — публичное представление ветки match.

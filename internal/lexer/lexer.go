@@ -263,13 +263,13 @@ func (l *lexer) endsMini(indent int, ft string) bool {
 }
 
 // headerEnds — строка закончилась на месте, где грамматика ждёт
-// `NEWLINE INDENT` блока: `fn … ->`, `trap`/`recv`/`with` без продолжения,
+// `NEWLINE INDENT` блока: `fn … ->`, `trap`/`recv`/`with`/`cond` без продолжения,
 // `match e`/`if e` (brig.ebnf).
 func (o *opener) headerEnds(last string) bool {
 	switch o.kw {
 	case "fn":
 		return last == "->"
-	case "trap", "recv", "with":
+	case "trap", "recv", "with", "cond":
 		return last == o.kw
 	}
 	return last != ","
@@ -590,7 +590,7 @@ func (l *lexer) closeBracket() {
 
 func isBlockOpener(tok string) bool {
 	switch tok {
-	case "fn", "match", "recv", "with", "trap", "if":
+	case "fn", "match", "recv", "with", "trap", "if", "cond":
 		return true
 	}
 	return false
