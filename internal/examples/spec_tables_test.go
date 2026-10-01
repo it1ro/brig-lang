@@ -5,14 +5,17 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/it1ro/brig-lang/internal/ast"
 	"github.com/it1ro/brig-lang/internal/lexer"
 	"github.com/it1ro/brig-lang/internal/parser"
 	"github.com/it1ro/brig-lang/internal/runtime"
 	"github.com/it1ro/brig-lang/internal/sema"
 	"github.com/it1ro/brig-lang/internal/vm"
+	"github.com/it1ro/brig-lang/stdlib"
 )
 
 // Сверка таблиц спеки с кодом (F-5, S-9, P-12). Расхождение не чинится
@@ -204,12 +207,6 @@ var preludeCodeOnly = map[string]string{
 	"Error":        "конструктор, §10.1",
 	"Str.to_bytes": "описан в §C.3/§C.6, в таблице §11.5 не дублируется",
 	"Bytes.to_str": "описан в §C.3/§C.6, в таблице §11.5 не дублируется",
-	"Map.put":      "функция модуля Map, §4.5; в §11.5 только Map.get_or",
-	"Map.get":      "функция модуля Map, §4.5; в §11.5 только Map.get_or",
-	"Map.remove":   "функция модуля Map, §4.5; в §11.5 только Map.get_or",
-	"Map.keys":     "функция модуля Map, §4.5; в §11.5 только Map.get_or",
-	"Json.encode":  "функция модуля Json, §4.7; в §11.5 только Json.at",
-	"Json.decode":  "функция модуля Json, §4.7; в §11.5 только Json.at",
 }
 
 // codeActorPrimitives — акторные примитивы в коде: голые имена прелюдии
@@ -261,7 +258,7 @@ func TestSpecPreludeMatchesInstall(t *testing.T) {
 	for _, n := range sema.BuiltinModules()["Prelude"] {
 		code[n] = true
 	}
-	for _, mod := range []string{"Str", "Bytes", "Map", "Json", "Enum"} {
+	for _, mod := range []string{"Str", "Bytes", "Enum"} {
 		for _, n := range sema.BuiltinModules()[mod] {
 			code[mod+"."+n] = true
 		}
@@ -487,4 +484,155 @@ func TestSpecOperatorsMatchLexer(t *testing.T) {
 	code := lexerContinuation(cands)
 	assertSameSet(t, "§2.2", s22, "§D.4", sD4)
 	assertSameSet(t, "§2.2", s22, "лексере (continuationOps)", code)
+}
+
+// ---- Встроенные модули: §11.5a ↔ sema.BuiltinModules и stdlib/*.brig ----
+
+var (
+	reModRow = regexp.MustCompile("(?m)^\\| `([A-Z][A-Za-z]*)\\.([a-z_?]+)` \\| ([0-9.]+) \\|")
+)
+
+// specModules — модули справочника §11.5a: функции ВМ и модули на Brig.
+var specModules = []string{
+	"Map", "Vec", "Json", "Record",
+	"List", "Option", "Result", "Server", "Supervisor", "Behavior",
+}
+
+// modulesCodeOnly и modulesSpecOnly — расхождения справочника с кодом:
+// имя функции → номер задачи или раздел спеки. Пусты, пока справочник
+// совпадает с кодом.
+var (
+	modulesCodeOnly = map[string]string{}
+	modulesSpecOnly = map[string]string{}
+)
+
+// arityString — арности функции в формате таблиц §11.5: `2`, `1..2`;
+// вариадик (`n..`) в справочнике модулей не поддержан.
+func arityString(t *testing.T, name string, ns []int) string {
+	t.Helper()
+	sort.Ints(ns)
+	for i, n := range ns {
+		if n < 0 {
+			t.Fatalf("%s: вариадическая функция, формат справочника §11.5a её не описывает", name)
+		}
+		if i > 0 && n != ns[i-1]+1 {
+			t.Fatalf("%s: арности %v не образуют диапазон", name, ns)
+		}
+	}
+	if len(ns) == 1 {
+		return strconv.Itoa(ns[0])
+	}
+	return strconv.Itoa(ns[0]) + ".." + strconv.Itoa(ns[len(ns)-1])
+}
+
+// codeModuleArities — "Module.fn" → арность для функций ВМ и pub fn
+// stdlib/*.brig из specModules.
+func codeModuleArities(t *testing.T) map[string]string {
+	t.Helper()
+	out := map[string]string{}
+	native := sema.BuiltinArities()
+	for _, mod := range specModules {
+		for fn, labels := range native[mod] {
+			var ns []int
+			for _, l := range labels {
+				n, err := strconv.Atoi(l)
+				if err != nil {
+					t.Fatalf("%s.%s: арность %q", mod, fn, l)
+				}
+				ns = append(ns, n)
+			}
+			out[mod+"."+fn] = arityString(t, mod+"."+fn, ns)
+		}
+	}
+	want := toSet(specModules)
+	for _, m := range stdlib.MustModules() {
+		if !want[m.Name] {
+			continue
+		}
+		set := map[string]map[int]bool{}
+		for _, d := range m.Prog.Decls {
+			f, ok := d.(ast.FuncDecl)
+			if !ok || !f.IsPub() {
+				continue
+			}
+			ar := set[f.FnName()]
+			if ar == nil {
+				ar = map[int]bool{}
+				set[f.FnName()] = ar
+			}
+			for _, c := range f.FuncClauses() {
+				n := len(c.Params)
+				if n > 0 {
+					if _, spread := c.Params[n-1].(ast.SpreadPattern); spread {
+						n = -n
+					}
+				}
+				ar[n] = true
+			}
+		}
+		for fn, ar := range set {
+			var ns []int
+			for n := range ar {
+				ns = append(ns, n)
+			}
+			out[m.Name+"."+fn] = arityString(t, m.Name+"."+fn, ns)
+		}
+	}
+	return out
+}
+
+func TestSpecModulesMatchCode(t *testing.T) {
+	doc := readRepoFile(t, specPath)
+	sec := specSection(t, doc, "### 11.5a ")
+	known := toSet(specModules)
+
+	spec := map[string]string{}
+	for _, m := range reModRow.FindAllStringSubmatch(sec, -1) {
+		name := m[1] + "." + m[2]
+		if !known[m[1]] {
+			t.Errorf("§11.5a: модуль %s не из списка specModules", m[1])
+		}
+		if _, dup := spec[name]; dup {
+			t.Errorf("§11.5a: %s описана дважды", name)
+		}
+		spec[name] = m[3]
+	}
+	if len(spec) == 0 {
+		t.Fatal("таблицы §11.5a не разобраны")
+	}
+
+	code := codeModuleArities(t)
+	for _, name := range sortedStrings(code) {
+		got, ok := spec[name]
+		switch {
+		case !ok && modulesCodeOnly[name] == "":
+			t.Errorf("%s есть в коде, нет в §11.5a и в modulesCodeOnly", name)
+		case ok && got != code[name]:
+			t.Errorf("%s: арность в §11.5a %s, в коде %s", name, got, code[name])
+		}
+	}
+	for _, name := range sortedStrings(spec) {
+		if _, ok := code[name]; !ok && modulesSpecOnly[name] == "" {
+			t.Errorf("%s есть в §11.5a, нет в коде и в modulesSpecOnly", name)
+		}
+	}
+	for name := range modulesCodeOnly {
+		if _, ok := spec[name]; ok {
+			t.Errorf("%s уже есть в §11.5a — убрать из modulesCodeOnly", name)
+		}
+	}
+	for name := range modulesSpecOnly {
+		if _, ok := code[name]; ok {
+			t.Errorf("%s уже есть в коде — убрать из modulesSpecOnly", name)
+		}
+	}
+}
+
+func sortedStrings[V any](m map[string]V) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }
