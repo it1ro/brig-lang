@@ -82,11 +82,11 @@ fn main() ->
     assert(a == build(1000, %[]))
     assert(a != Vec.set(a, 999, :x))
     assert(a != Vec.push(a, 0))
-    # Term order (§7.4): сначала длина, потом элементы; Vector < List.
+    # Term order (§7.4): лексикографически; Vector < List.
     assert(%[1, 2] < %[1, 2, 3])
     assert(%[1, 2] < %[2, 2])
     assert(%[1] < [1])
-    assert(%[2] < %[1, 1])
+    assert(%[1, 1] < %[2])
     # Вектор ключом Map: равные векторы — один ключ (§4.8).
     m = %{ a => :found }
     assert(m[build(1000, %[])] == Some(:found))

@@ -263,11 +263,18 @@ func nodeEqual(x, y *vectorNode, shift uint, skip bool, eq func(a, b Value) bool
 	return true
 }
 
-// vectorCompare — term order (§7.4): сначала длина, затем элементы. Общие
-// поддеревья пропускаются всегда: Compare(NaN, NaN) — 0 (cmpNaN), поэтому
-// пропуск здесь ничего не меняет.
+// vectorCompare — term order (§7.4 п.8): лексикографически. При равной
+// длине — обход дерева с пропуском общих поддеревьев: Compare(NaN, NaN) — 0
+// (cmpNaN), поэтому пропуск ничего не меняет. При разной длине — поэлементно
+// по общему префиксу, затем более короткий меньше.
 func vectorCompare(a, b *vectorTrie) (int, error) {
 	if a.len() != b.len() {
+		n := min(a.len(), b.len())
+		for i := 0; i < n; i++ {
+			if c, err := Compare(a.at(i), b.at(i)); err != nil || c != 0 {
+				return c, err
+			}
+		}
 		return cmpInt(a.len(), b.len()), nil
 	}
 	if a == nil || a == b {
