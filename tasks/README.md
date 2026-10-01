@@ -46,9 +46,10 @@ Milestone — проверяемый результат, а не порядок 
 | [M3 · Акторы надёжны](https://github.com/it1ro/brig-lang/milestone/4) | fan-in без тихих потерь; нет сирот супервизора | #276 |
 | [M4 · Язык для библиотек](https://github.com/it1ro/brig-lang/milestone/5) | `cond`, `Enum`, JSON, term order, диагностики, справочник API | #276 |
 | [M5 · Спека v0.5](https://github.com/it1ro/brig-lang/milestone/6) | §0.11, история вынесена, версия сверяется | #276 |
+| [M6 · Решения после MVP](https://github.com/it1ro/brig-lang/milestone/7) | DD T-104, T-235, T-195, T-193, T-227, T-226 решены; замер T-153 — вход для T-104; наблюдаемая семантика MVP не меняется | #276 |
 | [pre-alpha](https://github.com/it1ro/brig-lang/milestone/1) | Must §16 работает (волны 7–10) | — |
 
-T-104 (#173) и T-153 (#275) — sub-issues #276 без milestone: решаются после M2.
+T-104 (#173) и T-153 (#275) — sub-issues #276 в M6: сначала замер T-153, по его цифрам — вариант T-104.
 
 ## Волны (архив)
 
