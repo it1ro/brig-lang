@@ -55,13 +55,11 @@ jobs:
                       END { exit bad }
                   ' cmp.csv
 
-    # Асимптотика коллекций (T-247): t(8k)/t(1k) > 16 — красный. На main цель
-    # пока красная (квадратичный рост), поэтому в CI она мягкая.
-    # До T-271…T-273: continue-on-error и SCALING_SOFT=1 — убрать оба после
-    # T-273 (тогда job станет обычным жёстким).
+    # Асимптотика коллекций (T-247): t(8k)/t(1k) > 16 — красный. Все три
+    # операции зелёные с T-273 (List cons, Map/Set HAMT, Vector trie),
+    # поэтому job жёсткий: превышение лимита — регрессия.
     scaling:
         runs-on: ubuntu-latest
-        continue-on-error: true
         steps:
             - uses: actions/checkout@v4
 
@@ -72,4 +70,4 @@ jobs:
 
             - name: Bench scaling
               shell: bash
-              run: make bench-scaling SCALING_SOFT=1 | tee -a "$GITHUB_STEP_SUMMARY"
+              run: make bench-scaling | tee -a "$GITHUB_STEP_SUMMARY"
