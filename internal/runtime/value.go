@@ -206,7 +206,11 @@ type Value struct {
 	Tuple    []Value
 	// Представление коллекций скрыто (T-283, шаг 0 T-250): доступ только
 	// через методы Len/At/Elems/Entries и конструкторы List/Vector/Set/Map.
-	list       *listCell // nil — пустой список
+	list *listCell // nil — пустой список
+	// Место бывших len/cap среза list: размер Value и смещения полей — как
+	// до T-271. Раскладку Value меняет T-104 (#173); сдвиг полей здесь
+	// давал +7…15 % на горячих копиях Value в CI (TelemetryNoSubscribers).
+	_          [2]uintptr
 	vector     []Value
 	entries    []MapEntry
 	set        []Value
