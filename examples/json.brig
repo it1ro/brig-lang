@@ -10,3 +10,9 @@ fn main() ->
 
     parsed = Json.decode("{\"x\": 1, \"y\": [true, false]}")
     print(parsed)
+
+    print(Json.decode("null"))
+    print(Json.decode("nope"))
+    print(Json.decode(Json.encode(%{ "a" => [1, 2.5, None] })))
+    r = trap(Json.encode(Ok(2)))
+    print(r)

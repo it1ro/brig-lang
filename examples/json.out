@@ -5,3 +5,7 @@
 42
 null
 Ok(%{"x" => 1, "y" => [true, false]})
+Ok(None)
+Error((:json, :syntax))
+Ok(%{"a" => [1, 2.5, None]})
+Error((:json, (:unsupported, Ok(2))))
