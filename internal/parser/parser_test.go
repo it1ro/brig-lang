@@ -270,7 +270,7 @@ func TestParseErrors(t *testing.T) {
 		sub  string
 	}{
 		{ModeModule, "fn main() ->\n", "INDENT"},
-		{ModeRepl, "1 +\n", "expression"},
+		{ModeRepl, "1 +\n", "в конце строки"},
 		{ModeRepl, "x = \n", "expression"},
 		{ModeRepl, "f(1,\n", ""},
 		{ModeModule, "type\n", "type name"},

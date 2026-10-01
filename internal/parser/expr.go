@@ -24,6 +24,9 @@ func (p *parser) tryLambda() (ast.Expr, bool, error) {
 		p.advance() // (
 		p.advance() // )
 		p.advance() // ->
+		if err := p.shortLambdaBlockErr(start, "fn ->"); err != nil {
+			return nil, true, err
+		}
 		body, err := p.parseExpr()
 		if err != nil {
 			return nil, true, err
@@ -40,6 +43,9 @@ func (p *parser) tryLambda() (ast.Expr, bool, error) {
 			}
 		}
 		p.advance() // ->
+		if err := p.shortLambdaBlockErr(start, "fn ("+strings.Join(names, ", ")+") ->"); err != nil {
+			return nil, true, err
+		}
 		body, err := p.parseExpr()
 		if err != nil {
 			return nil, true, err
@@ -72,6 +78,16 @@ func (p *parser) tryLambda() (ast.Expr, bool, error) {
 		return nil, true, p.errf("lambda parameters need parentheses: fn (%s) -> (§6.2)", p.peek(1).Lit)
 	}
 	return nil, false, nil
+}
+
+// shortLambdaBlockErr: после `->` короткой лямбды — перенос строки, то
+// есть блочное тело (§6.2, T-265). Ошибка — на начале лямбды.
+func (p *parser) shortLambdaBlockErr(start lexer.Token, full string) error {
+	if !p.at(lexer.NEWLINE) {
+		return nil
+	}
+	return &Error{Line: start.Line, Col: start.Col, Msg: "блочное тело у короткой лямбды: " +
+		"тело короткой лямбды — одна строка; для блока — `" + full + "` (§6.2)"}
 }
 
 // shortLambdaHead — длина головы lambda_short в токенах, включая `->`:
@@ -514,6 +530,15 @@ func (p *parser) parsePrimary() (ast.Expr, error) {
 	case lexer.KW_TRAP:
 		return p.parseTrap()
 	}
+	if err := p.danglingOpErr(); err != nil {
+		return nil, err
+	}
+	// Лишний отступ перед строкой с ведущим `-`/`+`: это не продолжение
+	// (§2.2, T-255), а новый стейтмент с унарным минусом (T-265).
+	if nt := p.peek(1); t.Type == lexer.INDENT && (nt.Type == lexer.OP_MINUS || nt.Type == lexer.OP_PLUS) {
+		return nil, &Error{Line: nt.Line, Col: nt.Col, Msg: "`" + nt.Lit + "` в начале строки — унарный минус " +
+			"нового стейтмента, не продолжение (§2.2); перенос арифметики — внутри скобок (§D.5)"}
+	}
 	return nil, p.errf("expected expression, got %s", t.Type)
 }
 
@@ -740,6 +765,40 @@ func recordCtorName(typ string) string {
 	return typ + "{}"
 }
 
+// danglingOpErr: выражение оборвалось на конце строки сразу после
+// бинарного оператора (`y = x +⏎`). Ошибка — на операторе, а не на
+// следующей строке (§2.2, T-265).
+func (p *parser) danglingOpErr() error {
+	switch p.cur().Type {
+	case lexer.NEWLINE, lexer.DEDENT, lexer.EOF:
+	default:
+		return nil
+	}
+	if p.fragment || p.pos == 0 || p.pos > len(p.toks) {
+		return nil
+	}
+	op := p.toks[p.pos-1]
+	if !isBinaryOp(op.Type) {
+		return nil
+	}
+	msg := "оператор `" + op.Lit + "` в конце строки: продолжение строки — ведущим оператором (§2.2)"
+	if op.Type == lexer.OP_PLUS || op.Type == lexer.OP_MINUS {
+		msg += "; `+` и `-` переносят внутри скобок (§D.5)"
+	}
+	return &Error{Line: op.Line, Col: op.Col, Msg: msg}
+}
+
+func isBinaryOp(t lexer.TokenType) bool {
+	switch t {
+	case lexer.KW_AND, lexer.KW_OR, lexer.KW_DIV, lexer.KW_REM, lexer.KW_TO,
+		lexer.OP_PIPE, lexer.OP_POW, lexer.OP_EQ, lexer.OP_NEQ, lexer.OP_LE,
+		lexer.OP_GE, lexer.OP_CONCAT, lexer.OP_PLUS, lexer.OP_MINUS,
+		lexer.OP_STAR, lexer.OP_SLASH, lexer.OP_LT, lexer.OP_GT:
+		return true
+	}
+	return false
+}
+
 // if_expr ::= "if" expr NEWLINE INDENT stmt_list DEDENT [ "else" ... ]
 //
 //	| "if" expr "then" expr "else" expr
@@ -756,9 +815,11 @@ func (p *parser) parseIf() (ast.Expr, error) {
 		if err != nil {
 			return nil, err
 		}
-		if _, err := p.expect(lexer.KW_ELSE, "'else'"); err != nil {
-			return nil, err
+		if !p.at(lexer.KW_ELSE) {
+			return nil, &Error{Line: start.Line, Col: start.Col,
+				Msg: "однострочный `if … then` требует `else` (§8.1); без `else` — блочная форма"}
 		}
+		p.advance() // else
 		elseE, err := p.parseExpr()
 		if err != nil {
 			return nil, err
@@ -820,6 +881,9 @@ func (p *parser) parseMatch() (ast.Expr, error) {
 		pat, err := p.parsePattern()
 		if err != nil {
 			return nil, err
+		}
+		if p.at(lexer.KW_WHEN) {
+			return nil, p.errf("guard в match запрещён (§8.3); используйте `cond` в теле ветки или `fn` с guard")
 		}
 		if _, err := p.expect(lexer.OP_ARROW, "'->'"); err != nil {
 			return nil, err
@@ -1203,7 +1267,7 @@ func parseExprFragment(src string, line, col int) (ast.Expr, error) {
 		}
 		return nil, &Error{Line: line, Col: col, Msg: err.Error()}
 	}
-	fp := &parser{toks: toks, mode: ModeRepl}
+	fp := &parser{toks: toks, mode: ModeRepl, fragment: true}
 	fp.skipNewlines()
 	if fp.at(lexer.EOF) {
 		return nil, &Error{Line: line, Col: col, Msg: "expected expression inside interpolation"}

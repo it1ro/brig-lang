@@ -66,8 +66,8 @@ func TestDiagnosticsFormat(t *testing.T) {
 // Вторая строка `# pending: T-NNN` — сообщение плохое (таблица D-2), в
 // `expect` записан желаемый результат: тест ждёт несовпадение и падает на
 // неожиданном совпадении (как корпус, T-115) — тогда снять `# pending` и
-// сдвинуть номера строк. Сообщения чинит T-265; тексты `raise` целиком не
-// сверяются — только подстрока.
+// сдвинуть номера строк. Сообщения таблицы D-2 исправлены в T-265; тексты
+// `raise` целиком не сверяются — только подстрока.
 func TestDiagnosticsCorpus(t *testing.T) {
 	bin := buildBrig(t)
 	files, err := filepath.Glob(filepath.Join(findModuleRoot(t), "testdata", "diagnostics", "*.brig"))
@@ -79,7 +79,6 @@ func TestDiagnosticsCorpus(t *testing.T) {
 	}
 	expectRe := regexp.MustCompile(`^# expect: (check|run) (\d+) (?:(\d+):(\d+)|-) (.+)$`)
 	pendingRe := regexp.MustCompile(`^# pending: (T-\d+)$`)
-	pending := 0
 	for _, path := range files {
 		name := strings.TrimSuffix(filepath.Base(path), ".brig")
 		src, err := os.ReadFile(path)
@@ -91,7 +90,6 @@ func TestDiagnosticsCorpus(t *testing.T) {
 		if len(lines) > 1 {
 			if pm := pendingRe.FindStringSubmatch(lines[1]); pm != nil {
 				pend = pm[1]
-				pending++
 			}
 		}
 		t.Run(name, func(t *testing.T) {
@@ -136,8 +134,5 @@ func TestDiagnosticsCorpus(t *testing.T) {
 				t.Errorf("неожиданное совпадение: сообщение уже исправлено, снять `# pending: %s`\n%s", pend, out)
 			}
 		})
-	}
-	if pending < 7 {
-		t.Errorf("pending: %d файлов, want >= 7 (таблица D-2)", pending)
 	}
 }

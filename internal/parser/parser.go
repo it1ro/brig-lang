@@ -59,6 +59,9 @@ type parser struct {
 	toks []lexer.Token
 	pos  int
 	mode Mode
+	// fragment — выражение интерполяции `\(...)`: «конец строки» в нём —
+	// конец фрагмента, подсказки про перенос строк не относятся (T-265).
+	fragment bool
 }
 
 // ---- helpers ----

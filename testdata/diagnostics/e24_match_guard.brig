@@ -1,5 +1,4 @@
-# expect: check 1 6:11 guard в match запрещён
-# pending: T-265
+# expect: check 1 5:11 guard в match запрещён
 module Main
 fn main() ->
     match 1

@@ -62,6 +62,11 @@ type Frame struct {
 	// cont != nil — кадр возобновляемого натива (T-58): chunk == nil,
 	// regs[0] принимает результат колбэка (callDst == 0).
 	cont nativeCont
+	// site, siteIP — место вызова возобновляемого натива (чанк и ip
+	// CALL/TAILCALL): позиция кадра натива в trace (T-265). После TAILCALL
+	// вызывающего кадра уже нет, и без site raise из натива теряет trace.
+	site   *Chunk
+	siteIP int
 	// dropResult — кадр доставки Telemetry, вставленный опкодом (spawn,
 	// send): завершение не пишет callDst вызывающего (§12.14).
 	dropResult bool
@@ -277,7 +282,14 @@ func (s *Scheduler) enterCall(a *Actor, fn runtime.Value, args []runtime.Value) 
 			if err != nil {
 				return nil, runtime.Unit, err
 			}
-			return a.pushNative(fn.Func.Name, k), runtime.Unit, nil
+			var site *Chunk
+			var siteIP int
+			if n := len(a.frames); n > 0 {
+				site, siteIP = a.frames[n-1].chunk, a.frames[n-1].ip
+			}
+			nf := a.pushNative(fn.Func.Name, k)
+			nf.site, nf.siteIP = site, siteIP
+			return nf, runtime.Unit, nil
 		}
 		r, err := fn.Func.Native(s.vm, fresh)
 		if err == nil {
@@ -756,7 +768,7 @@ func (s *Scheduler) runMain(mainFn runtime.Value, args []runtime.Value) (runtime
 				if m := s.main; m.status == actorDone {
 					return m.result, nil
 				}
-				return runtime.Unit, fmt.Errorf("deadlock: all actors blocked")
+				return runtime.Unit, deadlockErr(s.main)
 			}
 			continue
 		}
@@ -770,6 +782,23 @@ func (s *Scheduler) runMain(mainFn runtime.Value, args []runtime.Value) (runtime
 		a.status = actorReady
 		s.runSlice(a)
 	}
+}
+
+// deadlockErr — все акторы ждут, ждать нечего. Сообщение называет
+// функцию и позицию recv, на которой стоит main (T-265).
+func deadlockErr(m *Actor) error {
+	if n := len(m.frames); n > 0 {
+		if f := m.frames[n-1]; f.chunk != nil && f.ip < len(f.chunk.Code) &&
+			f.chunk.Code[f.ip].Op() == RECVTAKE {
+			p := f.chunk.PosAt(f.ip)
+			at := fmt.Sprintf("%d:%d", p.Line, p.Col)
+			if f.chunk.File != "" {
+				at = f.chunk.File + ":" + at
+			}
+			return fmt.Errorf("deadlock: all actors blocked; main waits in recv in %s at %s", f.name, at)
+		}
+	}
+	return fmt.Errorf("deadlock: all actors blocked")
 }
 
 // armTimer взводит таймер recv … after или await актора: новый seq,
@@ -1463,6 +1492,7 @@ func (s *Scheduler) execFrame(a *Actor, f *Frame) stepOutcome {
 						return fail(err)
 					}
 					clear(f.regs[:cap(f.regs)])
+					f.site, f.siteIP = f.chunk, f.ip
 					f.regs, f.chunk, f.name, f.captures, f.ip, f.cont =
 						f.regs[:1], nil, cv.Func.Name, nil, 0, k
 					return stepContinue
@@ -2466,7 +2496,11 @@ func attachTrace(a *Actor) {
 	for i := n - 1; i >= 0; i-- {
 		f := a.frames[i]
 		if f.cont != nil {
-			continue // кадр натива: позиции в исходнике нет
+			// Кадр натива: позиция — место его вызова, если известно (T-265).
+			if f.site != nil {
+				trace = append(trace, TraceFrame{Func: f.name, File: f.site.File, Pos: f.site.PosAt(f.siteIP)})
+			}
+			continue
 		}
 		ip := f.ip
 		if i != n-1 {
