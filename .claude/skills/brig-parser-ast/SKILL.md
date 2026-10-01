@@ -43,6 +43,10 @@ description: >
   `fn f(x) when x -> 1` и `n when ok -> …` (S-F4 закрыт T-20 #14).
 - **`if`-сахар**: `if...then...else` — только целиком, с обеими ветками.
   Блочная форма `if`/`else` — на одном отступе (якорь — токен `if`).
+- **`cond`** (§8.4, T-253): `ast.NewCondExpr` разворачивает ветки во
+  вложенные `ifExpr`, последний `else` — `raise((:cond_clause, ()))`;
+  внешний `if` помечен `isCond` только для `Format` (`CondBranches()`).
+  Условие ветки — `parseOr()`, как guard. Компилятор `cond` не знает.
 - **Record vs constructor**: `Red` (без `{`) — значение-конструктор
   варианта; `Red{...}` — record-литерал. Не путать при парсинге
   `UPPER_IDENT`.

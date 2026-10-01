@@ -119,7 +119,7 @@ func equalNodes(a, b Node) bool {
 
 	case *ifExpr:
 		y, ok := b.(*ifExpr)
-		if !ok || len(x.elseIf) != len(y.elseIf) {
+		if !ok || len(x.elseIf) != len(y.elseIf) || x.isCond != y.isCond {
 			return false
 		}
 		if !equalNodes(x.cond, y.cond) || !equalNodes(x.thenBody, y.thenBody) {

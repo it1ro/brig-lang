@@ -152,6 +152,10 @@ type ifExpr struct {
 	thenBody Expr
 	elseIf   []ifExpr
 	elseBody Expr
+	// isCond — внешний if цепочки, в которую парсер развернул `cond`
+	// (§8.4, T-253): ветки — then этого if и вложенных if из else,
+	// последний else — raise((:cond_clause, ())). Влияет только на печать.
+	isCond bool
 }
 
 func (e *ifExpr) IsExpression() bool { return true }

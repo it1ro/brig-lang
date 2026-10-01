@@ -107,6 +107,22 @@ type IfExpr interface {
 	ThenBody() Expr
 	ElseIf() []IfBranch
 	ElseBody() Expr
+	// CondBranches — ветки `cond`, если if — развёрнутый `cond` (§8.4);
+	// nil для обычного if.
+	CondBranches() []CondBranch
+}
+
+func (e *ifExpr) CondBranches() []CondBranch {
+	if !e.isCond {
+		return nil
+	}
+	var out []CondBranch
+	for cur := e; cur != nil; {
+		out = append(out, CondBranch{Cond: cur.cond, Body: cur.thenBody})
+		next, _ := cur.elseBody.(*ifExpr)
+		cur = next
+	}
+	return out
 }
 
 func (e *ifExpr) Cond() Expr     { return e.cond }

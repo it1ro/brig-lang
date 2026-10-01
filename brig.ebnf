@@ -131,6 +131,7 @@ primary_expr ::=
     | record_literal
     | if_expr
     | match_expr
+    | cond_expr
     | recv_expr
     | with_expr
     | trap_expr
@@ -229,6 +230,18 @@ match_branch ::=
       pattern "->" expr
     | pattern "->" NEWLINE INDENT stmt_list DEDENT
 
+(* cond: сахар над вложенными if (§8.4); ни одна ветка не истинна —
+   raise((:cond_clause, ())). Условие — or_expr, как у guard. *)
+cond_expr ::=
+    "cond" NEWLINE INDENT cond_branch_list DEDENT
+
+cond_branch_list ::=
+    cond_branch { NEWLINE cond_branch } [ NEWLINE ]
+
+cond_branch ::=
+      or_expr "->" expr
+    | or_expr "->" NEWLINE INDENT stmt_list DEDENT
+
 recv_expr ::=
       "recv" NEWLINE INDENT recv_branch_list DEDENT
         [ else_clause ] [ after_clause ]
@@ -317,8 +330,8 @@ LOWER_IDENT ::=
     ( [a-z] | "_" [a-z] ) [a-zA-Z0-9_]* [ "?" ]
 
 (* LOWER_IDENT не совпадает с ключевым словом (без финального "?"):
-   fn match recv with else if then after when alias import module type
-   ensure trap and or not div rem to true false as pub quote
+   fn match cond recv with else if then after when alias import module
+   type ensure trap and or not div rem to true false as pub quote
    quote зарезервирован: продукций нет (§1.3). *)
 
 UPPER_IDENT ::= [A-Z] [a-zA-Z0-9_]*

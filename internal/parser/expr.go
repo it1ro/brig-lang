@@ -505,6 +505,8 @@ func (p *parser) parsePrimary() (ast.Expr, error) {
 		return p.parseIf()
 	case lexer.KW_MATCH:
 		return p.parseMatch()
+	case lexer.KW_COND:
+		return p.parseCond()
 	case lexer.KW_RECV:
 		return p.parseRecv()
 	case lexer.KW_WITH:
@@ -833,6 +835,42 @@ func (p *parser) parseMatch() (ast.Expr, error) {
 		return nil, err
 	}
 	return ast.NewMatchExpr(subject, branches, start.Line, start.Col), nil
+}
+
+// cond_expr ::= "cond" NEWLINE INDENT cond_branch+ DEDENT
+// cond_branch ::= or_expr "->" branch_body
+//
+// Разворачивается во вложенные if (§8.4, T-253). Условие — parseOr, не
+// parseExpr: иначе `ok -> x` разберётся как короткая лямбда.
+func (p *parser) parseCond() (ast.Expr, error) {
+	start := p.advance() // cond
+	if _, err := p.expect(lexer.NEWLINE, "NEWLINE after cond"); err != nil {
+		return nil, err
+	}
+	if _, err := p.expect(lexer.INDENT, "INDENT"); err != nil {
+		return nil, err
+	}
+	var branches []ast.CondBranch
+	p.skipNewlines()
+	for !p.at(lexer.DEDENT) && !p.at(lexer.EOF) {
+		c, err := p.parseOr()
+		if err != nil {
+			return nil, err
+		}
+		if _, err := p.expect(lexer.OP_ARROW, "'->'"); err != nil {
+			return nil, err
+		}
+		body, err := p.parseBranchBody()
+		if err != nil {
+			return nil, err
+		}
+		branches = append(branches, ast.CondBranch{Cond: c, Body: body})
+		p.skipNewlines()
+	}
+	if _, err := p.expect(lexer.DEDENT, "DEDENT"); err != nil {
+		return nil, err
+	}
+	return ast.NewCondExpr(branches, start.Line, start.Col), nil
 }
 
 // Тело ветки: expr NEWLINE | NEWLINE INDENT stmt_list DEDENT

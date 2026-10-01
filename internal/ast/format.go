@@ -492,6 +492,9 @@ func (p *printer) specialCall(name string, args []Expr, indent int) string {
 }
 
 func (p *printer) ifString(v *ifExpr, indent int) string {
+	if v.isCond {
+		return p.condString(v, indent)
+	}
 	_, thenBlk := v.thenBody.(*BlockStmt)
 	_, elseBlk := v.elseBody.(*BlockStmt)
 	if !thenBlk && !elseBlk && v.elseBody != nil {
@@ -508,6 +511,19 @@ func (p *printer) ifString(v *ifExpr, indent int) string {
 		sb.WriteString(indentStr(indent))
 		sb.WriteString("else\n")
 		p.writeBranchBody(&sb, v.elseBody, indent+1)
+	}
+	return strings.TrimSuffix(sb.String(), "\n")
+}
+
+// condString печатает развёрнутый `cond` обратно как `cond` (§8.4).
+func (p *printer) condString(v *ifExpr, indent int) string {
+	var sb strings.Builder
+	sb.WriteString("cond\n")
+	for _, br := range v.CondBranches() {
+		sb.WriteString(indentStr(indent + 1))
+		sb.WriteString(p.exprString(br.Cond, indent+1))
+		sb.WriteString(" ->")
+		p.writeBranchTail(&sb, br.Body, indent+1)
 	}
 	return strings.TrimSuffix(sb.String(), "\n")
 }

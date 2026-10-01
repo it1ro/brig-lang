@@ -174,6 +174,22 @@ func (c *checker) err(line, col int, format string, args ...any) {
 	})
 }
 
+// checkCondTail: `cond` без последней ветки `true ->` — info (§8.4,
+// T-253): ни одно условие не истинно → raise((:cond_clause, ())).
+func (c *checker) checkCondTail(x ast.IfExpr) {
+	brs := x.CondBranches()
+	if len(brs) == 0 {
+		return
+	}
+	last := brs[len(brs)-1].Cond
+	if lit, ok := last.(ast.LiteralExpr); ok && lit.ValueStr() == "true" {
+		return
+	}
+	line, col := posOf(x) // позиция `cond`
+	c.info(line, col, "cond: last branch is not `true ->`; "+
+		"no true condition raises (:cond_clause, ()) (§8.4)")
+}
+
 func (c *checker) info(line, col int, format string, args ...any) {
 	c.diags = append(c.diags, Diagnostic{
 		Line: line, Col: col, Severity: SeverityInfo,
@@ -558,6 +574,7 @@ func (c *checker) checkExpr(e ast.Expr) {
 		c.checkExpr(x.RangeEnd())
 
 	case ast.IfExpr:
+		c.checkCondTail(x)
 		c.checkExpr(x.Cond())
 		c.checkBranchBody(x.ThenBody())
 		for _, br := range x.ElseIf() {

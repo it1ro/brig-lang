@@ -1,0 +1,15 @@
+module Main
+
+fn sign(n) ->
+    cond
+        n < 0 -> :neg
+        n == 0 -> :zero
+        true -> :pos
+
+fn label(n) ->
+    s = cond
+        n > 100 ->
+            print("big")
+            "big"
+        ok(n) -> "ok"
+    s
