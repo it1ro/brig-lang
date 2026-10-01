@@ -1631,7 +1631,7 @@ info: `len` shadows prelude function; use `Prelude.len` if prelude was intended
 
 Модули без `import` (§11.1), кроме `Str`, `Bytes` и `Enum` (таблицы выше): `Map` (§4.5), `Vec` (§4.4), `Json` (§4.7), `Record` (§4.7) — функции ВМ; `List`, `Option`, `Result`, `Server`, `Supervisor`, `Behavior` — модули на Brig (`stdlib/*.brig`), в справочнике только `pub fn` (§11.2). Субъект — первый аргумент (§7.5). Колонки как в §11.5. `Observer` — служебный модуль консоли (`tree()`, §11.4), в справочник не входит. Таблица сверяется с кодом тестом `TestSpecModulesMatchCode`: каждая функция модуля из списка выше — строка с той же арностью, и наоборот.
 
-Ошибка субъекта — `(:type_error, (op, v))`: `op` — имя функции (у `Vec.*`, `Map.*` с модулем: `:Vec.push`), у `Map.get_or` и `Json.at` — структурный тег `((:mod, :f), v)`, `mod` — имя модуля в snake_case. Ошибка внутри колбэка пробрасывается как есть.
+Ошибка субъекта — `(:type_error, (op, v))`: `op` — имя функции (у `Vec.*`, `Map.*` с модулем: `:Vec.push`), у `Map.get_or`, новых функций `Map` (`to_list`, `from_list`, `values`, `filter`, `update`) и `Json.at` — структурный тег `((:mod, :f), v)`, `mod` — имя модуля в snake_case. Ошибка внутри колбэка пробрасывается как есть.
 
 #### Модуль `Map`
 
@@ -1642,6 +1642,11 @@ info: `len` shadows prelude function; use `Prelude.len` if prelude was intended
 | `Map.get_or` | 3 | `(m, k, default)` | значение по ключу `k`, нет ключа — `default` | `(:type_error, ((:map, :get_or), m))` |
 | `Map.remove` | 2 | `(m, k)` | `Map` без ключа `k`; ключа нет — тот же `m` | `(:type_error, (:Map.remove, m))` |
 | `Map.keys` | 1 | `(m)` | `List` ключей | `(:type_error, (:Map.keys, m))` |
+| `Map.to_list` | 1 | `(m)` | `List` пар `(k, v)` в порядке печати (§7.4) | `(:type_error, ((:map, :to_list), m))` |
+| `Map.from_list` | 1 | `(xs)`, `xs: List` пар `(k, v)` | `Map`; ключ повторён — побеждает правая пара (§5.2) | `(:type_error, ((:map, :from_list), v))` — `v`: `xs` не `List` или элемент не пара |
+| `Map.values` | 1 | `(m)` | `List` значений в порядке ключей | `(:type_error, ((:map, :values), m))` |
+| `Map.filter` | 2 | `(m, f)`, `f(k, v)` — `Bool` | `Map` из пар, для которых `f` истинно | `(:type_error, ((:map, :filter), m))`; `(:type_error, (:expected_bool, r))` — `f` вернула не `Bool` |
+| `Map.update` | 4 | `(m, k, default, f)`, `f(x)` | `Map` с `k => f(x)`, где `x` — `m[k]`, нет ключа — `default` | `(:type_error, ((:map, :update), m))` |
 
 #### Модуль `Vec`
 

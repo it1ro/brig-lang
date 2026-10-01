@@ -213,6 +213,8 @@ func InstallPrelude(vm *VM) {
 		return runtime.List(out...), nil
 	})
 
+	installMapExtras(def, defResumable)
+
 	// ---- Bytes module (§3.2, A4.2) ----
 
 	// Bytes.to_str(b) — декодирует байты в UTF-8 строку. Невалидный
@@ -665,4 +667,108 @@ func runSync(c runtime.Caller, k nativeCont) (runtime.Value, error) {
 			return runtime.Unit, err
 		}
 	}
+}
+
+// updateCont — Map.update: один вызов f от текущего значения (или default),
+// результат кладётся под ключ.
+type updateCont struct {
+	m, k, cur, f runtime.Value
+	called       bool
+}
+
+func (c *updateCont) resume(ret runtime.Value) (nativeStep, error) {
+	if !c.called {
+		c.called = true
+		return nativeStep{fn: c.f, args: []runtime.Value{c.cur}}, nil
+	}
+	return nativeStep{done: true, res: c.m.MapPut(c.k, ret)}, nil
+}
+
+// installMapExtras — Map.to_list, from_list, values, filter, update (T-281).
+// Субъект первым (§7.5); не тот вид — (:type_error, ((:map, :f), v)) (T-236).
+func installMapExtras(def func(string, int, runtime.NativeFunc), defResumable func(string, int, resumableFunc)) {
+	// Map.to_list(m) — пары (k, v) в порядке печати.
+	def("Map.to_list", 1, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+		if args[0].Kind != runtime.KindMap {
+			return runtime.Unit, modTypeErr("map", "to_list", args[0])
+		}
+		ents := args[0].Entries()
+		out := make([]runtime.Value, len(ents))
+		for i, e := range ents {
+			out[i] = runtime.Tuple(e.Key, e.Val)
+		}
+		return runtime.List(out...), nil
+	})
+
+	// Map.from_list(xs) — Map из списка пар; повторный ключ — правый
+	// побеждает (§5.2). Не List — ошибка с xs, не пара — с элементом.
+	def("Map.from_list", 1, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+		if args[0].Kind != runtime.KindList {
+			return runtime.Unit, modTypeErr("map", "from_list", args[0])
+		}
+		m := runtime.Map(nil)
+		for _, e := range args[0].Elems() {
+			if e.Kind != runtime.KindTuple || len(e.Tuple) != 2 {
+				return runtime.Unit, modTypeErr("map", "from_list", e)
+			}
+			m = m.MapPut(e.Tuple[0], e.Tuple[1])
+		}
+		return m, nil
+	})
+
+	// Map.values(m) — значения в порядке ключей.
+	def("Map.values", 1, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+		if args[0].Kind != runtime.KindMap {
+			return runtime.Unit, modTypeErr("map", "values", args[0])
+		}
+		ents := args[0].Entries()
+		out := make([]runtime.Value, len(ents))
+		for i, e := range ents {
+			out[i] = e.Val
+		}
+		return runtime.List(out...), nil
+	})
+
+	// Map.filter(m, f) — пары, для которых f(k, v) истинно; результат Map.
+	defResumable("Map.filter", 2, func(args []runtime.Value) (nativeCont, error) {
+		if args[0].Kind != runtime.KindMap {
+			return nil, modTypeErr("map", "filter", args[0])
+		}
+		it, err := newEnumIter("filter", args[0])
+		if err != nil {
+			return nil, err
+		}
+		out := runtime.Map(nil)
+		buf := make([]runtime.Value, 2)
+		return &enumCont{
+			f: args[1], it: it,
+			args: func(e runtime.Value) []runtime.Value {
+				buf[0], buf[1] = e.Tuple[0], e.Tuple[1]
+				return buf
+			},
+			visit: func(e, r runtime.Value) (bool, runtime.Value, error) {
+				ok, err := predicate(r)
+				if err != nil {
+					return false, runtime.Unit, err
+				}
+				if ok {
+					out = out.MapPut(e.Tuple[0], e.Tuple[1])
+				}
+				return false, runtime.Unit, nil
+			},
+			final: func() (runtime.Value, error) { return out, nil },
+		}, nil
+	})
+
+	// Map.update(m, k, default, f) — m[k] = f(m[k]); нет ключа — f(default).
+	defResumable("Map.update", 4, func(args []runtime.Value) (nativeCont, error) {
+		if args[0].Kind != runtime.KindMap {
+			return nil, modTypeErr("map", "update", args[0])
+		}
+		cur, ok := args[0].MapGet(args[1])
+		if !ok {
+			cur = args[2]
+		}
+		return &updateCont{m: args[0], k: args[1], cur: cur, f: args[3]}, nil
+	})
 }

@@ -19,7 +19,7 @@ fn store_behavior() ->
             :get => fn (st, key) ->
                 found = Map.get(st.items, key)
                 if alive?(found, now())
-                    (Ok(unwrap(found).value), st)
+                    (Ok(Option.unwrap(found).value), st)
                 else
                     (Error(:not_found), { ..st, misses: st.misses + 1 })
             :put => fn (st, key, value, ttl) ->
@@ -29,7 +29,7 @@ fn store_behavior() ->
                 (Ok(()), { ..st, items: Map.remove(st.items, key) })
             :sweep => fn (st) ->
                 t = now()
-                live = sweep(st.items, t)
+                live = Map.filter(st.items, (_k, item) -> alive?(Some(item), t))
                 (len(st.items) - len(live), { ..st, items: live })
             :stats => fn (st) ->
                 (Ok({ keys: len(st.items), writes: st.writes, misses: st.misses }), st)
@@ -39,15 +39,9 @@ fn store_behavior() ->
 fn expiry(None) -> None
 fn expiry(Some(ms)) -> Some(now() + ms)
 
-fn sweep(items, t) ->
-    keep = Enum.filter(Map.keys(items), k -> alive?(Map.get(items, k), t))
-    Enum.fold(keep, %{}, (acc, k) -> Map.put(acc, k, unwrap(Map.get(items, k))))
-
 fn alive?(Some({ expires: None }), _t) -> true
 fn alive?(Some({ expires: Some(e) }), t) -> e > t
 fn alive?(None, _t) -> false
-
-fn unwrap(Some(x)) -> x
 
 fn start_store() ->
     pid = spawn_behavior(store_behavior(), { items: %{}, writes: 0, misses: 0 })
