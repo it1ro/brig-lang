@@ -50,7 +50,7 @@ description: >
    `internal/vm/bench_test.go`; цель печатает t(8k)/t(1k) по операциям
    и падает, если отношение > `SCALING_MAX_RATIO` (16; линейный рост ~8,
    квадратичный ~64). Не входит в `all`. `list_prepend` зелёный с T-271
-   (cons-список); `map_put` и `vec_push` красные до T-272/T-273
+   (cons-список), `map_put` — с T-272 (HAMT); `vec_push` красный до T-273
    (квадратичный рост, F-11/X-1), job `scaling` в `bench.yml` с
    `continue-on-error: true` до них; после них `continue-on-error` убрать. Гонять после
    правок персистентных коллекций (`List`/`Map`/`Vec` в `internal/runtime`,

@@ -3,7 +3,7 @@ package vm_test
 import "testing"
 
 // T-241 (G-16): литерал Map схлопывает повторные ключи: правый побеждает
-// (§5.2), 1 и 1.0 — один ключ (§4.8), порядок — первого появления.
+// (§5.2), 1 и 1.0 — один ключ (§4.8), печать — по term order (§7.4).
 func TestMapLiteralDuplicateKeys(t *testing.T) {
 	got := runTimerSrc(t, `module Main
 fn main() ->
