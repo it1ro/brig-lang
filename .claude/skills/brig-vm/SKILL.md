@@ -64,7 +64,7 @@ description: >
   `stepFrame` ошибку сначала отдавать в `f.catch`, затем `fail`.
 - **K-4.** Редукция — это `CALL`/`TAILCALL` в байткод-функцию, `RETURN`,
   шаг unwind. Вызов native не тратит редукцию; колбэк возобновляемого
-  натива (`map`/`filter`/…, см. ниже) — обычный `CALL` в байткод, тратит.
+  натива (`Enum.map`/`Enum.filter`/…, см. ниже) — обычный `CALL` в байткод, тратит.
 - **K-5.** Native получает свежий слайс аргументов, не окно регистров
   (см. `brig-compiler`, но проверка дублируется и здесь на уровне
   `CALL`/`TAILCALL` в `scheduler.go`).
@@ -284,9 +284,9 @@ description: >
   отсутствии активного handler'а в текущем кадре; если ни один родительский
   кадр не поймал — актор падает (`actorFailed`), наблюдатели получают
   `(:down, ref, (:raise, val))`.
-- **Возобновляемые нативы** (G3 fairness, T-58 #144): `map`, `filter`,
-  `find`, `all`, `any`, `fold` зарегистрированы `defResumable` в
-  `VM.resumable`. `CALL` из байткода (`enterCall`) кладёт на стек актора
+- **Возобновляемые нативы** (G3 fairness, T-58 #144): функции `Enum.*` с колбэком (`prelude_enum.go`, `enumCont`)
+  зарегистрированы `defResumable` в `VM.resumable`; голых `map`/`filter`/…
+  нет (T-284). `CALL` из байткода (`enterCall`) кладёт на стек актора
   кадр натива (`Frame.cont != nil`, `chunk == nil`, результат колбэка — в
   `regs[0]`), `TAILCALL` превращает текущий кадр в такой. `stepNative`
   пушит байткод-колбэк обычным кадром — редукции тратятся, актор
@@ -313,7 +313,7 @@ description: >
   `(:type_error, (:after, ...))`; якорь `TestVerifyIF14HugeTimerMs`.
   `wakeExpired` будит истёкших в порядке `(recvDeadline, timerSeq)`
   (T-48 #61; `timerSeq` взводится в `RECVTIMER` из `s.nextSeq`) — не
-  возвращать обход `map` напрямую в `ready` (§15.4); якорь
+  возвращать обход `Enum.map` напрямую в `ready` (§15.4); якорь
   `TestWakeExpiredDeterministicOrder`. Модель scheduler: решено C (#40).
   Таймеры живут в min-куче `Scheduler.timers` по `(deadline, seq)`
   (T-102 #171, T-166 #283): `recv … after`, `await` и `Timer.send_after`

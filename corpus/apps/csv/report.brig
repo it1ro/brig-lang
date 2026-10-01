@@ -52,10 +52,9 @@ fn int_field(rec, name) ->
 
 fn float_field(rec, name) ->
     raw = Map.get_or(rec, name, "")
-    r = trap(to_float(Str.trim(raw)))
-    match r
-        Ok(f) -> Ok(f)
-        Error(_) -> Error((to_atom(name), raw))
+    match Str.to_float(Str.trim(raw))
+        Some(f) -> Ok(f)
+        None -> Error((to_atom(name), raw))
 
 # Нет Str → Atom: имена колонок — фиксированный набор.
 fn to_atom("qty") -> :qty

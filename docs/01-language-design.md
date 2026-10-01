@@ -235,13 +235,13 @@ fn process(a, b) -> (a, b)
 
 ```brig
 fn main() ->
-    ys = map([1, 2], fn (x) ->
+    ys = Enum.map([1, 2], fn (x) ->
         y = x * 2
         y + 1)
     ys
 ```
 
-Здесь `base_indent` мини-блока — 4 (строка `ys = map(…`), тело лямбды — на отступе 8.
+Здесь `base_indent` мини-блока — 4 (строка `ys = Enum.map(…`), тело лямбды — на отступе 8.
 
 ---
 
@@ -424,7 +424,7 @@ len(v)
 
 | Операция                                   | Сложность              | Примечание                                              |
 | ------------------------------------------ | ---------------------- | ------------------------------------------------------- |
-| `len(v)`                                       | O(1)                   |                                                         |
+| `len(v)`                                   | O(1)                   |                                                         |
 | `v[i]`, `Vec.get(v, i)`                    | O(log₃₂ n)             |                                                         |
 | `Vec.set(v, i, x)`                         | O(log₃₂ n)             | путь от корня копируется, остальное разделяется         |
 | `Vec.push(v, x)`                           | O(1) amortized         |                                                         |
@@ -706,13 +706,13 @@ fn main() -> trap(safe(0))   # Error((:division_by_zero, ())), а не :small
 
 ```text
 pow = x -> x**2
-nums |> map(x -> x * 2)
+nums |> Enum.map(x -> x * 2)
 ```
 
 Короткая лямбда **всегда однострочная**: тело — одно выражение. Параметров может быть несколько — имена в скобках через запятую:
 
 ```text
-fold(xs, 0, (acc, x) -> acc + x)
+Enum.fold(xs, 0, (acc, x) -> acc + x)
 ```
 
 `(a, b) -> …` отличается от кортежа `(a, b)` по `->` после `)` — тем же приёмом, что и пустая лямбда `() ->`.
@@ -879,6 +879,8 @@ fn greet(_) -> "?"
 greet("Hello, World")                # "World"
 ```
 
+**Правило (§0.2).** `<>` — склейка строк, интерполяция `"\(x)"` — подстановка значения в строку; оба способа остаются, каждый для своего случая. `+` для `Str` не определён (§7.3).
+
 **Ограничение (как в Elixir):** слева от `<>` в паттерне обязан быть строковый литерал — `x <> rest` не парсится (`'<>' пattern requires a string literal on its left-hand side`). Последовательные литералы складываются: `"a" <> "b" <> rest` эквивалентно `"ab" <> rest`. Несовпадение префикса в связывании — обычный `(:badmatch, v)` (§5.1); в мультиклозной функции — просто следующая клоза (первое совпадение побеждает, порядок клоз важен, как в Elixir).
 
 ### 7.4 Сравнение и term order
@@ -935,7 +937,7 @@ Enum.sort([[1, 1], [2], [0, 0, 0]])  # => [[0, 0, 0], [1, 1], [2]]
 
 `x |> f(a, b)` → `f(x, a, b)` — значение подставляется первым аргументом.
 
-**Первый аргумент — субъект.** У функций прелюдии и stdlib первым идёт значение, которое протекает через pipe: коллекция у коллекционных функций (`map(xs, f)`, `fold(xs, acc, f)`), мапа у `Map.*`, вектор у `Vec.*`, коллекция у `Enum.*` (§11.5). Поэтому `xs |> map(f) |> filter(p)` работает без исключений. Новые функции stdlib следуют тому же правилу. Акторные примитивы под правило не подпадают: в pipe они запрещены.
+**Первый аргумент — субъект.** У функций прелюдии и stdlib первым идёт значение, которое протекает через pipe: коллекция у `Enum.*` (`Enum.map(xs, f)`, `Enum.fold(xs, acc, f)`), мапа у `Map.*`, вектор у `Vec.*`(§11.5). Поэтому `xs |> Enum.map(f) |> Enum.filter(p)` работает без исключений. Новые функции stdlib следуют тому же правилу. Акторные примитивы под правило не подпадают: в pipe они запрещены.
 
 **Запрет акторных примитивов в pipe — статическая проверка парсера + контекстного анализа.** В качестве правой части `|>` запрещены **все** акторные примитивы прелюдии: `send`, `spawn`, `spawn_linked`, `spawn_watched`, `link`, `watch`, `unwatch`, `exit`, `self`, `make_ref`, `mailbox_size`, `register`, `unregister`, `whereis`, `reply`, `await` (§12.6).
 
@@ -956,14 +958,14 @@ Enum.sort([[1, 1], [2], [0, 0, 0]])  # => [[0, 0, 0], [1, 1], [2]]
 
 `M` — имя модуля, видимое в файле (§11.1): встроенный модуль, импортированный модуль (полное имя или последний сегмент) или имя из `alias`.
 
-**Ссылка на функцию модуля как значение.** `M.f` без вызова даёт значение-функцию, как имя собственной `fn` модуля: `f = Json.encode`, `map(xs, Util.g)`. Identity — полное имя модуля, имя функции и арность, а не адрес: две ссылки `Util.g` равны (`Util.g == Util.g` → `true`). Правила видимости те же, что для вызова: ссылка на приватную функцию другого модуля — ошибка компиляции (§11.2).
+**Ссылка на функцию модуля как значение.** `M.f` без вызова даёт значение-функцию, как имя собственной `fn` модуля: `f = Json.encode`, `Enum.map(xs, Util.g)`. Identity — полное имя модуля, имя функции и арность, а не адрес: две ссылки `Util.g` равны (`Util.g == Util.g` → `true`). Правила видимости те же, что для вызова: ссылка на приватную функцию другого модуля — ошибка компиляции (§11.2).
 
 ```brig module
 module Main
 
 fn main() ->
     encode = Json.encode
-    map([[1], [2]], encode)
+    Enum.map([[1], [2]], encode)
 ```
 
 Имя модуля без `.name` в позиции выражения значением не является: модули и типы как значения — вне v0.4.8. Реализация — T-144.
@@ -1207,7 +1209,7 @@ fn only_id(User{ id: id }) -> id   # частичный
 
 - Конструктор **без аргументов** — **значение**: `None`, `Red`, `Green`.
 - Конструктор **с аргументами** — **функция**: `Some`, `Ok`, `Error`.
-- Конструктор можно передавать как функцию: `map(xs, Some)`.
+- Конструктор можно передавать как функцию: `Enum.map(xs, Some)`.
 
 ### 10.2 `raise`/`trap`
 
@@ -1284,7 +1286,6 @@ fn process(a, b) -> (a, b)
 - `(:invalid_utf8, b)`
 - `(:no_field, (name, rec))` — чтение отсутствующего поля записи `rec.name`; то же — поле, которого нет в типе, при record update номинальной записи `rec` (§4.7); `name` — атом.
 - `(:badmatch, val)` — несовпадение паттерна в связывании `pattern = expr`; `val` — значение правой части (§5.1).
-- `(:parse_error, (op, val))` — `Str`, которая не разбирается как число, в `to_int`/`to_float` (§11.5).
 
 Ошибка внутри `when`-guard отдельного имени не имеет: пробрасывается исходная ошибка (§6.1).
 
@@ -1414,7 +1415,7 @@ error: main.brig:6:5: scale/1 is private to Temperature
 
 ```brig repl
 > xs = [3, 1, 2]
-> total = fold(xs, 0, (acc, x) -> acc + x)
+> total = Enum.fold(xs, 0, (acc, x) -> acc + x)
 > total
 6
 ```
@@ -1510,18 +1511,12 @@ brig[2]> v(1) + 1
 
 | Имя | Арность | Аргументы | Результат | Авто-raise |
 | --- | --- | --- | --- | --- |
-| `map` | 2 | `(xs, f)`, `f(x)` | `List` | `(:type_error, (:map, xs))` — `xs` не `List` |
-| `filter` | 2 | `(xs, p)`, `p(x)` | `List` | `(:type_error, (:filter, xs))`; `p` вернул не `Bool` — `(:type_error, (:filter_predicate, r))` |
-| `find` | 2 | `(xs, p)`, `p(x)` | `Option` — первый `x`, для которого `p(x)` | `(:type_error, (:find, xs))`; `(:type_error, (:find_predicate, r))` |
-| `all` | 2 | `(xs, p)`, `p(x)` | `Bool`, пустой — `true` | `(:type_error, (:all, xs))`; `(:type_error, (:all_predicate, r))` |
-| `any` | 2 | `(xs, p)`, `p(x)` | `Bool`, пустой — `false` | `(:type_error, (:any, xs))`; `(:type_error, (:any_predicate, r))` |
-| `fold` | 3 | `(xs, acc, f)`, `f(acc, x)` | последний `acc` | `(:type_error, (:fold, xs))` |
 | `len` | 1 | `(v)` | `Int`: элементы `List`/`Vector`/`Set`/`Tuple`, пары `Map`, кодпоинты `Str`, байты `Bytes` | `(:type_error, (:len, v))` |
 | `list` | * | `(..xs)` | `List`; `list(a to b)` — элементы диапазона | `(:range_error, (a, b))` — `a > b` |
 | `set` | * | `(..xs)` | `Set` без повторов | — |
 | `to_str` | 1 | `(v)` | `Str` — печатная форма `v`, разбирается обратно в значение того же вида (`to_str(1.0) == "1.0"`) | — |
-| `to_int` | 1 | `(v)`, `v`: `Int`, `Float` (отбрасывает дробную часть), `Str` | `Int` | `(:type_error, (:to_int, v))` — `v` не `Int`/`Float`/`Str`; `(:parse_error, (:to_int, v))` — `v`: `Str`, не разбирается как число |
-| `to_float` | 1 | `(v)`, `v`: `Float`, `Int`, `Str` | `Float` | `(:type_error, (:to_float, v))` — `v` не `Int`/`Float`/`Str`; `(:parse_error, (:to_float, v))` — `v`: `Str`, не разбирается как число |
+| `to_int` | 1 | `(v)`, `v`: `Int`, `Float` (отбрасывает дробную часть) | `Int` | `(:type_error, (:to_int, v))` — `v` не `Int`/`Float`, в том числе `Str`: строку разбирает `Str.to_int` |
+| `to_float` | 1 | `(v)`, `v`: `Float`, `Int` | `Float` | `(:type_error, (:to_float, v))` — `v` не `Int`/`Float`, в том числе `Str`: строку разбирает `Str.to_float` |
 | `send` | 2 | `(pid, msg)` | `Result<(), Atom>` (§12.3) | `(:type_error, (:send, pid))` |
 | `spawn` | 1 | `(f)`, `f()` | `Pid` | — |
 | `spawn_linked` | 1 | `(f)`, `f()` | `Pid` | — |
@@ -1537,7 +1532,7 @@ brig[2]> v(1) + 1
 | `assert` | 1 | `(x)` | `()` | `(:assertion_failed, ())`; `(:type_error, (:assert_expected_bool, x))` |
 | `raise` | 1 | `(e)` | не возвращает | бросает `e` |
 
-Арность: число; `0..1` — диапазон; `*` — вариадическая. Коллекционные функции прелюдии принимают только `List`; функции над всеми перечислимыми коллекциями — модуль `Enum` (ниже).
+Арность: число; `0..1` — диапазон; `*` — вариадическая. Функций над коллекциями среди голых имён нет (§0.2): `map`, `filter`, `fold` и остальные — модуль `Enum` (ниже); из голых имён остаются `len`, `list`, `set`.
 
 Не функции прелюдии: `trap` — ключевое слово (§10.2), `not` — оператор. Конструкторы `Some`, `Ok`, `Error` и значение `None` — §10.1.
 
@@ -1556,6 +1551,7 @@ brig[2]> v(1) + 1
 | `Str.upper` | 1 | `(s)` | `Str` в верхнем регистре | `(:type_error, (:Str.upper, s))` |
 | `Str.slice` | 3 | `(s, start, end)`, по кодпоинтам | `Str` | `(:type_error, (:Str.slice, s))`; `(:index_out_of_bounds, (idx, len))` |
 | `Str.to_int` | 1 | `(s)` | `Option<Int>` | `(:type_error, (:Str.to_int, s))` |
+| `Str.to_float` | 1 | `(s)`; пробелы по краям отбрасываются, `inf`/`nan` — не число | `Option<Float>` | `(:type_error, (:Str.to_float, s))` |
 | `Bytes.slice` | 3 | `(b, start, end)`, по байтам | `Bytes` | `(:type_error, (:Bytes.slice, b))`; `(:index_out_of_bounds, (idx, len))` |
 | `Bytes.find` | 2 | `(b, sub)`, `sub: Bytes` | `Option<Int>` — байтовый индекс первого совпадения | `(:type_error, (:Bytes.find, v))` |
 | `Bytes.split` | 2 | `(b, sep)`, `sep: Bytes`; `sep == b""` — по байтам | `List<Bytes>` | `(:type_error, (:Bytes.split, v))` |
@@ -1631,10 +1627,10 @@ assert(x)  # x: Bool
 **Политика коллизий имён прелюдии (shadowing).** Shadowing разрешён, но компилятор **выдаёт info-диагностику**:
 
 ```text
-info: `map` shadows prelude function; use `Prelude.map` if prelude was intended
+info: `len` shadows prelude function; use `Prelude.len` if prelude was intended
 ```
 
-Для доступа к прелюдии при shadowing — `import Prelude` даёт `Prelude.map`. Диагностика не блокирует компиляцию.
+Для доступа к прелюдии при shadowing — `import Prelude` даёт `Prelude.len`. Диагностика не блокирует компиляцию.
 
 ### 11.6 Тест-фреймворк: `Test.*` и `brig test`
 
@@ -2166,7 +2162,7 @@ fn idle() ->
 fn main() ->
     (pid, _ref) = spawn_watched(() -> idle())
     register(:idle, pid)
-    assert(any(Actor.list(), (p) -> p == pid))
+    assert(Enum.any?(Actor.list(), (p) -> p == pid))
     match Actor.info(pid)
         Some(i) -> (i.name, i.watchers == [self()])
         None    -> :dead
@@ -2333,7 +2329,7 @@ fn main() ->
 - Конструктор **без аргументов** — **значение**: `None`, `Red`, `Green`.
 - Конструктор **с аргументами** — **функция**: `Some`, `Ok`, `Error`.
 - Пользовательские конструкторы работают так же: `type Color { Red, Green, Blue }` даёт три значения; `type Wrapper { Wrap(Int) }` даёт функцию `Wrap`.
-- Конструктор можно передавать как функцию: `map(xs, Some)`.
+- Конструктор можно передавать как функцию: `Enum.map(xs, Some)`.
 
 ### 14.3 Параметризация generic-типов
 
@@ -3197,7 +3193,7 @@ info: <file>:<line>:<col>: <message>
 ```text
 error: examples/demo.brig:3:5: unexpected token "%"
 error: examples/demo.brig:7:10: unterminated interpolation
-info: examples/demo.brig:12:1: `map` shadows prelude function
+info: examples/demo.brig:12:1: `len` shadows prelude function
 ```
 
 ---
@@ -3646,7 +3642,7 @@ info: <file>:<line>:<col>: <message>
 
 Решения DD Wave 8, внесённые T-127 (#186):
 
-7. **T-120 (#179, вариант A) — субъект первым аргументом.** Коллекционные функции прелюдии: `map(xs, f)`, `filter(xs, p)`, `find(xs, p)`, `all(xs, p)`, `any(xs, p)`, `fold(xs, acc, f)`. Правило для stdlib — §7.5; таблица прелюдии (арность, аргументы, результат, авто-raise) — §11.5; `map(Some, xs)` → `map(xs, Some)` в §10.1 и §14.2. Реализация — T-130.
+7. **T-120 (#179, вариант A) — субъект первым аргументом.** Коллекционные функции прелюдии (с коллекцией первым аргументом): `map`, `filter`, `find`, `all`, `any`, `fold` (с T-284 — `Enum.*`). Правило для stdlib — §7.5; таблица прелюдии (арность, аргументы, результат, авто-raise) — §11.5; порядок `(Some, xs)` → `(xs, Some)` в §10.1 и §14.2. Реализация — T-130.
 8. **T-121 (#180) — развилки спека ↔ реализация:**
     1. ошибка внутри `when`-guard пробрасывается как есть; `(:guard_failed, …)` убран из §6.1, §10.4, §F.4;
     2. `mailbox_size(pid)` — `Int`, для мёртвого — `0` (§12.3, §12.6);
@@ -3736,7 +3732,7 @@ info: <file>:<line>:<col>: <message>
 42. **DD T-252 (#405, вариант A) — `link`/`spawn_linked` — связь владелец → ребёнок**: смерть владельца делает каждому ребёнку `exit(child, (:linked_exit, reason))` — не `raise`, `trap` не ловит, `ensure` выполняются; наблюдение за ребёнком — только `watch`/`spawn_watched`, `link` больше не синоним `watch` и не виден в `watchers`/`watching`; тег ошибки — `(:type_error, (:link, pid))` (§11.5, §12.2, §12.7, §12.13, §13.1). `trap_exit` и двунаправленная эскалация не вводятся; убитый супервизор сирот не оставляет.
 43. **DD T-253 (#406) — `cond` вместо `else if`**: новое ключевое слово `cond` (§1.3, §B.1); выражение `cond` с ветками `условие -> тело` (§8.4); ни одно условие не истинно — авто-raise `(:cond_clause, ())` (§10.4); последняя ветка не `true ->` — info `brig check`. Парсер разворачивает `cond` во вложенные `if`; компилятор не менялся. `else if` не вводится; guard'ов в `match` нет (§8.3).
 44. **DD T-255 (#408, вариант A) — `+`/`-` не продолжают строку**: оба убраны из списка ведущих операторов продолжения (§2.2, §D.4); строка с ведущим `-` — новый стейтмент (унарный минус). Длинная арифметика переносится внутри скобок: там строка, которая кончается бинарным оператором или начинается с оператора продолжения (кроме `..`), не отделяется `NEWLINE` (§D.5). Остальные операторы продолжения не изменились.
-45. **DD T-257 (#410) — модуль `Enum`**: встроенный модуль функций над `List`, `Vector`, `Range`, `Set`, `Map` (элемент `Map` — пара `(k, v)`, порядок `Set`/`Map` — term order): `map`, `filter`, `reject`, `fold`, `find`, `all?`, `any?`, `each`, `count`, `member?`, `reverse`, `take`, `drop`, `sort`, `sort_by`, `zip`, `with_index`, `group_by`, `sum`, `min`, `max`, `flat_map`, `uniq`, `join` (§11.5, §7.5). Тег ошибки субъекта — `((:enum, :f), v)`, предикат не `Bool` — `(:expected_bool, r)`. Голые `map`/`filter`/`fold`/`find`/`all`/`any`, `List.map`/`filter`/`fold` и `Vec.len` пока остаются; их удаление и `Str.to_int`/`Str.to_float` вместо разбора строк в `to_int`/`to_float` — T-284.
+45. **DD T-257 (#410) — модуль `Enum`**: встроенный модуль функций над `List`, `Vector`, `Range`, `Set`, `Map` (элемент `Map` — пара `(k, v)`, порядок `Set`/`Map` — term order): `map`, `filter`, `reject`, `fold`, `find`, `all?`, `any?`, `each`, `count`, `member?`, `reverse`, `take`, `drop`, `sort`, `sort_by`, `zip`, `with_index`, `group_by`, `sum`, `min`, `max`, `flat_map`, `uniq`, `join` (§11.5, §7.5). Тег ошибки субъекта — `((:enum, :f), v)`, предикат не `Bool` — `(:expected_bool, r)`. Голые `map`/`filter`/`fold`/`find`/`all`/`any`, функции `map`/`filter`/`fold`/`each`/`reverse`/`take`/`drop`/`sort`/`member?` модуля `List` и `len` модуля `Vec` удалены в T-284 (#411); `to_int`/`to_float` принимают только числа (строка — `:type_error`, без `:parse_error`), разбор строк — `Str.to_int`/`Str.to_float` (`Option`); в `List` остаётся `concat`.
 
 ---
 
