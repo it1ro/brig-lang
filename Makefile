@@ -177,20 +177,36 @@ bench:
 
 ## ---- Асимптотика коллекций (T-247) ----
 # BenchmarkScaling строит коллекцию из 1k и 8k элементов; печатает
-# t(8k)/t(1k) по операциям (минимум из SCALING_COUNT прогонов) и
+# t(8k)/t(1k) по операциям (медиана из SCALING_COUNT замеров) и
 # завершается 1, если отношение > SCALING_MAX_RATIO (линейный рост ~8,
 # квадратичный ~64). Не входит в all и в bench.
 # Все три операции зелёные с T-273 (List cons, Map/Set HAMT, Vector trie):
 # превышение лимита — регрессия асимптотики, код 1. Ошибки замера — код 2.
-SCALING_COUNT ?= 3
+# Замер (X-1, T-289): BenchmarkScaling парный — обе сборки (1k и 8k) в
+# каждой итерации подряд, дрейф раннера делится поровну между размерами;
+# сэмпл — метрика t8_over_t1, benchtime усредняет циклы GC внутри сэмпла.
+# Статистика — медиана, а не минимум: минимум смещён вниз сильнее для
+# коротких прогонов, а всплески нагрузки раннера (только вверх) медиана
+# переживает запасом SCALING_COUNT = 7 сэмплов.
+SCALING_COUNT ?= 7
 SCALING_MAX_RATIO ?= 16
+SCALING_BENCHTIME ?= 5x
 bench-scaling:
-	@$(GO) test -run '^$$' -bench BenchmarkScaling -benchtime 1x -count $(SCALING_COUNT) ./internal/vm/ \
+	@$(GO) test -run '^$$' -bench BenchmarkScaling -benchtime $(SCALING_BENCHTIME) -count $(SCALING_COUNT) ./internal/vm/ \
 		| awk -v max=$(SCALING_MAX_RATIO) '\
+			function med(k,    i, j, tmp, m) { \
+				m = cnt[k]; \
+				for (i = 2; i <= m; i++) { \
+					tmp = v[k, i]; \
+					for (j = i - 1; j >= 1 && v[k, j] > tmp; j--) v[k, j + 1] = v[k, j]; \
+					v[k, j + 1] = tmp \
+				} \
+				return (m % 2) ? v[k, (m + 1) / 2] : (v[k, m / 2] + v[k, m / 2 + 1]) / 2 \
+			} \
 			/^BenchmarkScaling\// { \
-				split($$1, p, "/"); op = p[2]; sz = p[3]; sub(/-[0-9]+$$/, "", sz); \
-				k = op SUBSEP sz; t = $$3 + 0; \
-				if (!(k in best) || t < best[k]) best[k] = t; \
+				split($$1, p, "/"); op = p[2]; sub(/-[0-9]+$$/, "", op); \
+				for (i = 3; i <= NF; i++) \
+					if ($$i == "t8_over_t1") v[op, ++cnt[op]] = $$(i - 1); \
 				if (!(op in seen)) { seen[op] = 1; ops[++n] = op } \
 				next \
 			} \
@@ -198,9 +214,9 @@ bench-scaling:
 			END { \
 				if (n == 0) { print "bench-scaling: нет результатов"; exit 2 } \
 				for (i = 1; i <= n; i++) { \
-					op = ops[i]; a = best[op SUBSEP "1k"]; b = best[op SUBSEP "8k"]; \
-					if (a <= 0) { print "bench-scaling: нет замера 1k для " op; hard = 1; continue } \
-					r = b / a; st = (r > max) ? "FAIL" : "ok"; \
+					op = ops[i]; \
+					if (cnt[op] == 0) { print "bench-scaling: нет замера t8_over_t1 для " op; hard = 1; continue } \
+					r = med(op); st = (r > max) ? "FAIL" : "ok"; \
 					printf "%-14s t(8k)/t(1k) = %6.1f (лимит %s) %s\n", op, r, max, st; \
 					if (r > max) bad = 1 \
 				} \

@@ -46,15 +46,18 @@ description: >
    статус. Гонять локально после правок горячих путей VM/компилятора.
    `make bench` пропускает `BenchmarkScaling` (`-skip Scaling`).
 7. **`make bench-scaling`** — асимптотика коллекций (T-247):
-   `BenchmarkScaling/{list_prepend,map_put,vec_push}/{1k,8k}` в
-   `internal/vm/bench_test.go`; цель печатает t(8k)/t(1k) по операциям
-   и падает, если отношение > `SCALING_MAX_RATIO` (16; линейный рост ~8,
-   квадратичный ~64). Не входит в `all`. Все три операции зелёные:
-   `list_prepend` с T-271 (cons-список), `map_put` — с T-272 (HAMT),
-   `vec_push` — с T-273 (32-арный trie); job `scaling` в `bench.yml`
-   жёсткий, превышение лимита — регрессия асимптотики. Гонять после
-   правок персистентных коллекций (`List`/`Map`/`Vec` в `internal/runtime`,
-   прелюдия).
+    `BenchmarkScaling/{list_prepend,map_put,vec_push}` в
+    `internal/vm/bench_test.go`; сэмпл парный (T-289, X-1): обе сборки
+    (1k и 8k) в каждой итерации подряд, отношение — метрика
+    `t8_over_t1` (дрейф раннера делится поровну между размерами);
+    цель печатает t(8k)/t(1k) как медиану по сэмплам (`benchtime 5x`,
+    `SCALING_COUNT = 7`) и падает, если отношение >
+    `SCALING_MAX_RATIO` (16; линейный рост ~8, квадратичный ~64). Не
+    входит в `all`. Все три операции зелёные: `list_prepend` с T-271
+    (cons-список), `map_put` — с T-272 (HAMT), `vec_push` — с T-273
+    (32-арный trie); job `scaling` в `bench.yml` жёсткий, превышение
+    лимита — регрессия асимптотики. Гонять после правок персистентных
+    коллекций (`List`/`Map`/`Vec` в `internal/runtime`, прелюдия).
 
 ## Golden-тесты (`testdata/golden/`)
 

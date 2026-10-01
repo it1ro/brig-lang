@@ -1,6 +1,9 @@
 package vm_test
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 // Асимптотика коллекций (T-247, F-11/X-1): BenchmarkScaling строит список,
 // Map и Vec из n элементов хвостовой рекурсией на Brig-коде. `make
@@ -8,6 +11,14 @@ import "testing"
 // даёт ~8, квадратичный ~64 (на практике ~17 и выше). `make bench` его
 // пропускает (-skip Scaling): порог T-152 ловит регрессии горячих путей,
 // а не асимптотику.
+//
+// Замер парный (X-1, T-289): обе сборки в каждой итерации идут подряд, с
+// разницей в миллисекунды, поэтому дрейф раннера (троттлинг, чужая
+// нагрузка) делится поровну между 1k и 8k и не искажает отношение;
+// отдельные замеры каждого размера это не спасало — нестабильный job
+// scaling в CI. Отношение — метрика t8_over_t1: среднее по итерациям
+// (benchtime усредняет циклы GC в сэмпл), `make bench-scaling` берёт
+// медиану по сэмплам.
 
 var scalingProgs = map[string]string{
 	// [i, ..acc]: prepend должен быть O(1).
@@ -30,6 +41,7 @@ fn main() -> build(n(), %[])
 `,
 }
 
+// scalingSizes — пара размеров замера: меньший и больший.
 var scalingSizes = []struct {
 	name string
 	n    int
@@ -38,16 +50,24 @@ var scalingSizes = []struct {
 func BenchmarkScaling(b *testing.B) {
 	for _, op := range []string{"list_prepend", "map_put", "vec_push"} {
 		b.Run(op, func(b *testing.B) {
-			for _, sz := range scalingSizes {
-				b.Run(sz.name, func(b *testing.B) {
-					run := newCallAllocRun(b, scalingProgs[op], sz.n)
-					b.ReportAllocs()
-					b.ResetTimer()
-					for b.Loop() {
-						run()
-					}
-				})
+			small := newCallAllocRun(b, scalingProgs[op], scalingSizes[0].n)
+			large := newCallAllocRun(b, scalingProgs[op], scalingSizes[1].n)
+			var sumSmall, sumLarge int64
+			b.ResetTimer()
+			for b.Loop() {
+				t0 := time.Now()
+				small()
+				t1 := time.Now()
+				large()
+				t2 := time.Now()
+				sumSmall += t1.Sub(t0).Nanoseconds()
+				sumLarge += t2.Sub(t1).Nanoseconds()
 			}
+			b.StopTimer()
+			if sumSmall <= 0 {
+				b.Fatal("нет замера 1k")
+			}
+			b.ReportMetric(float64(sumLarge)/float64(sumSmall), "t8_over_t1")
 		})
 	}
 }
