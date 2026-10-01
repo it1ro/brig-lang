@@ -630,7 +630,7 @@ func (v Value) Inspect() string {
 		}
 		return v.intBig.String()
 	case KindFloat:
-		return fmt.Sprintf("%v", v.Float)
+		return formatFloat(v.Float)
 	case KindStr:
 		return v.Str
 	case KindAtom:
@@ -1362,4 +1362,27 @@ func cmpErr(a, b Value) error {
 // Code — маркер скомпилированного байткода.
 type Code interface {
 	IsBrigCode()
+}
+
+// formatFloat — печатная форма Float: кратчайшее представление, которое
+// разбирается обратно в тот же Float и всегда содержит '.' или 'e', чтобы
+// не выглядеть как Int (§11.5 to_str). Экспонента без '+' и ведущих нулей
+// ("1.0e20", "1.5e-7"); NaN, +Inf, -Inf — как у fmt.
+func formatFloat(f float64) string {
+	if math.IsNaN(f) || math.IsInf(f, 0) {
+		return fmt.Sprintf("%v", f)
+	}
+	s := strconv.FormatFloat(f, 'g', -1, 64)
+	mant, exp, hasExp := strings.Cut(s, "e")
+	if !strings.Contains(mant, ".") {
+		mant += ".0"
+	}
+	if !hasExp {
+		return mant
+	}
+	sign := ""
+	if exp[0] == '-' {
+		sign = "-"
+	}
+	return mant + "e" + sign + strings.TrimLeft(exp[1:], "0")
 }
