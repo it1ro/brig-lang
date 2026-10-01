@@ -79,7 +79,11 @@ func WriteDiagnostics(w io.Writer, file, src string, diags []sema.Diagnostic, pa
 func writeEvalError(w io.Writer, file, src string, err error, opt Print) error {
 	var rerr *vm.ErrRaise
 	if errors.As(err, &rerr) {
-		return writeRaise(w, file, rerr, opt)
+		return writeRaise(w, file, src, rerr, opt)
+	}
+	var uerr *vm.ErrUndefined
+	if errors.As(err, &uerr) {
+		return writeUndefined(w, file, src, uerr, opt)
 	}
 	f, line, col, msg, located := DescribeCompileError(file, err)
 	if located {
@@ -89,12 +93,21 @@ func writeEvalError(w io.Writer, file, src string, err error, opt Print) error {
 	return werr
 }
 
-func writeRaise(w io.Writer, file string, e *vm.ErrRaise, opt Print) error {
+func writeRaise(w io.Writer, file, src string, e *vm.ErrRaise, opt Print) error {
 	prefix := "error: raise: "
 	body := render(e.Val, false, 1, displayWidth(prefix), opt.Width, opt.Limits)
 	text := joinPrefix(prefix, colorize(body, opt))
 	if _, err := fmt.Fprintln(w, text); err != nil {
 		return err
+	}
+	// Кадр ввода REPL — строка ввода и `^`, как у ошибки разбора (§E.1).
+	for _, fr := range e.Trace {
+		if inputFrame(file, src, fr) {
+			if err := writeSourceLine(w, src, int(fr.Pos.Line), int(fr.Pos.Col), opt.Pal, opt.Env, false); err != nil {
+				return err
+			}
+			break
+		}
 	}
 	top := file
 	if file == "<repl>" {
@@ -113,10 +126,36 @@ func writeRaise(w io.Writer, file string, e *vm.ErrRaise, opt Print) error {
 	return nil
 }
 
+// inputFrame — кадр кода верхнего уровня текущего ввода REPL: его
+// позиция считается по src.
+func inputFrame(file, src string, fr vm.TraceFrame) bool {
+	return file == "<repl>" && src != "" && fr.File == "" && fr.Pos.Line > 0 &&
+		runtime.DemangleFunc(fr.Func).Top
+}
+
+// writeUndefined — `undefined: g` в формате §E.1: позиция, строка ввода и
+// `^`, если имя в коде ввода, и подсказка по похожим именам сессии.
+func writeUndefined(w io.Writer, file, src string, e *vm.ErrUndefined, opt Print) error {
+	msg := e.Error()
+	if hint := didYouMean(e.Name, opt.Env); hint != "" {
+		msg += "; did you mean " + hint + "?"
+	}
+	if !inputFrame(file, src, e.At) {
+		if e.At.File == "" || e.At.Pos.Line < 1 {
+			_, err := fmt.Fprintf(w, "%s %s\n", errorHead(opt.Pal, "error:"), msg)
+			return err
+		}
+		return writeLocated(w, "error", e.At.File, int(e.At.Pos.Line), int(e.At.Pos.Col), msg, "", opt.Pal, opt.Env, false, false)
+	}
+	return writeLocated(w, "error", file, int(e.At.Pos.Line), int(e.At.Pos.Col), msg, src, opt.Pal, opt.Env, true, false)
+}
+
 func writeLocated(w io.Writer, sev, file string, line, col int, msg, src string, pal highlight.Palette, env highlight.Env, showLine, dim bool) error {
 	head := FormatE1(sev, file, line, col, msg)
 	if dim {
 		head = paintText(pal, head, highlight.Comment)
+	} else {
+		head = errorHead(pal, sev+":") + head[len(sev)+1:]
 	}
 	if _, err := fmt.Fprintln(w, head); err != nil {
 		return err
@@ -124,6 +163,16 @@ func writeLocated(w io.Writer, sev, file string, line, col int, msg, src string,
 	if !showLine || src == "" {
 		return nil
 	}
+	return writeSourceLine(w, src, line, col, pal, env, dim)
+}
+
+// errorHead красит заголовок диагностики `error:` (§E.1, C.6).
+func errorHead(pal highlight.Palette, head string) string {
+	return paintText(pal, head, highlight.Error)
+}
+
+// writeSourceLine печатает строку line из src и `^` под колонкой col.
+func writeSourceLine(w io.Writer, src string, line, col int, pal highlight.Palette, env highlight.Env, dim bool) error {
 	if line < 1 {
 		line = 1
 	}

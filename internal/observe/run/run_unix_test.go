@@ -253,7 +253,7 @@ func TestRunThreeSnapshotErrors(t *testing.T) {
 		})
 	}()
 	deadline := time.Now().Add(2 * time.Second)
-	for !strings.Contains(out.String(), "снимок недоступен") {
+	for !strings.Contains(out.String(), "snapshot unavailable") {
 		if time.Now().After(deadline) {
 			t.Fatal("error was not drawn")
 		}
@@ -264,7 +264,7 @@ func TestRunThreeSnapshotErrors(t *testing.T) {
 	tick <- time.Now()
 	select {
 	case err := <-done:
-		if err == nil || !strings.Contains(err.Error(), "снимок недоступен") {
+		if err == nil || !strings.Contains(err.Error(), "snapshot unavailable") {
 			t.Fatalf("err %v", err)
 		}
 	case <-time.After(2 * time.Second):

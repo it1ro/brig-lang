@@ -1161,7 +1161,9 @@ func (s *Scheduler) execFrame(a *Actor, f *Frame) stepOutcome {
 			}
 			c := cells[in.Bx()]
 			if !c.set {
-				return fail(fmt.Errorf("undefined: %s", consts[in.Bx()].Str))
+				return fail(&ErrUndefined{Name: consts[in.Bx()].Str, At: TraceFrame{
+					Func: f.name, File: f.chunk.File, Pos: f.chunk.PosAt(f.ip),
+				}})
 			}
 			regs[in.A()] = c.val
 			f.ip++

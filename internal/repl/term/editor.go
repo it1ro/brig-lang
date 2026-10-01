@@ -361,7 +361,7 @@ func (e *Editor) render() {
 			x := termio.Cells(p) + termio.Cells(string([]rune(line)[:cc]))
 			crow, ccol = rows+x/w, x%w
 			if hint != "" {
-				b.WriteString("\x1b[90m" + termio.Visible(hint) + "\x1b[0m")
+				b.WriteString("\x1b[2m" + termio.Visible(hint) + "\x1b[0m")
 				n += termio.Cells(hint)
 			}
 		}

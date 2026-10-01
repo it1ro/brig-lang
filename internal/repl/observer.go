@@ -97,7 +97,7 @@ func (s *Session) infoActor(v runtime.Value) (runtime.Value, error) {
 
 func (s *Session) writeInfo(got runtime.Value) (runtime.Value, error) {
 	if isNone(got) {
-		return runtime.Unit, s.writeOut("не жив\n")
+		return runtime.Unit, s.writeOut("not alive\n")
 	}
 	rec, ok := someArg(got)
 	if !ok {
@@ -128,7 +128,7 @@ func (s *Session) top(v runtime.Value) (runtime.Value, error) {
 		pid := runtime.Value{Kind: runtime.KindPid, Pid: a.Pid}
 		got := s.vm.Scheduler().ActorInfoValue(a.Pid)
 		if isNone(got) {
-			fmt.Fprintf(&b, "%s\nне жив\n", pid.Inspect())
+			fmt.Fprintf(&b, "%s\nnot alive\n", pid.Inspect())
 			continue
 		}
 		rec, ok := someArg(got)

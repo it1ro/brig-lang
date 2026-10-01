@@ -41,6 +41,16 @@ type TraceFrame struct {
 
 func (e *ErrRaise) Error() string { return "raise: " + e.Val.Inspect() }
 
+// ErrUndefined — GETGLOBAL по имени, которого нет (`undefined: g`).
+// At — функция и место инструкции: по ним REPL печатает строку ввода и
+// `^` (§E.1).
+type ErrUndefined struct {
+	Name string
+	At   TraceFrame
+}
+
+func (e *ErrUndefined) Error() string { return "undefined: " + e.Name }
+
 // globalCell — ячейка глобального имени. Адрес ячейки стабилен на всё время
 // жизни VM, поэтому чанк держит её в кэше и не ищет имя в map на каждом
 // GETGLOBAL (T-276): переопределение в REPL (§11.4) пишет в ту же ячейку,

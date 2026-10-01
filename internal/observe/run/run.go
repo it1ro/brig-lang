@@ -288,7 +288,7 @@ func pollTimeout(next time.Time) time.Duration {
 }
 
 func errUnavailable(err error) error {
-	return errors.New("снимок недоступен: " + err.Error())
+	return errors.New("snapshot unavailable: " + err.Error())
 }
 
 // readCommand читает одну клавишу. Байт берётся, только если он уже

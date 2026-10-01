@@ -6,7 +6,11 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	goruntime "runtime"
+	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/it1ro/brig-lang/internal/highlight"
 	"github.com/it1ro/brig-lang/internal/repl"
@@ -14,12 +18,78 @@ import (
 	"github.com/it1ro/brig-lang/internal/vm"
 )
 
-const (
-	replBanner = "brig: введите выражение; пустая строка закрывает блок; Ctrl-D — выход"
-	contPrompt = "   ...> "
-)
+// prompts — приглашение консоли: `brig N ❯ ` и продолжение той же ширины
+// с `·` под `❯`. N — номер ввода для v(n). ascii — терминал без UTF-8
+// или TERM=dumb: `brig N> ` и `     .> `. color — `brig` жирным пурпурным,
+// номер и знак приглушены.
+type prompts struct{ ascii, color bool }
 
-func prompt(next int) string { return fmt.Sprintf("brig[%d]> ", next) }
+func (p prompts) main(next int) string {
+	num := strconv.Itoa(next)
+	if p.ascii {
+		return p.paint("1;35", "brig") + " " + p.paint("2", num+">") + " "
+	}
+	return p.paint("1;35", "brig") + " " + p.paint("2", num+" ❯") + " "
+}
+
+func (p prompts) cont(next int) string {
+	num := strconv.Itoa(next)
+	if p.ascii {
+		return strings.Repeat(" ", len("brig ")+len(num)-1) + p.paint("2", ".>") + " "
+	}
+	return strings.Repeat(" ", len("brig ")+len(num)+1) + p.paint("2", "·") + " "
+}
+
+func (p prompts) paint(sgr, s string) string {
+	if !p.color {
+		return s
+	}
+	return "\x1b[" + sgr + "m" + s + "\x1b[0m"
+}
+
+// newPrompts выбирает вид приглашения по TERM и локали.
+func newPrompts(color bool) prompts {
+	return prompts{ascii: os.Getenv("TERM") == "dumb" || !utf8Locale(os.LookupEnv), color: color}
+}
+
+// utf8Locale — локаль терминала в UTF-8: первая непустая из LC_ALL,
+// LC_CTYPE, LANG. Ни одна не задана — локаль C, без UTF-8.
+func utf8Locale(getenv func(string) (string, bool)) bool {
+	for _, k := range []string{"LC_ALL", "LC_CTYPE", "LANG"} {
+		if v, _ := getenv(k); v != "" {
+			v = strings.ToLower(v)
+			return strings.Contains(v, "utf-8") || strings.Contains(v, "utf8")
+		}
+	}
+	return false
+}
+
+// banner — первые строки консоли: версия, клавиши и что загружено.
+func banner(loaded string) string {
+	b := fmt.Sprintf("Brig %s · %s %s/%s\n", version, goruntime.Version(), goruntime.GOOS, goruntime.GOARCH)
+	b += "h() help · Tab complete · Ctrl-R history · Ctrl-D exit\n"
+	if loaded != "" {
+		b += loaded + "\n"
+	}
+	return b
+}
+
+// loadedLine — третья строка баннера: проект и init.brig.
+func loadedLine(s *repl.Session, initLoaded bool) string {
+	var parts []string
+	if root := s.ProjectRoot(); root != "" {
+		n := s.UserModuleCount()
+		unit := "modules"
+		if n == 1 {
+			unit = "module"
+		}
+		parts = append(parts, fmt.Sprintf("project %s: %d %s", filepath.Base(root), n, unit))
+	}
+	if initLoaded {
+		parts = append(parts, "init.brig loaded")
+	}
+	return strings.Join(parts, ", ")
+}
 
 // replLoop — REPL (§11.4, N12) поверх repl.Session.
 //
@@ -42,13 +112,19 @@ func replLoop(inv invocation) {
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt)
 	defer signal.Stop(sig)
+	errTTY := term.IsTerminal(os.Stderr)
 	go func() {
 		for range sig {
+			// Терминал уже напечатал `^C`: ошибка — с новой строки.
+			if errTTY {
+				fmt.Fprintln(os.Stderr)
+			}
 			s.Interrupt()
 		}
 	}()
+	initLoaded := false
 	if !inv.noInit {
-		runInit(s)
+		initLoaded = runInit(s)
 	}
 	for _, path := range inv.files {
 		if err := loadTarget(s, path); err != nil {
@@ -65,19 +141,25 @@ func replLoop(inv invocation) {
 	}
 
 	tty := term.IsTerminal(os.Stdin)
-	plain := inv.dash || !tty || !term.IsTerminal(os.Stdout)
+	dumb := os.Getenv("TERM") == "dumb"
+	plain := inv.dash || !tty || !term.IsTerminal(os.Stdout) || dumb
+	loaded := loadedLine(s, initLoaded)
 	var err error
 	if !plain {
-		err = consoleLoop(s)
+		err = consoleLoop(s, loaded)
 	} else {
 		fe.In = os.Stdin
 		if tty && !inv.dash {
-			fmt.Fprintln(os.Stderr, replBanner)
+			// Приглашения — в stderr, как баннер: в stdout только значения
+			// (`brig | tee out.txt`).
+			fmt.Fprint(os.Stderr, banner(loaded))
+			fe.ErrPal = highlight.NewPalette(highlight.PaletteOptions{TTY: term.IsTerminal(os.Stderr)})
+			pr := newPrompts(fe.ErrPal.Enabled())
 			fe.Prompt = func(next int, more bool) string {
 				if more {
-					return contPrompt
+					return pr.cont(next)
 				}
-				return prompt(next)
+				return pr.main(next)
 			}
 		}
 		err = fe.Run(s)
@@ -87,24 +169,22 @@ func replLoop(inv invocation) {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(exitInternal)
 	}
-	if tty && !inv.dash {
-		fmt.Fprintln(os.Stderr, "bye")
-	}
 }
 
-// runInit исполняет ~/.config/brig/init.brig, если файл есть.
-// Нет файла — не ошибка. Ошибка в файле печатается, сессия продолжается.
-func runInit(s *repl.Session) {
+// runInit исполняет ~/.config/brig/init.brig, если файл есть, и
+// сообщает, загружен ли он. Нет файла — не ошибка. Ошибка в файле
+// печатается, сессия продолжается.
+func runInit(s *repl.Session) bool {
 	path, err := initFile()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "warning: init: %v\n", err)
-		return
+		return false
 	}
 	fi, err := os.Stat(path)
 	if err != nil || fi.IsDir() {
-		return
+		return false
 	}
-	_ = s.LoadFile(path, false)
+	return s.LoadFile(path, false) == nil
 }
 
 func initFile() (string, error) {
@@ -134,14 +214,17 @@ func loadTarget(s *repl.Session, path string) error {
 // consoleLoop — REPL на терминале: редактор строки (term.Terminal) и
 // история в term.DefaultHistoryPath; значения и ошибки печатаются так
 // же, как в plain-фронтенде.
-func consoleLoop(s *repl.Session) error {
-	fmt.Fprintln(os.Stderr, replBanner)
+func consoleLoop(s *repl.Session, loaded string) error {
+	fmt.Fprint(os.Stderr, banner(loaded))
 	t := term.NewTerminal(os.Stdin, os.Stdout)
 	t.NeedMore = s.NeedMore
 	t.Indent = repl.Indent
 	t.IndentWidth = repl.IndentWidth
 	t.History = openHistory(s.ProjectRoot())
-	pal := highlight.PaletteFromEnv(nil)
+	initPath, _ := initFile()
+	s.SetConsolePaths(repl.ConsolePaths{History: t.History.Path, Init: initPath})
+	pal, errPal := consolePalettes(t)
+	pr := newPrompts(pal.Enabled())
 	t.Color = pal.Enabled()
 	t.Highlight = func(src string, cursor int) string {
 		return highlight.Highlight(src, cursor, s.HighlightEnv(), pal)
@@ -169,9 +252,10 @@ func consoleLoop(s *repl.Session) error {
 	}
 
 	fe := repl.Plain{
-		Out: os.Stdout,
-		Err: os.Stderr,
-		Pal: pal,
+		Out:    os.Stdout,
+		Err:    os.Stderr,
+		Pal:    pal,
+		ErrPal: errPal,
 		Width: func() int {
 			if t.Width == nil {
 				return 0
@@ -180,9 +264,9 @@ func consoleLoop(s *repl.Session) error {
 		},
 	}
 	s.SetOutput(os.Stderr)
-	s.SetPalette(pal)
+	s.SetPalette(errPal)
 	for {
-		src, err := t.ReadInput(prompt(s.Next()), contPrompt)
+		src, err := t.ReadInput(pr.main(s.Next()), pr.cont(s.Next()))
 		if err == io.EOF {
 			return nil
 		}
@@ -195,7 +279,7 @@ func consoleLoop(s *repl.Session) error {
 		if err := t.History.Add(src); err != nil {
 			fmt.Fprintf(os.Stderr, "warning: history: %v\n", err)
 			project := s.ProjectRoot()
-			if project != "" && t.History.Path == projectHistory(project) {
+			if project != "" && t.History.Path != globalHistoryPath() {
 				t.History = openGlobalHistory()
 				if err := t.History.Add(src); err != nil {
 					fmt.Fprintf(os.Stderr, "warning: history: %v\n", err)
@@ -211,24 +295,54 @@ func consoleLoop(s *repl.Session) error {
 	}
 }
 
-func projectHistory(root string) string {
-	return filepath.Join(root, ".brig", "history")
+// consolePalettes — палитры stdout и stderr: цвет у потока, только если
+// он — терминал. Фон для BRIG_THEME=auto спрашивается у терминала
+// (OSC 11) один раз; предупреждения BRIG_COLORS печатаются один раз.
+func consolePalettes(t *term.Terminal) (out, errPal highlight.Palette) {
+	var once sync.Once
+	var light, ok bool
+	bg := func() (bool, bool) {
+		once.Do(func() { light, ok = highlight.LightBackground(t.QueryBackground(100 * time.Millisecond)) })
+		return light, ok
+	}
+	out = highlight.NewPalette(highlight.PaletteOptions{TTY: term.IsTerminal(os.Stdout), Background: bg, Warn: os.Stderr})
+	errPal = highlight.NewPalette(highlight.PaletteOptions{TTY: term.IsTerminal(os.Stderr), Background: bg})
+	return out, errPal
 }
 
-// openHistory — история проекта `<корень>/.brig/history` для `-i` каталога.
-// Нет прав — глобальная история (T-202).
+// openHistory — история проекта для `-i` каталога в
+// $XDG_STATE_HOME/brig/projects/<hash>/history; записи старого файла
+// `<проект>/.brig/history`, если он есть, идут перед ней. Нет проекта или
+// нет прав — глобальная история (T-202).
 func openHistory(project string) *term.History {
 	if project != "" {
-		dir := filepath.Join(project, ".brig")
-		if err := os.MkdirAll(dir, 0o700); err != nil {
-			fmt.Fprintf(os.Stderr, "warning: history: %v\n", err)
-		} else if h, err := term.LoadHistory(projectHistory(project)); err != nil {
+		if h, err := openProjectHistory(project); err != nil {
 			fmt.Fprintf(os.Stderr, "warning: history: %v\n", err)
 		} else {
 			return h
 		}
 	}
 	return openGlobalHistory()
+}
+
+func openProjectHistory(project string) (*term.History, error) {
+	path, err := term.ProjectHistoryPath(project)
+	if err != nil {
+		return nil, err
+	}
+	h, err := term.LoadHistory(path)
+	if err != nil {
+		return nil, err
+	}
+	if old, err := term.LoadHistory(filepath.Join(project, ".brig", "history")); err == nil {
+		h.Prepend(old)
+	}
+	return h, nil
+}
+
+func globalHistoryPath() string {
+	path, _ := term.DefaultHistoryPath()
+	return path
 }
 
 // openGlobalHistory загружает историю консоли. Файл недоступен —

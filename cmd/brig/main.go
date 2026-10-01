@@ -132,7 +132,7 @@ func parseArgs(args []string) invocation {
 		switch a {
 		case "-d", "--dump-bytecode":
 			if inv.kind == kindInteractive {
-				fail(exitParse, "brig: --dump-bytecode не сочетается с -i")
+				fail(exitParse, "brig: --dump-bytecode cannot be combined with -i")
 			}
 			dump = true
 			continue
@@ -141,16 +141,16 @@ func parseArgs(args []string) invocation {
 			continue
 		case "-i":
 			if dump {
-				fail(exitParse, "brig: --dump-bytecode не сочетается с -i")
+				fail(exitParse, "brig: --dump-bytecode cannot be combined with -i")
 			}
 			inv.kind = kindInteractive
 			continue
 		case "-e":
 			if dump {
-				fail(exitParse, "brig: --dump-bytecode не сочетается с -e")
+				fail(exitParse, "brig: --dump-bytecode cannot be combined with -e")
 			}
 			if i+1 >= len(args) {
-				fail(exitParse, "brig: -e: ожидается выражение")
+				fail(exitParse, "brig: -e: expression expected")
 			}
 			i++
 			if inv.kind == kindInteractive {
@@ -164,7 +164,7 @@ func parseArgs(args []string) invocation {
 			return invocation{kind: kindVersion}
 		case "-":
 			if dump {
-				fail(exitParse, "brig: --dump-bytecode не сочетается с -")
+				fail(exitParse, "brig: --dump-bytecode cannot be combined with -")
 			}
 			if inv.kind == kindInteractive {
 				inv.dash = true
@@ -174,7 +174,7 @@ func parseArgs(args []string) invocation {
 			return invocation{kind: kindStdin, progArgs: args[i+1:], noInit: inv.noInit}
 		}
 		if strings.HasPrefix(a, "-") {
-			fail(exitParse, "brig: неизвестный флаг %q", a)
+			fail(exitParse, "brig: unknown flag %q", a)
 		}
 		if inv.kind == kindInteractive {
 			if isInteractiveTarget(a) {
@@ -188,12 +188,12 @@ func parseArgs(args []string) invocation {
 			return invocation{kind: kindFile, dump: dump, file: a, progArgs: args[i+1:], noInit: inv.noInit}
 		}
 		if dump {
-			fail(exitParse, "brig: --dump-bytecode ставится перед файлом")
+			fail(exitParse, "brig: --dump-bytecode goes before the file")
 		}
 		return invocation{kind: a, progArgs: args[i+1:]}
 	}
 	if dump {
-		fail(exitParse, "brig: --dump-bytecode: ожидается файл")
+		fail(exitParse, "brig: --dump-bytecode: file expected")
 	}
 	return inv
 }
@@ -214,9 +214,9 @@ func isEntryFile(a string) bool {
 }
 
 func unknownCommand(name string, rest []string) {
-	fmt.Fprintf(os.Stderr, "brig: неизвестная команда %q\n", name)
+	fmt.Fprintf(os.Stderr, "brig: unknown command %q\n", name)
 	if len(rest) > 0 {
-		fmt.Fprintf(os.Stderr, "подсказка: brig %s\n", strings.Join(rest, " "))
+		fmt.Fprintf(os.Stderr, "hint: brig %s\n", strings.Join(rest, " "))
 	}
 	usage()
 	os.Exit(exitParse)
@@ -228,50 +228,64 @@ func fail(code int, format string, args ...any) {
 }
 
 func usage() {
-	fmt.Fprint(os.Stderr, `brig — референсный интерпретатор
+	fmt.Fprint(os.Stderr, `brig — reference interpreter
 
-Использование:
-  brig [флаги] <file> [args...]   выполнить файл
-  brig -e <expr> [args...]        исполнить выражение и выйти
-  brig - [args...]                программа из stdin
-  brig                            на TTY — REPL; иначе stdin как script
-  brig -i [файлы|каталог] [args...]
-                                  REPL: модули в сессию, main не вызывается
-  brig -i -e <expr> ...           expr в сессии после загрузки, до приглашения
-  brig -i -                       REPL без приглашений (stdin)
-  brig check <file.brig>          распарсить и проверить (парсер + sema)
-  brig test [path]                тесты *_test.brig (fn test_*) и доктесты ##
-  brig version                    версия
-  brig help                       эта справка
+Usage:
+  brig [flags] <file> [args...]   run a file
+  brig -e <expr> [args...]        evaluate an expression and exit
+  brig - [args...]                program from stdin
+  brig                            REPL on a TTY; otherwise stdin as a script
+  brig -i [files|dir] [args...]   REPL: modules into the session, main is not called
+  brig -i -e <expr> ...           expr in the session after loading, before the prompt
+  brig -i -                       REPL without prompts (stdin)
+  brig check <file.brig>          parse and check (parser + sema)
+  brig test [path]                tests *_test.brig (fn test_*) and ## doctests
+  brig version                    version
+  brig help                       this help
 
-Файл — первый аргумент, в котором есть «.brig» или «/». Всё после него —
-Sys.args(), включая то, что выглядит как флаги. Флаги brig принимаются
-только до файла: -d / --dump-bytecode, -e, -i, --no-init, -h / --help,
--v / --version.
+The file is the first argument that contains ".brig" or "/". Everything
+after it is Sys.args(), including what looks like flags. brig flags are
+accepted only before the file: -d / --dump-bytecode, -e, -i, --no-init,
+-h / --help, -v / --version.
 
-Файл с module — модуль, вызывается fn main(). Файл без module — script
-(§11.3): top-level инструкции по порядку, fn main() сама не вызывается.
-Подкоманд run и repl нет.
+A file with module is a module: fn main() is called. A file without
+module is a script (§11.3): top-level statements in order, fn main() is
+not called. There are no run and repl subcommands.
 
-brig check выбирает режим так же и ничего не исполняет. Импорты модуля
-ищутся от корня проекта (project.brig вверх от файла; lib/, если он есть),
-без project.brig — от каталога файла.
+brig check picks the mode the same way and runs nothing. Module imports
+are resolved from the project root (project.brig up from the file; lib/
+if present), without project.brig from the file directory.
 
--i грузит перечисленные файлы в сессию: модуль виден по имени, script
-исполняется как вводы, fn main() сама не вызывается. Каталог (или «.») —
-проект: корень ищется по project.brig вверх от пути. -e вместе с -i
-исполняется после загрузки и до первого приглашения. Ошибка загрузки
-печатается, REPL всё равно открывается.
+-i loads the listed files into the session: a module is visible by name,
+a script runs as inputs, fn main() is not called. A directory (or ".")
+is a project: the root is found by project.brig up from the path. -e
+with -i runs after loading and before the first prompt. A load error is
+printed, the REPL opens anyway.
 
-Каждый REPL сначала исполняет ~/.config/brig/init.brig
-($XDG_CONFIG_HOME/brig/init.brig). --no-init это отключает.
+Every REPL first runs ~/.config/brig/init.brig
+($XDG_CONFIG_HOME/brig/init.brig). --no-init disables it. Console
+history: $XDG_STATE_HOME/brig/history; for a project,
+$XDG_STATE_HOME/brig/projects/<hash>/history. Input with a leading space
+is not saved.
 
-Переменные окружения:
-  BRIG_VERIFY=1                   прогнать vm.Verify перед исполнением
+Console:
+`+indentHelp(repl.ConsoleHelp())+`
+    BRIG_VERIFY    1: run vm.Verify before execution
 
-Exit codes: 0 ok, 1 ошибка парсинга/sema, 2 runtime raise, 3 внутренняя ошибка;
-brig test: 0 — всё прошло, 1 — упал тест или файл не скомпилировался.
+Exit codes: 0 ok, 1 parse/sema error, 2 runtime raise, 3 internal error;
+brig test: 0 all passed, 1 a test failed or a file did not compile.
 `)
+}
+
+// indentHelp сдвигает справку консоли на два пробела под заголовок.
+func indentHelp(s string) string {
+	lines := strings.Split(strings.TrimRight(s, "\n"), "\n")
+	for i, l := range lines {
+		if l != "" {
+			lines[i] = "  " + l
+		}
+	}
+	return strings.Join(lines, "\n")
 }
 
 func readStdin() string {
@@ -357,7 +371,7 @@ func compileModules(g *loader.Graph) []compiler.Module {
 // модулей от корня проекта (loader.ModuleRoot), без module — script.
 func runCheck(args []string) {
 	if len(args) != 1 {
-		fmt.Fprintln(os.Stderr, "brig check: ожидается один файл")
+		fmt.Fprintln(os.Stderr, "brig check: one file expected")
 		os.Exit(exitParse)
 	}
 	file := args[0]
@@ -423,7 +437,7 @@ func runEntry(file string, progArgs []string, dump bool) {
 		return
 	}
 	if dump {
-		fail(exitParse, "brig: --dump-bytecode требует файл с module")
+		fail(exitParse, "brig: --dump-bytecode requires a file with module")
 	}
 	runScript(file, string(src), progArgs)
 }
@@ -453,7 +467,7 @@ func runModule(file string, progArgs []string, dump bool) {
 		os.Exit(exitForCompileErr(err))
 	}
 	if img.Main == nil {
-		reportCompileError(file, errors.New("нет функции main()"))
+		reportCompileError(file, errors.New("no function main()"))
 		os.Exit(exitParse)
 	}
 

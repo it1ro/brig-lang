@@ -471,7 +471,7 @@ func TestEditorComplete(t *testing.T) {
 		return Completion{Candidates: items}
 	}
 	drive(t, e)
-	if !strings.Contains(scr.String(), "и ещё 6") {
+	if !strings.Contains(scr.String(), "and 6 more") {
 		t.Fatalf("menu cap: %q", scr.String())
 	}
 }

@@ -177,7 +177,7 @@ func menuLines(items []string, width int) []string {
 		lines[i/cols] += cell
 	}
 	if extra > 0 {
-		lines = append(lines, fmt.Sprintf("… и ещё %d", extra))
+		lines = append(lines, fmt.Sprintf("… and %d more", extra))
 	}
 	return lines
 }
