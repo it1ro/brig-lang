@@ -636,3 +636,22 @@ func sortedStrings[V any](m map[string]V) []string {
 	sort.Strings(out)
 	return out
 }
+
+// ---- Версия: шапка спеки = заголовок brig.ebnf ----
+
+var reSpecVersion = regexp.MustCompile(`(?m)^\*\*Версия:\*\* (v\d+\.\d+\.\d+)$`)
+var reEbnfVersion = regexp.MustCompile(`^\(\* Brig — исполнительная грамматика (v\d+\.\d+\.\d+) \*\)`)
+
+func TestSpecVersionMatchesEbnf(t *testing.T) {
+	m := reSpecVersion.FindStringSubmatch(readRepoFile(t, specPath))
+	if m == nil {
+		t.Fatal("в шапке спеки нет строки «**Версия:** vX.Y.Z»")
+	}
+	e := reEbnfVersion.FindStringSubmatch(readRepoFile(t, ebnfPath))
+	if e == nil {
+		t.Fatal("первая строка brig.ebnf не вида «(* Brig — исполнительная грамматика vX.Y.Z *)»")
+	}
+	if m[1] != e[1] {
+		t.Errorf("версия спеки %s != версия brig.ebnf %s", m[1], e[1])
+	}
+}
