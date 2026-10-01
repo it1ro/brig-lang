@@ -2,7 +2,7 @@
 
 [← карта плана](README.md)
 
-Вопросы к автору языка: label `design-decision`, модель `human`. Код по вопросу не пишется, пока нет решения. DoD любой DD-задачи — одно и то же: в issue записан выбранный вариант (для каждого подвопроса) и судьба задач, которые ждут решения (делается / won't-fix); issue закрыт. Правку спеки по решению делает отдельная docs-задача.
+Вопросы к автору языка: label `design-decision`, модель `human`. Код по вопросу не пишется, пока нет решения. Решение записывается комментарием в issue; реализация и правка спеки — PR на этот же issue (`Closes #N`), отдельной задачи на реализацию нет. DoD конкретного DD — в его body.
 
 DD, которые блокируют конкретную волну, лежат в файле этой волны:
 - T-120…T-125 — [wave-8.md](wave-8.md) (решены 2026-09-27, таблица ниже);
@@ -29,6 +29,8 @@ DD, которые блокируют конкретную волну, лежа�
 | T-123 | [#182](https://github.com/it1ro/brig-lang/issues/182) | Term order пользовательских вариантов | **A** — как номинальные записи | T-136 |
 | T-124 | [#183](https://github.com/it1ro/brig-lang/issues/183) | Якорь offside-блока | **A** — отступ строки стейтмента везде | T-127, T-138 |
 | T-125 | [#184](https://github.com/it1ro/brig-lang/issues/184) | Тест-фреймворк и горячая перезагрузка (Must) | `brig test` + `Test.*` + доктесты; hot reload — из Must | T-147, T-149, T-129 |
+| T-190 | [#294](https://github.com/it1ro/brig-lang/issues/294) | Где хранить stack trace при `raise` (§17 п.1) | **A** — отдельный канал: поле `trace` события `[:vm, :actor, :crash]` (T-222); значение ошибки не меняется | — |
+| T-191 | [#295](https://github.com/it1ro/brig-lang/issues/295) | `trap(fn, timeout: N)` (§17 п.2) | **A** — не вводится: `recv … after`, `await(ref, timeout)`, `exit(pid, reason)` | — |
 
 ## Открытые вопросы §17 (T-190…)
 
@@ -52,8 +54,6 @@ DD, которые блокируют конкретную волну, лежа�
 
 | T-NN | Issue | Вопрос |
 |---|---|---|
-| T-190 | [#294](https://github.com/it1ro/brig-lang/issues/294) | где хранить stack trace при `raise` (§17 п.1) |
-| T-191 | [#295](https://github.com/it1ro/brig-lang/issues/295) | `trap(fn, timeout: N)` (§17 п.2) |
 | T-192 | [#296](https://github.com/it1ro/brig-lang/issues/296) | `type Color {}` без полей (§17 п.7) |
 | T-193 | [#297](https://github.com/it1ro/brig-lang/issues/297) | or-паттерны `:ok \| :error` (§17 п.11, Nice) |
 | T-194 | [#298](https://github.com/it1ro/brig-lang/issues/298) | движок `Regex` для `rx"..."` (§3.3) |
