@@ -844,14 +844,14 @@ func (s *Scheduler) armSend(pid int, msg runtime.Value, deadline time.Time) runt
 func (s *Scheduler) sendAfter(msVal, pidVal, msg runtime.Value) (runtime.Value, error) {
 	ms, ok := nonNegMillis(msVal)
 	if !ok {
-		return runtime.Unit, typeErr("send_after", msVal)
+		return runtime.Unit, modTypeErr("timer", "send_after", msVal)
 	}
 	if pidVal.Kind != runtime.KindPid {
-		return runtime.Unit, typeErr("send_after", pidVal)
+		return runtime.Unit, modTypeErr("timer", "send_after", pidVal)
 	}
 	d, ok := recvTimerDuration(ms)
 	if !ok {
-		return runtime.Unit, typeErr("send_after", msVal)
+		return runtime.Unit, modTypeErr("timer", "send_after", msVal)
 	}
 	return s.armSend(pidVal.Pid, msg, time.Now().Add(d)), nil
 }
@@ -859,7 +859,7 @@ func (s *Scheduler) sendAfter(msVal, pidVal, msg runtime.Value) (runtime.Value, 
 // cancelTimer — Timer.cancel(ref). true, только если таймер ещё в куче.
 func (s *Scheduler) cancelTimer(refVal runtime.Value) (runtime.Value, error) {
 	if refVal.Kind != runtime.KindRef {
-		return runtime.Unit, typeErr("cancel", refVal)
+		return runtime.Unit, modTypeErr("timer", "cancel", refVal)
 	}
 	e, ok := s.sends[refVal.Ref]
 	if !ok || e.pos == 0 {

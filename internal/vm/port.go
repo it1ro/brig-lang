@@ -266,7 +266,7 @@ func installPorts(def func(name string, arity int, fn runtime.NativeFunc)) {
 		m := c.(*VM)
 		names, ok := subscribeNames(args[0])
 		if !ok {
-			return runtime.Unit, typeErr("subscribe", args[0])
+			return runtime.Unit, modTypeErr("signal", "subscribe", args[0])
 		}
 		s := m.scheduler
 		a := s.active
@@ -287,7 +287,7 @@ func installPorts(def func(name string, arity int, fn runtime.NativeFunc)) {
 		s := c.(*VM).scheduler
 		p := args[0]
 		if !s.ownsPort(p) {
-			return runtime.Unit, typeErr("close", p)
+			return runtime.Unit, modTypeErr("port", "close", p)
 		}
 		s.closePort(p.Port)
 		return runtime.Unit, nil
@@ -295,7 +295,7 @@ func installPorts(def func(name string, arity int, fn runtime.NativeFunc)) {
 	def("Sys.halt", 1, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		code := args[0]
 		if code.Kind != runtime.KindInt || !code.IsSmall || code.SmallInt < 0 || code.SmallInt > 255 {
-			return runtime.Unit, typeErr("halt", code)
+			return runtime.Unit, modTypeErr("sys", "halt", code)
 		}
 		return runtime.Unit, &ErrHalt{Code: int(code.SmallInt)}
 	})

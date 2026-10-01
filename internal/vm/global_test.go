@@ -68,12 +68,12 @@ func TestGlobalNonKey(t *testing.T) {
 	runModuleSync(t, `module Main
 fn is_put(r) ->
     match r
-        Error((:type_error, (:put, v))) -> v != v
+        Error((:type_error, ((:global, :put), v))) -> v != v
         _ -> false
 
 fn is_get(r) ->
     match r
-        Error((:type_error, (:get, v))) -> v != v
+        Error((:type_error, ((:global, :get), v))) -> v != v
         _ -> false
 
 fn main() ->

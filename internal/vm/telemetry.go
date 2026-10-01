@@ -160,13 +160,13 @@ func (s *Scheduler) teleDetachID(id runtime.Value) {
 // teleAttach — Telemetry.attach. Занятый id не меняет прежнюю подписку.
 func (s *Scheduler) teleAttach(id, prefix, handler runtime.Value) (runtime.Value, error) {
 	if !runtime.KeyEqual(id, id) {
-		return runtime.Unit, typeErr("attach", id)
+		return runtime.Unit, modTypeErr("telemetry", "attach", id)
 	}
 	if err := checkTelePrefix(prefix); err != nil {
 		return runtime.Unit, err
 	}
 	if !exactArity3(handler) {
-		return runtime.Unit, typeErr("attach", handler)
+		return runtime.Unit, modTypeErr("telemetry", "attach", handler)
 	}
 	if s.teleIndex(id) >= 0 {
 		return runtime.Variant("Error", runtime.Atom("already_exists")), nil
@@ -187,20 +187,20 @@ func (s *Scheduler) teleDetach(id runtime.Value) runtime.Value {
 
 func checkTelePrefix(p runtime.Value) error {
 	if p.Kind != runtime.KindList || !allAtoms(p) {
-		return typeErr("attach", p)
+		return modTypeErr("telemetry", "attach", p)
 	}
 	return nil
 }
 
 func checkEmitArgs(event, meas, meta runtime.Value) error {
 	if event.Kind != runtime.KindList || event.Len() == 0 || !allAtoms(event) {
-		return typeErr("emit", event)
+		return modTypeErr("telemetry", "emit", event)
 	}
 	if meas.Kind != runtime.KindRecord {
-		return typeErr("emit", meas)
+		return modTypeErr("telemetry", "emit", meas)
 	}
 	if meta.Kind != runtime.KindRecord {
-		return typeErr("emit", meta)
+		return modTypeErr("telemetry", "emit", meta)
 	}
 	return nil
 }

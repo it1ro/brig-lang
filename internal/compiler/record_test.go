@@ -170,7 +170,7 @@ fn main() ->
     assert({ ..Record.to_anon(u), kind: :user } == { id: 1, name: "a", kind: :user })
     assert(User{ ..anon } == u)
     e = trap(Record.to_anon(1))
-    assert(e == Error((:type_error, (:to_anon, 1))))
+    assert(e == Error((:type_error, ((:record, :to_anon), 1))))
 `)
 }
 

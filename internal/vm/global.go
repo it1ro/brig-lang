@@ -55,10 +55,10 @@ func installGlobal(def func(name string, arity int, fn runtime.NativeFunc)) {
 }
 
 // globalKey — имя пригодно как ключ Map (§4.8), если равно само себе.
-// Иначе get после put не увидит значение: (:type_error, (:put|:get, name)).
-func globalKey(name runtime.Value, op string) error {
+// Иначе get после put не увидит значение: (:type_error, ((:global, :put|:get), name)).
+func globalKey(name runtime.Value, fn string) error {
 	if !runtime.KeyEqual(name, name) {
-		return typeErr(op, name)
+		return modTypeErr("global", fn, name)
 	}
 	return nil
 }

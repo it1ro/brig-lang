@@ -50,14 +50,14 @@ fn main() ->
     assert(e == (:hit, child))
     h2 = fn (e, m) -> :no
     h3 = fn (e, m, meta) -> :yes
-    assert(trap(Telemetry.attach(:bad, :no, h3)) == Error((:type_error, (:attach, :no))))
-    assert(trap(Telemetry.attach(:bad, [:app, 1], h3)) == Error((:type_error, (:attach, [:app, 1]))))
-    assert(trap(Telemetry.attach(:bad, [:app], h2)) == Error((:type_error, (:attach, h2))))
-    assert(trap(Telemetry.emit(:no, {}, {})) == Error((:type_error, (:emit, :no))))
-    assert(trap(Telemetry.emit([], {}, {})) == Error((:type_error, (:emit, []))))
-    assert(trap(Telemetry.emit([:a, 1], {}, {})) == Error((:type_error, (:emit, [:a, 1]))))
-    assert(trap(Telemetry.emit([:a], :no, {})) == Error((:type_error, (:emit, :no))))
-    assert(trap(Telemetry.emit([:a], {}, :no)) == Error((:type_error, (:emit, :no))))
+    assert(trap(Telemetry.attach(:bad, :no, h3)) == Error((:type_error, ((:telemetry, :attach), :no))))
+    assert(trap(Telemetry.attach(:bad, [:app, 1], h3)) == Error((:type_error, ((:telemetry, :attach), [:app, 1]))))
+    assert(trap(Telemetry.attach(:bad, [:app], h2)) == Error((:type_error, ((:telemetry, :attach), h2))))
+    assert(trap(Telemetry.emit(:no, {}, {})) == Error((:type_error, ((:telemetry, :emit), :no))))
+    assert(trap(Telemetry.emit([], {}, {})) == Error((:type_error, ((:telemetry, :emit), []))))
+    assert(trap(Telemetry.emit([:a, 1], {}, {})) == Error((:type_error, ((:telemetry, :emit), [:a, 1]))))
+    assert(trap(Telemetry.emit([:a], :no, {})) == Error((:type_error, ((:telemetry, :emit), :no))))
+    assert(trap(Telemetry.emit([:a], {}, :no)) == Error((:type_error, ((:telemetry, :emit), :no))))
     :ok
 `)
 }

@@ -164,7 +164,7 @@ func installHTTP(def func(name string, arity int, fn runtime.NativeFunc)) {
 		m := c.(*VM)
 		addr := args[0]
 		if addr.Kind != runtime.KindStr || !validListenAddr(addr.Str) {
-			return runtime.Unit, typeErr("listen", addr)
+			return runtime.Unit, modTypeErr("http_server", "listen", addr)
 		}
 		s := m.scheduler
 		a := s.active
@@ -195,21 +195,21 @@ func installHTTP(def func(name string, arity int, fn runtime.NativeFunc)) {
 		s := c.(*VM).scheduler
 		v, status := args[0], args[1]
 		if !s.ownsPort(v) {
-			return runtime.Unit, typeErr("respond", v)
+			return runtime.Unit, modTypeErr("http_server", "respond", v)
 		}
 		if status.Kind != runtime.KindInt || !status.IsSmall || status.SmallInt < 200 || status.SmallInt > 599 {
-			return runtime.Unit, typeErr("respond", status)
+			return runtime.Unit, modTypeErr("http_server", "respond", status)
 		}
 		headers, ok := responseHeaders(args[2])
 		if !ok {
-			return runtime.Unit, typeErr("respond", args[2])
+			return runtime.Unit, modTypeErr("http_server", "respond", args[2])
 		}
 		if v.Port.Closed {
 			return errClosed, nil
 		}
 		sp := s.ports[v.Port.ID].stream
 		if sp == nil || sp.req == nil || sp.responded {
-			return runtime.Unit, typeErr("respond", v)
+			return runtime.Unit, modTypeErr("http_server", "respond", v)
 		}
 		code := int(status.SmallInt)
 		sp.responded = true

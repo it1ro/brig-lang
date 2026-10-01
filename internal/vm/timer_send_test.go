@@ -215,16 +215,16 @@ func TestTimerSendTypeErrors(t *testing.T) {
 fn main() ->
     r = trap
         Timer.send_after(-1, self(), :x)
-    assert(r == Error((:type_error, (:send_after, -1))))
+    assert(r == Error((:type_error, ((:timer, :send_after), -1))))
     r = trap
         Timer.send_after(:ms, self(), :x)
-    assert(r == Error((:type_error, (:send_after, :ms))))
+    assert(r == Error((:type_error, ((:timer, :send_after), :ms))))
     r = trap
         Timer.send_after(1, :pid, :x)
-    assert(r == Error((:type_error, (:send_after, :pid))))
+    assert(r == Error((:type_error, ((:timer, :send_after), :pid))))
     r = trap
         Timer.cancel(1)
-    assert(r == Error((:type_error, (:cancel, 1))))
+    assert(r == Error((:type_error, ((:timer, :cancel), 1))))
     ref = Timer.send_after(5000, self(), :x)
     assert(Timer.cancel(ref) == true)
     r = trap

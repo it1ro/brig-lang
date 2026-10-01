@@ -157,7 +157,7 @@ func InstallPrelude(vm *VM) {
 	def("Record.to_anon", 1, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		r := args[0]
 		if r.Kind != runtime.KindRecord {
-			return runtime.Unit, typeErr("to_anon", r)
+			return runtime.Unit, modTypeErr("record", "to_anon", r)
 		}
 		if r.Record.Type == "" {
 			return r, nil

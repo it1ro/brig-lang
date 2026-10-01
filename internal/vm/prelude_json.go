@@ -26,9 +26,7 @@ func InstallJSONPrelude(vm *VM) {
 		if len(args) == 2 {
 			o, ok := jsonEncodeOpts(args[1])
 			if !ok {
-				return runtime.Unit, &ErrRaise{Val: runtime.Tuple(
-					runtime.Atom("type_error"),
-					runtime.Tuple(runtime.Atom("json_encode_opts"), args[1]))}
+				return runtime.Unit, modTypeErr("json", "encode", args[1])
 			}
 			opts = o
 		}
@@ -41,9 +39,7 @@ func InstallJSONPrelude(vm *VM) {
 
 	def("Json.decode", 1, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		if args[0].Kind != runtime.KindStr {
-			return runtime.Unit, &ErrRaise{Val: runtime.Tuple(
-				runtime.Atom("type_error"),
-				runtime.Tuple(runtime.Atom("json_decode_arg"), args[0]))}
+			return runtime.Unit, modTypeErr("json", "decode", args[0])
 		}
 		v, err := runtime.JSONDecode(args[0].Str)
 		if err != nil {

@@ -103,11 +103,11 @@ func TestPreludeTypeErrorsAreCatchable(t *testing.T) {
     r = trap(recv_after(ms))
     assert(r == Error((:type_error, (:after, "a"))))`,
 		"timer_ms": `r = trap(Timer.send_after(-1, self(), :x))
-    assert(r == Error((:type_error, (:send_after, -1))))`,
+    assert(r == Error((:type_error, ((:timer, :send_after), -1))))`,
 		"timer_pid": `r = trap(Timer.send_after(0, 1, :x))
-    assert(r == Error((:type_error, (:send_after, 1))))`,
+    assert(r == Error((:type_error, ((:timer, :send_after), 1))))`,
 		"timer_cancel": `r = trap(Timer.cancel(1))
-    assert(r == Error((:type_error, (:cancel, 1))))`,
+    assert(r == Error((:type_error, ((:timer, :cancel), 1))))`,
 		"timer_await": `ref = Timer.send_after(1000, self(), :x)
     r = trap(await(ref, 0))
     _ = Timer.cancel(ref)
