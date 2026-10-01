@@ -366,7 +366,7 @@ fn main() ->
 }
 
 // TestPreludeCallbackRaiseTrace — trace непойманного raise из колбэка
-// содержит кадр колбэка и не содержит кадра натива (у него нет позиции).
+// содержит кадр колбэка и кадр натива с позицией его вызова (T-265).
 func TestPreludeCallbackRaiseTrace(t *testing.T) {
 	prog, err := parser.ParseProgram(parser.ModeModule, `module Main
 fn g(x) -> if x == 2 then raise(:bad) else x
@@ -395,8 +395,13 @@ fn main() ->
 	for _, fr := range rerr.Trace {
 		funcs = append(funcs, fr.Func)
 	}
-	if got := strings.Join(funcs, ","); got != "g,main" {
-		t.Errorf("trace funcs = %q, want %q", got, "g,main")
+	if got := strings.Join(funcs, ","); got != "g,map,main" {
+		t.Errorf("trace funcs = %q, want %q", got, "g,map,main")
+	}
+	if len(rerr.Trace) == 3 {
+		if p := rerr.Trace[1].Pos; p.Line != 5 || p.Col != 10 {
+			t.Errorf("map frame pos = %d:%d, want 5:10", p.Line, p.Col)
+		}
 	}
 }
 
