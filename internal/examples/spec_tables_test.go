@@ -261,7 +261,7 @@ func TestSpecPreludeMatchesInstall(t *testing.T) {
 	for _, n := range sema.BuiltinModules()["Prelude"] {
 		code[n] = true
 	}
-	for _, mod := range []string{"Str", "Bytes", "Map", "Json"} {
+	for _, mod := range []string{"Str", "Bytes", "Map", "Json", "Enum"} {
 		for _, n := range sema.BuiltinModules()[mod] {
 			code[mod+"."+n] = true
 		}
