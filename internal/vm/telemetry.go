@@ -109,15 +109,20 @@ func (sub *teleSub) matchesPath(path []string) bool {
 	return true
 }
 
-func (sub *teleSub) matches(event []runtime.Value) bool {
-	if len(sub.prefix) > len(event) {
+// matches — event (List атомов) начинается с prefix; обход без копии.
+func (sub *teleSub) matches(event runtime.Value) bool {
+	if len(sub.prefix) > event.Len() {
 		return false
 	}
-	for i, p := range sub.prefix {
-		el := event[i]
-		if el.Kind != runtime.KindAtom || el.Atom != p {
+	i := 0
+	for el := range event.Items() {
+		if i == len(sub.prefix) {
+			break
+		}
+		if el.Kind != runtime.KindAtom || el.Atom != sub.prefix[i] {
 			return false
 		}
+		i++
 	}
 	return true
 }
@@ -125,9 +130,8 @@ func (sub *teleSub) matches(event []runtime.Value) bool {
 // matchHandlers — снимок совпавших обработчиков в порядке attach.
 // nil, nil — совпадений нет и ничего не аллоцировано.
 func (s *Scheduler) matchHandlers(event runtime.Value) (hs, ids []runtime.Value) {
-	ev := event.Elems()
 	for i := range s.tele {
-		if !s.tele[i].matches(ev) {
+		if !s.tele[i].matches(event) {
 			continue
 		}
 		hs = append(hs, s.tele[i].handler)
@@ -182,14 +186,14 @@ func (s *Scheduler) teleDetach(id runtime.Value) runtime.Value {
 }
 
 func checkTelePrefix(p runtime.Value) error {
-	if p.Kind != runtime.KindList || !allAtoms(p.Elems()) {
+	if p.Kind != runtime.KindList || !allAtoms(p) {
 		return typeErr("attach", p)
 	}
 	return nil
 }
 
 func checkEmitArgs(event, meas, meta runtime.Value) error {
-	if event.Kind != runtime.KindList || event.Len() == 0 || !allAtoms(event.Elems()) {
+	if event.Kind != runtime.KindList || event.Len() == 0 || !allAtoms(event) {
 		return typeErr("emit", event)
 	}
 	if meas.Kind != runtime.KindRecord {
@@ -201,8 +205,9 @@ func checkEmitArgs(event, meas, meta runtime.Value) error {
 	return nil
 }
 
-func allAtoms(xs []runtime.Value) bool {
-	for _, x := range xs {
+// allAtoms — все элементы списка xs — атомы.
+func allAtoms(xs runtime.Value) bool {
+	for x := range xs.Items() {
 		if x.Kind != runtime.KindAtom {
 			return false
 		}

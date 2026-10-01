@@ -159,16 +159,21 @@ func checkArity(c callee, args []runtime.Value) error {
 
 // bindArgs раскладывает args по регистрам параметров и НЕ удерживает args.
 // Безопасна при перекрытии args и regs (TAILCALL): rest копируется первым.
+// Вариадическая ветка — отдельной функцией: bindArgs стоит на каждом CALL
+// и должна оставаться встраиваемой.
 func bindArgs(regs []runtime.Value, ch *Chunk, args []runtime.Value) {
 	if !ch.Variadic {
 		copy(regs, args) // copy == memmove; перекрытие допустимо
 		return
 	}
-	fixed := ch.NumParams - 1
-	rest := make([]runtime.Value, len(args)-fixed)
-	copy(rest, args[fixed:])
+	bindVariadic(regs, ch.NumParams-1, args)
+}
+
+//go:noinline
+func bindVariadic(regs []runtime.Value, fixed int, args []runtime.Value) {
+	rest := runtime.List(args[fixed:]...) // копирует args до записи в regs
 	copy(regs, args[:fixed])
-	regs[fixed] = runtime.List(rest...)
+	regs[fixed] = rest
 }
 
 // spreadArgs разворачивает последний аргумент-List в отдельные аргументы;
@@ -180,7 +185,10 @@ func spreadArgs(args []runtime.Value) ([]runtime.Value, error) {
 	}
 	out := make([]runtime.Value, 0, len(args)-1+last.Len())
 	out = append(out, args[:len(args)-1]...)
-	return append(out, last.Elems()...), nil
+	for e := range last.Items() {
+		out = append(out, e)
+	}
+	return out, nil
 }
 
 // pushCall кладёт на стек актора кадр вызова fn(args). args может быть
@@ -1428,8 +1436,7 @@ func (s *Scheduler) execFrame(a *Actor, f *Frame) stepOutcome {
 			if end > len(regs) {
 				return fail(fmt.Errorf("internal: %s window", op))
 			}
-			segs := append([]runtime.Value(nil), regs[b:end]...)
-			r, err := vmSpreadSeq(segs, op == VECSPREAD)
+			r, shared, err := vmSpreadSeq(regs[b:end], op == VECSPREAD)
 			if err != nil {
 				if f.catch(err) {
 					continue
@@ -1437,7 +1444,8 @@ func (s *Scheduler) execFrame(a *Actor, f *Frame) stepOutcome {
 				return fail(err)
 			}
 			regs[in.A()] = r
-			s.charge(a, &r)
+			// Разделённый хвост списка учтён, когда его строили.
+			s.chargeBytes(a, sizeEstimate(&r)-int64(shared)*valueSize)
 			f.ip++
 
 		case MAPSPREAD:
@@ -1989,16 +1997,40 @@ func vmIndex(obj, idx runtime.Value) (runtime.Value, error) {
 
 // vmSpreadSeq собирает список или вектор из сегментов (§5.2).
 // Сегмент — пара (Bool, значение): false — один элемент, true — спред.
-// Список принимает только List; вектор — List или Vector.
-func vmSpreadSeq(segs []runtime.Value, vector bool) (runtime.Value, error) {
+// Список принимает только List; вектор — List или Vector. Последний
+// спред списка становится хвостом без копирования: `[x, ..xs]` — O(1)
+// (§4.2); shared — длина такого хвоста. segs не изменяется.
+func vmSpreadSeq(segs []runtime.Value, vector bool) (_ runtime.Value, shared int, _ error) {
 	if len(segs)%2 != 0 {
-		return runtime.Unit, fmt.Errorf("internal: spread seq: %d regs", len(segs))
+		return runtime.Unit, 0, fmt.Errorf("internal: spread seq: %d regs", len(segs))
 	}
-	out := make([]runtime.Value, 0)
+	if vector {
+		out, err := spreadElems(nil, segs, true)
+		if err != nil {
+			return runtime.Unit, 0, err
+		}
+		return runtime.Vector(out...), 0, nil
+	}
+	tail := runtime.List()
+	if n := len(segs); n > 0 && segs[n-2].Kind == runtime.KindBool &&
+		segs[n-2].Bool && segs[n-1].Kind == runtime.KindList {
+		tail, segs = segs[n-1], segs[:n-2]
+	}
+	// Головы копирует ListPrepend: буфер на стеке, пока их немного.
+	var buf [4]runtime.Value
+	out, err := spreadElems(buf[:0], segs, false)
+	if err != nil {
+		return runtime.Unit, 0, err
+	}
+	return runtime.ListPrepend(out, tail), tail.Len(), nil
+}
+
+// spreadElems дописывает к out элементы сегментов segs (см. vmSpreadSeq).
+func spreadElems(out, segs []runtime.Value, vector bool) ([]runtime.Value, error) {
 	for i := 0; i < len(segs); i += 2 {
 		tag, val := segs[i], segs[i+1]
 		if tag.Kind != runtime.KindBool {
-			return runtime.Unit, fmt.Errorf("internal: spread tag %s", tag.Inspect())
+			return nil, fmt.Errorf("internal: spread tag %s", tag.Inspect())
 		}
 		if !tag.Bool {
 			out = append(out, val)
@@ -2006,20 +2038,19 @@ func vmSpreadSeq(segs []runtime.Value, vector bool) (runtime.Value, error) {
 		}
 		switch val.Kind {
 		case runtime.KindList:
-			out = append(out, val.Elems()...)
+			for e := range val.Items() {
+				out = append(out, e)
+			}
 		case runtime.KindVector:
 			if !vector {
-				return runtime.Unit, typeErr("spread", val)
+				return nil, typeErr("spread", val)
 			}
 			out = append(out, val.Elems()...)
 		default:
-			return runtime.Unit, typeErr("spread", val)
+			return nil, typeErr("spread", val)
 		}
 	}
-	if vector {
-		return runtime.Vector(out...), nil
-	}
-	return runtime.List(out...), nil
+	return out, nil
 }
 
 // vmSpreadMap собирает мапу из сегментов (§5.2, §4.5).

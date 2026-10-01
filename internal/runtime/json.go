@@ -114,7 +114,7 @@ func jsonEncode(sb *strings.Builder, opts JSONOptions, v Value, depth int) error
 		var elems []Value
 		switch v.Kind {
 		case KindList:
-			elems = v.list
+			elems = v.list.slice()
 		case KindVector:
 			elems = v.vector
 		case KindTuple:
