@@ -10,10 +10,10 @@
 0008   5:9   JMPIFNOT    r5 -> 0011
 0009   5:24  LOADK       r1 k4 ; :done
 0010   5:9   JMP         -> 0018
-0011   5:35  GETGLOBAL   r5 k5 ; loop
+0011   5:35  GETGLOBAL   r5 k5 ; "loop"
 0012   5:44  LOADK       r7 k6 ; 1
 0013   5:42  SUB         r6 r0 r7
-0014   4:16  LOADK       r8 k7 ; #<function loop$lambda$0$/0>
+0014   4:16  LOADK       r8 k7 ; #<clsr/0>
 0015   4:16  MOVE        r9 r0
 0016   4:16  MAKECLOSURE r7 <- r8 +1
 0017   5:35  TAILCALLENS r5 1 1
@@ -22,7 +22,7 @@
 0020   3:5   LOADK       r3 k1 ; true
 0021   3:5   JMPIFNOT    r4 -> 0029
 0022   3:5   TRAPENSURE  r2 handler -> 0028
-0023   4:16  GETGLOBAL   r6 k8 ; print
+0023   4:16  GETGLOBAL   r6 k8 ; "print"
 0024   4:22  MOVE        r7 r0
 0025   4:16  CALL        r6 1 -> r5
 0026   3:5   TRAPEND     
@@ -35,8 +35,8 @@
 0033   3:5   MAKEERROR   r1 r2
 0034   3:5   RETURN      r1
 == main arity=0 params=0 regs=5 consts=3 patterns=0 ==
-0000   7:5   GETGLOBAL   r1 k0 ; print
-0001   7:11  GETGLOBAL   r3 k1 ; loop
+0000   7:5   GETGLOBAL   r1 k0 ; "print"
+0001   7:11  GETGLOBAL   r3 k1 ; "loop"
 0002   7:16  LOADK       r4 k2 ; 3
 0003   7:11  CALL        r3 1 -> r2
 0004   7:5   TAILCALL    r1 1

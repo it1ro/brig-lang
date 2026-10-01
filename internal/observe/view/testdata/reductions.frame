@@ -1,4 +1,4 @@
- brig observe                                5 акторов · sort: reductions ↓ · 1s[K
+ brig observe                                 5 actors · sort: reductions ↓ · 1s[K
 ────────────────────────────────────────────────────────────────────────────────[K
   PID  NAME                                           STATUS     MBOX REDUCTIONS[K
      7 http                                           running       4     98 311[K
@@ -21,4 +21,4 @@
   12:04:31  #14 worker  (:badarg, …)                                            [K
   12:04:29  #11 db_conn  :down                                                  [K
 ────────────────────────────────────────────────────────────────────────────────[K
- ↑↓ выбор   Enter детали   s сортировка   q выход                               [K
+ ↑↓ select   Enter details   s sort   q quit                                    [K

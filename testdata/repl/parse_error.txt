@@ -28,4 +28,6 @@ x = 10
 error: <repl>:3:5: expected expression, got )
     )
     ^
-error: undefined: g
+error: <repl>:1:1: undefined: g; did you mean f?
+g(1)
+^

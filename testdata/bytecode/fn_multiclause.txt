@@ -17,7 +17,7 @@
 0001   2:9   JMP         -> 0004
 0002   2:15  LOADK       r2 k0 ; 1
 0003   2:15  RETURN      r2
-0004   3:19  GETGLOBAL   r3 k1 ; fact
+0004   3:19  GETGLOBAL   r3 k1 ; "fact"
 0005   3:28  LOADK       r5 k0 ; 1
 0006   3:26  SUB         r4 r0 r5
 0007   3:19  CALL        r3 1 -> r2
@@ -32,13 +32,13 @@
 0005   6:10  TUPLE       r1 <- r1..r2
 0006   6:10  RAISE       r1
 == main arity=0 params=0 regs=5 consts=3 patterns=0 ==
-0000  12:5   GETGLOBAL   r1 k0 ; print
-0001  12:11  GETGLOBAL   r3 k1 ; fact
+0000  12:5   GETGLOBAL   r1 k0 ; "print"
+0001  12:11  GETGLOBAL   r3 k1 ; "fact"
 0002  12:16  LOADK       r4 k2 ; 5
 0003  12:11  CALL        r3 1 -> r2
 0004  12:5   TAILCALL    r1 1
 == pow arity=2 params=2 regs=7 consts=2 patterns=0 ==
-0000  10:5   GETGLOBAL   r3 k0 ; pow$go
+0000  10:5   GETGLOBAL   r3 k0 ; "pow$go"
 0001  10:8   LOADK       r4 k1 ; 1
 0002  10:11  MOVE        r5 r1
 0003  10:5   MOVE        r6 r0
@@ -47,7 +47,7 @@
 0000   8:16  MATCHLOCAL  r1 p0 ; 0
 0001   8:16  JMP         -> 0003
 0002   8:22  RETURN      r0
-0003   9:22  GETGLOBAL   r4 k0 ; pow$go
+0003   9:22  GETGLOBAL   r4 k0 ; "pow$go"
 0004   9:29  MUL         r5 r0 r2
 0005   9:41  LOADK       r7 k1 ; 1
 0006   9:39  SUB         r6 r1 r7
