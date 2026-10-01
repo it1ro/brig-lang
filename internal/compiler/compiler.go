@@ -2821,7 +2821,9 @@ func (fc *funcCompiler) compileUnwatch(args []ast.Expr, d dest) error {
 	return nil
 }
 
-// compileLink — `link(pid)` ≡ `watch(pid)` без возврата ref (§12): результат ().
+// compileLink — `link(pid)`: вызывающий становится владельцем pid
+// (§12.2, T-252), результат (). Это не `watch`: ref не выдаётся,
+// и тег ошибки — свой, `(:type_error, (:link, pid))`.
 func (fc *funcCompiler) compileLink(args []ast.Expr, d dest) error {
 	if len(args) != 1 {
 		return fmt.Errorf("link требует 1 аргумент (pid)")
@@ -2832,9 +2834,7 @@ func (fc *funcCompiler) compileLink(args []ast.Expr, d dest) error {
 	if err := fc.compileExpr(args[0], val(pidReg)); err != nil {
 		return err
 	}
-	refReg := fc.allocReg()
-	fc.emit(vm.ABC(vm.WATCH, refReg, pidReg, 0))
-	fc.emit(vm.ABx(vm.LOADK, dst, fc.konst(runtime.Unit)))
+	fc.emit(vm.ABC(vm.LINK, dst, pidReg, 0))
 	fc.finish(d, dst)
 	fc.releaseToMark(mark)
 	return nil

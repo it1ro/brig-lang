@@ -218,7 +218,7 @@ func (c *Chunk) disInstr(sb *strings.Builder, ip int) {
 	case LOADK, GETGLOBAL, SETGLOBAL:
 		k := in.Bx()
 		fmt.Fprintf(sb, "r%d k%d ; %s", in.A(), k, c.Constants[k].Inspect())
-	case MOVE, GETUPVAL, NEG, NOT, MAKEOK, MAKEERROR, WATCH, UNWATCH, MAILBOXSIZE,
+	case MOVE, GETUPVAL, NEG, NOT, MAKEOK, MAKEERROR, WATCH, UNWATCH, LINK, MAILBOXSIZE,
 		UNREGISTER, WHEREIS:
 		fmt.Fprintf(sb, "r%d r%d", in.A(), in.B())
 	case ADD, SUB, MUL, DIV, INTDIV, REM, POW, CONCAT,

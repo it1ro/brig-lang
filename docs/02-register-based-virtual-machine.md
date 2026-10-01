@@ -595,12 +595,13 @@ ELSE: GETGLOBAL   r5 "loop"
 
 | Инструкция        | Формат | Семантика                                                                                  |
 | ----------------- | ------ | ------------------------------------------------------------------------------------------ |
-| `SPAWN A B C`     | ABC    | `R[A] = Pid(spawn(R[B]))`; `C == 1` — с `watch` со стороны родителя                        |
+| `SPAWN A B C`     | ABC    | `R[A] = Pid(spawn(R[B]))`; `C == 1` — с `link` со стороны родителя (владелец → ребёнок)     |
 | `SEND A B C`      | ABC    | `R[A] = send(pid=R[B], msg=R[C])`, `Result<(), Atom>`; не-Pid — фатальная `type_error`     |
 | `SELF A`          | A      | `R[A] = Pid(a.pid)`                                                                        |
 | `MAKEREF A`       | A      | `R[A] = Ref(next)`                                                                         |
 | `WATCH A B`       | AB     | `R[A] = Ref` наблюдения за `R[B]`                                                          |
 | `UNWATCH A B`     | AB     | снять наблюдение `R[B]`, `R[A] = ()`                                                       |
+| `LINK A B`        | AB     | вызывающий — владелец `R[B]` (§12.2), `R[A] = ()`; не-Pid — ловимая `(:type_error, (:link, v))` |
 | `MAILBOXSIZE A B` | AB     | `R[A] = len(mailbox(R[B]))` (мёртвый — 0)                                                  |
 | `RECVTIMER A`     | A      | дедлайн `= now + R[A] ms`; `R[A]` обязан быть `Int` (иначе фатальная `type_error`)         |
 | `RECVTAKE A sBx`  | AsBx   | см. ниже                                                                                   |
@@ -627,6 +628,7 @@ ELSE: GETGLOBAL   r5 "loop"
 | `exit(pid, reason)` | native | Ставит жертве флаг сигнала с причиной (первый выигрывает, `:kill` перекрывает) и будит её, если она ждёт в `RECVTAKE` или `await`. Флаг проверяется в каждой точке редукции (K-4) и при пробуждении; сработал — unwind, который пропускает кадры `trap` и выполняет `ensure` (кроме `:kill`), затем обычная смерть: `:down` наблюдателям, снятие имён, сброс слотов. `exit(self(), r)` — сразу, без ожидания точки редукции. | T-163 |
 | `spawn_watched(f)`, `spawn_watched(f, limits)` | `SPAWN` с флагом или native | Создание актора и взвод наблюдения — один шаг планировщика, без редукции между ними. | T-163 |
 | `spawn`/`spawn_linked` с `limits` | как без `limits` | Лимиты хранятся в `Actor`; проверка — там же, где счёт редукций. | T-169 |
+| `link(pid)`, `spawn_linked(f)` | `LINK`, `SPAWN` с `C == 1` | Владелец держит множество своих детей; смерть владельца ставит каждому ребёнку сигнал `exit` с причиной `(:linked_exit, reason)` — в той же редукции, где наблюдатели получают `:down`, и в порядке возрастания pid. Связь однонаправленная, снятия нет; смерть ребёнка убирает его из множеств владельцев. | T-252 |
 | `register`/`unregister`/`whereis` | native | Таблица `имя → Pid` в `Scheduler`, ключ сравнивается как ключ `Map`; обратный индекс `Pid → имена` снимается в том же шаге, где ставятся `:down`. | T-164 |
 | `make_ref()` | `MAKEREF` | Ref получает владельца (текущий актор); слот открыт. | T-165 |
 | `reply(pid, ref, v)` | native | Кладёт `v` в слот `ref` у `pid`, если слот открыт и пуст; иначе ничего. Ящик, HWM и `mailbox_size` не трогаются. Будит `pid`, если он ждёт этот `ref`. | T-165 |
@@ -1005,6 +1007,7 @@ type constKey struct {
 | `OpSend`                                                         | `SEND`                 | ABC    | `R[A] = send(R[B], R[C])`                                                                  |
 | `OpSelf`, `OpMakeRef`                                            | `SELF`, `MAKEREF`      | A      | `R[A] = …`                                                                                 |
 | `OpWatch`, `OpUnwatch`, `OpMailboxSize`                          | те же                  | AB     | `R[A] = op(R[B])`                                                                          |
+| —                                                                | **`LINK`** (новый)     | AB     | Вызывающий — владелец `R[B]`, `R[A] = ()`; до T-252 `link` компилировался в `WATCH`        |
 | `OpRecvTimer`                                                    | `RECVTIMER`            | A      | Дедлайн из `R[A]`                                                                          |
 | `OpRecvTake`                                                     | `RECVTAKE`             | AsBx   | `R[A]` = сообщение; `sBx` → `after`                                                        |
 | `OpMatchLocal`                                                   | `MATCHLOCAL`           | ABx    | Матч `R[A]` с `Patterns[Bx]`; следующая `JMP` — fail                                       |

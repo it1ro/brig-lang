@@ -50,8 +50,11 @@ fn main() ->
     ref3 = watch(p3)
     assert(take() == (:down, ref3, (:resource_limit, (:turn_reductions, 5_000, 5_000))))
 
+    # spawn_linked — связь, не наблюдение (§12.2): :down даёт watch.
     p4 = spawn_linked(() -> spin(0), { turn_reductions: 2_000 })
-    (:down, _r4, (:resource_limit, (:turn_reductions, _u4, 2_000))) = take()
+    ref4 = watch(p4)
+    (:down, r4, (:resource_limit, (:turn_reductions, _u4, 2_000))) = take()
+    assert(r4 == ref4)
     assert(mailbox_size(p4) == 0)
 `)
 }
