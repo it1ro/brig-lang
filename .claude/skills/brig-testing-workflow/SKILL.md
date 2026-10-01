@@ -49,10 +49,10 @@ description: >
    `BenchmarkScaling/{list_prepend,map_put,vec_push}/{1k,8k}` в
    `internal/vm/bench_test.go`; цель печатает t(8k)/t(1k) по операциям
    и падает, если отношение > `SCALING_MAX_RATIO` (16; линейный рост ~8,
-   квадратичный ~64). Не входит в `all`. `list_prepend` зелёный с T-271
-   (cons-список), `map_put` — с T-272 (HAMT); `vec_push` красный до T-273
-   (квадратичный рост, F-11/X-1), job `scaling` в `bench.yml` с
-   `continue-on-error: true` до них; после них `continue-on-error` убрать. Гонять после
+   квадратичный ~64). Не входит в `all`. Все три операции зелёные:
+   `list_prepend` с T-271 (cons-список), `map_put` — с T-272 (HAMT),
+   `vec_push` — с T-273 (32-арный trie); job `scaling` в `bench.yml`
+   жёсткий, превышение лимита — регрессия асимптотики. Гонять после
    правок персистентных коллекций (`List`/`Map`/`Vec` в `internal/runtime`,
    прелюдия).
 

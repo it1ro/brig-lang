@@ -1396,15 +1396,22 @@ func (s *Scheduler) execFrame(a *Actor, f *Frame) stepOutcome {
 		case TUPLE, LIST, VECTOR:
 			n := in.C()
 			base := in.B()
-			elems := make([]runtime.Value, n)
-			copy(elems, regs[base:base+n])
-			switch op {
-			case TUPLE:
-				regs[in.A()] = runtime.Tuple(elems...)
-			case LIST:
-				regs[in.A()] = runtime.List(elems...)
-			case VECTOR:
-				regs[in.A()] = runtime.Vector(elems...)
+			if op == VECTOR {
+				// Построитель пакует элементы в листья trie без
+				// промежуточного среза (§4.4).
+				vb := runtime.NewVectorBuilder(n)
+				for _, e := range regs[base : base+n] {
+					vb.Add(e)
+				}
+				regs[in.A()] = vb.Vector()
+			} else {
+				elems := make([]runtime.Value, n)
+				copy(elems, regs[base:base+n])
+				if op == TUPLE {
+					regs[in.A()] = runtime.Tuple(elems...)
+				} else {
+					regs[in.A()] = runtime.List(elems...)
+				}
 			}
 			s.charge(a, &regs[in.A()])
 			f.ip++
@@ -1989,17 +1996,15 @@ func vmIndex(obj, idx runtime.Value) (runtime.Value, error) {
 // Сегмент — пара (Bool, значение): false — один элемент, true — спред.
 // Список принимает только List; вектор — List или Vector. Последний
 // спред списка становится хвостом без копирования: `[x, ..xs]` — O(1)
-// (§4.2); shared — длина такого хвоста. segs не изменяется.
+// (§4.2); первый спред вектора становится базой нового вектора: `%[..a,
+// x]` стоит по числу дописанных элементов (§4.4). shared — число
+// элементов, разделённых с источником. segs не изменяется.
 func vmSpreadSeq(segs []runtime.Value, vector bool) (_ runtime.Value, shared int, _ error) {
 	if len(segs)%2 != 0 {
 		return runtime.Unit, 0, fmt.Errorf("internal: spread seq: %d regs", len(segs))
 	}
 	if vector {
-		out, err := spreadElems(nil, segs, true)
-		if err != nil {
-			return runtime.Unit, 0, err
-		}
-		return runtime.Vector(out...), 0, nil
+		return vmSpreadVector(segs)
 	}
 	tail := runtime.List()
 	if n := len(segs); n > 0 && segs[n-2].Kind == runtime.KindBool &&
@@ -2008,15 +2013,16 @@ func vmSpreadSeq(segs []runtime.Value, vector bool) (_ runtime.Value, shared int
 	}
 	// Головы копирует ListPrepend: буфер на стеке, пока их немного.
 	var buf [4]runtime.Value
-	out, err := spreadElems(buf[:0], segs, false)
+	out, err := spreadElems(buf[:0], segs)
 	if err != nil {
 		return runtime.Unit, 0, err
 	}
 	return runtime.ListPrepend(out, tail), tail.Len(), nil
 }
 
-// spreadElems дописывает к out элементы сегментов segs (см. vmSpreadSeq).
-func spreadElems(out, segs []runtime.Value, vector bool) ([]runtime.Value, error) {
+// spreadElems дописывает к out элементы сегментов списка (см. vmSpreadSeq):
+// спред списка принимает только List.
+func spreadElems(out, segs []runtime.Value) ([]runtime.Value, error) {
 	for i := 0; i < len(segs); i += 2 {
 		tag, val := segs[i], segs[i+1]
 		if tag.Kind != runtime.KindBool {
@@ -2026,21 +2032,44 @@ func spreadElems(out, segs []runtime.Value, vector bool) ([]runtime.Value, error
 			out = append(out, val)
 			continue
 		}
-		switch val.Kind {
-		case runtime.KindList:
-			for e := range val.Items() {
-				out = append(out, e)
-			}
-		case runtime.KindVector:
-			if !vector {
-				return nil, typeErr("spread", val)
-			}
-			out = append(out, val.Elems()...)
-		default:
+		if val.Kind != runtime.KindList {
 			return nil, typeErr("spread", val)
+		}
+		for e := range val.Items() {
+			out = append(out, e)
 		}
 	}
 	return out, nil
+}
+
+// vmSpreadVector собирает вектор из сегментов (см. vmSpreadSeq): первый
+// сегмент-спред вектора становится базой, его ветви разделяются с
+// результатом; остальные элементы дописывает построитель.
+func vmSpreadVector(segs []runtime.Value) (_ runtime.Value, shared int, _ error) {
+	b := runtime.NewVectorBuilder(len(segs) / 2)
+	if len(segs) >= 2 && segs[0].Kind == runtime.KindBool && segs[0].Bool &&
+		segs[1].Kind == runtime.KindVector {
+		b, shared, segs = runtime.VectorBuilderFrom(segs[1]), segs[1].Len(), segs[2:]
+	}
+	for i := 0; i < len(segs); i += 2 {
+		tag, val := segs[i], segs[i+1]
+		if tag.Kind != runtime.KindBool {
+			return runtime.Unit, 0, fmt.Errorf("internal: spread tag %s", tag.Inspect())
+		}
+		if !tag.Bool {
+			b.Add(val)
+			continue
+		}
+		switch val.Kind {
+		case runtime.KindList, runtime.KindVector:
+			for e := range val.Items() {
+				b.Add(e)
+			}
+		default:
+			return runtime.Unit, 0, typeErr("spread", val)
+		}
+	}
+	return b.Vector(), shared, nil
 }
 
 // vmSpreadMap собирает мапу из сегментов (§5.2, §4.5).

@@ -165,9 +165,9 @@ type item struct {
 func shape(v runtime.Value, lim Limits) (open, end string, items []item, spaced bool) {
 	switch v.Kind {
 	case runtime.KindList:
-		return "[", "]", valueItems(v.Elems(), lim), false
+		return "[", "]", seqItems(v, lim), false
 	case runtime.KindVector:
-		return "%[", "]", valueItems(v.Elems(), lim), false
+		return "%[", "]", seqItems(v, lim), false
 	case runtime.KindSet:
 		return "set(", ")", valueItems(v.Elems(), lim), false
 	case runtime.KindTuple:
@@ -202,6 +202,23 @@ func shape(v runtime.Value, lim Limits) (open, end string, items []item, spaced 
 	default:
 		return "", "", nil, false
 	}
+}
+
+// seqItems — элементы List или Vector под лимитом, без копии остатка
+// (T-271, T-273).
+func seqItems(v runtime.Value, lim Limits) []item {
+	shown, hidden := clip(v.Len(), lim.elems())
+	items := make([]item, 0, shown+1)
+	for e := range v.Items() {
+		if len(items) == shown {
+			break
+		}
+		items = append(items, item{val: e})
+	}
+	if hidden > 0 {
+		items = append(items, item{more: hidden})
+	}
+	return items
 }
 
 func valueItems(vs []runtime.Value, lim Limits) []item {

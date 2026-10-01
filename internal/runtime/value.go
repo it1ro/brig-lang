@@ -210,8 +210,10 @@ type Value struct {
 	// Место бывших len/cap среза list: размер Value и смещения полей — как
 	// до T-271. Раскладку Value меняет T-104 (#173); сдвиг полей здесь
 	// давал +7…15 % на горячих копиях Value в CI (TelemetryNoSubscribers).
+	_      [2]uintptr
+	vector *vectorTrie // Vector (T-273)
+	// Место бывших len/cap среза vector: см. комментарий выше про list.
 	_          [2]uintptr
-	vector     []Value
 	hamt       *hamt // Map и Set (T-272)
 	Func       *FuncValue
 	ClosureVal *ClosureValue
@@ -235,7 +237,7 @@ func (v Value) Len() int {
 	case KindList:
 		return v.list.len()
 	case KindVector:
-		return len(v.vector)
+		return v.vector.len()
 	case KindSet, KindMap:
 		return v.hamt.len()
 	}
@@ -243,23 +245,28 @@ func (v Value) Len() int {
 }
 
 // At — i-й элемент List, Vector или Set (порядок хранения). Границы
-// проверяет вызывающий: 0 <= i < Len(). Для List — O(i) (§4.2).
+// проверяет вызывающий: 0 <= i < Len(). Для List — O(i) (§4.2), для
+// Vector — O(log₃₂ n) (§4.4).
 func (v Value) At(i int) Value {
-	if v.Kind == KindList {
+	switch v.Kind {
+	case KindList:
 		return v.list.drop(i).head
+	case KindVector:
+		return v.vector.at(i)
 	}
 	return v.Elems()[i]
 }
 
 // Elems — элементы List, Vector или Set в порядке хранения; для прочих
 // видов nil. Срез нельзя изменять (значения неизменяемы, §0.13). Для List
-// срез собирается заново за O(n); обход без копии — Items, Cursor.
+// и Vector длиннее 32 срез собирается заново за O(n); обход без копии —
+// Items, Cursor.
 func (v Value) Elems() []Value {
 	switch v.Kind {
 	case KindList:
 		return v.list.slice()
 	case KindVector:
-		return v.vector
+		return v.vector.slice()
 	case KindSet:
 		return v.hamt.keyList()
 	}
@@ -317,6 +324,17 @@ func (v Value) SetAdd(e Value) Value {
 // SetRemove — Set без элемента e; элемента нет — v. O(log₃₂ n).
 func (v Value) SetRemove(e Value) Value {
 	return Value{Kind: KindSet, hamt: v.hamt.remove(hashKey(e), e)}
+}
+
+// VecPush — Vector с элементом e в конце, O(1) amortized (§4.4).
+func (v Value) VecPush(e Value) Value {
+	return Value{Kind: KindVector, vector: v.vector.push(e)}
+}
+
+// VecSet — Vector, где i-й элемент заменён на e, O(log₃₂ n) (§4.4).
+// Границы проверяет вызывающий: 0 <= i < Len().
+func (v Value) VecSet(i int, e Value) Value {
+	return Value{Kind: KindVector, vector: v.vector.set(i, e)}
 }
 
 // ---- конструкторы ----
@@ -388,17 +406,19 @@ func (v Value) Drop(k int) Value {
 	return Value{Kind: KindList, list: v.list.drop(k)}
 }
 
-// Items обходит элементы List по порядку без копии; для прочих видов
-// ничего не отдаёт.
+// Items обходит элементы List или Vector по порядку без копии; для прочих
+// видов ничего не отдаёт.
 func (v Value) Items() iter.Seq[Value] {
 	return func(yield func(Value) bool) {
-		if v.Kind != KindList {
-			return
-		}
-		for c := v.list; c != nil; c = c.tail {
-			if !yield(c.head) {
-				return
+		switch v.Kind {
+		case KindList:
+			for c := v.list; c != nil; c = c.tail {
+				if !yield(c.head) {
+					return
+				}
 			}
+		case KindVector:
+			v.vector.each(yield)
 		}
 	}
 }
@@ -520,8 +540,14 @@ func (c *listCell) slice() []Value {
 	return out
 }
 
-// Vector создаёт вектор.
-func Vector(vs ...Value) Value { return Value{Kind: KindVector, vector: vs} }
+// Vector создаёт вектор из элементов vs (vs не удерживается).
+func Vector(vs ...Value) Value {
+	b := NewVectorBuilder(len(vs))
+	for _, v := range vs {
+		b.Add(v)
+	}
+	return b.Vector()
+}
 
 // Set создаёт множество (Sprint 5.2, §4.6).
 // Повторы (KeyEqual) отбрасываются, первое вхождение сохраняется.
@@ -616,9 +642,9 @@ func (v Value) Inspect() string {
 		}
 		return "(" + strings.Join(parts, ", ") + ")"
 	case KindList:
-		return "[" + inspectJoin(v.list.slice()) + "]"
+		return "[" + inspectSeq(v.Items()) + "]"
 	case KindVector:
-		return "%[" + inspectJoin(v.vector) + "]"
+		return "%[" + inspectSeq(v.Items()) + "]"
 	case KindMap:
 		// Печать и to_str — по term order (§7.4), как сравнение карт.
 		// Порядок вставки и обход map при Json.decode не наблюдаются.
@@ -717,6 +743,16 @@ func inspectJoin(vs []Value) string {
 	return strings.Join(parts, ", ")
 }
 
+// inspectSeq — то же для последовательности без копии элементов (List,
+// Vector).
+func inspectSeq(seq iter.Seq[Value]) string {
+	var parts []string
+	for e := range seq {
+		parts = append(parts, inspectLit(e))
+	}
+	return strings.Join(parts, ", ")
+}
+
 // ---- равенство (§4.8) ----
 
 // MatchEqual — сравнение литерала-паттерна со значением (§4.8, колонка
@@ -741,7 +777,7 @@ func MatchEqual(a, b Value) bool {
 		}
 		return true
 	case KindVector:
-		return matchEqualSlice(a.vector, b.vector)
+		return vectorEqual(a.vector, b.vector, MatchEqual)
 	}
 	return Equal(a, b)
 }
@@ -835,7 +871,9 @@ func equal(a, b Value, strict bool) bool {
 		}
 		return true
 	case KindVector:
-		return equalSlice(a.vector, b.vector, strict)
+		return vectorEqual(a.vector, b.vector, func(x, y Value) bool {
+			return equal(x, y, strict)
+		})
 	case KindMap:
 		// Ключи ищутся по KeyEqual, значения — по правилу strict.
 		if a.Len() != b.Len() {
@@ -981,7 +1019,7 @@ func Compare(a, b Value) (int, error) {
 	case rankTuple:
 		return compareSlices(a.Tuple, b.Tuple)
 	case rankVector:
-		return compareSlices(a.vector, b.vector)
+		return vectorCompare(a.vector, b.vector)
 	case rankList:
 		return compareLists(a.list, b.list)
 	case rankMap:

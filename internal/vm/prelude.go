@@ -232,10 +232,7 @@ func InstallPrelude(vm *VM) {
 		if args[0].Kind != runtime.KindVector {
 			return runtime.Unit, typeErr("Vec.push", args[0])
 		}
-		out := make([]runtime.Value, 0, args[0].Len()+1)
-		out = append(out, args[0].Elems()...)
-		out = append(out, args[1])
-		return runtime.Vector(out...), nil
+		return args[0].VecPush(args[1]), nil
 	})
 
 	def("Vec.set", 3, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
@@ -248,10 +245,7 @@ func InstallPrelude(vm *VM) {
 				runtime.Atom("index_out_of_bounds"),
 				runtime.Tuple(args[1], runtime.Int(int64(args[0].Len()))))}
 		}
-		out := make([]runtime.Value, args[0].Len())
-		copy(out, args[0].Elems())
-		out[i] = args[2]
-		return runtime.Vector(out...), nil
+		return args[0].VecSet(int(i), args[2]), nil
 	})
 
 	def("Vec.get", 2, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {

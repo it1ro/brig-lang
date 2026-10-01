@@ -342,7 +342,12 @@ func hashKey(v Value) uint64 {
 	case KindTuple:
 		return hashSeq(hashTag(v.Kind), v.Tuple)
 	case KindVector:
-		return hashSeq(hashTag(v.Kind), v.vector)
+		h := hashTag(v.Kind)
+		v.vector.each(func(e Value) bool {
+			h = hashCombine(h, hashKey(e))
+			return true
+		})
+		return h
 	case KindList:
 		h := hashTag(v.Kind)
 		for c := v.list; c != nil; c = c.tail {
