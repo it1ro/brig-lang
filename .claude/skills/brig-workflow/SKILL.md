@@ -46,11 +46,12 @@ description: >
 1. Прогон по `brig-testing-workflow`: минимум `make all` и `BRIG_VERIFY=1 go test ./...` — оба 0.
 2. `rg -n 'blocked: T-NN' internal` — пусто для своего T-NN.
 3. `rg -n 'T-NN' .claude/skills` — строки skills, описывающие ограничение, которое задача сняла, поправить в том же PR (skills — рабочие заметки агента, а не doc-файлы).
-4. `gofmt -l .` пуст; `git status` чист от временных `.brig`, `bin/`, `coverage.out`.
-5. PR в `main`, title = формат коммита, body по шаблону `WORKFLOW.md` §5: `Closes #<N>`, «Что сделано», «Что НЕ сделано», «Как проверялось» с реальными командами и результатом. PR трогает больше двух пакетов — объяснить почему.
-6. Статус → **In Review**. Режим «со сдачей на ревью» — здесь сессия заканчивается: merge делает человек, агент мержит только по явной просьбе. Автономный режим — после зелёного CI `gh pr merge --squash --delete-branch`, но только если base PR — `main` (`gh pr view <N> --json baseRefName`); PR из стека — по разделу «Стек PR».
-7. После merge: проверить, что коммит в `main` (`git log origin/main --oneline | grep '\[T-NN\]'`) и что issue закрыт. `Closes #N` срабатывает только у PR в `main` и не всегда: открытый issue закрыть `gh issue close <N> --comment "Сделано в #<PR>"`, карточку — в **Done**. Убрать worktree задачи: `git worktree remove <path>` (и `git branch -d <ветка>`, если она не удалена `--delete-branch`).
-8. `gh issue list --search '"Blocked by #<N>" in:body' --state open` — для каждого, у кого все блокеры закрыты, статус → **Todo**.
+4. PR меняет факт, который описывает строка `docs/language-passport.md` (статус, источник, расхождение), — строка поправлена в том же PR (`brig-overview`, «Паспорт языка»).
+5. `gofmt -l .` пуст; `git status` чист от временных `.brig`, `bin/`, `coverage.out`.
+6. PR в `main`, title = формат коммита, body по шаблону `WORKFLOW.md` §5: `Closes #<N>`, «Что сделано», «Что НЕ сделано», «Как проверялось» с реальными командами и результатом. PR трогает больше двух пакетов — объяснить почему.
+7. Статус → **In Review**. Режим «со сдачей на ревью» — здесь сессия заканчивается: merge делает человек, агент мержит только по явной просьбе. Автономный режим — после зелёного CI `gh pr merge --squash --delete-branch`, но только если base PR — `main` (`gh pr view <N> --json baseRefName`); PR из стека — по разделу «Стек PR».
+8. После merge: проверить, что коммит в `main` (`git log origin/main --oneline | grep '\[T-NN\]'`) и что issue закрыт. `Closes #N` срабатывает только у PR в `main` и не всегда: открытый issue закрыть `gh issue close <N> --comment "Сделано в #<PR>"`, карточку — в **Done**. Убрать worktree задачи: `git worktree remove <path>` (и `git branch -d <ветка>`, если она не удалена `--delete-branch`).
+9. `gh issue list --search '"Blocked by #<N>" in:body' --state open` — для каждого, у кого все блокеры закрыты, статус → **Todo**.
 
 ## Стек PR
 
@@ -62,7 +63,7 @@ description: >
 2. Ветка верхнего: `git fetch origin && git rebase --onto origin/main <старый tip нижнего>`, затем `git push --force-with-lease=<ветка>:<старый sha>`. Проверка: `git diff origin/main...HEAD --stat` — только файлы верхнего PR.
 3. `gh pr edit <верхний> --base main`, дождаться зелёного CI (теперь он запускается).
 4. `git push origin --delete <ветка нижнего>`.
-5. `gh pr merge <верхний> --squash --delete-branch`, дальше — «Финиш» п. 7–8.
+5. `gh pr merge <верхний> --squash --delete-branch`, дальше — «Финиш» п. 8–9.
 
 **Никогда не мержить PR, чья base — не `main`**: код уйдёт в ветку нижнего PR, а не в `main`, и issue останется открытым. Перед любым `gh pr merge` — `gh pr view <N> --json baseRefName,state`. Мержить ли верхний PR, решает человек; агент, открывший стек, пишет в итоговом сообщении шаги 1–5.
 
