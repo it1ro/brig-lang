@@ -24,8 +24,8 @@ description: >
 
 ## Старт
 
-1. Статус карточки → **In Progress** (`gh project item-edit`; функции `board_set` — в `WORKFLOW.md` §2.3).
-2. **Каждая задача — в своём git worktree**, одна или несколько параллельно: исключений нет (кроме п. 3). Создать от свежего `origin/main`: `git worktree add -b <type>/<T-NN>-<slug> <path> origin/main`. `type` — из таблицы `WORKFLOW.md` §4 (`fix`, `feat`, `test`, `docs`, `refactor`, `chore`, `perf`, `build`).
+1. Статус карточки → **In Progress**: `board move <N> "In Progress"` (скрипты и запасные функции `gh` — `WORKFLOW.md` §2.3).
+2. **Каждая задача — в своём git worktree**, одна или несколько параллельно: исключений нет (кроме п. 3). Создать от свежего `origin/main`: `wt-new -C <repo> -b <scratchpad> <type>/<T-NN>-<slug>` (печатает путь последней строкой). Git — через `git -C <wt>`, push — `git -C <wt> push -u origin HEAD:<ветка>`. `type` — из таблицы `WORKFLOW.md` §4 (`fix`, `feat`, `test`, `docs`, `refactor`, `chore`, `perf`, `build`).
 3. **Исключение — Wave 0 (label `wave-0`, T-01…T-06):** работа идёт прямо в `iter/regvm`, без отдельной ветки и PR; T-07 (merge) делает человек.
 4. **Одна задача = один worktree** (своя ветка и свой каталог). Несколько задач в одном дереве не вести. Основной checkout репозитория — не рабочее дерево задачи. Чужой worktree не трогать.
 
@@ -43,19 +43,19 @@ description: >
 
 ## Финиш
 
-1. Прогон по `brig-testing-workflow`: минимум `make all` и `BRIG_VERIFY=1 go test ./...` — оба 0.
+1. Прогон по `brig-testing-workflow`: минимум `quiet make all` и `BRIG_VERIFY=1 quiet go test ./...` — оба 0. Долгие прогоны можно отдать на aio: `quiet aio-run -C <wt> make all`.
 2. `rg -n 'blocked: T-NN' internal` — пусто для своего T-NN.
 3. `rg -n 'T-NN' .claude/skills` — строки skills, описывающие ограничение, которое задача сняла, поправить в том же PR (skills — рабочие заметки агента, а не doc-файлы).
 4. PR меняет факт, который описывает строка `docs/language-passport.md` (статус, источник, расхождение), — строка поправлена в том же PR (`brig-overview`, «Паспорт языка»).
 5. `gofmt -l .` пуст; `git status` чист от временных `.brig`, `bin/`, `coverage.out`.
 6. PR в `main`, title = формат коммита, body по шаблону `WORKFLOW.md` §5: `Closes #<N>`, «Что сделано», «Что НЕ сделано», «Как проверялось» с реальными командами и результатом. PR трогает больше двух пакетов — объяснить почему.
-7. Статус → **In Review**. Режим «со сдачей на ревью» — здесь сессия заканчивается: merge делает человек, агент мержит только по явной просьбе. Автономный режим — после зелёного CI `gh pr merge --squash --delete-branch`, но только если base PR — `main` (`gh pr view <N> --json baseRefName`); PR из стека — по разделу «Стек PR».
-8. После merge: проверить, что коммит в `main` (`git log origin/main --oneline | grep '\[T-NN\]'`) и что issue закрыт. `Closes #N` срабатывает только у PR в `main` и не всегда: открытый issue закрыть `gh issue close <N> --comment "Сделано в #<PR>"`, карточку — в **Done**. Убрать worktree задачи: `git worktree remove <path>` (и `git branch -d <ветка>`, если она не удалена `--delete-branch`).
+7. Статус → **In Review**. Режим «со сдачей на ревью» — здесь сессия заканчивается: merge делает человек, агент мержит только по явной просьбе. Автономный режим — после зелёного CI (`ci-wait <N>` с `run_in_background`, не `sleep`) `gh pr merge <N> --squash`, но только если base PR — `main` (`gh pr view <N> --json baseRefName`); PR из стека — по разделу «Стек PR».
+8. После merge: проверить, что коммит в `main` (`git log origin/main --oneline | grep '\[T-NN\]'`) и что issue закрыт. `Closes #N` срабатывает только у PR в `main` и не всегда: открытый issue закрыть `gh issue close <N> --comment "Сделано в #<PR>"`, карточку — в **Done**. Убрать worktree задачи: `wt-done <wt>` — удаляет worktree, локальную ветку и ветку на origin, если PR смержен. `--delete-branch` у `gh pr merge` не нужен: `wt-done` делает это сам.
 9. `gh issue list --search '"Blocked by #<N>" in:body' --state open` — для каждого, у кого все блокеры закрыты, статус → **Todo**.
 
 ## Стек PR
 
-Задача зависит от несмерженного PR — worktree от его ветки, PR с `--base <ветка нижнего PR>`. В body верхнего PR — порядок merge и напоминание перевести base на `main`. CI (`ci.yml`, `bench.yml`) идёт только у PR в `main`: у верхнего PR проверок нет, пока base не `main`, поэтому `make all` и `BRIG_VERIFY=1 go test ./...` — локально. Нижний PR не зависит от верхнего (docs, отдельная подсистема) — стек не нужен: верхний PR открыть в `main` после merge нижнего.
+Задача зависит от несмерженного PR — worktree от его ветки (`wt-new` берёт только `origin/main`, здесь — `git worktree add -b <ветка> <path> origin/<ветка нижнего>`), PR с `--base <ветка нижнего PR>`. В body верхнего PR — порядок merge и напоминание перевести base на `main`. CI (`ci.yml`, `bench.yml`) идёт только у PR в `main`: у верхнего PR проверок нет, пока base не `main`, поэтому `make all` и `BRIG_VERIFY=1 go test ./...` — локально. Нижний PR не зависит от верхнего (docs, отдельная подсистема) — стек не нужен: верхний PR открыть в `main` после merge нижнего.
 
 **Merge стека — строго по порядку** (squash меняет sha, поэтому ветка верхнего PR после merge нижнего содержит его старые коммиты):
 
@@ -63,7 +63,7 @@ description: >
 2. Ветка верхнего: `git fetch origin && git rebase --onto origin/main <старый tip нижнего>`, затем `git push --force-with-lease=<ветка>:<старый sha>`. Проверка: `git diff origin/main...HEAD --stat` — только файлы верхнего PR.
 3. `gh pr edit <верхний> --base main`, дождаться зелёного CI (теперь он запускается).
 4. `git push origin --delete <ветка нижнего>`.
-5. `gh pr merge <верхний> --squash --delete-branch`, дальше — «Финиш» п. 8–9.
+5. `gh pr merge <верхний> --squash`, дальше — «Финиш» п. 8–9 (`wt-done` уберёт ветку).
 
 **Никогда не мержить PR, чья base — не `main`**: код уйдёт в ветку нижнего PR, а не в `main`, и issue останется открытым. Перед любым `gh pr merge` — `gh pr view <N> --json baseRefName,state`. Мержить ли верхний PR, решает человек; агент, открывший стек, пишет в итоговом сообщении шаги 1–5.
 
@@ -76,7 +76,7 @@ description: >
 - Title `T-NN · <имя>`; T-NN — следующий свободный номер (`max(номера T-NN в titles issues, номера в tasks/) + 1`, с T-240 без десятков; проверка — `make plan-check ONLINE=1`). План ведётся milestones, а не волнами: блоков в `tasks/wave-N.md` для новых задач нет (файлы волн 0–15 — архив).
 - Body по образцу любого существующего issue того же типа: meta-комментарий (priority, type, effort, model, milestone, depends_on, findings, parent), **Файлы**, **Тест-якорь** (существующий или «создать»), бинарный **DoD** (команда → результат, без «улучшить»), **НЕ делать** (≥3 пункта). Зависимости — первыми строками `> Blocked by #M`.
 - Labels: `<audit|spec-gap>,<task type>,<P>,<model>`, плюс `blocker` для P0 и `must` для Must-пробела §16; label `wave-N` не ставится. Milestone — обязателен (`--milestone "M… · …"`). Задача из аудита или его сессии планирования — sub-issue эпика аудита (третий — #276): `gh api -X POST repos/it1ro/brig-lang/issues/<эпик>/sub_issues -F sub_issue_id=<id issue>`. Task type `feature` — реализация фичи из спеки (label `feature`, ветка `feat/`).
-- Добавить на доску (`gh project item-add 5 --owner it1ro --url <url>`) и заполнить Priority, Task type, Effort, Model, Status (Todo; Backlog — если есть открытый `Blocked by`). Wave и Sprint не ставить.
+- Добавить на доску и заполнить поля одной командой: `board add <N> Priority=<P> "Task type=<type>" Effort=<…> Model=<…> Status=Todo` (Backlog — если есть открытый `Blocked by`). Wave и Sprint не ставить.
 
 ## Что уже известно (не переоткрывать)
 

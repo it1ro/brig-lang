@@ -11,6 +11,12 @@ description: >
 
 ## Порядок прогона (от дешёвого к дорогому)
 
+Сборки и тесты — через `quiet` (`quiet make all`, `quiet go test ./...`):
+одна строка при успехе, строки ошибок и хвост при падении, полный лог — по
+пути из вывода. Не `| tail` и не `| head` на тестах. Долгий прогон можно
+отдать на вторую машину: `quiet aio-run -C <wt> make all` (там свои Go и
+golangci-lint). Цифры бенчмарков с aio не сравнивать с цифрами ноутбука.
+
 1. **Узкий таргет по изменённому слою** — гонять после каждого
    логического шага, не дожидаясь конца задачи:
    - `make test-lexer` / `make test-parser` / `make test-ast` (частично
@@ -33,7 +39,10 @@ description: >
 4. **`make all`** — `check-smallint` + `fmt` + `vet` + `test` + `lint` +
    `build` + `check-examples` + `run-examples` + `corpus`; его же запускает CI (`.github/workflows/ci.yml`) на push и PR
    в `main`. Вместе с `BRIG_VERIFY=1 go test ./...` — обязательный гейт
-   перед PR (`WORKFLOW.md` §5).
+   перед PR (`WORKFLOW.md` §5). Стенд `web-mvp-research/bench-heap/` в `all` не входит
+   (build tag `heapbench`); CI его только компилирует (`go vet -tags
+   heapbench ./web-mvp-research/...`) — после правок `runtime.Value`
+   проверить тем же `go vet` локально.
 5. **`make fuzz`** — 3×60s (лексер, парсер, round-trip). Не входит в
    стандартный цикл; гонять точечно после правок в `lexer`/`parser`/
    `ast`-форматтере, особенно если менялась offside-логика или граничные
