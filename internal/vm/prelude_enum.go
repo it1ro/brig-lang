@@ -411,6 +411,7 @@ func installEnum(def func(string, int, runtime.NativeFunc), defResumable func(st
 				if err != nil {
 					return runtime.Unit, err
 				}
+				// Срез нужен сортировке; ячейки List — второй блок (T-294).
 				return runtime.List(out...), nil
 			},
 		}, nil
@@ -491,6 +492,7 @@ func installEnum(def func(string, int, runtime.NativeFunc), defResumable func(st
 			return runtime.Unit, err
 		}
 		slices.Reverse(xs)
+		// Срез нужен развороту: у List нет обхода с конца (T-294).
 		return runtime.List(xs...), nil
 	})
 
@@ -550,6 +552,7 @@ func installEnum(def func(string, int, runtime.NativeFunc), defResumable func(st
 		if err != nil {
 			return runtime.Unit, err
 		}
+		// Срез нужен сортировке; ячейки List — второй блок (T-294).
 		return runtime.List(out...), nil
 	})
 

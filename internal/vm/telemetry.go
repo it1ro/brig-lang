@@ -553,11 +553,11 @@ func (s *Scheduler) ensureTeleActor() {
 }
 
 func atomList(path []string) runtime.Value {
-	xs := make([]runtime.Value, len(path))
-	for i, p := range path {
-		xs[i] = runtime.Atom(p)
+	xs := runtime.NewListBuilder(len(path))
+	for _, p := range path {
+		xs.Add(runtime.Atom(p))
 	}
-	return runtime.List(xs...)
+	return xs.List()
 }
 
 func teleMono() runtime.RecordField {
@@ -569,16 +569,16 @@ func pidVal(pid int) runtime.Value {
 }
 
 func traceList(tr []TraceFrame) runtime.Value {
-	xs := make([]runtime.Value, len(tr))
-	for i, fr := range tr {
-		xs[i] = runtime.Record("", []runtime.RecordField{
+	xs := runtime.NewListBuilder(len(tr))
+	for _, fr := range tr {
+		xs.Add(runtime.Record("", []runtime.RecordField{
 			{Name: "fn", Val: runtime.Str(fr.Func)},
 			{Name: "file", Val: runtime.Str(fr.File)},
 			{Name: "line", Val: runtime.Int(int64(fr.Pos.Line))},
 			{Name: "col", Val: runtime.Int(int64(fr.Pos.Col))},
-		})
+		}))
 	}
-	return runtime.List(xs...)
+	return xs.List()
 }
 
 func isBusyResult(v runtime.Value) bool {

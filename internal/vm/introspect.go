@@ -134,12 +134,7 @@ func (s *Scheduler) describe(a *Actor, es []watchEdge) ActorSnapshot {
 
 // actorList — Actor.list(): живые акторы.
 func (s *Scheduler) actorList() runtime.Value {
-	pids := s.livePids()
-	out := make([]runtime.Value, len(pids))
-	for i, pid := range pids {
-		out[i] = runtime.Value{Kind: runtime.KindPid, Pid: pid}
-	}
-	return runtime.List(out...)
+	return pidList(s.livePids())
 }
 
 // actorInfo — Actor.info(pid): Some(запись) живого актора, None — мёртвого
@@ -170,11 +165,11 @@ func (s *Scheduler) actorInfo(pid int) runtime.Value {
 }
 
 func pidList(pids []int) runtime.Value {
-	out := make([]runtime.Value, len(pids))
-	for i, pid := range pids {
-		out[i] = runtime.Value{Kind: runtime.KindPid, Pid: pid}
+	out := runtime.NewListBuilder(len(pids))
+	for _, pid := range pids {
+		out.Add(runtime.Value{Kind: runtime.KindPid, Pid: pid})
 	}
-	return runtime.List(out...)
+	return out.List()
 }
 
 // snapshot — записи всех живых акторов по возрастанию pid. Только с

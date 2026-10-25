@@ -1548,7 +1548,8 @@ func (s *Scheduler) execFrame(a *Actor, f *Frame) stepOutcome {
 		case TUPLE, LIST, VECTOR:
 			n := in.C()
 			base := in.B()
-			if op == VECTOR {
+			switch op {
+			case VECTOR:
 				// Построитель пакует элементы в листья trie без
 				// промежуточного среза (§4.4).
 				vb := runtime.NewVectorBuilder(n)
@@ -1556,14 +1557,13 @@ func (s *Scheduler) execFrame(a *Actor, f *Frame) stepOutcome {
 					vb.Add(e)
 				}
 				regs[in.A()] = vb.Vector()
-			} else {
+			case TUPLE:
 				elems := make([]runtime.Value, n)
 				copy(elems, regs[base:base+n])
-				if op == TUPLE {
-					regs[in.A()] = runtime.Tuple(elems...)
-				} else {
-					regs[in.A()] = runtime.List(elems...)
-				}
+				regs[in.A()] = runtime.Tuple(elems...)
+			default:
+				// List копирует элементы в свои ячейки и окно не удерживает.
+				regs[in.A()] = runtime.List(regs[base : base+n]...)
 			}
 			s.charge(a, &regs[in.A()])
 			f.ip++
