@@ -85,7 +85,7 @@ func (fc *funcCompiler) boundLexically(name string) bool {
 		if _, ok := p.resolveLocal(name); ok {
 			return true
 		}
-		if _, ok := p.localFns[name]; ok {
+		if _, ok := p.localFn(name); ok {
 			return true
 		}
 		for _, uv := range p.upvalues {

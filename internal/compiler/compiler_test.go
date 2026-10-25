@@ -946,3 +946,31 @@ fn main() ->
     print(result)
 `)
 }
+
+// T-238: a local fn is visible only in its block; same-named local fns
+// in different blocks of one function are different functions.
+func TestLocalFnBlockScope(t *testing.T) {
+	runModule(t, `module Main
+fn pick(c) ->
+    if c
+        fn g() -> :then_g
+        g()
+    else
+        fn g() -> :else_g
+        g()
+
+fn g() -> :global_g
+fn leak(c) ->
+    if c
+        fn g() -> :local_g
+        g()
+    else
+        :skip
+    g()
+
+fn main() ->
+    assert(pick(true) == :then_g)
+    assert(pick(false) == :else_g)
+    assert(leak(true) == :global_g)
+`)
+}

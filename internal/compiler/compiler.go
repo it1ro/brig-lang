@@ -210,20 +210,24 @@ type upvalueInfo struct {
 // scope — лексическая область видимости.
 type scope struct {
 	names map[string]int
-	mark  int
+	// fns — локальные fn блока: имя → mangled (§6.5, T-238).
+	fns  map[string]string
+	mark int
 }
 
 // funcCompiler — состояние компиляции одной функции.
 type funcCompiler struct {
-	compiler  *Compiler
-	parent    *funcCompiler
-	prefix    string
-	chunk     *vm.Chunk
-	nextReg   int
-	maxReg    int
-	scopes    []scope
-	bound     [vm.MaxRegs]bool
-	localFns  map[string]string
+	compiler *Compiler
+	parent   *funcCompiler
+	prefix   string
+	chunk    *vm.Chunk
+	nextReg  int
+	maxReg   int
+	scopes   []scope
+	bound    [vm.MaxRegs]bool
+	// fnSeq — сколько локальных fn с этим именем уже объявлено в
+	// функции: одноимённые fn разных блоков получают разные имена.
+	fnSeq     map[string]int
 	upvalues  []upvalueInfo
 	caps      []upvalueInfo // скрытые параметры лифтнутой fn (compileClauses)
 	capBase   int           // регистр первого скрытого параметра
@@ -272,7 +276,7 @@ func (c *Compiler) newFuncCompiler(parent *funcCompiler) *funcCompiler {
 		compiler: c,
 		parent:   parent,
 		chunk:    chunk,
-		localFns: make(map[string]string),
+		fnSeq:    make(map[string]int),
 		consts:   make(map[constKey]int),
 		scopes:   []scope{{names: map[string]int{}, mark: 0}},
 	}
@@ -325,6 +329,35 @@ func (fc *funcCompiler) bindLocal(name string, r int) {
 	}
 	fc.scopes[len(fc.scopes)-1].names[name] = r
 	fc.bound[r] = true
+}
+
+// bindLocalFn связывает локальную fn name в текущей области и
+// возвращает её mangled-имя. Первая fn с этим именем в функции —
+// `prefix+name`, следующие — `prefix+N$name`: сегмент из цифр не
+// совпадает ни с именем, ни с `lambda$N$` (T-238).
+func (fc *funcCompiler) bindLocalFn(name string) string {
+	mangled := fc.prefix + name
+	if n := fc.fnSeq[name]; n > 0 {
+		mangled = fmt.Sprintf("%s%d$%s", fc.prefix, n, name)
+	}
+	fc.fnSeq[name]++
+	s := &fc.scopes[len(fc.scopes)-1]
+	if s.fns == nil {
+		s.fns = map[string]string{}
+	}
+	s.fns[name] = mangled
+	return mangled
+}
+
+// localFn — mangled-имя локальной fn name, видимой в текущей области
+// этой функции (без предков по parent).
+func (fc *funcCompiler) localFn(name string) (string, bool) {
+	for i := len(fc.scopes) - 1; i >= 0; i-- {
+		if m, ok := fc.scopes[i].fns[name]; ok {
+			return m, true
+		}
+	}
+	return "", false
 }
 
 func (fc *funcCompiler) resolveLocal(name string) (int, bool) {

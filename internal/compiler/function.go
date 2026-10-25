@@ -299,22 +299,23 @@ func localClauses(cs []ast.LocalFnClauseArg) []ast.FnClauseArg {
 // fetchCapture), наборы только растут.
 func (fc *funcCompiler) declareLocalFns(stmts []ast.Stmt) error {
 	var decls []ast.LocalFnDecl
+	var names []string
 	for _, s := range stmts {
 		if lfd, ok := s.(ast.LocalFnDecl); ok {
-			mangled := fc.prefix + lfd.FnName()
-			fc.localFns[lfd.FnName()] = mangled
+			mangled := fc.bindLocalFn(lfd.FnName())
 			arity, variadic, err := clausesShape(localClauses(lfd.Clauses()))
 			if err != nil {
 				return wrapCtx(posOf(lfd), err, "local fn %s", lfd.FnName())
 			}
 			fc.compiler.lifted[mangled] = &liftedFn{arity: arity, variadic: variadic}
 			decls = append(decls, lfd)
+			names = append(names, mangled)
 		}
 	}
 	for changed := len(decls) > 0; changed; {
 		changed = false
-		for _, d := range decls {
-			mangled := fc.localFns[d.FnName()]
+		for i, d := range decls {
+			mangled := names[i]
 			lf := fc.compiler.lifted[mangled]
 			probe := fc.compiler.newFuncCompiler(fc)
 			probe.prefix = mangled + "$"
@@ -340,14 +341,14 @@ func (fc *funcCompiler) declareLocalFns(stmts []ast.Stmt) error {
 
 // resolveLocalFn — mangled-имя локальной fn и её владелец (fn, в
 // которой она объявлена) по правилам compileVar: по уровням parent,
-// на каждом локаль уровня затеняет localFns этого уровня и предков
-// (T-56).
+// на каждом локаль уровня затеняет локальные fn его областей и предков
+// (T-56). Локальная fn видна только в своём блоке (T-238).
 func (fc *funcCompiler) resolveLocalFn(name string) (string, *funcCompiler, bool) {
 	for p := fc; p != nil; p = p.parent {
 		if _, ok := p.resolveLocal(name); ok {
 			return "", nil, false
 		}
-		if mangled, ok := p.localFns[name]; ok {
+		if mangled, ok := p.localFn(name); ok {
 			return mangled, p, true
 		}
 	}
@@ -450,10 +451,9 @@ func (fc *funcCompiler) compilePatternBind(st ast.LetBind, d dest, slots map[str
 
 func (fc *funcCompiler) compileLocalFn(decl ast.LocalFnDecl, d dest) error {
 	name := decl.FnName()
-	mangled, ok := fc.localFns[name]
+	mangled, ok := fc.localFn(name)
 	if !ok {
-		mangled = fc.prefix + name
-		fc.localFns[name] = mangled
+		mangled = fc.bindLocalFn(name)
 	}
 
 	// Захваты — скрытые параметры после объявленных (лямбда-лифтинг).
