@@ -66,17 +66,6 @@ func InstallPrelude(vm *VM) {
 		fmt.Fprintln(os.Stderr, line)
 		return runtime.Unit, nil
 	})
-	def("log", -1, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
-		line := ""
-		for i, a := range args {
-			if i > 0 {
-				line += " "
-			}
-			line += a.Display()
-		}
-		fmt.Println("log:", line)
-		return runtime.Unit, nil
-	})
 
 	// ---- Коллекции ----
 

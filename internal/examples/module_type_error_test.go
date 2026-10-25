@@ -95,6 +95,16 @@ var modTypeErrCases = []modTypeErrCase{
 	{"List.concat", 0, `List.concat(5, [])`, `5`},
 	{"List.concat", 1, `List.concat([], 5)`, `5`},
 
+	{"Log.debug", 0, `Log.debug(:x)`, `:x`},
+	{"Log.debug", 1, `Log.debug("m", [1])`, `[1]`},
+	{"Log.error", 0, `Log.error(:x)`, `:x`},
+	{"Log.error", 1, `Log.error("m", [1])`, `[1]`},
+	{"Log.info", 0, `Log.info(:x)`, `:x`},
+	{"Log.info", 1, `Log.info("m", [1])`, `[1]`},
+	{"Log.warn", 0, `Log.warn(:x)`, `:x`},
+	{"Log.warn", 1, `Log.warn("m", [1])`, `[1]`},
+	{"Log.set_level", 0, `Log.set_level(:loud)`, `:loud`},
+
 	{"Map.filter", 0, `Map.filter(5, fn (k, v) -> true)`, `5`},
 	{"Map.from_list", 0, `Map.from_list(5)`, `5`},
 	{"Map.from_list", 0, `Map.from_list([1])`, `1`},
@@ -188,6 +198,7 @@ var modTypeErrCases = []modTypeErrCase{
 // "Module" (весь модуль) → причина.
 var modTypeErrExempt = map[string]string{
 	"Actor.list":       "нет аргументов",
+	"Log.level":        "нет аргументов",
 	"Observer.nodes":   "нет аргументов",
 	"Sys.args":         "нет аргументов",
 	"Time":             "нет аргументов",

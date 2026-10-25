@@ -232,7 +232,7 @@ func preludeNames() map[string]bool {
 		"exit", "self", "make_ref", "mailbox_size",
 		"register", "unregister", "whereis", "await", "reply",
 		// I/O
-		"print", "eprint", "log",
+		"print", "eprint",
 		// Эффекты
 		"assert", "raise",
 		// Встроенные варианты

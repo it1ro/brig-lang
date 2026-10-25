@@ -875,7 +875,7 @@ var builtinParams = map[string]string{
 	"await/2": "ref, timeout", "reply/3": "pid, ref, value",
 	"link/1": "pid", "watch/1": "pid", "unwatch/1": "ref",
 	"self/0": "", "make_ref/0": "", "mailbox_size/0": "", "mailbox_size/1": "pid",
-	"print/0..": "..vs", "eprint/0..": "..vs", "log/0..": "..vs",
+	"print/0..": "..vs", "eprint/0..": "..vs",
 	"assert/1": "x", "raise/1": "e",
 	"Some/1": "v", "Ok/1": "v", "Error/1": "e",
 

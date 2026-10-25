@@ -495,7 +495,7 @@ var (
 // specModules — модули справочника §11.5a: функции ВМ и модули на Brig.
 var specModules = []string{
 	"Map", "Vec", "Json", "Record", "Float",
-	"List", "Option", "Result", "Server", "Supervisor", "Behavior",
+	"List", "Option", "Result", "Server", "Supervisor", "Behavior", "Log",
 }
 
 // modulesCodeOnly и modulesSpecOnly — расхождения справочника с кодом:
@@ -507,10 +507,13 @@ var (
 )
 
 // arityString — арности функции в формате таблиц §11.5: `2`, `1..2`;
-// вариадик (`n..`) в справочнике модулей не поддержан.
+// вариадик из одного клоза — `n..` (n фиксированных, -(n+1) в ns).
 func arityString(t *testing.T, name string, ns []int) string {
 	t.Helper()
 	sort.Ints(ns)
+	if len(ns) == 1 && ns[0] < 0 {
+		return strconv.Itoa(-ns[0]-1) + ".."
+	}
 	for i, n := range ns {
 		if n < 0 {
 			t.Fatalf("%s: вариадическая функция, формат справочника §11.5a её не описывает", name)

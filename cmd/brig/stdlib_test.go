@@ -39,16 +39,16 @@ fn main() ->
 	}
 }
 
-// §6.3: `args |> Enum.each(log)` исполняется.
+// §6.3: `args |> Enum.each(print)` исполняется.
 func TestStdlibVariadicPipeEach(t *testing.T) {
 	bin := buildBrig(t)
-	src := "module Main\n\nfn log_all(..args) ->\n    args |> Enum.each(log)\n\nfn main() ->\n    log_all(1, 2, 3)\n"
+	src := "module Main\n\nfn print_all(..args) ->\n    args |> Enum.each(print)\n\nfn main() ->\n    print_all(1, 2, 3)\n"
 	for _, cmd := range []string{"check", ""} {
 		out, code := brigFile(t, bin, cmd, src)
 		if code != exitOK {
 			t.Fatalf("%s: exit %d, out %q", cmd, code, out)
 		}
-		if cmd == "" && out != "log: 1\nlog: 2\nlog: 3\n" {
+		if cmd == "" && out != "1\n2\n3\n" {
 			t.Fatalf("run: out %q", out)
 		}
 	}
