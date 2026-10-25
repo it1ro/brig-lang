@@ -20,10 +20,14 @@ fn emitter() ->
     Telemetry.emit([:app, :from_child], {}, {})
     :done
 
+# Пустой префикс видит и события VM; их тест не считает.
+fn wide(me, [:vm, ..]) -> ()
+fn wide(me, e) -> send(me, (:wide, e))
+
 fn main() ->
     me = self()
     Ok(()) = Telemetry.attach(:sub, [:app], (e, m, meta) -> send(me, (:hit, e)))
-    Ok(()) = Telemetry.attach(:wide, [], (e, m, meta) -> send(me, (:wide, e)))
+    Ok(()) = Telemetry.attach(:wide, [], (e, m, meta) -> wide(me, e))
     assert(Telemetry.attach(:sub, [:other], fn (e, m, meta) -> :no) == Error(:already_exists))
     assert(Telemetry.emit([:app, :request], {ms: 1}, {route: "/u"}) == ())
     assert(Telemetry.emit([:no, :match], {ms: 2}, {route: "/x"}) == ())
@@ -137,7 +141,11 @@ fn fill(pid, n) ->
 
 fn main() ->
     me = self()
-    Ok(()) = Telemetry.attach(:vm, [:vm], (e, m, meta) -> send(me, (:evt, e, m, meta)))
+    h = (e, m, meta) -> send(me, (:evt, e, m, meta))
+    # Без [:vm, :message]: recv теста сам излучал бы события.
+    Ok(()) = Telemetry.attach(:vm_spawn, [:vm, :spawn], h)
+    Ok(()) = Telemetry.attach(:vm_actor, [:vm, :actor], h)
+    Ok(()) = Telemetry.attach(:vm_mailbox, [:vm, :mailbox], h)
     v = spawn(victim)
     (:evt, ea, ma, ta) = recv
         m -> m

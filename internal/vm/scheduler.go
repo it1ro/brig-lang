@@ -1806,7 +1806,10 @@ func (s *Scheduler) execFrame(a *Actor, f *Frame) stepOutcome {
 			}
 			regs[in.A()] = s.Send(pidVal.Pid, msg)
 			f.ip++
-			if isBusyResult(regs[in.A()]) && s.teleInlineHWM(a, pidVal.Pid) {
+			// Кадры доставки — стек: :send сверху, его обработчики идут
+			// раньше :hwm.
+			hwm := isBusyResult(regs[in.A()]) && s.teleInlineHWM(a, pidVal.Pid)
+			if s.teleInlineSend(a, pidVal.Pid, msg) || hwm {
 				return stepContinue
 			}
 
@@ -1949,6 +1952,9 @@ func (s *Scheduler) execFrame(a *Actor, f *Frame) stepOutcome {
 				a.newTurn()
 				regs[slot] = msg
 				f.ip++
+				if s.teleInlineRecv(a, msg) {
+					return stepContinue
+				}
 				continue
 			}
 			if len(a.mailbox) > 0 {
@@ -1958,6 +1964,9 @@ func (s *Scheduler) execFrame(a *Actor, f *Frame) stepOutcome {
 				a.newTurn()
 				regs[slot] = msg
 				f.ip++
+				if s.teleInlineRecv(a, msg) {
+					return stepContinue
+				}
 				continue
 			}
 
