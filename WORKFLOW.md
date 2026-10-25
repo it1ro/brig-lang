@@ -46,7 +46,7 @@ flowchart LR
 - Следующая задача — из Todo: сначала меньший milestone (M1 раньше M2),
   внутри него — выше Priority (P0 первым). Задачи волн 0–15 без milestone
   — по старому правилу: меньший Wave. Задачи, которых нет на доске, не берутся в работу.
-- Новый issue сразу добавляется на доску: `gh project item-add 5 --owner it1ro --url <issue-url>`.
+- Новый issue сразу добавляется на доску: `board add <N> Priority=… "Task type"=… Effort=… Model=… Status=Todo`.
 - Один issue = одна сессия. Не помещается в Effort large — дели на
   несколько issue.
 - Обязательные поля: **Task type**, Effort, Model, Priority и milestone
@@ -73,7 +73,7 @@ docs, merge, feature), **Effort** — размер задачи (low / medium / 
 
 Поле называется **`Task type`**, а не `Type`: имя `Type` GitHub зарезервировал
 под встроенные issue types. В опциях Model код стоит до ` · `; в тексте и в
-`board_set` достаточно кода (`Model opus`).
+`board` достаточно кода (`Model=opus`).
 
 Цвета labels: у группы свой оттенок и уровень насыщенности, порядок внутри
 группы — светлота.
@@ -123,8 +123,20 @@ stateDiagram-v2
 3. Sprint: проставить задачам, которые берутся в ближайшие две недели
    (начать с Wave 0 в Sprint 1).
 
-**В shell** — функции для работы с доской (положить в `~/.bashrc` или
-вставить в терминал):
+**Инструменты.** Процесс опирается на скрипты из `~/.local/bin` (их нет в
+репозитории; `<имя> --help` печатает использование):
+
+| Скрипт | Для чего |
+|---|---|
+| `board` | доска: `board ls --status Todo`, `board get N`, `board move N "In Progress"`, `board add N Field=Value…`, `board set N Field=Value…` |
+| `wt-new` / `wt-done` / `wt-gc` | worktree задачи: создать от свежего `origin/main`, убрать после merge вместе с веткой, найти забытые |
+| `ci-wait` | дождаться CI у PR молча и напечатать только упавшие проверки с логом |
+| `quiet` | сборка и тесты: одна строка при успехе, строки ошибок и хвост при падении |
+| `aio-run` | прогнать команду на второй машине (`aio`) над копией дерева; цифры замеров с неё не сравнивать с цифрами другой машины |
+
+**Функции shell** для доски через `gh` (положить в `~/.bashrc` или вставить
+в терминал). `board_dependents` и `board_open_blockers` нужны всегда: у
+`board` их нет. `board_item` и `board_set` — замена `board` без скриптов:
 
 ```bash
 export BRIG_P=5 BRIG_O=it1ro BRIG_R=it1ro/brig-lang BRIG_PID=PVT_kwHOAoQ_k84Bksrz
@@ -165,8 +177,10 @@ board_open_blockers() {
   `fix/T-14-newline-required`, `feat/T-30-multiclause-fn`, `test/T-10-audit-suite`.
 - Ветка создаётся от свежего `main`, живёт не дольше одной сессии и
   squash-мержится в `main`.
-- После merge удаляется локально и на origin:
-  `git branch -D fix/T-14-newline-required && git push origin --delete fix/T-14-newline-required`.
+- Ветка задачи живёт в своём worktree: `wt-new -C <repo> -b <каталог> <ветка>`
+  создаёт его от свежего `origin/main`.
+- После merge worktree и ветка удаляются одной командой: `wt-done <путь worktree>`
+  (локальная ветка и ветка на origin, если PR смержен).
 - **Force-push — только в собственную ветку задачи**: ветку
   `<type>/<T-NN>-<slug>`, созданную под этот тикет тем, кто её пушит
   (человеком или агентом в его сессии). Типичные случаи — rebase на свежий
@@ -271,18 +285,19 @@ Closes #<issue>
 
 ```bash
 gh issue view 15 --repo it1ro/brig-lang            # прочитать DoD и «НЕ делать»
-board_set 15 Status "In Progress"
-git switch main && git pull && git switch -c fix/T-21-newline-required
-# ... правка + тест-якорь из issue ...
-make all && BRIG_VERIFY=1 go test ./...
-git commit -m "fix(parser): require NEWLINE between statements [T-21]"
-git push -u origin fix/T-21-newline-required
-gh pr create --title "$(git log -1 --format=%s)" --body-file pr.md   # pr.md — шаблон §5 с "Closes #15"
-board_set 15 Status "In Review"
-gh pr checks --watch
-gh pr merge --squash --delete-branch               # issue закроется, карточка уйдёт в Done
+board move 15 "In Progress"
+wt=$(wt-new -C . -b ../wt fix/T-21-newline-required | tail -1)
+# ... правка + тест-якорь из issue в $wt ...
+(cd "$wt" && quiet make all && BRIG_VERIFY=1 quiet go test ./...)
+git -C "$wt" add <файлы> && git -C "$wt" commit -m "fix(parser): require NEWLINE between statements [T-21]"
+git -C "$wt" push -u origin HEAD:fix/T-21-newline-required
+gh pr create --head fix/T-21-newline-required --title "…" --body-file pr.md   # pr.md — шаблон §5 с "Closes #15"
+board move 15 "In Review"
+ci-wait <PR>
+gh pr merge <PR> --squash                          # issue закроется, карточка уйдёт в Done
+wt-done "$wt"                                      # worktree, ветка локально и на origin
 for n in $(board_dependents 15 | grep -o '^#[0-9]*' | tr -d '#'); do
-  [ -z "$(board_open_blockers $n)" ] && board_set $n Status Todo
+  [ -z "$(board_open_blockers $n)" ] && board move $n Todo
 done
 ```
 
@@ -331,7 +346,7 @@ low/medium — любая. `human` агенту не отдаётся (design de
 
 **Параллельные агенты.** Можно, если задачи не пересекаются по файлам: по
 одному агенту на issue, каждый в своём worktree
-(`git worktree add ../brig-T-22 -b fix/T-22-int-literals main`). Две
+(`wt-new -C . -b ../wt fix/T-22-int-literals`). Две
 задачи, трогающие `compiler.go`, одновременно не запускать — конфликты
 при squash.
 
@@ -407,9 +422,8 @@ gh issue create --repo it1ro/brig-lang --title "T-NN · <имя>" --body-file bo
   --label "<audit|spec-gap>,<task type>,<P>,<model>[,must]" --milestone "<M…>"
 gh api -X POST repos/it1ro/brig-lang/issues/<эпик>/sub_issues \
   -F sub_issue_id=$(gh api repos/it1ro/brig-lang/issues/<N> --jq .id)   # если задача из аудита
-gh project item-add 5 --owner it1ro --url <url>
-board_set <N> Priority <P>; board_set <N> "Task type" <type>; board_set <N> Effort <low|medium|large>
-board_set <N> Model <model>; board_set <N> Status Todo   # Backlog, если есть открытый Blocked by
+board add <N> Priority=<P> "Task type=<type>" Effort=<low|medium|large> \
+  Model=<model> Status=Todo                     # Backlog, если есть открытый Blocked by
 ```
 
 Номер T-NN — следующий свободный: `max(номера T-NN в titles issues,
@@ -446,12 +460,14 @@ issue, какой раздел спеки нужно поменять, и пер
 ## 10. Шпаргалка
 
 ```bash
-gh project view 5 --owner it1ro --web                                   # доска
-gh issue list --repo it1ro/brig-lang --label wave-0 --state open         # волна
+board ls --status Todo                                                  # что брать
 gh issue list --repo it1ro/brig-lang --label design-decision            # ждут решения
 gh issue list --repo it1ro/brig-lang --label verification               # проверки
-board_set <N> Status "In Progress"                                      # статус
+board move <N> "In Progress"                                            # статус
 board_dependents <N>; board_open_blockers <N>                           # зависимости
-make ci-quick                                                           # быстрый прогон
-make all && BRIG_VERIFY=1 go test ./...                                 # перед PR
+wt-new -C . -b ../wt <ветка>; wt-done <worktree>                        # worktree задачи
+quiet make ci-quick                                                     # быстрый прогон
+quiet make all && BRIG_VERIFY=1 quiet go test ./...                     # перед PR
+quiet aio-run make all                                                  # то же на aio
+ci-wait <PR>                                                            # CI у PR
 ```
