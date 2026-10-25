@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -55,13 +56,14 @@ func InstallPrelude(vm *VM) {
 		return runtime.Unit, nil
 	})
 	def("eprint", -1, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+		line := ""
 		for i, a := range args {
 			if i > 0 {
-				fmt.Print(" ")
+				line += " "
 			}
-			fmt.Print(a.Display())
+			line += a.Display()
 		}
-		fmt.Println()
+		fmt.Fprintln(os.Stderr, line)
 		return runtime.Unit, nil
 	})
 	def("log", -1, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
