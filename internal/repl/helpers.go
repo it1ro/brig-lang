@@ -550,7 +550,7 @@ func (s *Session) flush() (runtime.Value, error) {
 			return runtime.Unit, err
 		}
 	}
-	return runtime.List(msgs...), nil
+	return runtime.List(msgs...), nil // msgs нужен и печати выше
 }
 
 func (s *Session) timed(f runtime.Value) (runtime.Value, error) {

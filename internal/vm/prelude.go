@@ -97,7 +97,7 @@ func InstallPrelude(vm *VM) {
 		if len(args) == 1 && args[0].Kind == runtime.KindRange {
 			return materializeRange(args[0])
 		}
-		return runtime.List(args...), nil
+		return runtime.List(args...), nil // args — буфер вызова, List его не удерживает
 	})
 
 	// set(...) — конструктор множества (Sprint 5.2, §4.6). Дедуплицирует
@@ -197,11 +197,11 @@ func InstallPrelude(vm *VM) {
 		if args[0].Kind != runtime.KindMap {
 			return runtime.Unit, modTypeErr("map", "keys", args[0])
 		}
-		out := make([]runtime.Value, 0, args[0].Len())
+		out := runtime.NewListBuilder(args[0].Len())
 		for _, e := range args[0].Entries() {
-			out = append(out, e.Key)
+			out.Add(e.Key)
 		}
-		return runtime.List(out...), nil
+		return out.List(), nil
 	})
 
 	installMapExtras(def, defResumable)
@@ -272,11 +272,11 @@ func InstallPrelude(vm *VM) {
 		} else {
 			parts = bytes.Split(args[0].Bytes, args[1].Bytes)
 		}
-		out := make([]runtime.Value, len(parts))
-		for i, p := range parts {
-			out[i] = runtime.Bytes(p)
+		out := runtime.NewListBuilder(len(parts))
+		for _, p := range parts {
+			out.Add(runtime.Bytes(p))
 		}
-		return runtime.List(out...), nil
+		return out.List(), nil
 	})
 
 	def("Bytes.concat", 2, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
@@ -325,11 +325,11 @@ func InstallPrelude(vm *VM) {
 		} else {
 			parts = strings.Split(args[0].Str, args[1].Str)
 		}
-		out := make([]runtime.Value, len(parts))
-		for i, p := range parts {
-			out[i] = runtime.Str(p)
+		out := runtime.NewListBuilder(len(parts))
+		for _, p := range parts {
+			out.Add(runtime.Str(p))
 		}
-		return runtime.List(out...), nil
+		return out.List(), nil
 	})
 
 	def("Str.join", 2, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
@@ -511,11 +511,11 @@ func InstallPrelude(vm *VM) {
 	// ---- Sys ----
 
 	def("Sys.args", 0, func(_ runtime.Caller, _ []runtime.Value) (runtime.Value, error) {
-		out := make([]runtime.Value, 0, len(vm.args))
+		out := runtime.NewListBuilder(len(vm.args))
 		for _, a := range vm.args {
-			out = append(out, runtime.Str(a))
+			out.Add(runtime.Str(a))
 		}
-		return runtime.List(out...), nil
+		return out.List(), nil
 	})
 
 	// ---- Actor (§12.10, §12.13) ----
@@ -574,11 +574,11 @@ func materializeRange(r runtime.Value) (runtime.Value, error) {
 			runtime.Atom("range_error"),
 			runtime.Tuple(runtime.Int(s), runtime.Int(e)))}
 	}
-	out := make([]runtime.Value, 0, e-s+1)
+	out := runtime.NewListBuilder(int(e - s + 1))
 	for i := s; i <= e; i++ {
-		out = append(out, runtime.Int(i))
+		out.Add(runtime.Int(i))
 	}
-	return runtime.List(out...), nil
+	return out.List(), nil
 }
 
 // smallIdx извлекает int64 из small-int значения. Для big-int возвращает false.
@@ -684,11 +684,11 @@ func installMapExtras(def func(string, int, runtime.NativeFunc), defResumable fu
 			return runtime.Unit, modTypeErr("map", "to_list", args[0])
 		}
 		ents := args[0].Entries()
-		out := make([]runtime.Value, len(ents))
-		for i, e := range ents {
-			out[i] = runtime.Tuple(e.Key, e.Val)
+		out := runtime.NewListBuilder(len(ents))
+		for _, e := range ents {
+			out.Add(runtime.Tuple(e.Key, e.Val))
 		}
-		return runtime.List(out...), nil
+		return out.List(), nil
 	})
 
 	// Map.from_list(xs) — Map из списка пар; повторный ключ — правый
@@ -713,11 +713,11 @@ func installMapExtras(def func(string, int, runtime.NativeFunc), defResumable fu
 			return runtime.Unit, modTypeErr("map", "values", args[0])
 		}
 		ents := args[0].Entries()
-		out := make([]runtime.Value, len(ents))
-		for i, e := range ents {
-			out[i] = e.Val
+		out := runtime.NewListBuilder(len(ents))
+		for _, e := range ents {
+			out.Add(e.Val)
 		}
-		return runtime.List(out...), nil
+		return out.List(), nil
 	})
 
 	// Map.filter(m, f) — пары, для которых f(k, v) истинно; результат Map.

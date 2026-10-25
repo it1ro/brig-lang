@@ -145,15 +145,15 @@ func (s *Scheduler) newRequestPort(a *Actor, r HTTPRequest) runtime.Value {
 
 // headValue — анонимная запись { method, path, query, headers, remote }.
 func headValue(h HTTPHead) runtime.Value {
-	hs := make([]runtime.Value, len(h.Headers))
-	for i, kv := range h.Headers {
-		hs[i] = runtime.Tuple(runtime.Str(kv[0]), runtime.Str(kv[1]))
+	hs := runtime.NewListBuilder(len(h.Headers))
+	for _, kv := range h.Headers {
+		hs.Add(runtime.Tuple(runtime.Str(kv[0]), runtime.Str(kv[1])))
 	}
 	return runtime.Record("", []runtime.RecordField{
 		{Name: "method", Val: runtime.Atom(h.Method)},
 		{Name: "path", Val: runtime.Str(h.Path)},
 		{Name: "query", Val: runtime.Str(h.Query)},
-		{Name: "headers", Val: runtime.List(hs...)},
+		{Name: "headers", Val: hs.List()},
 		{Name: "remote", Val: runtime.Tuple(runtime.Str(h.Host), runtime.Int(int64(h.Port)))},
 	})
 }
