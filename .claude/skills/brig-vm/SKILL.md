@@ -220,7 +220,7 @@ description: >
   снимает подписку и вкладывает `[:telemetry, :handler, :failed]`,
   `exit` кадр не ловит. `[:vm, :spawn]` и `[:vm, :mailbox, :hwm]` от
   `send` — в кадре излучателя (`dropResult`, `callDst` не затирается).
-  Смерть и потерянный `Timer.send_after` — очередь `teleQ` служебного
+  `[:vm, :message, :send]` (из `SEND`, мета `{ from, pid, msg }`: `to` — ключевое слово) и `[:vm, :message, :recv]` (из `RECVTAKE`, оба пути ящика) — тоже inline; изнутри доставки (`Actor.inTelemetry`, кадр `teleRun` на стеке) не излучаются, иначе обработчик с `send` кормит сам себя (T-174). Печать `Log` — натив `AttachLogDefault` (`log.go`), его ставит `compiler.InstallStdlib`. Смерть и потерянный `Timer.send_after` — очередь `teleQ` служебного
   актора (`telePid`, `initial_fn` `<telemetry>`), без событий на его
   собственную смерть. Без совпавшей подписки измерения не собираются.
 - **`await`/`reply` (§12.9, T-165, `await.go`).** Слот ответа —
