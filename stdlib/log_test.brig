@@ -1,0 +1,68 @@
+# Тесты Log (T-174): события [:log, level] через Telemetry, минимальный
+# уровень, обработчик по умолчанию под :log_default (§11.5).
+
+fn take() ->
+    recv
+        m -> m
+    after 100 -> :none
+
+fn listen(id) ->
+    me = self()
+    Ok(()) = Telemetry.attach(id, [:log], (e, m, meta) -> send(me, (e, m, meta)))
+
+fn test_log_event_through_telemetry() ->
+    listen(:t_event)
+    Log.info("started", { port: 4000 })
+    ([:log, :info], m, meta) = take()
+    Test.assert(m.monotonic_ms >= 0)
+    Test.assert_eq(meta, { port: 4000, msg: "started", pid: self() })
+    Log.error("lost")
+    ([:log, :error], _, meta2) = take()
+    Test.assert_eq(meta2, { msg: "lost", pid: self() })
+    Telemetry.detach(:t_event)
+
+# msg и pid из вызова сильнее одноимённых полей meta.
+fn test_log_meta_cannot_override_msg() ->
+    listen(:t_override)
+    Log.warn("real", { msg: "fake", pid: 0 })
+    ([:log, :warn], _, meta) = take()
+    Test.assert_eq(meta.msg, "real")
+    Test.assert_eq(meta.pid, self())
+    Telemetry.detach(:t_override)
+
+fn test_log_level() ->
+    listen(:t_level)
+    Test.assert_eq(Log.level(), :info)
+    Log.debug("hidden")
+    Test.assert_eq(take(), :none)
+    Log.set_level(:warn)
+    Test.assert_eq(Log.level(), :warn)
+    Log.info("hidden too")
+    Test.assert_eq(take(), :none)
+    Log.warn("shown")
+    ([:log, :warn], _, _) = take()
+    Log.set_level(:debug)
+    Log.debug("now shown")
+    ([:log, :debug], _, _) = take()
+    Log.set_level(:info)
+    Telemetry.detach(:t_level)
+
+# Обработчик по умолчанию стоит с начала программы; detach его снимает,
+# повторная подписка под тем же id — свободна.
+fn test_log_default_handler() ->
+    h = (e, m, meta) -> ()
+    Test.assert_eq(Telemetry.attach(:log_default, [:log], h), Error(:already_exists))
+    Telemetry.detach(:log_default)
+    Test.assert_eq(Telemetry.attach(:log_default, [:log], h), Ok(()))
+    Telemetry.detach(:log_default)
+
+fn test_log_type_errors() ->
+    r = trap(Log.info(:not_str))
+    Test.assert_eq(r, Error((:type_error, ((:log, :info), :not_str))))
+    r2 = trap(Log.warn("x", [1]))
+    Test.assert_eq(r2, Error((:type_error, ((:log, :warn), [1]))))
+    r3 = trap(Log.error("x", {}, {}))
+    Test.assert_eq(r3, Error((:function_clause, ["x", {}, {}])))
+    r4 = trap(Log.set_level("info"))
+    Test.assert_eq(r4, Error((:type_error, ((:log, :set_level), "info"))))
+    Test.assert_eq(Log.level(), :info)

@@ -121,6 +121,7 @@ var replMod = map[string]sig{
 	"flush": exact(0), "time": exact(1), "dis": exact(1),
 	"recompile": exact(0), "register": exact(1),
 	"tree": exact(0), "info": exact(1), "top": exact(1), "observe": exact(0),
+	"trace": exact(1), "untrace": exact(1),
 }
 
 // sig — допустимые арности. varMin >= 0 — вариадик: любой вызов с argc >= varMin.
@@ -170,7 +171,7 @@ func (s sig) matches(n int) bool {
 var bareBuiltins = map[string]sig{
 	"len": exact(1), "list": variadic(0), "set": variadic(0),
 	"to_str": exact(1), "to_int": exact(1), "to_float": exact(1),
-	"print": variadic(0), "eprint": variadic(0), "log": variadic(0),
+	"print": variadic(0), "eprint": variadic(0),
 	"assert": exact(1), "raise": exact(1),
 	"Some": exact(1), "Ok": exact(1), "Error": exact(1),
 	"send": exact(2), "spawn": exact(1, 2), "spawn_linked": exact(1, 2),

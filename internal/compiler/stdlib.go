@@ -64,5 +64,6 @@ func InstallStdlib(m *vm.VM) error {
 	for name, fn := range img.Functions {
 		m.DefineGlobal(name, vm.FuncValue(fn))
 	}
-	return nil
+	// Печать Log (§11.5) стоит с начала программы, как у встроенного логера.
+	return m.AttachLogDefault()
 }

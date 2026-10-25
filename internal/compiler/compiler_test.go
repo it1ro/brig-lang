@@ -535,11 +535,19 @@ fn main() ->
 `)
 }
 
-func TestPreludeLog(t *testing.T) {
-	runModule(t, `module Main
+// T-174: log убран из прелюдии (§0.2: второй способ) — логер это Log.
+func TestPreludeLogRemoved(t *testing.T) {
+	prog, err := parser.ParseProgram(parser.ModeModule, `module Main
 fn main() ->
     log("hi")
 `)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	r := sema.CheckNames(prog, nil)
+	if !r.HasErrors() || !strings.Contains(formatSemaDiagnostics(r), "log") {
+		t.Fatalf("want undefined log, got:\n%s", formatSemaDiagnostics(r))
+	}
 }
 
 func TestSmallIntFastPath(t *testing.T) {

@@ -52,8 +52,9 @@ type Session struct {
 	order    []string // порядок появления имён
 	env      map[string]runtime.Value
 	out      io.Writer
-	termIn   *os.File // терминал observe; nil — os.Stdin
-	termOut  *os.File // nil — os.Stdout
+	errOut   io.Writer // trace (§11.4); по умолчанию os.Stderr
+	termIn   *os.File  // терминал observe; nil — os.Stdin
+	termOut  *os.File  // nil — os.Stdout
 	pal      highlight.Palette
 	paths    ConsolePaths    // файлы консоли для h()
 	diagFile string          // имя в диагностике sema; у REPL — `<repl>`
@@ -89,6 +90,7 @@ func New(m *vm.VM, out io.Writer) *Session {
 		vm:       m,
 		env:      make(map[string]runtime.Value),
 		out:      out,
+		errOut:   os.Stderr,
 		diagFile: "<repl>",
 	}
 	// Встроенные модули на Brig (T-146) — как Go-нативные из vm.New.
@@ -110,6 +112,9 @@ func (s *Session) Interrupt() { s.vm.Interrupt() }
 
 // SetOutput меняет, куда пишутся диагностика и info.
 func (s *Session) SetOutput(out io.Writer) { s.out = out }
+
+// SetErrOutput меняет, куда пишет trace (по умолчанию os.Stderr).
+func (s *Session) SetErrOutput(w io.Writer) { s.errOut = w }
 
 // SetPalette задаёт палитру диагностики. Нулевая палитра — без цвета
 // (NO_COLOR, не-TTY).

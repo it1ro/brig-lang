@@ -102,6 +102,8 @@ var helperSummary = map[string]string{
 	"info":      "print Actor.info(pid)",
 	"top":       "n live actors with the most reductions",
 	"observe":   "full-screen actor observer",
+	"trace":     "print messages a pid sends and receives to stderr",
+	"untrace":   "stop trace(pid)",
 }
 
 // raiseClause — (:function_clause, args) хелпера с неподходящей арностью.

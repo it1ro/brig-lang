@@ -254,6 +254,17 @@ fn main() ->
 // captureStdout подменяет os.Stdout на время fn и возвращает вывод.
 func captureStdout(t *testing.T, fn func()) string {
 	t.Helper()
+	return captureFile(t, &os.Stdout, fn)
+}
+
+// captureStderr — то же для os.Stderr.
+func captureStderr(t *testing.T, fn func()) string {
+	t.Helper()
+	return captureFile(t, &os.Stderr, fn)
+}
+
+func captureFile(t *testing.T, f **os.File, fn func()) string {
+	t.Helper()
 	r, w, err := os.Pipe()
 	if err != nil {
 		t.Fatalf("pipe: %v", err)
@@ -263,9 +274,9 @@ func captureStdout(t *testing.T, fn func()) string {
 		b, _ := io.ReadAll(r)
 		done <- b
 	}()
-	old := os.Stdout
-	os.Stdout = w
-	defer func() { os.Stdout = old }()
+	old := *f
+	*f = w
+	defer func() { *f = old }()
 
 	fn()
 
@@ -273,6 +284,23 @@ func captureStdout(t *testing.T, fn func()) string {
 	b := <-done
 	_ = r.Close()
 	return string(b)
+}
+
+// eprint пишет в stderr, print — в stdout (§11.5).
+func TestEprintWritesStderr(t *testing.T) {
+	var out string
+	errOut := captureStderr(t, func() {
+		out = captureStdout(t, func() {
+			runModuleSync(t, `module Main
+fn main() ->
+    print("to", "out")
+    eprint("to", :err)
+`)
+		})
+	})
+	if out != "to out\n" || errOut != "to :err\n" {
+		t.Fatalf("stdout %q, stderr %q", out, errOut)
+	}
 }
 
 // fairnessSrc — два актора с одинаковой работой на элемент: hog делает её

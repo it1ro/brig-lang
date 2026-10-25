@@ -16,9 +16,11 @@ import (
 // attach; набор фиксируется в начале emit. Непойманный raise снимает
 // подписку и вкладывает [:telemetry, :handler, :failed]; exit кадр не ловит.
 //
-// [:vm, :spawn] и [:vm, :mailbox, :hwm] от send доставляются в кадре
-// создателя или отправителя (Frame.dropResult: callDst вызывающего не
-// затирается). Смерть и потерянный Timer.send_after кладутся в teleQ:
+// [:vm, :spawn], [:vm, :mailbox, :hwm] и [:vm, :message, :send|:recv]
+// доставляются в кадре создателя, отправителя или получателя
+// (Frame.dropResult: callDst вызывающего не затирается). События
+// сообщений не излучаются изнутри доставки Telemetry: иначе обработчик,
+// который шлёт или принимает сообщение, порождал бы их без конца. Смерть и потерянный Timer.send_after кладутся в teleQ:
 // умерший уже не исполняется, а :kill не должен исполнять в нём ничего.
 // Очередь читает служебный актор (telePid); своей смерти он не излучает.
 
@@ -29,6 +31,8 @@ var (
 	pathCrash = []string{"vm", "actor", "crash"}
 	pathDown  = []string{"vm", "actor", "down"}
 	pathHWM   = []string{"vm", "mailbox", "hwm"}
+	pathSend  = []string{"vm", "message", "send"}
+	pathRecv  = []string{"vm", "message", "recv"}
 	pathFail  = []string{"telemetry", "handler", "failed"}
 )
 
@@ -353,6 +357,47 @@ func (s *Scheduler) teleInlineHWM(a *Actor, to int) bool {
 	}
 	ev, meas, meta := s.hwmEvent(to, runtime.Variant("Some", pidVal(a.pid)))
 	return s.telePushInline(a, ev, meas, meta)
+}
+
+// teleInlineSend — [:vm, :message, :send] от send, в кадре отправителя.
+// pid — получатель, как в [:vm, :mailbox, :hwm]: `to` — ключевое слово,
+// поле с таким именем из Brig не прочесть.
+func (s *Scheduler) teleInlineSend(a *Actor, to int, msg runtime.Value) bool {
+	if !s.teleWant(pathSend) || a.inTelemetry() {
+		return false
+	}
+	meas := runtime.Record("", []runtime.RecordField{teleMono()})
+	meta := runtime.Record("", []runtime.RecordField{
+		{Name: "from", Val: pidVal(a.pid)},
+		{Name: "pid", Val: pidVal(to)},
+		{Name: "msg", Val: msg},
+	})
+	return s.telePushInline(a, atomList(pathSend), meas, meta)
+}
+
+// teleInlineRecv — [:vm, :message, :recv]: получатель взял сообщение
+// (или :down) из ящика, в его кадре.
+func (s *Scheduler) teleInlineRecv(a *Actor, msg runtime.Value) bool {
+	if !s.teleWant(pathRecv) || a.inTelemetry() {
+		return false
+	}
+	meas := runtime.Record("", []runtime.RecordField{teleMono()})
+	meta := runtime.Record("", []runtime.RecordField{
+		{Name: "pid", Val: pidVal(a.pid)},
+		{Name: "msg", Val: msg},
+	})
+	return s.telePushInline(a, atomList(pathRecv), meas, meta)
+}
+
+// inTelemetry — актор сейчас исполняет обработчик Telemetry: на его стеке
+// есть кадр доставки. Зовётся только при совпавшей подписке.
+func (a *Actor) inTelemetry() bool {
+	for _, f := range a.frames {
+		if _, ok := f.cont.(*teleRun); ok {
+			return true
+		}
+	}
+	return false
 }
 
 // teleTimerHWM — сообщение Timer.send_after не принято: from = None,

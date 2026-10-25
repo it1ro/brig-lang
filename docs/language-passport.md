@@ -74,8 +74,9 @@
 | Параметр | Значение | Статус | Источник |
 |---|---|---|---|
 | Прелюдия (Go) | `Enum`, `Str`, `Map`, `Vec`, `Bytes`, `Json`, `Float`, `Record`, `Port`, `File`, `HttpServer`, `Signal`, `Sys`, `Timer`, `Time`, `Global`, `Actor`, `Telemetry` | реализовано | `internal/vm/prelude*.go`; спека §11.5–11.5a |
-| Stdlib (Brig) | `List`, `Option`, `Result`, `Server`, `Supervisor`, `Behavior`, `Observer` | реализовано | `stdlib/*.brig` |
-| Тесты | 168 файлов `_test.go` (около 27 тыс. строк), 847 `Test*`, 4 `Fuzz*`, 6 файлов `*_test.brig` | реализовано | `internal/`, `cmd/`, `stdlib/` |
+| Stdlib (Brig) | `List`, `Option`, `Result`, `Server`, `Supervisor`, `Behavior`, `Log`, `Observer` | реализовано | `stdlib/*.brig` |
+| Логи и трассировка | один механизм — `Telemetry`: `Log` излучает `[:log, level]`, печать в stderr — обработчик `:log_default`; VM излучает `[:vm, :message, :send\|:recv]`, `trace(pid)` в консоли — подписка на них | реализовано | `stdlib/log.brig`, `internal/vm/log.go`, `internal/vm/telemetry.go`, `internal/repl/trace.go`; спека §11.4, §11.5a, §12.14 |
+| Тесты | 168 файлов `_test.go` (около 27 тыс. строк), 847 `Test*`, 4 `Fuzz*`, 7 файлов `*_test.brig` | реализовано | `internal/`, `cmd/`, `stdlib/` |
 | Golden и round-trip | golden парсера, REPL и байткода; round-trip parse → Format → parse | реализовано | `internal/parser/golden_test.go`, `internal/repl/golden_test.go`, `internal/compiler/bytecode_test.go`, `make test-roundtrip` |
 | Корпус и примеры | корпус библиотечного кода (`corpus/manifest.tsv`), примеры спеки и доктесты `##` | реализовано | `make corpus`, `make check-examples`, `cmd/check-examples` |
 | CI | `ci.yml`: `make all`, `make test-race`, `make markers-check`; `fuzz.yml` — ночной fuzz; `bench.yml` — сравнение с базой | реализовано | `.github/workflows/` |

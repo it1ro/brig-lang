@@ -1,0 +1,106 @@
+## Логер (§11.5) поверх `Telemetry` (§12.14): каждый вызов —
+## событие `[:log, level]` с измерениями `{ monotonic_ms }` и мета
+## `{ ..meta, msg, pid }`; `msg` — `Str`, `meta` — анонимная запись
+## (иначе `(:type_error, ((:log, level), v))`). Второго
+## механизма рядом нет: подписка `Telemetry.attach(id, [:log], h)`
+## видит те же события.
+##
+## Печать — обработчик по умолчанию: его ставит ВМ при старте программы
+## под id `:log_default`, он пишет в stderr строку
+## `level: msg key=value …` (поля `meta` по порядку записи, без `msg` и
+## `pid`). `Telemetry.detach(:log_default)` убирает печать.
+##
+## Уровни по возрастанию: `:debug`, `:info`, `:warn`, `:error`. Вызов
+## ниже минимального уровня события не излучает; минимум по умолчанию —
+## `:info`, меняет его `Log.set_level` (хранится в `Global`).
+module Log
+
+## Сообщение уровня `:debug`: `Log.debug(msg)` или `Log.debug(msg, meta)`.
+## С минимумом по умолчанию (`:info`)
+## события нет.
+##
+## ```brig repl
+## > Log.debug("cache miss")
+## ()
+## > Log.debug("cache miss", { key: "user:1" })
+## ()
+## ```
+pub fn debug(msg, ..meta) -> emit(:debug, msg, meta)
+
+## Сообщение уровня `:info`: `Log.info("started", { port: 4000 })`
+## печатает в stderr `info: started port=4000`.
+##
+## ```brig repl
+## > Log.info("started")
+## ()
+## > Log.info("started", { port: 4000 })
+## ()
+## ```
+pub fn info(msg, ..meta) -> emit(:info, msg, meta)
+
+## Сообщение уровня `:warn`.
+##
+## ```brig repl
+## > Log.warn("slow request", { ms: 1200 })
+## ()
+## ```
+pub fn warn(msg, ..meta) -> emit(:warn, msg, meta)
+
+## Сообщение уровня `:error`.
+##
+## ```brig repl
+## > Log.error("connection lost")
+## ()
+## ```
+pub fn error(msg, ..meta) -> emit(:error, msg, meta)
+
+## Минимальный уровень: вызовы ниже него событий не излучают. Не
+## уровень — `(:type_error, ((:log, :set_level), v))`.
+##
+## ```brig repl
+## > Log.set_level(:warn)
+## ()
+## > Log.level()
+## :warn
+## > Log.set_level(:loud)
+## raise (:type_error, ((:log, :set_level), :loud))
+## ```
+pub fn set_level(lv) ->
+    if rank(lv) < 0
+        raise((:type_error, ((:log, :set_level), lv)))
+    else
+        Global.put(level_key(), lv)
+
+## Текущий минимальный уровень.
+##
+## ```brig repl
+## > Log.level()
+## :info
+## ```
+pub fn level() ->
+    match Global.get(level_key())
+        Some(l) -> l
+        None -> :info
+
+fn level_key() -> (:log, :level)
+
+fn rank(:debug) -> 0
+fn rank(:info) -> 1
+fn rank(:warn) -> 2
+fn rank(:error) -> 3
+fn rank(_) -> -1
+
+# meta — хвост вызова: [] или [запись]; больше — как у fn без такого
+# клоза. msg — Str (`"" <> _` совпадает с любой строкой), запись —
+# анонимная.
+fn emit(lv, msg, []) -> emit_one(lv, msg, {})
+fn emit(lv, msg, [meta]) -> emit_one(lv, msg, meta)
+fn emit(lv, msg, rest) -> raise((:function_clause, [msg, ..rest]))
+
+fn emit_one(lv, "" <> _ as msg, {} as meta) ->
+    if rank(lv) < rank(level())
+        ()
+    else
+        Telemetry.emit([:log, lv], { monotonic_ms: Time.monotonic_ms() }, { ..meta, msg: msg, pid: self() })
+fn emit_one(lv, "" <> _, meta) -> raise((:type_error, ((:log, lv), meta)))
+fn emit_one(lv, msg, _) -> raise((:type_error, ((:log, lv), msg)))

@@ -575,3 +575,39 @@ func TestHelperDocNames(t *testing.T) {
 		}
 	})
 }
+
+// TestReplTraceHelper — T-174: trace(pid) печатает в stderr сообщения,
+// которые pid шлёт и берёт из ящика; другие акторы не печатаются;
+// untrace снимает (§11.4).
+func TestReplTraceHelper(t *testing.T) {
+	s, out := helperSession(t)
+	var errOut bytes.Buffer
+	s.SetErrOutput(&errOut)
+	mustEval(t, s, out, `me = self()
+fn echo() ->
+    recv
+        m -> send(me, (:pong, m))
+w = spawn(echo)
+other = spawn(echo)
+`)
+	mustEval(t, s, out, "trace(w)\n")
+	mustEval(t, s, out, "trace(w)\n")
+	mustEval(t, s, out, "send(w, :ping)\nsend(other, :hush)\nrecv\n    x -> x\n")
+	mustEval(t, s, out, "recv\n    x -> x\n")
+	got := errOut.String()
+	pid := mustEval(t, s, out, "w\n").Inspect()
+	me := mustEval(t, s, out, "me\n").Inspect()
+	want := "trace " + pid + ": recv :ping\n" +
+		"trace " + pid + ": send (:pong, :ping) to " + me + "\n"
+	if got != want {
+		t.Fatalf("trace output:\n%q\nwant\n%q", got, want)
+	}
+	errOut.Reset()
+	mustEval(t, s, out, "untrace(w)\nw2 = spawn(echo)\ntrace(w2)\nuntrace(w2)\nsend(w2, :x)\nrecv\n    x -> x\n")
+	if errOut.Len() != 0 {
+		t.Fatalf("after untrace: %q", errOut.String())
+	}
+	if _, err := s.Eval("trace(:nope)\n"); err == nil || !strings.Contains(err.Error(), "(:type_error, (:trace, :nope))") {
+		t.Fatalf("trace(:nope): %v", err)
+	}
+}
