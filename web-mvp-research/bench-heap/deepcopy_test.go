@@ -13,17 +13,25 @@ func deepCopy(v brt.Value) brt.Value {
 	case brt.KindTuple:
 		v.Tuple = copySlice(v.Tuple)
 	case brt.KindList:
-		v.List = copySlice(v.List)
-	case brt.KindVector:
-		v.Vector = copySlice(v.Vector)
-	case brt.KindSet:
-		v.Set = copySlice(v.Set)
-	case brt.KindMap:
-		es := make([]brt.MapEntry, len(v.Map))
-		for i, e := range v.Map {
-			es[i] = brt.MapEntry{Key: deepCopy(e.Key), Val: deepCopy(e.Val)}
+		b := brt.NewListBuilder(v.Len())
+		for x := range v.Items() {
+			b.Add(deepCopy(x))
 		}
-		v.Map = es
+		v = b.List()
+	case brt.KindVector:
+		b := brt.NewVectorBuilder(v.Len())
+		for x := range v.Items() {
+			b.Add(deepCopy(x))
+		}
+		v = b.Vector()
+	case brt.KindSet:
+		v = brt.Set(copySlice(v.Elems())...)
+	case brt.KindMap:
+		es := make([]brt.MapEntry, 0, v.Len())
+		for _, e := range v.Entries() {
+			es = append(es, brt.MapEntry{Key: deepCopy(e.Key), Val: deepCopy(e.Val)})
+		}
+		v = brt.Map(es)
 	case brt.KindVariant:
 		vv := *v.Variant
 		vv.Args = copySlice(vv.Args)
@@ -57,7 +65,7 @@ func copySlice(vs []brt.Value) []brt.Value {
 
 // cterm — модель компактного представления значения (16 Б: интерфейс
 // Go), чтобы отделить цену семантики копирования от цены нынешнего
-// 296-байтного runtime.Value. Кортеж и список — []cterm, атом — catom.
+// толстого runtime.Value. Кортеж и список — []cterm, атом — catom.
 type (
 	cterm  any
 	catom  string
@@ -93,9 +101,9 @@ func compactOf(v brt.Value) cterm {
 		}
 		return out
 	case brt.KindList:
-		out := make(clist, len(v.List))
-		for i, e := range v.List {
-			out[i] = compactOf(e)
+		out := make(clist, 0, v.Len())
+		for e := range v.Items() {
+			out = append(out, compactOf(e))
 		}
 		return out
 	case brt.KindAtom:
