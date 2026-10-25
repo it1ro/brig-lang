@@ -504,7 +504,7 @@ fn tagged(u) -> { ..Record.to_anon(u), kind: :user }   # анонимная: н�
 
 **Конвертация вида — только явная:**
 
-- `User{ ..r }` — в номинальную запись типа `User`;
+- `User{ ..r }` — в номинальную запись типа `User`. Поле `r`, которого нет в типе `User`, — авто-raise `(:field_error, (name, "User"))`: `name` — атом поля, второй элемент — имя типа строкой (§10.4). Record update в той же ситуации бросает `(:no_field, (name, rec))`: там есть запись-источник, здесь — только целевой тип;
 - `Record.to_anon(r)` — в анонимную запись с теми же полями; для анонимной `r` возвращает `r`. Не запись — `(:type_error, ((:record, :to_anon), v))`.
 
 Реализация — T-142.
@@ -1283,6 +1283,9 @@ fn process(a, b) -> (a, b)
 - `(:invalid_utf8, b)`
 - `(:no_field, (name, rec))` — чтение отсутствующего поля записи `rec.name`; то же — поле, которого нет в типе, при record update номинальной записи `rec` (§4.7); `name` — атом.
 - `(:badmatch, val)` — несовпадение паттерна в связывании `pattern = expr`; `val` — значение правой части (§5.1).
+- `(:field_error, (name, type))` — явная конвертация `Type{ ..r }`, когда в `r` есть поле `name`, которого нет в типе; `name` — атом, `type` — имя типа строкой, `User{ ..{ id: 1, extra: 2 } }` бросает `(:field_error, (:extra, "User"))` (§4.7).
+
+Ошибки функций stdlib, кроме `:type_error`, описаны в столбце «Авто-raise» таблиц модулей (§11.5a): `(:unwrap, None)` и `(:unwrap, Error(e))` — `Option.unwrap` и `Result.unwrap`; `(:start_failed, …)`, `(:timeout, (:which_children, sup))` и `(:max_restarts, (name, reason))` — модуль `Supervisor`; `(:no_handler, tag)` и `(:bad_arity, tag)` — модуль `Behavior` (§13.2).
 
 Ошибка внутри `when`-guard отдельного имени не имеет: пробрасывается исходная ошибка (§6.1).
 
