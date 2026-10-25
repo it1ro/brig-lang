@@ -90,6 +90,12 @@ func (s *Session) installHelpers() {
 	add("observe", 0, true, func(_ runtime.Caller, _ []runtime.Value) (runtime.Value, error) {
 		return s.observe()
 	})
+	add("trace", 1, true, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+		return s.trace(args[0])
+	})
+	add("untrace", 1, true, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
+		return s.untrace(args[0])
+	})
 	// register — не голая команда: модуль зовёт Repl.register("M").
 	add("register", 1, false, func(_ runtime.Caller, args []runtime.Value) (runtime.Value, error) {
 		return s.register(args[0])
@@ -914,4 +920,5 @@ var builtinParams = map[string]string{
 	"Repl.load/1": "path", "Repl.flush/0": "", "Repl.time/1": "f", "Repl.dis/1": "f",
 	"Repl.bindings/0": "", "Repl.reset/0": "", "Repl.recompile/0": "", "Repl.register/1": "module",
 	"Repl.tree/0": "", "Repl.info/1": "pid", "Repl.top/1": "n", "Repl.observe/0": "",
+	"Repl.trace/1": "pid", "Repl.untrace/1": "pid",
 }

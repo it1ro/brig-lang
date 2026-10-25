@@ -152,7 +152,7 @@ func CheckRepl(prog *ast.Program, extra []string) *Result {
 func replHelperNames() map[string]bool {
 	names := []string{
 		"h", "i", "v", "bindings", "reset", "load", "flush", "time", "dis", "recompile",
-		"tree", "info", "top", "observe",
+		"tree", "info", "top", "observe", "trace", "untrace",
 	}
 	out := make(map[string]bool, len(names))
 	for _, n := range names {
