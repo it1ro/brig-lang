@@ -188,6 +188,7 @@ pattern_atom ::=
     | constructor_pattern
     | tuple_pattern
     | list_pattern
+    | vector_pattern
     | map_pattern
     | record_pattern
     | "(" pattern ")"
@@ -203,6 +204,9 @@ list_pattern ::=
 list_pattern_elem ::=
       pattern
     | ".." [ LOWER_IDENT ]
+
+vector_pattern ::=   (* только точная длина, без ".." (§4.4) *)
+    "%[" [ pattern { "," pattern } [ "," ] ] "]"
 
 map_pattern ::=
     "%{" [ map_pair { "," map_pair } [ "," ] ] "}"

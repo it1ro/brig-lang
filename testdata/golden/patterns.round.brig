@@ -16,3 +16,5 @@ fn p_record(User{id: id}) ->
     id
 fn p_as((:ok, _) as full) ->
     full
+fn p_vector(%[a, _]) ->
+    a

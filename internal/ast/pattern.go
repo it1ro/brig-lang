@@ -102,6 +102,19 @@ func (t *tuplePattern) String() string {
 	return "(" + joinPatterns(t.patterns, ", ") + ")"
 }
 
+// vectorPattern — %[p1, p2, ...]: только точная длина, без `..` (§4.4).
+type vectorPattern struct {
+	posEnd
+	patterns []Pattern
+}
+
+func (t *vectorPattern) IsExpression() bool { return false }
+func (t *vectorPattern) IsStatement() bool  { return false }
+func (t *vectorPattern) AsIdent() string    { return "" }
+func (t *vectorPattern) String() string {
+	return "%[" + joinPatterns(t.patterns, ", ") + "]"
+}
+
 // spreadPat — standalone `..name` (variadic param; ebnf param ::= ".." LOWER_IDENT).
 type spreadPat struct {
 	posEnd

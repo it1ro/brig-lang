@@ -341,6 +341,14 @@ type PatternTuple interface {
 
 func (p *tuplePattern) TupleElems() []Pattern { return p.patterns }
 
+// PatternVector — доступ к паттерну Vector.
+type PatternVector interface {
+	Pattern
+	VectorElems() []Pattern
+}
+
+func (p *vectorPattern) VectorElems() []Pattern { return p.patterns }
+
 // PatternAs — доступ к паттерну as.
 type PatternAs interface {
 	Pattern

@@ -373,6 +373,18 @@ func equalNodes(a, b Node) bool {
 		}
 		return true
 
+	case *vectorPattern:
+		y, ok := b.(*vectorPattern)
+		if !ok || len(x.patterns) != len(y.patterns) {
+			return false
+		}
+		for i := range x.patterns {
+			if !equalNodes(x.patterns[i], y.patterns[i]) {
+				return false
+			}
+		}
+		return true
+
 	case *listPattern:
 		y, ok := b.(*listPattern)
 		if !ok || x.hasRest != y.hasRest || x.restName != y.restName ||

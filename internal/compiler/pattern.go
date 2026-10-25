@@ -24,6 +24,10 @@ func patternNames(pat ast.Pattern, acc []string) []string {
 		for _, a := range p.TupleElems() {
 			acc = patternNames(a, acc)
 		}
+	case ast.PatternVector:
+		for _, a := range p.VectorElems() {
+			acc = patternNames(a, acc)
+		}
 	case ast.PatternList:
 		for _, a := range p.ListElems() {
 			acc = patternNames(a, acc)
@@ -106,6 +110,17 @@ func (fc *funcCompiler) compilePattern(pat ast.Pattern) (*vm.CompiledPattern, er
 			subs = append(subs, sub)
 		}
 		return &vm.CompiledPattern{Kind: vm.PatTuple, Subs: subs}, nil
+
+	case ast.PatternVector:
+		subs := make([]*vm.CompiledPattern, 0, len(p.VectorElems()))
+		for _, a := range p.VectorElems() {
+			sub, err := fc.compilePattern(a)
+			if err != nil {
+				return nil, err
+			}
+			subs = append(subs, sub)
+		}
+		return &vm.CompiledPattern{Kind: vm.PatVector, Subs: subs}, nil
 
 	case ast.PatternList:
 		subs := make([]*vm.CompiledPattern, 0, len(p.ListElems()))

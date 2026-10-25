@@ -152,3 +152,42 @@ fn main() ->
 	}
 	runModule(t, src)
 }
+
+// T-286: паттерн Vector (§4.4) — только по точной длине; другая длина
+// и не-Vector — несовпадение, не ошибка. Работает в match, в связывании
+// и в параметре fn.
+func TestVectorPattern(t *testing.T) {
+	runModule(t, `module Main
+fn pick(v) ->
+    match v
+        %[] -> :empty
+        %[a, b] -> a + b
+        %[_, (:ok, x), %[y]] -> x + y
+        _ -> :other
+
+fn first(%[a, _]) -> a
+fn first(_) -> :no
+
+fn one(v) ->
+    %[x] = v
+    x
+
+fn main() ->
+    assert(pick(%[]) == :empty)
+    assert(pick(%[1, 2]) == 3)
+    assert(pick(%[1]) == :other)
+    assert(pick(%[1, 2, 3]) == :other)
+    assert(pick([1, 2]) == :other)
+    assert(pick((1, 2)) == :other)
+    assert(pick(%[0, (:ok, 10), %[5]]) == 15)
+    assert(pick(%[0, (:ok, 10), %[5, 6]]) == :other)
+    %[p, q] = %[3, 4]
+    assert(p * q == 12)
+    assert(first(%[7, 8]) == 7)
+    assert(first(%[7]) == :no)
+    r1 = trap(one(%[1]))
+    assert(r1 == Ok(1))
+    r2 = trap(one(%[1, 2]))
+    assert(r2 == Error((:badmatch, %[1, 2])))
+`)
+}

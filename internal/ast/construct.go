@@ -336,6 +336,11 @@ func NewTuplePattern(patterns []Pattern, pos, end int) Pattern {
 	return &tuplePattern{posEnd{pos, end}, patterns}
 }
 
+// NewVectorPattern creates a %[p1, ...] pattern.
+func NewVectorPattern(patterns []Pattern, pos, end int) Pattern {
+	return &vectorPattern{posEnd{pos, end}, patterns}
+}
+
 // NewListPattern creates an expression node.
 func NewListPattern(patterns []Pattern, hasRest bool, restName string, pos, end int) Pattern {
 	return &listPattern{posEnd{pos, end}, patterns, hasRest, restName}
