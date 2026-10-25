@@ -7,6 +7,12 @@ name: bench
 on:
     pull_request:
         branches: [main]
+    # Ручной прогон на aio: head — выбранная ветка, база — input base.
+    workflow_dispatch:
+        inputs:
+            base:
+                description: база для сравнения (ветка или sha)
+                default: main
 
 env:
     # Порог регрессии в процентах — единственное место, где он задан.
@@ -14,8 +20,11 @@ env:
     BENCHSTAT: golang.org/x/perf/cmd/benchstat@v0.0.0-20260929162123-406019bb8b68
 
 jobs:
+    # Микро-бенчмарки идут на стенде aio (T-296): на ubuntu-latest шум
+    # раннера сравним с порогом. Чужой код на домашней машине не исполняется:
+    # PR из форков остаются на ubuntu-latest.
     bench:
-        runs-on: ubuntu-latest
+        runs-on: ${{ (github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","aio-bench"]') || 'ubuntu-latest' }}
         steps:
             - uses: actions/checkout@v4
               with:
@@ -31,11 +40,18 @@ jobs:
 
             # База гоняется Makefile'ом PR: в main цели bench может ещё не быть.
             # Прогоны base и PR чередуются, чтобы дрейф раннера делился поровну.
+            # Каталог раннера aio живёт между запусками: worktree базы — в
+            # RUNNER_TEMP (чистится после job), старая запись о нём — prune.
             - name: Bench base (main) and head (PR)
+              env:
+                  BASE_REF: ${{ github.event.pull_request.base.sha || inputs.base }}
               run: |
-                  git worktree add ../base "${{ github.event.pull_request.base.sha }}"
+                  base="$RUNNER_TEMP/base"
+                  git worktree prune
+                  git worktree add --detach "$base" "$(git rev-parse --verify "$BASE_REF^{commit}" 2>/dev/null || git rev-parse "origin/$BASE_REF")"
+                  rm -f base.txt head.txt
                   for i in $(seq 10); do
-                      make -s --no-print-directory -C ../base -f "$PWD/Makefile" bench BENCH_COUNT=1 >> base.txt
+                      make -s --no-print-directory -C "$base" -f "$PWD/Makefile" bench BENCH_COUNT=1 >> base.txt
                       make -s bench BENCH_COUNT=1 >> head.txt
                   done
 
