@@ -432,6 +432,10 @@ func (c *checker) checkPatternBinding(pat ast.Pattern, kind string) {
 		for _, sub := range p.TupleElems() {
 			c.checkPatternBinding(sub, kind)
 		}
+	case ast.PatternVector:
+		for _, sub := range p.VectorElems() {
+			c.checkPatternBinding(sub, kind)
+		}
 	case ast.PatternList:
 		for _, sub := range p.ListElems() {
 			c.checkPatternBinding(sub, kind)
@@ -477,6 +481,10 @@ func (c *checker) checkPattern(pat ast.Pattern) {
 		}
 	case ast.PatternTuple:
 		for _, sub := range p.TupleElems() {
+			c.checkPattern(sub)
+		}
+	case ast.PatternVector:
+		for _, sub := range p.VectorElems() {
 			c.checkPattern(sub)
 		}
 	case ast.PatternMapAccessor:

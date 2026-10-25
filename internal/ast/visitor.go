@@ -313,6 +313,14 @@ func walkPattern(v Visitor, p Pattern) error {
 		}
 		return nil
 
+	case *vectorPattern:
+		for _, sub := range n.patterns {
+			if err := walkNode(v, sub); err != nil {
+				return err
+			}
+		}
+		return nil
+
 	case *listPattern:
 		for _, sub := range n.patterns {
 			if err := walkNode(v, sub); err != nil {

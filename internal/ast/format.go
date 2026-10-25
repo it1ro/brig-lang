@@ -687,6 +687,12 @@ func (p *printer) patternString(pat Pattern) string {
 			return "(" + parts[0] + ",)"
 		}
 		return "(" + strings.Join(parts, ", ") + ")"
+	case *vectorPattern:
+		parts := make([]string, len(v.patterns))
+		for i, sub := range v.patterns {
+			parts[i] = p.patternString(sub)
+		}
+		return "%[" + strings.Join(parts, ", ") + "]"
 	case *listPattern:
 		parts := make([]string, len(v.patterns))
 		for i, sub := range v.patterns {

@@ -51,7 +51,7 @@ func (p *parser) parseStrConcatPattern() (ast.Pattern, error) {
 // pattern_atom ::= WILDCARD | LOWER_IDENT | literal
 //
 //	| constructor_pattern | tuple_pattern | list_pattern
-//	| map_pattern | record_pattern | "(" pattern ")"
+//	| vector_pattern | map_pattern | record_pattern | "(" pattern ")"
 func (p *parser) parsePatternAtom() (ast.Pattern, error) {
 	t := p.cur()
 	switch t.Type {
@@ -110,6 +110,8 @@ func (p *parser) parsePatternAtom() (ast.Pattern, error) {
 		return p.parseTupleOrGroupPattern()
 	case lexer.LBRACKET:
 		return p.parseListPattern()
+	case lexer.VEC_OPEN:
+		return p.parseVectorPattern()
 	case lexer.MAP_OPEN:
 		return p.parseMapPattern()
 	case lexer.LBRACE:
@@ -181,6 +183,31 @@ func (p *parser) parseListPattern() (ast.Pattern, error) {
 		return nil, err
 	}
 	return ast.NewListPattern(elems, hasRest, restName, start.Line, start.Col), nil
+}
+
+// vector_pattern ::= "%[" [ pattern { "," pattern } [ "," ] ] "]"
+//
+// Только точная длина: `..` в паттерне Vector запрещён (§4.4).
+func (p *parser) parseVectorPattern() (ast.Pattern, error) {
+	start := p.advance() // %[
+	var elems []ast.Pattern
+	for !p.at(lexer.RBRACKET) && !p.at(lexer.EOF) {
+		if p.at(lexer.OP_DOTDOT) {
+			return nil, p.errf("'..' is not allowed in a vector pattern: vectors match by exact length")
+		}
+		sub, err := p.parsePattern()
+		if err != nil {
+			return nil, err
+		}
+		elems = append(elems, sub)
+		if !p.match(lexer.COMMA) {
+			break
+		}
+	}
+	if _, err := p.expect(lexer.RBRACKET, "']'"); err != nil {
+		return nil, err
+	}
+	return ast.NewVectorPattern(elems, start.Line, start.Col), nil
 }
 
 // map_pattern ::= "%{" [ expr "=>" pattern { "," ... } ] "}"

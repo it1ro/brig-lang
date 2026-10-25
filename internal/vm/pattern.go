@@ -22,6 +22,7 @@ const (
 	PatAs
 	PatRecord
 	PatStrConcat
+	PatVector
 )
 
 // MapPatPair — пара ключ-паттерн для PatMap.
@@ -94,7 +95,7 @@ func (p *CompiledPattern) Slots() []int {
 			for _, sub := range p.Subs {
 				walk(sub)
 			}
-		case PatCtor, PatTuple:
+		case PatCtor, PatTuple, PatVector:
 			for _, sub := range p.Subs {
 				walk(sub)
 			}
@@ -175,6 +176,18 @@ func MatchPattern(v runtime.Value, p *CompiledPattern, locals []runtime.Value) b
 		}
 		for i, sub := range p.Subs {
 			if !MatchPattern(v.Tuple[i], sub, locals) {
+				return false
+			}
+		}
+		return true
+
+	case PatVector:
+		// Только точная длина (§4.4); элемент — O(log₃₂ n).
+		if v.Kind != runtime.KindVector || v.Len() != len(p.Subs) {
+			return false
+		}
+		for i, sub := range p.Subs {
+			if !MatchPattern(v.At(i), sub, locals) {
 				return false
 			}
 		}
@@ -276,6 +289,15 @@ func FormatCompiledPattern(p *CompiledPattern) string {
 			s += FormatCompiledPattern(sub)
 		}
 		return s + ")"
+	case PatVector:
+		s := "%["
+		for i, sub := range p.Subs {
+			if i > 0 {
+				s += ", "
+			}
+			s += FormatCompiledPattern(sub)
+		}
+		return s + "]"
 	case PatList:
 		s := "["
 		for i, sub := range p.Subs {

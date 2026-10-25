@@ -7,3 +7,4 @@ fn p_list([1, ..rest]) -> rest
 fn p_map(%{ "a" => a }) -> a
 fn p_record(User{ id: id }) -> id
 fn p_as((:ok, _) as full) -> full
+fn p_vector(%[a, _]) -> a

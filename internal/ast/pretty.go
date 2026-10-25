@@ -332,6 +332,15 @@ func prettyPattern(buf *bytes.Buffer, p Pattern, indent int) {
 			prettyNode(buf, pat, indent)
 		}
 		buf.WriteString(")")
+	case *vectorPattern:
+		buf.WriteString("%[")
+		for i, pat := range n.patterns {
+			if i > 0 {
+				buf.WriteString(" ")
+			}
+			prettyNode(buf, pat, indent)
+		}
+		buf.WriteString("]")
 	case *listPattern:
 		buf.WriteString("[")
 		for i, pat := range n.patterns {
